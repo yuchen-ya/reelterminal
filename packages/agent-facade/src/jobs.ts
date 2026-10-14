@@ -21,6 +21,7 @@ import type {
   ExportProvider,
 } from "./providers";
 import { compactAnalysisFacts } from "./analysis-records";
+import type { NormalizeAudioArtifact } from "./audio-normalize";
 import type { AnalysisJobResult, JobStatusView } from "./types";
 
 function compactAnalysisJobResult(result: AnalysisJobResult): AnalysisJobResult {
@@ -51,7 +52,7 @@ export function compactJobStatusView(status: JobStatusView): JobStatusView {
     result: status.state !== "done" || !result
       ? null
       : status.kind === "analysis"
-        ? compactAnalysisJobResult(result)
+        ? compactAnalysisJobResult(result as AnalysisJobResult)
         : structuredClone(result),
   };
 }
@@ -92,13 +93,13 @@ export interface JobProgressView {
 
 export interface JobRecord {
   readonly jobId: string;
-  readonly kind: "export" | "analysis";
+  readonly kind: "export" | "analysis" | "audio-process";
   readonly projectId?: string;
   readonly workspaceId?: string;
   readonly state: JobState;
   readonly progress: JobProgressView | null;
   readonly artifact: ArtifactRef | null;
-  readonly result: AnalysisJobResult | null;
+  readonly result: AnalysisJobResult | NormalizeAudioArtifact | null;
   readonly error: { readonly code: string; readonly message: string } | null;
   /** destinationPath delivery outcome (both null when none was requested). */
   readonly deliveredTo: string | null;
@@ -302,6 +303,39 @@ export class JobRegistry {
         route: "built-in-technical-quality",
         error: null,
       };
+    });
+  }
+
+  markAudioProcessDone(jobId: string, result: NormalizeAudioArtifact): void {
+    this.transition(jobId, (job) => {
+      if (TERMINAL.has(job.state)) return job;
+      return {
+        ...job,
+        state: "done" as JobState,
+        result: structuredClone(result),
+        artifact: null,
+        route: "local-ffmpeg-loudnorm-two-pass",
+        error: null,
+      };
+    });
+  }
+
+  /** Cleanup failure takes precedence over a failed terminal checkpoint. */
+  markAudioProcessCleanupFailed(jobId: string, message: string): void {
+    const job = this.jobs.get(jobId);
+    if (!job || job.kind !== "audio-process" || job.state === "done") return;
+    this.publish({
+      ...job,
+      state: "error",
+      artifact: null,
+      result: null,
+      error: {
+        code: "JOB_FAILED",
+        message: job.error
+          ? `${job.error.message}; audio output cleanup failed: ${message}`
+          : `Audio output cleanup failed: ${message}`,
+      },
+      updatedAt: new Date().toISOString(),
     });
   }
 

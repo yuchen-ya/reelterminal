@@ -83,6 +83,42 @@ describe("live MCP Command API adapter", () => {
     });
   });
 
+  it("watches audio-process jobs when a caller opts into progress", async () => {
+    const audioCommand = {
+      name: "audio.process.normalize",
+      toolName: "audio_process_normalize",
+      description: "Normalize an imported audio range.",
+      inputSchema: { type: "object", properties: {} },
+      outputSchema: { type: "object" },
+      effects: ["write", "task", "filesystem"],
+      retry: "never" as const,
+    };
+    const command = vi.fn(async (name: string) => {
+      if (name === "audio.process.normalize") {
+        return { ok: true, value: { jobId: "audio-job-1", kind: "audio-process", state: "queued" } };
+      }
+      return { ok: true, value: { jobId: "audio-job-1", kind: "audio-process", state: "done", progress: { phase: "complete", percent: 1 } } };
+    });
+    const api = client({
+      catalog: vi.fn().mockResolvedValue({ ...catalog, commands: [audioCommand] }),
+      command: command as unknown as LiveCommandClient["command"],
+    });
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const response = await handleRpc({
+      jsonrpc: "2.0", id: 6, method: "tools/call",
+      params: { name: "audio_process_normalize", arguments: {}, _meta: { progressToken: "audio-token" } },
+    }, api, notify, new AbortController().signal);
+
+    expect(response).toMatchObject({ result: { structuredContent: { ok: true, value: { jobId: "audio-job-1" } } } });
+    await vi.waitFor(() => {
+      expect(command).toHaveBeenCalledWith("job.status", { jobId: "audio-job-1" }, expect.objectContaining({ retry: "safe" }));
+      expect(notify).toHaveBeenCalledWith(expect.objectContaining({
+        method: "notifications/progress",
+        params: expect.objectContaining({ progressToken: "audio-token", progress: 1, message: "complete" }),
+      }));
+    });
+  });
+
   it("embeds only Command API verified PNG artifacts", async () => {
     const data = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
     const api = client({

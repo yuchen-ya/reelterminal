@@ -5,6 +5,11 @@ import { MAX_TRACK_FRAMES } from "./plugins/motion-tools";
 import { MAX_PATCH_PROPAGATE_FRAMES } from "./plugins/patch-propagation";
 import { opencvToolPreflight } from "./media/opencv-runner";
 import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
+import {
+  AUDIO_NORMALIZE_MAX_INTEGRATED_DEVIATION_LU,
+  AUDIO_NORMALIZE_MAX_TRUE_PEAK_OVERSHOOT_DBTP,
+  AUDIO_NORMALIZE_MAX_RANGE_SEC,
+} from "./audio-normalize";
 import { COLOR_POLICY as COLOR_POLICY_DISCLOSURE } from "./color-policy";
 import { PLUGIN_TOOLS } from "./plugins";
 import { MAX_TIMELINE_SOURCE_MAP_POINTS } from "./timeline-source-map";
@@ -910,6 +915,26 @@ export async function buildCapabilities(
       pixelRendering: preview.available,
     },
     mediaRenderHtml,
+    audioNormalize: {
+      available: audioReady.available && mediaImportAvailable,
+      ...(!audioReady.available
+        ? { reason: audioReady.reason ?? "Local FFmpeg loudnorm/ffprobe unavailable" }
+        : !mediaImportAvailable ? { reason: "A media root and an operational media import bridge are required" } : {}),
+      details: {
+        command: "audio.process.normalize",
+        registrationCommand: "audio.process.register",
+        route: "local FFmpeg two-pass loudnorm; output is independently remeasured",
+        output: "48 kHz PCM 24-bit WAV; explicit mono or stereo",
+        maximumRangeSec: AUDIO_NORMALIZE_MAX_RANGE_SEC,
+        targetValidation: {
+          maximumIntegratedDeviationLu: AUDIO_NORMALIZE_MAX_INTEGRATED_DEVIATION_LU,
+          maximumTruePeakOvershootDbtp: AUDIO_NORMALIZE_MAX_TRUE_PEAK_OVERSHOOT_DBTP,
+          failure: "Remeasured output outside these tolerances fails without publishing an asset",
+        },
+        storage: "mediaRoots[0]/generated-assets/audio-normalize/<jobId>/ (persistent, outside analysis cache)",
+        registration: "Explicit revision-guarded media import into the source project/workspace; does not replace clips",
+      },
+    },
     preview,
     visualInspection,
     editorControl,

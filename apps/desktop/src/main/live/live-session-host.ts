@@ -273,7 +273,7 @@ export function createLiveSessionHost(
         }
         activityTimer = null;
         externalConnected = false;
-        // Release only writer ownership. Keep the facade alive so export jobs
+        // Release only writer ownership. Keep the facade alive so background jobs
         // remain queryable and idempotency retries cannot duplicate a commit
         // after a transient connector outage.
         externalSession?.releaseWriterLease();
@@ -444,8 +444,10 @@ export function createLiveSessionHost(
       // internal failure and is converted, never propagated.
       const result = await call(params ?? {});
       if (result.ok && verb === "job.status") {
-        const job = result.value as { jobId: string; state: string; sourceRevision: number; result?: { summary?: { videoReview?: { text: string; status: string; mediaId: string; startSec: number; endSec: number; limitations: string[] } } } };
-        const review = job.result?.summary?.videoReview;
+        const job = result.value as JobStatusView;
+        const review = job.kind === "analysis" && job.result && "summary" in job.result
+          ? job.result.summary.videoReview as { text: string; status: string; mediaId: string; startSec: number; endSec: number; limitations: string[] } | undefined
+          : undefined;
         if (job.state === "done" && review && !shownReviews.has(job.jobId)) {
           shownReviews.add(job.jobId);
           if (shownReviews.size > 100) shownReviews.delete(shownReviews.values().next().value!);

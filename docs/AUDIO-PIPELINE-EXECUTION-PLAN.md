@@ -53,7 +53,7 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
 ## 协调记录
 
 - 初始 checkout：main，b235b16f；开始时工作区干净。
-- A：2026-10-14 已完成实现与验证，已由协调会话验收；本计划随本批首次提交纳入 Git。
+- A：2026-10-14 已完成实现与验证，已由协调会话验收（`3fbba4b0`）；本计划随本批首次提交纳入 Git。
   - live/headless 均执行 silence、beatGrid，共用分析内核、有效参数解析、120 秒音频范围限制；live 补齐结果记录与来源信息，能力披露补齐资源限制。保留 live 既有最多两项导出/分析共享任务限制及 headless 最多两项分析限制。
   - totalSilenceDurationSec 累加完整 ranges；257 段实音频回归确认预览仍为 256 段、总时长包含最后一段。
   - audioSummary 的静音/BPM 输入逐采样选取立体声中绝对幅度最大的有符号样本，右声道独有与反相样本均有回归；波形/RMS 的现有双声道策略保持不变。
@@ -62,7 +62,7 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
   - 验证：`pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`，74 文件通过，1973 测试通过、12 既有测试跳过；`pnpm --filter @reelterminal/desktop test:run src/main/analysis/analysis-records-service.test.ts src/main/live/live-session-host.test.ts --maxWorkers=2`，2 文件、21 测试通过；两个包的 `typecheck` 均通过；`git diff --check` 通过。
   - 首次全包运行发现新增进程测试的过时 ffprobe 断言和异步拒绝处理问题，已修正并重跑通过；无未解决测试失败。未访问用户 live API、未打开用户工程、未生成生产视频，未 push/发布/打包。
   - 限制：本批保持既有返回协议和 256 事件预览；完整明细与紧凑协议留给 B。历史记录中已丢失的静音参数无法重建，读取契约不变；独立 silence/beatGrid 的 FFmpeg mono downmix 保持原有行为，本次声道修复针对 summarizePcm。
-- B：2026-10-14 已完成实现与验证，待协调会话验收。
+- B：2026-10-14 已完成实现与验证，已由协调会话验收（`2a9cd248`）。
   - 音频内核不再截断事件：silence、beatGrid、audioSummary onsets/silence 全量持久化至现有 analysis-records JSON（schemaVersion 3）；新增 audioSummary 全量静音总时长，summary 计数与分页 limit 无关。保留 A 的有效 silenceParams 保存与 recheck 透传。
   - `analysis.get {recordId}` 默认音频摘要；`view:"events"` 按指定 series 读取半开 source-seconds 时间窗，默认 100、最多 256 项。区间保留原始边界，按时间与原存储顺序稳定排序，ID 使用 recordId/series/原索引；cursor 绑定记录、series、归一化窗口、limit，并校验 offset。跨窗口同一事件用 ID 去重。
   - `view:"waveform"` 才返回波形，默认 150、最多 600 点；复用最密的已存波形，按时长加权 RMS 与最大 peak 聚合，保留原始 bin 边界。显式窗口必须在分析范围内，增加 maxPoints 不会提高已存分辨率。
@@ -71,4 +71,13 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
   - 更新了 types、输入/输出 schema、catalog/corpus、CLI 帮助与 MATERIAL-ANALYSIS；桌面内部 loadAnalysisRecord/service.get 继续完整读取，preload 类型补齐 revision、source 坐标与 silenceParams。全库搜索没有现存分析记录 GUI 面板组件，未新增面板；服务回归验证 300 项完整读取与紧凑 job status。
   - 验证：`pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`，75 文件、2002 测试通过、12 既有测试跳过；`pnpm --filter @reelterminal/desktop test:run src/main/analysis/analysis-records-service.test.ts src/main/live/live-session-host.test.ts --maxWorkers=2`，2 文件、22 测试通过；agent-facade、desktop、web 的 `typecheck` 均通过；`git diff --check` 通过。回归包含 >256 全量事件与分页、半开边界/相交区间/同时间排序/cursor、旧记录诚实性、波形上限、live/headless 同记录视图一致、旧任务/batch 恢复及完成 checkpoint 失败清理。
   - 初次针对检查发现 schemaVersion 2 的旧测试断言和查询 union 类型收窄问题，已修复；最终无未解决测试或类型错误。schema 领域筛选及 capabilities 按领域懒探测是独立后续项，本批未扩展。未执行 C、接入模型、访问用户 live API、打开用户工程、push、发布或打包。
-- C：等待 B 验收。
+- C：2026-10-14 已完成实现与验证，待协调会话验收。
+  - 新增真实 write/task/filesystem 命令 `audio.process.normalize` 和显式 write/filesystem 命令 `audio.process.register`，输入、输出 schema、catalog/corpus、CLI 帮助、MCP 任务跟踪/进度、workflow await 一并更新；没有把产物生成伪装为只读插件。参数要求 mediaId、零基音轨索引、source seconds 半开范围、LUFS/TP/LRA、48 kHz 和 mono/stereo，normalize 必须带幂等键。
+  - 共用本地两遍 loudnorm，第二遍透传第一遍 measured_I/TP/LRA/thresh 和真正的 target_offset；明确 PCM s24le WAV、48 kHz、声道布局，最终 WAV 再测量。只在 integrated 与目标偏差 ≤1 LU 且 true peak 超限 ≤0.2 dBTP 时发布；未达标、静音不可测、无音轨和解码错误真实失败，不伪造指标，不串联 speechnorm/独立 limiter，不做自动补偿重试。
+  - source range → 输出零点映射、round((end-start)*48000) 样本数、实际时长和补偿后零处理延迟保存在结果与 provenance.json。使用 copyts 保留共享正时间戳原点后裁切；音轨相对媒体存在非零起点偏移时明确拒绝，避免静默折叠领先时延。
+  - 在 mediaRoots[0]/generated-assets/audio-normalize/<jobId>/ 持久保存 WAV 和 provenance，先完整写入/验证 pending 目录再原子发布；源媒体 digest、来源/范围、实际参数、前后测量、第一遍 offset 和实际 linear/dynamic 模式均保存。不依赖 artifactRoot 或分析缓存。取消等待 FFmpeg 退出及文件清理后才终态；仅清理本次拥有的精确文件，清理失败真实报告。完成 checkpoint 失败也回滚尚未注册的产物。
+  - 生成任务从不后台修改工程；register 只能针对原项目/工作区，显式校验 revision，经既有 headless mutation 或 renderer media.import bridge/CAS/undo 路径得到新 mediaId。注册用稳定任务键重放既有收据，不重复导入；先重放已提交结果、再验证新导入的文件/指标完整性。原资产保留、timeline clip 不替换；注册失败不改变已完成处理任务，允许明确重试。
+  - `audio-process` Job kind 已贯穿 registry、desktop durable ledger 校验/中断恢复、会话取消/关闭、任务输入引用、工作区路由、事件协议、global.d.ts 和桌面任务标签。live/headless 共用引擎；启动及 audioNormalize 能力披露都复用既有 loudnorm 滤镜探测，缺滤镜不宣称 ready。保留 live 两项共享任务限制及 headless 两项音频/分析限制。headless transport 退出先请求取消，再最多等十秒清理终态。
+  - 真实 FFmpeg 8.1.1 回归：44.1→48 kHz、非零 source start、第二音轨/右声道独有信号、12 秒高峰均比素材实际触发 dynamic；范围测量由 −18.96 LUFS / −0.83 dBTP 变为 −17.94 / −1.00，目标 −18 / −1；脉冲相对独立裁切/重采样参考 0 样本位移。共享正时间戳原点脉冲回归与参考相差 1 样本。另覆盖短片段未达标不发布、无音轨/全静音、处理中取消、checkpoint 失败清理、幂等注册、项目/工作区/revision 冲突、持久收据恢复、保存重开并删除分析缓存后引用仍可播放。
+  - 验证：`pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`：77 文件，2067 通过、12 既有跳过；`pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2`：13 文件，663 通过、3 既有跳过（harness 自带 CLI 构建成功）；`pnpm --filter @reelterminal/desktop test:run src/main/live/task-ledger.test.ts src/main/analysis/analysis-records-service.test.ts src/main/live/live-session-host.test.ts src/live-mcp/index.test.ts --maxWorkers=2`：4 文件，41 通过。agent-facade、agent-transport、desktop、web 的 typecheck 均通过；git diff --check 通过。
+  - 首轮检查发现并修正数字枚举校验、union 调用方类型、真实 target_offset 使用、未达标状态、正时间戳原点和 transport 旧错误文案断言；最终无未解决失败。限制：本批固定 48 kHz/单或双声道、每次最多 120 秒；非零音轨相对偏移不支持；headless 任务登记在内存中，关闭前注册或之后显式 media.import 持久文件；强制进程终止可能留下未发布 pending 目录；已完成但未注册文件不自动 GC。未访问用户 live API、未打开用户工程、未接入新模型、未 push、发布或打安装包。

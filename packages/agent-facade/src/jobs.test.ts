@@ -52,7 +52,8 @@ describe("JobRegistry", () => {
     registry.restore(status("legacy-cancelled", "cancelled"));
 
     const done = jobStatusView(registry.get("legacy-done")!);
-    expect(done.result?.summary).toEqual({
+    const doneResult = done.result;
+    expect(doneResult && "summary" in doneResult ? doneResult.summary : null).toEqual({
       audioSummary: { integratedLufs: -18 },
       silence: { totalSilenceDurationSec: 1 },
       beatGrid: { bpm: 120 },
@@ -60,7 +61,8 @@ describe("JobRegistry", () => {
     expect(jobStatusView(registry.get("legacy-error")!).result).toBeNull();
     expect(jobStatusView(registry.get("legacy-cancelled")!).result).toBeNull();
     // Projection is an output contract; restoring the durable source remains lossless.
-    expect(registry.get("legacy-done")?.result?.summary.audioSummary).toHaveProperty("waveform");
+    const restoredResult = registry.get("legacy-done")?.result;
+    expect(restoredResult && "summary" in restoredResult ? restoredResult.summary.audioSummary : null).toHaveProperty("waveform");
   });
 
   it("follows queued → running → done with progress", () => {
@@ -88,6 +90,62 @@ describe("JobRegistry", () => {
     expect(done?.artifact).toEqual(ARTIFACT);
     expect(done?.route).toBe("chromium-webcodecs");
     expect(reg.isTerminal("j1")).toBe(true);
+  });
+
+  it("stores a completed audio-process result without exposing an export artifact", () => {
+    const reg = new JobRegistry();
+    reg.create("audio-job", 4, "audio-process");
+    reg.markRunning("audio-job");
+    const result = {
+      path: "C:/generated/audio/normalized.wav",
+      provenancePath: "C:/generated/audio/normalized.provenance.json",
+      source: { mediaId: "source-1", path: "C:/media/source.wav", audioStream: 0, startSec: 1, endSec: 3, projectId: "project-a", revision: 4 },
+      parameters: { mediaId: "source-1", audioStream: 0, startSec: 0, endSec: 2, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 11, sampleRate: 48_000, channels: 2 },
+      before: { integratedLufs: -21, truePeakDbtp: -2, loudnessRangeLu: 1, thresholdLufs: -70 },
+      after: { integratedLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 1, thresholdLufs: -70 },
+      timing: { sampleRate: 48_000, channels: 2, sampleCount: 96_000, durationSec: 2, outputStartSec: 0, processingDelaySamples: 0 },
+      bytes: 384_000,
+      sha256: "ab".repeat(32),
+    } as const;
+
+    reg.markAudioProcessDone("audio-job", result);
+
+    expect(jobStatusView(reg.get("audio-job")!)).toMatchObject({
+      kind: "audio-process",
+      state: "done",
+      artifact: null,
+      route: "local-ffmpeg-loudnorm-two-pass",
+      result,
+    });
+  });
+
+  it("reports audio cleanup failures even when the done checkpoint already failed", () => {
+    const reg = new JobRegistry();
+    reg.create("audio-cleanup", 4, "audio-process");
+    reg.observe("audio-cleanup", (status) => {
+      if (status.state === "done") throw new Error("checkpoint unavailable");
+    });
+    reg.markRunning("audio-cleanup");
+    reg.markAudioProcessDone("audio-cleanup", {
+      path: "C:/generated/audio/normalized.wav",
+      provenancePath: "C:/generated/audio/provenance.json",
+      source: { mediaId: "source-1", path: "C:/media/source.wav", audioStream: 0, startSec: 0, endSec: 2, projectId: "project-a", revision: 4 },
+      parameters: { mediaId: "source-1", audioStream: 0, startSec: 0, endSec: 2, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 11, sampleRate: 48_000, channels: 2 },
+      before: { integratedLufs: -21, truePeakDbtp: -2, loudnessRangeLu: 1, thresholdLufs: -70 },
+      after: { integratedLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 1, thresholdLufs: -70 },
+      timing: { sampleRate: 48_000, channels: 2, sampleCount: 96_000, durationSec: 2, outputStartSec: 0, processingDelaySamples: 0 },
+      bytes: 384_000,
+      sha256: "ab".repeat(32),
+    });
+    expect(reg.get("audio-cleanup")?.error?.code).toBe("BATCH_PERSISTENCE_FAILED");
+
+    reg.markAudioProcessCleanupFailed("audio-cleanup", "access denied");
+    expect(reg.get("audio-cleanup")).toMatchObject({
+      state: "error",
+      artifact: null,
+      result: null,
+      error: { code: "JOB_FAILED", message: expect.stringContaining("checkpoint unavailable; audio output cleanup failed: access denied") },
+    });
   });
 
   it("error drops any artifact and seals the job", () => {

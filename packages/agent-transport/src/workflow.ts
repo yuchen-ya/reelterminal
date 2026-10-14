@@ -264,7 +264,7 @@ export function parseWorkflowLines(text: string): {
     if (typeof spec.jobId !== "string" && !isRefObject(spec.jobId)) {
       errors.push({
         line: lineNo,
-        message: `step "${id}": await.jobId must be a literal string or a single {"$ref"} into an earlier export.start step`,
+        message: `step "${id}": await.jobId must be a literal string or a single {"$ref"} into an earlier job-start step`,
       });
       continue;
     }
@@ -323,7 +323,7 @@ export function parseWorkflowLines(text: string): {
  * Full static validation (B.6): IDs unique; every $ref names an existing
  * EARLIER step; pointers syntactically valid; every verb known; every
  * await.jobId a literal string or a single-hop $ref into an EARLIER
- * export.start step's result. (Verb knowledge and await bounds are
+ * job-start verb's result. (Verb knowledge and await bounds are
  * enforced during parse; this pass adds ordering + reference structure.)
  */
 export function staticValidate(steps: readonly WorkflowStep[]): readonly StaticError[] {
@@ -371,17 +371,17 @@ export function staticValidate(steps: readonly WorkflowStep[]): readonly StaticE
         });
         continue;
       }
-      // await.jobId must target an export.start step, single-hop.
+      // await.jobId must target an earlier background-job start, single-hop.
       if (step.kind === "await") {
         const target = steps.find((s) => s.id === parsed.stepId);
         if (
           target !== undefined &&
           (target.kind !== "verb" ||
-            (target.verb !== "export.start" && target.verb !== "media.analyze_start"))
+            (target.verb !== "export.start" && target.verb !== "media.analyze_start" && target.verb !== "audio.process.normalize"))
         ) {
           errors.push({
             line: step.line,
-            message: `step "${step.id}": await.jobId may only reference an earlier export.start or media.analyze_start step (got "${parsed.stepId}", which is a ${target.kind === "verb" ? `"${target.verb}" step` : '"await" step'})`,
+            message: `step "${step.id}": await.jobId may only reference an earlier export.start, media.analyze_start, or audio.process.normalize step (got "${parsed.stepId}", which is a ${target.kind === "verb" ? `"${target.verb}" step` : '"await" step'})`,
           });
         }
       }
@@ -657,7 +657,7 @@ export async function executeWorkflow(
       ) => Promise<FacadeResult<unknown>>;
       const result = await call(substituted.value);
       if (
-        (step.verb === "export.start" || step.verb === "media.analyze_start") &&
+        (step.verb === "export.start" || step.verb === "media.analyze_start" || step.verb === "audio.process.normalize") &&
         result.ok
       ) {
         const value = result.value as { readonly jobId?: unknown };
@@ -672,7 +672,7 @@ export async function executeWorkflow(
       continue;
     }
 
-    // await step: jobId literal or single-hop ref into an export.start result
+    // await step: jobId literal or single-hop ref into a job-start result
     let jobId: string;
     if (typeof step.spec.jobId === "string") {
       jobId = step.spec.jobId;

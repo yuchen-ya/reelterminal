@@ -1,5 +1,5 @@
 /**
- * Opt-in MCP progress notifications for background export jobs.
+ * Opt-in MCP progress notifications for background export and audio-process jobs.
  *
  * MCP progress is associated with the caller's `_meta.progressToken`; a
  * client that does not provide one receives the unchanged jobId + polling

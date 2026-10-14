@@ -277,6 +277,89 @@ export const MEDIA_IMPORT_SCHEMA: ObjectSchema = {
   },
 };
 
+export const AUDIO_PROCESS_NORMALIZE_SCHEMA: ObjectSchema = {
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "a non-empty media-library id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  audioStream: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative audio stream index",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  startSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative finite source time in seconds",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  endSec: {
+    check: isPositiveNumber,
+    describe: "a positive finite source end time in seconds, greater than startSec",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  targetLufs: {
+    check: (value) => typeof value === "number" && isFiniteNumber(value) && value >= -70 && value <= -5,
+    describe: "a finite integrated loudness target in [-70, -5] LUFS",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: -70, maximum: -5 } },
+  },
+  truePeakDbtp: {
+    check: (value) => typeof value === "number" && isFiniteNumber(value) && value >= -9 && value <= 0,
+    describe: "a finite true-peak ceiling in [-9, 0] dBTP",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: -9, maximum: 0 } },
+  },
+  loudnessRangeLu: {
+    check: (value) => typeof value === "number" && isFiniteNumber(value) && value >= 1 && value <= 50,
+    describe: "a finite loudness-range target in [1, 50] LU",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 1, maximum: 50 } },
+  },
+  sampleRate: {
+    check: (value) => value === 48_000,
+    describe: "48000 Hz",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 48_000, maximum: 48_000 } },
+  },
+  channels: {
+    check: (value) => value === 1 || value === 2,
+    describe: "1 or 2 output channels",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: [1, 2] } },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative project revision",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty key that replays the same normalization job",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const AUDIO_PROCESS_REGISTER_SCHEMA: ObjectSchema = {
+  jobId: {
+    check: isNonEmptyString,
+    describe: "a non-empty completed audio-process job id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "the non-negative current project revision",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+};
+
 export const MEDIA_SILENCE_PARAMS_SCHEMA: ObjectSchema = {
   thresholdDb: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= -120 && v <= 0, describe: "a finite number in [-120, 0] (dBFS); default −40 matches the GUI silence-cut panel", emits: { kind: "leaf", schema: { type: "number", minimum: -120, maximum: 0 } } },
   minDurationSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10, describe: "a finite number in [0, 10] seconds; default 0.5 matches the GUI silence-cut panel", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 10 } } },
@@ -1967,6 +2050,8 @@ export const VERB_PARAM_SCHEMAS: {
   "requirements.get": REQUIREMENTS_GET_SCHEMA,
   "project.changes": PROJECT_CHANGES_SCHEMA,
   "media.import": MEDIA_IMPORT_SCHEMA,
+  "audio.process.normalize": AUDIO_PROCESS_NORMALIZE_SCHEMA,
+  "audio.process.register": AUDIO_PROCESS_REGISTER_SCHEMA,
   "media.render_html": MEDIA_RENDER_HTML_SCHEMA,
   "media.analyze_start": MEDIA_ANALYZE_START_SCHEMA,
   "timeline.get": EMPTY_PARAMS_SCHEMA,

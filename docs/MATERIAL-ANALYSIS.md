@@ -4,6 +4,10 @@ ReelTerminal provides read-only inspection of imported media and local audio
 measurements. These tools report evidence; they do not infer semantic intent
 or apply edits.
 
+For local two-pass loudness normalization and derived asset registration, see
+[Audio normalization](AUDIO-NORMALIZATION.md). That workflow uses explicit
+write commands and preserves the source asset.
+
 ## Source inspection
 
 `media.import_preflight {path}` checks that a file is inside the allowed media

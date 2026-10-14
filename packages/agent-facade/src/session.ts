@@ -1,3 +1,7 @@
+import { AUDIO_NORMALIZE_MAX_RANGE_SEC } from "./audio-normalize";
+import { runAudioNormalizationTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
+import type { AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult } from "./types";
+import { AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA } from "./verb-schemas";
 import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { analyzeLocalAudio, analyzeSilence, analyzeBeatGrid, audioAnalysisPreflight, resolveSilenceAnalysisParams, AUDIO_LIMITS } from "./audio-analysis";
 import { runVideoCandidateAnalyses, videoCandidatesPreflight, type VideoCandidateBundle } from "./video-candidates";
@@ -1008,125 +1012,131 @@ export class AgentFacadeSession {
   async mediaImport(
     params: MediaImportParams,
   ): Promise<FacadeResult<MediaImportResult>> {
-    return this.enqueue(async () => {
-      const valid = validateObject<MediaImportParams>(
-        params,
-        MEDIA_IMPORT_SCHEMA,
-        "media.import params",
-      );
-      if (!this.project) return this.noProject();
+    return this.enqueue(() => this.importMediaWithinMutation(params));
+  }
 
-      // Idempotent replays and revision conflicts resolve BEFORE any
-      // filesystem validation: a retry must replay the committed result even
-      // if the source file has since moved or been deleted. The pinned
-      // payload is the mutation-defining part (path + name), never the
-      // transport-level expectedRevision.
-      const prior = this.beginMutation<MediaImportPayload>(
-        "media.import",
-        valid.expectedRevision,
-        valid.idempotencyKey,
-        { path: valid.path, name: valid.name },
-      );
-      if (prior) {
-        return ok<MediaImportResult>({
-          ...prior.value,
-          revision: prior.revision,
-          replayed: true,
-        });
-      }
+  private async importMediaWithinMutation(
+    params: MediaImportParams,
+    beforeImport?: () => Promise<void>,
+  ): Promise<FacadeResult<MediaImportResult>> {
+    const valid = validateObject<MediaImportParams>(
+      params,
+      MEDIA_IMPORT_SCHEMA,
+      "media.import params",
+    );
+    if (!this.project) return this.noProject();
 
-      const roots = this.config.mediaRoots ?? [];
-      if (hasUrlScheme(valid.path)) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          `media.import: URLs are not accepted in this runtime — pass a local file path inside a configured media root`,
-          { path: valid.path },
-        );
-      }
-      if (roots.length === 0) {
-        throw new FacadeError(
-          "UNSUPPORTED",
-          "media.import: no media roots configured — the session was created without mediaRoots",
-        );
-      }
-      const resolution = resolveContainedPathDetailed(valid.path, roots);
-      if (resolution.kind === "outside") {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          `media.import: path escapes the configured media roots`,
-          { path: valid.path, mediaRoots: [...roots] },
-        );
-      }
-      if (resolution.kind === "unresolvable") {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          `media.import: path cannot be read (not found or unreadable)`,
-          { path: valid.path },
-        );
-      }
-      const resolved = resolution.path;
-
-      const probed = await this.probeMedia(resolved);
-      const fileStat = await stat(resolved);
-      const name = valid.name ?? basename(resolved);
-
-      const outcome = await this.commitMutation<MediaImportPayload>({
-        verb: "media.import",
-        idempotencyKey: valid.idempotencyKey,
-        payload: { path: valid.path, name: valid.name },
-        apply: (draft) => {
-          const item: MediaItem = {
-            id: `media-${crypto.randomUUID()}`,
-            name,
-            type: probed.type,
-            fileHandle: null,
-            blob: null,
-            metadata: {
-              duration: probed.durationSec,
-              width: probed.width,
-              height: probed.height,
-              frameRate: probed.frameRate,
-              codec: probed.codec,
-              sampleRate: 0,
-              channels: 0,
-              fileSize: probed.fileSize,
-            },
-            thumbnailUrl: null,
-            waveformData: null,
-            originalUrl: resolved,
-            sourceFile: {
-              name: basename(resolved),
-              size: probed.fileSize,
-              lastModified: Math.round(fileStat.mtimeMs),
-            },
-          };
-          (draft.mediaLibrary as { items: MediaItem[] }).items = [
-            ...draft.mediaLibrary.items,
-            item,
-          ];
-          return {
-            mediaId: item.id,
-            name: item.name,
-            type: probed.type,
-            metadata: {
-              durationSec: probed.durationSec,
-              width: probed.width,
-              height: probed.height,
-              frameRate: probed.frameRate,
-              codec: probed.codec,
-              fileSize: probed.fileSize,
-            },
-          };
-        },
-      });
+    // Idempotent replays and revision conflicts resolve BEFORE any
+    // filesystem validation: a retry must replay the committed result even
+    // if the source file has since moved or been deleted. The pinned
+    // payload is the mutation-defining part (path + name), never the
+    // transport-level expectedRevision.
+    const prior = this.beginMutation<MediaImportPayload>(
+      "media.import",
+      valid.expectedRevision,
+      valid.idempotencyKey,
+      { path: valid.path, name: valid.name },
+    );
+    if (prior) {
       return ok<MediaImportResult>({
-        revision: outcome.revision,
-        mediaId: outcome.value.mediaId,
-        name: outcome.value.name,
-        type: outcome.value.type,
-        metadata: outcome.value.metadata,
-        replayed: outcome.replayed,
+        ...prior.value,
+        revision: prior.revision,
+        replayed: true,
       });
+    }
+
+    await beforeImport?.();
+    const roots = this.config.mediaRoots ?? [];
+    if (hasUrlScheme(valid.path)) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `media.import: URLs are not accepted in this runtime — pass a local file path inside a configured media root`,
+        { path: valid.path },
+      );
+    }
+    if (roots.length === 0) {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        "media.import: no media roots configured — the session was created without mediaRoots",
+      );
+    }
+    const resolution = resolveContainedPathDetailed(valid.path, roots);
+    if (resolution.kind === "outside") {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `media.import: path escapes the configured media roots`,
+        { path: valid.path, mediaRoots: [...roots] },
+      );
+    }
+    if (resolution.kind === "unresolvable") {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `media.import: path cannot be read (not found or unreadable)`,
+        { path: valid.path },
+      );
+    }
+    const resolved = resolution.path;
+
+    const probed = await this.probeMedia(resolved);
+    const fileStat = await stat(resolved);
+    const name = valid.name ?? basename(resolved);
+
+    const outcome = await this.commitMutation<MediaImportPayload>({
+      verb: "media.import",
+      idempotencyKey: valid.idempotencyKey,
+      payload: { path: valid.path, name: valid.name },
+      apply: (draft) => {
+        const item: MediaItem = {
+          id: `media-${crypto.randomUUID()}`,
+          name,
+          type: probed.type,
+          fileHandle: null,
+          blob: null,
+          metadata: {
+            duration: probed.durationSec,
+            width: probed.width,
+            height: probed.height,
+            frameRate: probed.frameRate,
+            codec: probed.codec,
+            sampleRate: 0,
+            channels: 0,
+            fileSize: probed.fileSize,
+          },
+          thumbnailUrl: null,
+          waveformData: null,
+          originalUrl: resolved,
+          sourceFile: {
+            name: basename(resolved),
+            size: probed.fileSize,
+            lastModified: Math.round(fileStat.mtimeMs),
+          },
+        };
+        (draft.mediaLibrary as { items: MediaItem[] }).items = [
+          ...draft.mediaLibrary.items,
+          item,
+        ];
+        return {
+          mediaId: item.id,
+          name: item.name,
+          type: probed.type,
+          metadata: {
+            durationSec: probed.durationSec,
+            width: probed.width,
+            height: probed.height,
+            frameRate: probed.frameRate,
+            codec: probed.codec,
+            fileSize: probed.fileSize,
+          },
+        };
+      },
+    });
+    return ok<MediaImportResult>({
+      revision: outcome.revision,
+      mediaId: outcome.value.mediaId,
+      name: outcome.value.name,
+      type: outcome.value.type,
+      metadata: outcome.value.metadata,
+      replayed: outcome.replayed,
     });
   }
 
@@ -1219,6 +1229,60 @@ export class AgentFacadeSession {
         });
       }
       return ok(value);
+    });
+  }
+
+  async audioProcessNormalize(params: AudioProcessNormalizeParams): Promise<FacadeResult<AudioProcessNormalizeResult>> {
+    return this.enqueue<AudioProcessNormalizeResult>(async () => {
+      const valid = validateObject<AudioProcessNormalizeParams>(params, AUDIO_PROCESS_NORMALIZE_SCHEMA, "audio.process.normalize params");
+      if (!(valid.endSec > valid.startSec) || valid.endSec - valid.startSec > AUDIO_NORMALIZE_MAX_RANGE_SEC) {
+        throw new FacadeError("INVALID_PARAMS", "audio.process.normalize requires startSec < endSec and a range of at most 120 seconds");
+      }
+      if (!this.project) return this.noProject();
+      const { expectedRevision, idempotencyKey, ...parameters } = valid;
+      const prior = this.beginMutation<{ jobId: string; sourceRevision: number }>(
+        "audio.process.normalize", expectedRevision, idempotencyKey, parameters,
+      );
+      if (prior) {
+        const job = this.jobs.get(prior.value.jobId);
+        if (!job) throw new FacadeError("NOT_FOUND", "audio.process.normalize: prior job is no longer available");
+        return ok({ ...prior.value, kind: "audio-process", state: job.state, replayed: true });
+      }
+      const media = this.project.mediaLibrary.items.find((item) => item.id === valid.mediaId);
+      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.normalize: media "${valid.mediaId}" not found`);
+      if (valid.endSec > media.metadata.duration) throw new FacadeError("INVALID_PARAMS", "audio.process.normalize: range exceeds source duration");
+      const roots = this.config.mediaRoots ?? [];
+      if (roots.length === 0) throw new FacadeError("UNSUPPORTED", "audio.process.normalize requires media roots for persistent generated assets");
+      const resolution = resolveContainedPathDetailed(typeof media.originalUrl === "string" ? media.originalUrl : "", roots);
+      if (resolution.kind !== "ok") throw new FacadeError("UNSUPPORTED", "audio.process.normalize requires a readable source inside configured media roots");
+      const ready = await audioAnalysisPreflight();
+      if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
+      if (this.analysisControllers.size >= AUDIO_LIMITS.maxConcurrentPerSession) throw new FacadeError("UNSUPPORTED", "At most two audio/analysis jobs per session; wait or cancel an existing job.");
+      const sourceRevision = this.revision;
+      const jobId = `job-${crypto.randomUUID()}`;
+      this.jobs.create(jobId, sourceRevision, "audio-process");
+      const controller = new AbortController();
+      this.analysisControllers.set(jobId, controller);
+      const value = { jobId, sourceRevision };
+      this.ledger.set("audio.process.normalize", idempotencyKey, { revision: sourceRevision, value, payloadHash: stableStringify(parameters) });
+      void runAudioNormalizationTask(this.jobs, this.analysisControllers, jobId, controller, {
+        sourcePath: resolution.path, mediaRoots: roots, params: parameters,
+        sourceProjectId: this.project.id, sourceRevision,
+      });
+      return ok({ ...value, kind: "audio-process", state: "queued", replayed: false });
+    });
+  }
+
+  async audioProcessRegister(params: AudioProcessRegisterParams): Promise<FacadeResult<AudioProcessRegisterResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<AudioProcessRegisterParams>(params, AUDIO_PROCESS_REGISTER_SCHEMA, "audio.process.register params");
+      if (!this.project) return this.noProject();
+      const artifact = completedAudioArtifact(this.jobs, valid.jobId);
+      if (artifact.source.projectId !== this.project.id) throw new FacadeError("CONFLICT", "audio.process.register: job belongs to another project");
+      return this.importMediaWithinMutation({
+        path: artifact.path, expectedRevision: valid.expectedRevision,
+        idempotencyKey: `audio-process-register:${valid.jobId}`,
+      }, () => verifyAudioArtifact(artifact, this.config.mediaRoots ?? []));
     });
   }
 
@@ -2370,6 +2434,11 @@ export class AgentFacadeSession {
         this.jobs.markCancelRequested(valid.jobId);
         this.analysisControllers.get(valid.jobId)?.abort();
         this.jobs.markCancelled(valid.jobId);
+        return ok(jobStatusView(this.jobs.get(valid.jobId) ?? job));
+      }
+      if (job.kind === "audio-process") {
+        this.jobs.markCancelRequested(valid.jobId);
+        this.analysisControllers.get(valid.jobId)?.abort();
         return ok(jobStatusView(this.jobs.get(valid.jobId) ?? job));
       }
       const provider = this.config.exportProvider;

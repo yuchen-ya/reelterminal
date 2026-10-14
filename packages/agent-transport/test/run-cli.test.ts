@@ -162,7 +162,7 @@ describe("run: static validation failures (exit 2, no steps executed)", () => {
         { id: "t", verb: "timeline.get" },
         { id: "w", await: { jobId: { $ref: "t" }, timeoutMs: 1000 } },
       ],
-      "may only reference an earlier export.start or media.analyze_start step",
+      "may only reference an earlier export.start, media.analyze_start, or audio.process.normalize step",
     );
   });
 

@@ -1024,6 +1024,7 @@
     "exportTask": "Export",
     "taskDone": "Background task completed; its result is ready to inspect",
     "analysisTask": "Analysis",
+    "audioProcessTask": "Audio processing",
     "taskFailed": "Background task failed",
     "retain": "Create save point",
     "retainSuccess": "Save point “{{name}}” created",

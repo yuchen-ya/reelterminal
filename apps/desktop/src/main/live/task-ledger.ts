@@ -10,7 +10,7 @@ import {
 
 export interface DurableTaskInput {
   readonly jobId: string;
-  readonly kind: "export" | "analysis";
+  readonly kind: "export" | "analysis" | "audio-process";
   readonly projectId: string;
   readonly workspaceId: string;
   readonly sourceRevision: number;
@@ -116,7 +116,7 @@ export class DurableTaskLedger {
     try {
       const doc = JSON.parse(readFileSync(path.join(root, file), "utf8")) as { formatVersion?: number; jobId?: string; status?: JobStatusView };
       if (doc.formatVersion !== 2 || doc.jobId !== jobId || !doc.status ||
-          doc.status.jobId !== jobId || (doc.status.kind !== "export" && doc.status.kind !== "analysis") ||
+          doc.status.jobId !== jobId || !this.validKind(doc.status.kind) ||
           !taskStates.has(doc.status.state)) {
         throw new Error("Invalid status document");
       }
@@ -136,7 +136,7 @@ export class DurableTaskLedger {
       const record = JSON.parse(readFileSync(path.join(root, file), "utf8")) as Partial<DurableTaskRecord> & { formatVersion?: number };
       const legacy = record.status !== undefined;
       if (record.formatVersion !== (legacy ? 1 : 2) ||
-          (record.kind !== "export" && record.kind !== "analysis") ||
+          !this.validKind(record.kind) ||
           typeof record.projectId !== "string" || !record.projectId ||
           typeof record.workspaceId !== "string" || !record.workspaceId ||
           typeof record.jobId !== "string" || !record.jobId ||
@@ -191,6 +191,10 @@ export class DurableTaskLedger {
   private validId(jobId: string): string {
     if (!/^[a-zA-Z0-9_-]+$/.test(jobId)) throw new Error("Invalid task ID");
     return jobId;
+  }
+
+  private validKind(kind: unknown): kind is DurableTaskInput["kind"] {
+    return kind === "export" || kind === "analysis" || kind === "audio-process";
   }
 
   private inputPath(jobId: string): string {

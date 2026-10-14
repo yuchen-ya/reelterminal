@@ -141,7 +141,9 @@ describe("durable local analysis batches", () => {
     const saved = JSON.parse(
       await readFile(join(root, "production-batches", "review-1.json"), "utf8"),
     );
-    expect(saved.items[0].status.result.summary).toEqual({ measured: true });
+    const savedResult = saved.items[0].status.result;
+    if (!savedResult || !("summary" in savedResult)) throw new Error("completed analysis has no analysis result");
+    expect(savedResult.summary).toEqual({ measured: true });
     registry = new JobRegistry(); // process restart; persisted completed item survives
     tools = bindTools(productionBatchesPlugin.tools, context);
     expect((await tools["batch.resume"]({ batchId: input.batchId })).ok).toBe(
@@ -200,14 +202,18 @@ describe("durable local analysis batches", () => {
     expect(recovered.ok).toBe(true);
     if (!recovered.ok) return;
     const recoveredBatch = recovered.value as typeof batch;
-    const audio = recoveredBatch.items[0]!.status!.result!.summary.audioSummary as Record<string, unknown>;
+    const recoveredResult = recoveredBatch.items[0]!.status!.result;
+    if (!recoveredResult || !("summary" in recoveredResult)) throw new Error("recovered analysis has no analysis result");
+    const audio = recoveredResult.summary.audioSummary as Record<string, unknown>;
     expect(audio).toMatchObject({ integratedLufs: -18 });
     expect(audio).not.toHaveProperty("waveform");
     expect(audio).not.toHaveProperty("onsets");
     expect(audio).not.toHaveProperty("silence");
 
     const persisted = JSON.parse(await readFile(file, "utf8")) as typeof batch;
-    expect(persisted.items[0]!.status!.result!.summary.audioSummary).not.toHaveProperty("waveform");
+    const persistedResult = persisted.items[0]!.status!.result;
+    if (!persistedResult || !("summary" in persistedResult)) throw new Error("persisted analysis has no analysis result");
+    expect(persistedResult.summary.audioSummary).not.toHaveProperty("waveform");
   });
 
   it("does not duplicate running jobs and retries failures only when explicitly selected", async () => {

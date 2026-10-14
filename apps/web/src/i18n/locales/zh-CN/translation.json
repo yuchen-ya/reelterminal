@@ -1024,6 +1024,7 @@
     "exportTask": "导出",
     "taskDone": "后台任务已完成，结果可供查看",
     "analysisTask": "分析",
+    "audioProcessTask": "音频处理",
     "taskFailed": "后台任务失败",
     "retain": "创建存档点",
     "retainSuccess": "已创建存档点「{{name}}」",

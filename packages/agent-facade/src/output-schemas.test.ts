@@ -54,6 +54,37 @@ describe("emitted MCP output schemas", () => {
     expect((value.properties as Schema).type).toEqual({ enum: ["video", "audio", "image"] });
   });
 
+  it("describes audio-process start, artifact status, registration, and capability results", () => {
+    const start = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["audio.process.normalize"] as unknown as Schema;
+    const startValue = (start.properties as Schema).value as Schema;
+    expect(startValue.required).toEqual(["jobId", "kind", "state", "sourceRevision", "replayed"]);
+    expect((startValue.properties as Schema).kind).toEqual({ const: "audio-process" });
+
+    const register = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["audio.process.register"] as unknown as Schema;
+    expect((register.properties as Schema).value).toEqual(
+      ((EMITTED_VERB_OUTPUT_JSON_SCHEMAS["media.import"] as unknown as Schema).properties as Schema).value,
+    );
+
+    const status = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["job.status"] as unknown as Schema;
+    const statusValue = (status.properties as Schema).value as Schema;
+    expect((statusValue.properties as Schema).kind).toEqual({ enum: ["export", "analysis", "audio-process"] });
+    const result = (statusValue.properties as Schema).result as Schema;
+    const variants = ((result.anyOf as Schema[])[0].anyOf as Schema[]);
+    expect(variants).toHaveLength(2);
+    const normalized = variants[1];
+    expect(normalized.required).toEqual([
+      "path", "provenancePath", "source", "parameters", "before", "after", "timing", "bytes", "sha256",
+    ]);
+    expect(((normalized.properties as Schema).timing as Schema).properties).toMatchObject({
+      sampleRate: { enum: [48000] },
+      outputStartSec: { type: "number", minimum: 0, maximum: 0 },
+      processingDelaySamples: { type: "integer", minimum: 0, maximum: 0 },
+    });
+
+    const capabilities = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["capabilities.get"] as unknown as Schema;
+    expect(((capabilities.properties as Schema).value as Schema).properties).toHaveProperty("audioNormalize");
+  });
+
   it("makes evidence coordinates and identity explicit in visual and analysis results", () => {
     const visual = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["visual.inspect"] as unknown as Schema;
     const visualValue = (visual.properties as Schema).value as Schema;

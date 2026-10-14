@@ -8,12 +8,12 @@
  *   createChromiumProviders() + FfmpegArtifactVerifier + createAgentFacade
  *
  * Disposal is BOUNDED and goes through PUBLIC verb paths only: request
- * cancel on every non-terminal export or analysis job via the public `job.cancel` verb
+ * cancel on every tracked background job via the public `job.cancel` verb
  * (bounded by the facade's own 10 s cancel race, queued behind any
  * in-flight verb), then dispose the provider runtime (the runtime's bounded
  * teardown). The second-signal hard exit is the operator's escape hatch.
  */
-import { createAgentFacade, type AgentFacade, type FacadeResult } from "@reelterminal/agent-facade";
+import { createAgentFacade, type AgentFacade } from "@reelterminal/agent-facade";
 import {
   createChromiumProviders,
   FfmpegArtifactVerifier,
@@ -27,7 +27,7 @@ export interface TransportSession {
   readonly facade: AgentFacade;
   readonly providers: ChromiumProviders;
   /**
-   * JobIds seen from export.start results through THIS process — the
+   * JobIds seen from background-task start results through THIS process — the
    * transport's own bookkeeping of ids it handed out, used only to request
    * cancel through the public verb during disposal. No back-door state.
    */
@@ -71,7 +71,7 @@ export function createTransportSession(config: TransportConfig): TransportSessio
       });
       await Promise.allSettled(
         [...trackedJobs].map(async (jobId) => {
-          const result: FacadeResult<unknown> = await facade["job.cancel"]({ jobId });
+          const result = await facade["job.cancel"]({ jobId });
           if (!result.ok) {
             // Terminal jobs race-cancel as no-op errors in some states;
             // honest log, never fatal during disposal.
@@ -80,6 +80,18 @@ export function createTransportSession(config: TransportConfig): TransportSessio
               code: result.error.code,
               message: result.error.message,
             });
+          } else if (result.value.kind === "audio-process" && !isTerminalJobState(result.value.state)) {
+            // Audio cancellation settles only after FFmpeg exits and owned files
+            // are removed. Do not exit this process while that cleanup is pending.
+            const deadline = Date.now() + 10_000;
+            let status: Awaited<ReturnType<AgentFacade["job.status"]>> = result;
+            while (status.ok && !isTerminalJobState(status.value.state) && Date.now() < deadline) {
+              await new Promise((resolve) => setTimeout(resolve, 25));
+              status = await facade["job.status"]({ jobId });
+            }
+            if (!status.ok || !isTerminalJobState(status.value.state)) {
+              logError("dispose", "audio cancellation did not settle before shutdown deadline", { jobId });
+            }
           }
         }),
       );

@@ -355,6 +355,9 @@ Usage:
   reelctl media inspect --media-id m1 --start-sec 0 --end-sec 8
   reelctl media analyze --media-id m1 --type audioSummary
   reelctl media analyze --media-id m1 --type sceneCuts --type blackFrames
+  reelctl call audio.process.normalize --file normalize.json
+  reelctl job wait --job-id <job-id>
+  reelctl call audio.process.register --file register.json
   reelctl frames extract --media-id m1 --start-frame 100 --end-frame 104
   reelctl frames sheet --file frames.json
   reelctl video compare --file compare.json
@@ -384,6 +387,9 @@ Long synchronous commands (frames extract, patch apply, ...) accept
 30 s or REELTERMINAL_REQUEST_TIMEOUT_MS. For 'job wait' the same flag sets
 the wait deadline instead.
 Use reelctl schema <command> or reelctl help <command> for exact arguments.
+normalize.json supplies mediaId, audioStream, startSec/endSec, targetLufs,
+truePeakDbtp, loudnessRangeLu, sampleRate:48000, channels:1|2, and idempotencyKey;
+register.json supplies the completed jobId and current expectedRevision.
 
 Output is one compact JSON result on stdout. --human pretty-prints it. On context,
 --compact returns a concise context while preserving identity, canvasPoint and

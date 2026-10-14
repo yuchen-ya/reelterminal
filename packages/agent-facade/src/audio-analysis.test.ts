@@ -168,7 +168,9 @@ describe("local audio analysis", () => {
       }
       expect(status).toMatchObject({ ok: true, value: { state: "done", result: { summary: { audioSummary: { coordinateSpace: "source" } } } } });
       if (status?.ok) {
-        const jobAudio = (status.value.result?.summary as Record<string, any>).audioSummary;
+        const result = status.value.result;
+        if (!result || !("summary" in result)) throw new Error("audio analysis returned no analysis result");
+        const jobAudio = (result.summary as Record<string, any>).audioSummary;
         expect(jobAudio).not.toHaveProperty("waveform");
         expect(jobAudio).not.toHaveProperty("onsets");
         expect(jobAudio).not.toHaveProperty("silence");

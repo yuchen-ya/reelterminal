@@ -169,7 +169,9 @@ describe("analysis records (P2)", () => {
     }
     expect(status).toMatchObject({ ok: true, value: { state: "done" } });
     if (!status.ok || status.value.state !== "done") return;
-    const recordId = (status.value.result?.summary.analysisRecord as { id?: string } | undefined)?.id;
+    const result = status.value.result;
+    if (!result || !("summary" in result)) throw new Error("analysis job returned no analysis result");
+    const recordId = (result.summary.analysisRecord as { id?: string } | undefined)?.id;
     expect(recordId).toBeTruthy();
     const record = await session.analysisGet({ recordId: recordId! });
     expect(record).toMatchObject({ ok: true, value: { projectId: startingProjectId } });

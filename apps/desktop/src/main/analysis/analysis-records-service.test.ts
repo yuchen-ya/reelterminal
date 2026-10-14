@@ -174,7 +174,9 @@ describe("analysis records desktop service", () => {
     const status = await service.jobStatus("audio-job-compact");
     expect(status).toMatchObject({ ok: true, value: { state: "done" } });
     if (!status.ok) throw new Error(status.error.message);
-    expect((status.value.result?.summary.silence as Record<string, unknown>)).not.toHaveProperty("silentRegions");
+    const result = status.value.result;
+    if (!result || !("summary" in result)) throw new Error("analysis job returned no analysis result");
+    expect((result.summary.silence as Record<string, unknown>)).not.toHaveProperty("silentRegions");
     expect(callExternal).toHaveBeenCalledWith("job.status", { jobId: "audio-job-compact" });
   });
 

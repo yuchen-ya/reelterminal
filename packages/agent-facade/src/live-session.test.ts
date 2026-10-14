@@ -26,7 +26,7 @@ import {
   LiveWriterLease,
   type LiveAgentFacade,
 } from "./index";
-import type { LivePersistedTaskRecord, LiveTaskInputReferences } from "./live-session";
+import type { LivePersistedTaskRecord, LiveTaskInput, LiveTaskInputReferences, LiveTaskLifecycle } from "./live-session";
 import { LiveStoreConflictError } from "./live-store";
 import { stableStringify } from "./idempotency";
 import type {
@@ -46,8 +46,11 @@ import type {
   RenderProvider,
 } from "./providers";
 import { READ_ONLY_VERBS } from "./types";
-import type { AnalysisGetParams, MediaImportResult } from "./types";
+import type { AnalysisGetParams, JobStatusView, MediaImportResult } from "./types";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
+import { resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
+
+const LIVE_AUDIO_TOOLCHAIN = await resolveToolFfmpeg();
 
 /* --------------------------- FakeLiveStore --------------------------- */
 
@@ -525,6 +528,44 @@ function liveFacade(
     ...(opts?.taskLifecycle ? { taskLifecycle: opts.taskLifecycle } : {}),
     ...(opts?.executionScope ? { executionScope: opts.executionScope } : {}),
   });
+}
+
+function memoryTaskLifecycle(): { lifecycle: LiveTaskLifecycle; records: Map<string, LivePersistedTaskRecord> } {
+  const records = new Map<string, LivePersistedTaskRecord>();
+  const lifecycle: LiveTaskLifecycle = {
+    list: () => [...records.values()].map((record) => structuredClone(record)),
+    begin: (input: LiveTaskInput) => {
+      const now = new Date().toISOString();
+      const status: JobStatusView = {
+        jobId: input.jobId,
+        kind: input.kind,
+        sourceRevision: input.sourceRevision,
+        state: "queued",
+        progress: null,
+        artifact: null,
+        result: null,
+        error: null,
+        deliveredTo: null,
+        deliveryError: null,
+        route: null,
+        upscalingRequestedButInactive: false,
+        cancelRequested: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+      records.set(input.jobId, {
+        projectId: input.projectId,
+        workspaceId: input.workspaceId,
+        status,
+        parameters: structuredClone(input.parameters),
+      });
+    },
+    update: (status) => {
+      const record = records.get(status.jobId);
+      if (record) records.set(status.jobId, { ...record, status: structuredClone(status) });
+    },
+  };
+  return { lifecycle, records };
 }
 
 async function writeFloatWav(
@@ -2626,7 +2667,9 @@ describe("live cloud review is read-only", () => {
       }
       expect(job).toMatchObject({ ok: true, value: { state: "done", sourceRevision: state.revision, result: { summary: { videoReview: { provider: "qwen3.5-omni-flash" } } } } });
       if (!job?.ok) throw new Error("analysis did not finish");
-      const recordId = (job.value.result?.summary.analysisRecord as { id?: string } | undefined)?.id;
+      const result = job.value.result;
+      if (!result || !("summary" in result)) throw new Error("video review returned no analysis result");
+      const recordId = (result.summary.analysisRecord as { id?: string } | undefined)?.id;
       expect(recordId).toBeTruthy();
       const analysisRecord = await facade["analysis.get"]({ recordId: recordId! });
       expect(analysisRecord).toMatchObject({
@@ -2706,7 +2749,9 @@ describe("live local audio analysis parity", () => {
       if (!started.ok) throw new Error(started.error.message);
       const job = await waitForJob(facade, started.value.jobId, 15000);
       expect(job).toMatchObject({ state: "done" });
-      const summary = job.result?.summary as Record<string, any>;
+      const result = job.result;
+      if (!result || !("summary" in result)) throw new Error("audio analysis returned no analysis result");
+      const summary = result.summary as Record<string, any>;
       expect(summary.silence).toMatchObject({
         parameters: { thresholdDb: -40, minDurationSec: 0.1, paddingSec: 0.1 },
         coordinateSpace: "source",
@@ -2782,6 +2827,137 @@ describe("live local audio analysis parity", () => {
       await rm(mediaRoot, { recursive: true, force: true });
     }
   }, 30000);
+});
+
+describe("live audio normalization task lifecycle", () => {
+  it.skipIf(LIVE_AUDIO_TOOLCHAIN === null)("normalizes into a completed job and registers only through the revision-guarded media import path", { timeout: 60_000 }, async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-audio-normalize-"));
+    const sourcePath = path.join(mediaRoot, "normalization-source.wav");
+    await runToolProcess(LIVE_AUDIO_TOOLCHAIN!.ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=120",
+      "-c:a", "pcm_s16le", sourcePath,
+    ]);
+
+    const importedStore = new FakeLiveStore();
+    const { lifecycle, records } = memoryTaskLifecycle();
+    const retained: string[] = [];
+    const released: string[] = [];
+    const taskInputReferences: LiveTaskInputReferences = {
+      retain: async (input) => {
+        retained.push(input.jobId);
+        return input.inputProject;
+      },
+      release: async (jobId) => { released.push(jobId); },
+    };
+    const options = { store: importedStore, mediaRoots: [mediaRoot], taskLifecycle: lifecycle, taskInputReferences };
+    const facade = liveFacade(options);
+    let restartedFacade: LiveAgentFacade | undefined;
+    let postImportFacade: LiveAgentFacade | undefined;
+    let cancelFacade: LiveAgentFacade | undefined;
+    try {
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const sourceRevision = importedStore.revision;
+      const request = {
+        mediaId: imported.value.mediaId,
+        audioStream: 0,
+        startSec: 0.1,
+        endSec: 2.1,
+        targetLufs: -18,
+        truePeakDbtp: -1,
+        loudnessRangeLu: 7,
+        sampleRate: 48_000 as const,
+        channels: 2 as const,
+        expectedRevision: sourceRevision,
+        idempotencyKey: "live-audio-normalize-1",
+      };
+      const started = await facade["audio.process.normalize"](request);
+      if (!started.ok) throw new Error(started.error.message);
+      expect(started.value).toMatchObject({ kind: "audio-process", sourceRevision, state: "queued", replayed: false });
+
+      const completed = await waitForJob(facade, started.value.jobId, 30_000);
+      expect(completed).toMatchObject({ kind: "audio-process", state: "done", artifact: null, route: "local-ffmpeg-loudnorm-two-pass" });
+      const result = completed.result;
+      if (!result || !("source" in result)) throw new Error("audio-process completed without normalized provenance");
+      expect(result.source).toMatchObject({ mediaId: imported.value.mediaId, startSec: 0.1, endSec: 2.1, projectId: importedStore.project.id, workspaceId: "workspace-live-1", revision: sourceRevision });
+      expect(Number.isFinite(result.before.integratedLufs)).toBe(true);
+      expect(Number.isFinite(result.after.integratedLufs)).toBe(true);
+      expect(result.timing).toMatchObject({ sampleRate: 48_000, channels: 2, outputStartSec: 0, processingDelaySamples: 0 });
+      expect(await stat(result.path)).toBeTruthy();
+      expect(importedStore.revision).toBe(sourceRevision);
+      expect(importedStore.mediaImports).toHaveLength(1);
+      expect(importedStore.project.mediaLibrary.items).toHaveLength(1);
+      expect(records.get(started.value.jobId)?.status.state).toBe("done");
+      expect(retained).toEqual([started.value.jobId]);
+      await vi.waitFor(() => expect(released).toContain(started.value.jobId));
+
+      restartedFacade = liveFacade(options);
+      const replayedStart = await restartedFacade["audio.process.normalize"](request);
+      expect(replayedStart).toMatchObject({ ok: true, value: { jobId: started.value.jobId, replayed: true, state: "done" } });
+
+      const staleRegistration = await restartedFacade["audio.process.register"]({ jobId: started.value.jobId, expectedRevision: 0 });
+      expect(staleRegistration).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+      expect(importedStore.mediaImports).toHaveLength(1);
+
+      const originalProject = importedStore.project;
+      importedStore.project = createEmptyProject("Switched project");
+      const projectSwitch = await restartedFacade["audio.process.register"]({ jobId: started.value.jobId, expectedRevision: sourceRevision });
+      expect(projectSwitch).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+      importedStore.project = originalProject;
+
+      const originalIdentity = importedStore.getIdentity.bind(importedStore);
+      importedStore.getIdentity = async () => ({ ...await originalIdentity(), workspaceId: "workspace-switched" });
+      const workspaceSwitch = await restartedFacade["audio.process.register"]({ jobId: started.value.jobId, expectedRevision: sourceRevision });
+      expect(workspaceSwitch).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+      importedStore.getIdentity = originalIdentity;
+
+      const registered = await restartedFacade["audio.process.register"]({ jobId: started.value.jobId, expectedRevision: sourceRevision });
+      if (!registered.ok) throw new Error(registered.error.message);
+      expect(registered.value).toMatchObject({ mediaId: expect.any(String), replayed: false, revision: sourceRevision + 1 });
+      expect(registered.value.mediaId).not.toBe(imported.value.mediaId);
+      expect(importedStore.mediaImports).toHaveLength(2);
+      expect(importedStore.project.mediaLibrary.items).toHaveLength(2);
+      expect(importedStore.project.mediaLibrary.items[0]?.id).toBe(imported.value.mediaId);
+      expect(importedStore.project.mediaLibrary.items[1]?.id).toBe(registered.value.mediaId);
+
+      postImportFacade = liveFacade(options);
+      const registeredReplay = await postImportFacade["audio.process.register"]({ jobId: started.value.jobId, expectedRevision: importedStore.revision });
+      expect(registeredReplay).toMatchObject({ ok: true, value: { mediaId: registered.value.mediaId, replayed: true, revision: sourceRevision + 1 } });
+      expect(importedStore.mediaImports).toHaveLength(2);
+
+      cancelFacade = liveFacade(options);
+      const cancelStart = await cancelFacade["audio.process.normalize"]({
+        ...request,
+        startSec: 0.1,
+        endSec: 119.9,
+        expectedRevision: importedStore.revision,
+        idempotencyKey: "live-audio-normalize-cancel",
+      });
+      if (!cancelStart.ok) throw new Error(cancelStart.error.message);
+      const cancelRequested = await cancelFacade["job.cancel"]({ jobId: cancelStart.value.jobId });
+      expect(cancelRequested).toMatchObject({ ok: true, value: { kind: "audio-process", cancelRequested: true } });
+      const cancelled = await waitForJob(cancelFacade, cancelStart.value.jobId, 30_000);
+      expect(cancelled).toMatchObject({ state: "cancelled", result: null, artifact: null });
+      await expect(stat(path.join(mediaRoot, "generated-assets", "audio-normalize", cancelStart.value.jobId))).rejects.toMatchObject({ code: "ENOENT" });
+
+      const disposeStart = await cancelFacade["audio.process.normalize"]({
+        ...request,
+        startSec: 0.1,
+        endSec: 119.9,
+        expectedRevision: importedStore.revision,
+        idempotencyKey: "live-audio-normalize-dispose",
+      });
+      if (!disposeStart.ok) throw new Error(disposeStart.error.message);
+      await cancelFacade.dispose();
+      const disposed = await cancelFacade["job.status"]({ jobId: disposeStart.value.jobId });
+      expect(disposed).toMatchObject({ ok: true, value: { state: "cancelled", result: null, artifact: null } });
+      await expect(stat(path.join(mediaRoot, "generated-assets", "audio-normalize", disposeStart.value.jobId))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await Promise.all([facade.dispose(), restartedFacade?.dispose(), postImportFacade?.dispose(), cancelFacade?.dispose()]);
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("live verbs forward idempotencyKey to the store seam", () => {

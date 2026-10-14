@@ -64,7 +64,9 @@ describe("Alibaba video review", () => {
       }
       expect(status).toMatchObject({ ok: true, value: { state: "done", sourceRevision: 1, result: { summary: { videoReview: { status: "opinion", coordinateSpace: "source", startSec: 1, endSec: 3, timeMapping: { offsetSec: 1 }, usage: { total_tokens: 120 } } } } } });
       if (status?.ok) {
-        const recordId = (status.value.result?.summary?.analysisRecord as { id?: string } | undefined)?.id;
+        const result = status.value.result;
+        if (!result || !("summary" in result)) throw new Error("video review returned no analysis result");
+        const recordId = (result.summary.analysisRecord as { id?: string } | undefined)?.id;
         expect(recordId).toBeTruthy();
         const record = await facade["analysis.get"]({ recordId: recordId! });
         expect(record).toMatchObject({

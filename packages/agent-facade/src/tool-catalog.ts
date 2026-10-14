@@ -43,6 +43,10 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Return a bounded, paged structural delta since a project revision, or require a full refresh when history was evicted.",
   media_import:
     "Import a local media file from a configured media root into the project.",
+  audio_process_normalize:
+    "Start a local two-pass FFmpeg loudnorm job for one imported mediaId, audioStream, and source startSec/endSec range (at most 120 seconds). targetLufs, truePeakDbtp, loudnessRangeLu, sampleRate:48000, and channels:1|2 are required; the job reports fresh post-render measurements. Poll job.status and call audio.process.register only after the job is done; an idempotencyKey replays the same job.",
+  audio_process_register:
+    "Register a completed audio-process job's persistent generated audio file through the normal media import path, guarded by expectedRevision. Registration is idempotent by jobId and does not replace clips or remove the source media.",
   media_render_html:
     "Render constrained local HTML/CSS to a transparent-capable PNG artifact inside the media roots (needs the local playwright Chromium); output flows to media.import by path. Scripts, frames, event handlers and network references are rejected; relative assets resolve only inside assetsRoot; blocked/missing assets are listed, not failed.",
   media_analyze_start:
@@ -72,8 +76,8 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Sample 1–12 real frames for a clip or time range; each frame is fitted into a per-frame byte budget (default 1.5 MiB, maxFrameBytes tunes it) — lossless PNG when it fits, otherwise a JPEG quality/width ladder — with per-frame fidelity metadata plus a contact sheet when supported.",
   export_start:
     "Start an export job for a snapshot of the current project; returns a jobId immediately.",
-  job_status: "Return the current status of an export or media-analysis job. Completed audio results contain scalar summaries, counts and analysisRecord.id; event arrays and waveform bins require an explicit analysis.get request.",
-  job_cancel: "Request cooperative cancellation of an export or media-analysis job (idempotent on terminal jobs).",
+  job_status: "Return the current status of an export, media-analysis, or audio-processing job. Completed analysis results contain scalar summaries, counts and analysisRecord.id; audio-process results contain the generated path, provenance, applied parameters, source range, sample timing, and before/after measurements.",
+  job_cancel: "Request cooperative cancellation of an export, media-analysis, or audio-processing job (idempotent on terminal jobs).",
   verify_artifact:
     "Verify an artifact with ffprobe/pixel checks and return the report as data.",
   analysis_list:
@@ -161,6 +165,10 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Return bounded structural changes for the explicit project/workspace target since a revision, or require a full refresh when retained history is unavailable.",
   "media.import":
     "Import a local video, audio, or image file into the explicit project/workspace. Supply projectId, workspaceId, expectedRevision, and an absolute path under capabilities_get.mediaImport.mediaRoots; the import is undoable in the GUI when that workspace is foreground.",
+  "audio.process.normalize":
+    "Start a local two-pass FFmpeg loudnorm job for an imported mediaId, explicit audioStream and source startSec/endSec range (at most 120 seconds), with targetLufs, truePeakDbtp, loudnessRangeLu, sampleRate:48000, and channels:1|2 all explicit. The job snapshots the target project/workspace revision, publishes a persistent generated file only after successful processing, remeasures output loudness, and records the source range, sample timing and applied settings. Poll job.status and register the completed artifact with audio.process.register; the source media and timeline clips remain untouched. Retries with the same idempotencyKey replay the same job.",
+  "audio.process.register":
+    "Register one completed audio-process job into the explicit project/workspace through the standard media import path. Supply jobId and required expectedRevision; the job's generated file is imported idempotently, and no clip is inserted or replaced.",
   "media.render_html":
     "Render constrained local HTML/CSS markup to a PNG file under the media roots (default <mediaRoots[0]>/jobs/html-render/<requestKey>/), then media.import that path to put it on the timeline. source is {kind:'path',path} (an .html file inside a media root) or {kind:'inline',html} (raw markup ≤512 KiB). width/height are even integers in [2,4096]; transparent defaults to true; timeoutMs defaults to 30000 (≤120000). Scripts, iframe/object/embed, event handlers, javascript:/non-image data: URIs and network references (http(s), file, protocol-relative, srcset, CSS url(http)/@import/@font-face url(http)) are rejected; local subresources resolve only inside assetsRoot and remote/missing ones are aborted and returned in missingAssets — the render still succeeds. Requires this machine's playwright Chromium (same supply as preview) and a configured media root; transparent PNGs composite cleanly over the timeline. Changes no project state — import the returned path afterwards.",
   "media.analyze_start":
@@ -195,9 +203,9 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
     'Sample 1–12 real frames plus a contact sheet when supported. Pass exactly ONE selector: clipId (a timeline clip id from timeline_get) or timeRange as {"startSec": <number>, "endSec": <number>} in timeline seconds with endSec > startSec ≥ 0. Optional: sampleCount (1–12, default 6), width/height (even, ≤1024), maxFrameBytes (per-frame byte budget, 32768–8388608, default 1572864; oversized PNGs are JPEG-re-encoded to fit, with frames[].fidelity disclosing the delivered raster/format).',
   "export.start":
     'Start an export job for a snapshot of the current project; returns a jobId immediately. Optional destinationPath "<deliveryRoot>/jobs/<slug>/output/<name>.mp4" copies the verified artifact into the Agent workspace deliverables directory after completion (never overwrites; see capabilities_get.export.details.deliveryRoots). Poll job.status until done, then check deliveredTo/deliveryError.',
-  "job.status": "Return the current status of an export or media-analysis job. Completed audio results contain scalar summaries, counts and analysisRecord.id; event arrays and waveform bins require an explicit analysis.get request.",
+  "job.status": "Return the current status of an export, media-analysis, or audio-processing job. Completed analysis results contain scalar summaries, counts and analysisRecord.id; completed audio-process results contain the generated path, provenance, applied parameters, source range, sample timing, and before/after measurements.",
   "job.cancel":
-    "Request cooperative cancellation of an export or media-analysis job (idempotent on terminal jobs).",
+    "Request cooperative cancellation of an export, media-analysis, or audio-processing job (idempotent on terminal jobs).",
   "verify.artifact":
     "Verify an artifact under the session artifactRoot with ffprobe/pixel checks and return the report.",
   "analysis.list":
