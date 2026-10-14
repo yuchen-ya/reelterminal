@@ -386,7 +386,8 @@ export const WorkAssetsTab: React.FC<{
   embedded?: boolean;
   search?: string;
   kind?: "single" | "multi";
-}> = ({ embedded = false, search: sharedSearch, kind }) => {
+  items?: readonly WorkAsset[];
+}> = ({ embedded = false, search: sharedSearch, kind, items: suppliedItems }) => {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
 
@@ -398,6 +399,7 @@ export const WorkAssetsTab: React.FC<{
   const normalizedSearch = (sharedSearch ?? search).trim().toLowerCase();
 
   const sortedAssets = useMemo(() => {
+    if (suppliedItems) return suppliedItems;
     const items = [...(workAssets ?? [])].filter(
       (asset) => !kind || asset.kind === kind,
     );
@@ -410,7 +412,7 @@ export const WorkAssetsTab: React.FC<{
         : b.createdAt - a.createdAt,
     );
     return items;
-  }, [workAssets, kind]);
+  }, [workAssets, kind, suppliedItems]);
 
   const filteredAssets = useMemo(
     () =>

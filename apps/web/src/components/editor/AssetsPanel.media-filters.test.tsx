@@ -27,6 +27,50 @@ function chooseType(name: string) {
   fireEvent.click(within(screen.getByRole("group", { name: "Media type" })).getByRole("button", { name }));
 }
 
+it("keeps sorting visible and combines duration, name and import order with type filters", () => {
+  const project = useProjectStore.getState().project;
+  const long = { ...item("take10", "audio"), metadata: { ...item("take10", "audio").metadata, duration: 12 } };
+  const short = item("take2", "audio");
+  const picture = item("still", "image");
+  useProjectStore.setState({ project: { ...project, mediaLibrary: { ...project.mediaLibrary, items: [long, short, picture] } } });
+  const { container } = render(<AssetsPanel />);
+  const order = () => [...container.querySelectorAll("[data-live-media-id]")].map(element => element.getAttribute("data-live-media-id"));
+  const sorting = screen.getByRole("combobox", { name: "Sort media" });
+  expect(order()).toEqual(["still", "take2", "take10"]);
+  fireEvent.change(sorting, { target: { value: "shortest" } });
+  expect(order()).toEqual(["take2", "take10", "still"]);
+  fireEvent.change(sorting, { target: { value: "longest" } });
+  expect(order()).toEqual(["take10", "take2", "still"]);
+  chooseType("Audio");
+  expect(sorting).toHaveValue("longest");
+  expect(order()).toEqual(["take10", "take2"]);
+  fireEvent.change(sorting, { target: { value: "nameAsc" } });
+  expect(order()).toEqual(["take2", "take10"]);
+  fireEvent.change(sorting, { target: { value: "oldest" } });
+  expect(order()).toEqual(["take10", "take2"]);
+  expect(screen.queryByRole("group", { name: "Asset categories" })).not.toBeInTheDocument();
+});
+
+it("opens the archive tree on demand and lets a media selection find its related save point", async () => {
+  const current = useProjectStore.getState().project;
+  const node: ProjectNodeRecord = { id: "linked-node", projectId: current.id, parentNodeId: null, name: "Audio cut", summary: "", createdAt: 1, formatVersion: 1,
+    mediaIds: ["voice"], missingDependencies: [], project: current };
+  vi.spyOn(workspaceManager, "getSnapshot").mockReturnValue({ ...workspaceManager.getSnapshot(), nodes: [node] });
+  vi.spyOn(workspaceManager, "getNode").mockResolvedValue(node);
+  const { container } = render(<AssetsPanel />);
+  expect(screen.queryByRole("group", { name: "Project save points" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "By save point" }));
+  fireEvent.click(screen.getByTestId("asset-node-linked-node"));
+  await screen.findByTestId("node-assets");
+  expect(screen.queryByRole("group", { name: "Project save points" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Clear save-point filter" }));
+  fireEvent.click(container.querySelector('[data-live-media-id="voice"]')!);
+  const relations = screen.getByTestId("media-node-relations");
+  fireEvent.click(within(relations).getByRole("button", { name: "Audio cut ↗" }));
+  await screen.findByTestId("node-assets");
+  expect(useProjectStore.getState().project).toBe(current);
+});
+
 it("filters audio independently and distinguishes no matches from an empty project", () => {
   const { container } = render(<AssetsPanel />);
   chooseType("Audio");
@@ -52,7 +96,7 @@ it("shows historical-only media without activating or changing the current proje
   expect(useProjectStore.getState().project).toBe(current);
   fireEvent.click(screen.getByRole("checkbox", { name: "Used in timeline only" }));
   expect(screen.queryByText("old-voice.wav")).not.toBeInTheDocument();
-  fireEvent.change(screen.getByRole("combobox", { name: "View scope" }), { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: "Clear save-point filter" }));
   expect(screen.queryByText("old-voice.wav")).not.toBeInTheDocument();
 });
 

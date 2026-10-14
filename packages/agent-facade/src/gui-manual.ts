@@ -54,7 +54,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.7.2" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.7.3" as const;
 export const GUI_MANUAL_APP_VERSION = "1.1.2" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -517,15 +517,15 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     title: { zh: "项目媒体面板", en: "Project Media Panel" },
     // @source apps/web/src/components/editor/AssetsPanel.tsx:83-155(tabs),236,250-322(F2/rename),700-807(import),738(short-id)
     summary: {
-      zh: "项目素材支持按视频、音频、图片、字幕筛选；查看范围可切换到存档节点，只读查看该节点保留的媒体。",
-      en: "Project assets filter by video, audio, images or subtitles. View scope can select a saved node to inspect its retained media without changing the current edit.",
+      zh: "项目素材以一排类型标签筛选视频、音频、图片、字幕；通过“按存档查找”展开节点树，只读查看存档素材。",
+      en: "Project assets have one row of media types. By save point opens the archive tree to inspect retained media without changing the current edit.",
     },
     entry: [
       { zh: "编辑器左侧面板 → \"媒体\" 标签。", en: "Left panel in the editor → the Media tab." },
     ],
     steps: [
       { zh: "导入：面板顶部的导入控件选择本地文件；录制控件也在此区域。", en: "Import: the panel-top import control picks local files; recording controls share this area." },
-      { zh: "筛选：选择素材类型；“查看范围”选择当前编辑或某个存档节点。存档树的“查看此节点素材”也会定位到该范围。节点列表标明时间线使用或仅保留，可勾选只看使用中的素材。", en: "Filter by media type, then choose Current edit or a save point in View scope. View this node's media in the archive tree selects the same scope. Node media indicate timeline use versus retention; a checkbox narrows the list to used media." },
+      { zh: "筛选：类型标签常驻；“按存档查找”按需展开存档树，选中后显示可关闭的范围提示。点击素材可反查关联存档。“筛选”中选择原片、剪辑或组合；数量右侧按添加顺序、名称或时长排序。存档树的“查看此节点素材”也会联动；节点素材保持只读。", en: "Use the media-type tabs and By save point tree. Clear the selected save-point chip to return to current assets. Select media to find related nodes. Filters contains source/clip/combination choices; the result row sorts by addition order, name or duration. View this node's media in Archives opens the same read-only scope." },
       { zh: "字幕：导入或拖入 SRT/VTT，按文件时间码添加到字幕轨；一次撤销可撤回整个文件。字幕类型页可浏览内容；部分无效段落会明确提示。", en: "Import or drop SRT/VTT to add captions at their file timecodes. One undo removes the whole file's import. Browse the Subtitles type to see cue text; invalid segments produce an explicit warning." },
       { zh: "使用：把媒体卡片拖到时间线成为片段。", en: "Use: drag a media card onto the timeline to make a clip." },
       { zh: "改名：选中后按 F2（默认），或右键选\"重命名\"，或双击名称，输入后回车确认。", en: "Rename: select and press F2 (the default), right-click → Rename, or double-click the name; Enter commits." },
