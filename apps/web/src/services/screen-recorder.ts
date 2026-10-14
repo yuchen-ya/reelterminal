@@ -419,8 +419,8 @@ export class ScreenRecorderService {
       screenCapture: !!navigator.mediaDevices?.getDisplayMedia,
       systemAudio: isChromium,
       webcam: !!navigator.mediaDevices?.getUserMedia,
-      vp9: MediaRecorder.isTypeSupported("video/webm;codecs=vp9"),
-      h264: MediaRecorder.isTypeSupported("video/webm;codecs=h264") || isSafari,
+      vp9: typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("video/webm;codecs=vp9"),
+      h264: typeof MediaRecorder !== "undefined" && (MediaRecorder.isTypeSupported("video/webm;codecs=h264") || isSafari),
     };
   }
 }

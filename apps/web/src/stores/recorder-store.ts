@@ -51,8 +51,10 @@ export const useRecorderStore = create<RecorderState>((set, get) => {
     set({ duration: duration as number });
   });
 
-  screenRecorderService.on("stop", () => {
-    set({ status: "processing" });
+  screenRecorderService.on("stop", (result) => {
+    if (["recording", "paused", "processing"].includes(get().status)) {
+      set({ result: result as RecordingResult, status: "idle" });
+    }
   });
 
   screenRecorderService.on("error", (error) => {
@@ -113,10 +115,14 @@ export const useRecorderStore = create<RecorderState>((set, get) => {
 
     requestPermissions: async () => {
       const { options } = get();
-      set({ status: "requesting", error: null });
+      set({ status: "requesting", error: null, result: null });
 
       try {
         const streams = await screenRecorderService.requestPermissions(options);
+        if (get().status !== "requesting") {
+          screenRecorderService.cancelRecording();
+          return false;
+        }
         set({
           screenStream: streams.screenStream,
           webcamStream: streams.webcamStream || null,
@@ -173,9 +179,9 @@ export const useRecorderStore = create<RecorderState>((set, get) => {
       set({ status: "processing" });
 
       try {
-        const result = await screenRecorderService.stopRecording();
-        set({ result, status: "idle" });
-        return result;
+        // The stop event delivers the result for both UI and system stops.
+        // Re-setting it here could resurrect a result after dialog cleanup.
+        return await screenRecorderService.stopRecording();
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to stop recording";

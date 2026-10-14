@@ -24,7 +24,7 @@ import { ExportDialog } from "./ExportDialog";
 import { CompressDialog } from "./CompressDialog";
 import { deriveSourceExportMatch } from "../../services/export-source-match";
 import { useExportRunner, extForFormat, exportFilename, writeBlobToWritable } from "../../services/export-runner";
-import { ScreenRecorder } from "./ScreenRecorder";
+import { RecordingDialogHost } from "./RecordingDialogHost";
 import { HistoryPanel } from "./inspector/HistoryPanel";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { SettingsDialog } from "./settings/SettingsDialog";
@@ -69,7 +69,6 @@ export const Toolbar: React.FC = () => {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isCompressOpen, setIsCompressOpen] = useState(false);
-  const { importMedia } = useProjectStore();
   const projectNameRef = useRef<HTMLInputElement>(null);
 
   // Local editable project name (committed onBlur / Enter)
@@ -275,63 +274,6 @@ export const Toolbar: React.FC = () => {
       }
     },
     [project, runExport, showSavePicker, beginExport, finishExportSoon, failExport],
-  );
-
-  const handleRecordingComplete = useCallback(
-    async (screenBlob: Blob, webcamBlob?: Blob) => {
-      if (!screenBlob || screenBlob.size === 0) {
-        toast.error(
-          "Recording failed",
-          "No video data was captured. Please try again.",
-        );
-        return;
-      }
-
-      const timestamp = new Date()
-        .toISOString()
-        .slice(0, 19)
-        .replace(/[:-]/g, "");
-      let importCount = 0;
-      const errors: string[] = [];
-
-      const screenFile = new File([screenBlob], `Screen_${timestamp}.webm`, {
-        type: screenBlob.type || "video/webm",
-      });
-      const screenResult = await importMedia(screenFile);
-      if (screenResult.success) {
-        importCount++;
-      } else {
-        errors.push(
-          screenResult.error?.message || "Failed to import screen recording",
-        );
-      }
-
-      if (webcamBlob && webcamBlob.size > 0) {
-        const webcamFile = new File([webcamBlob], `Webcam_${timestamp}.webm`, {
-          type: webcamBlob.type || "video/webm",
-        });
-        const webcamResult = await importMedia(webcamFile);
-        if (webcamResult.success) {
-          importCount++;
-        } else {
-          errors.push(
-            webcamResult.error?.message || "Failed to import webcam recording",
-          );
-        }
-      }
-
-      if (importCount > 0) {
-        toast.success(
-          `${importCount} recording${importCount > 1 ? "s" : ""} imported!`,
-          webcamBlob && webcamBlob.size > 0
-            ? "Screen and webcam added to assets. Use the timeline to composite them."
-            : "Screen recording added to assets.",
-        );
-      } else if (errors.length > 0) {
-        toast.error("Import failed", errors.join(". "));
-      }
-    },
-    [importMedia],
   );
 
   const projectRes = `${project.settings.width}×${project.settings.height}`;
@@ -593,11 +535,7 @@ export const Toolbar: React.FC = () => {
         sourceMatch={deriveSourceExportMatch(project)}
       />
 
-      <ScreenRecorder
-        isOpen={activeModal === "recorder"}
-        onClose={closeModal}
-        onRecordingComplete={handleRecordingComplete}
-      />
+      <RecordingDialogHost />
 
       <SettingsDialog />
 

@@ -69,6 +69,7 @@ export const ScreenRecorder: React.FC<ScreenRecorderProps> = ({
     options,
     webcamStream,
     error,
+    result,
     setVideoOption,
     setAudioOption,
     setWebcamOption,
@@ -82,8 +83,20 @@ export const ScreenRecorder: React.FC<ScreenRecorderProps> = ({
   } = useRecorderStore();
 
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
+  const deliveredResult = useRef<unknown>(null);
   const isSupported = ScreenRecorderService.isSupported();
   const features = ScreenRecorderService.getSupportedFeatures();
+
+  useEffect(() => () => reset(), [reset]);
+
+  // Both the stop button and the system's "stop sharing" action finish here.
+  useEffect(() => {
+    if (isOpen && result && deliveredResult.current !== result) {
+      deliveredResult.current = result;
+      onRecordingComplete(result.screenBlob, result.webcamBlob);
+      onClose();
+    }
+  }, [isOpen, result, onRecordingComplete, onClose]);
 
   useEffect(() => {
     if (webcamVideoRef.current && webcamStream) {
@@ -107,11 +120,7 @@ export const ScreenRecorder: React.FC<ScreenRecorderProps> = ({
   };
 
   const handleStopRecording = async () => {
-    const result = await stopRecording();
-    if (result) {
-      onRecordingComplete(result.screenBlob, result.webcamBlob);
-      onClose();
-    }
+    await stopRecording();
   };
 
   const handleCancel = () => {
