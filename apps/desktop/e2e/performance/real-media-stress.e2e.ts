@@ -140,6 +140,18 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     await verifyGuiFrame(2, 0);
     await verifyGuiFrame(8, 2);
     await verifyGuiFrame(2, 0);
+    await control("seek", 6);
+    await launched.page.waitForTimeout(1500);
+    record.transition_markers = await launched.page.getByTestId("preview-canvas").evaluate(element => {
+      const c = element as HTMLCanvasElement;
+      return [[.5, .5], [1460 / 1920, 290 / 1080], [460 / 1920, 290 / 1080]].map(([x, y]) => Array.from(c.getContext("2d")!.getImageData(Math.floor(x! * c.width), Math.floor(y! * c.height), 1, 1).data));
+    });
+    await launched.page.screenshot({ path: path.join(evidence, "transition-midpoint.png") });
+    await flush();
+    expect(record.transition_markers[1][1], "green layer retained through background transition").toBeGreaterThan(180);
+    expect(record.transition_markers[1][0]).toBeLessThan(80);
+    expect(record.transition_markers[2][2], "blue layer retained through background transition").toBeGreaterThan(180);
+    expect(record.transition_markers[2][0]).toBeLessThan(80);
     for (let pass = 0; pass < 3; pass++) {
       await control("seek", 0);
       const start = performance.now();
@@ -201,7 +213,7 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     record.cancellation = await waitJob(activeJob!);
     activeJob = undefined;
     expect(record.cancellation.state).toBe("cancelled");
-    expect(record.cancellation.artifact).toBeUndefined();
+    expect(record.cancellation.artifact).toBeNull();
     expect(existsSync(cancelledDestination)).toBe(false);
     await flush();
     // Kill only the dedicated Chromium export worker owned by this isolated
@@ -237,7 +249,7 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     record.encoder_failure = await waitJob(activeJob!);
     activeJob = undefined;
     expect(record.encoder_failure.state).toBe("error");
-    expect(record.encoder_failure.artifact).toBeUndefined();
+    expect(record.encoder_failure.artifact).toBeNull();
     expect(existsSync(failedDestination)).toBe(false);
     await flush();
     for (let index = 0; index < 10; index++) {
