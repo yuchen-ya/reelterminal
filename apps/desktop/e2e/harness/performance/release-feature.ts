@@ -64,6 +64,8 @@ export async function runReleaseFeature(
       const target = Object.fromEntries(Object.entries(context!.target).filter(([key]) => key in properties));
       const result = await context!.agent.callTool<any>(verb, { ...target, ...args }, { timeoutMs: 120_000 });
       if (!result.ok) { record.rejected_requests ??= []; record.rejected_requests.push({ verb, args, error: result.error }); }
+      if (result.ok && verb === "job_status") { record.latest_job_statuses ??= {}; record.latest_job_statuses[String(args.jobId)] = result.value; }
+      if (result.ok && verb === "analysis_get") { record.latest_analysis_views ??= {}; record.latest_analysis_views[String(args.recordId) + ":" + String(args.view ?? "summary")] = result.value; }
       return result;
     };
     context.call = async (verb, args = {}) => {

@@ -17,7 +17,7 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "assets";
   const original = fixture.project.mediaLibrary.items[0];
   const currentAsset = fixture.assets.find((a: any) => a.assetId === original.id);
   if (!currentAsset) throw new Error("fixture media asset unavailable");
-  const items = Array.from({ length: mediaCount }, (_, i) => ({ ...original, id: i === 0 ? original.id : "asset-pressure-" + i, name: "Item " + String(i).padStart(4, "0") }));
+  const items = Array.from({ length: mediaCount }, (_, i) => ({ ...original, id: i === 0 ? original.id : "asset-pressure-" + i, name: "Item " + String(i).padStart(4, "0"), displayName: "Item " + String(i).padStart(4, "0") }));
   fixture.project.mediaLibrary.items = items;
   fixture.records.workspaces[0].project = fixture.project;
   fixture.assets.push(...items.slice(1).map((item: any) => ({ ...currentAsset, assetId: item.id, fileName: item.id + ".png" })));
