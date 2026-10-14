@@ -618,6 +618,33 @@ afterEach(async () => {
 
 /* ------------------------- editor.get_context ----------------------- */
 
+describe("internal writer status snapshot", () => {
+  it("reads session lease state without running provider preflights or registering a tool", async () => {
+    const provider = stubRenderProvider();
+    const preflight = vi.spyOn(provider, "preflight");
+    const facade = createLiveFacade({ store, lease, sessionId: "status-writer", access: "write", renderProvider: provider, artifactRoot, mediaRoots: [] });
+    expect(facade.readWriterStatus?.()).toBe(true);
+    expect(facade.readWriterStatus?.()).toBe(true);
+    expect(preflight).not.toHaveBeenCalled();
+    expect(FACADE_VERBS as readonly string[]).not.toContain("readWriterStatus");
+    facade.releaseWriterLease();
+    expect(facade.readWriterStatus?.()).toBe(false);
+    await facade.dispose();
+    expect(facade.readWriterStatus?.()).toBe(false);
+  });
+
+  it("does not report a writer for read-only sessions or a lease held by another session", async () => {
+    lease.acquire("other-writer");
+    const blocked = liveFacade({ access: "write", sessionId: "blocked" });
+    const reader = liveFacade({ access: "read-only", sessionId: "reader" });
+    expect(blocked.readWriterStatus?.()).toBe(false);
+    expect(reader.readWriterStatus?.()).toBe(false);
+    expect(lease.holder()).toBe("other-writer");
+    await blocked.dispose();
+    await reader.dispose();
+  });
+});
+
 describe("editor.get_context and visual.inspect read verbs", () => {
   it("live: reports the real editor context and identity (contextAvailable true)", async () => {
     store.setContext({

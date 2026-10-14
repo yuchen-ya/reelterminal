@@ -128,3 +128,26 @@ subphases are nested and must not be added to `drag_ms` again. A second pair of
 CDP samples brackets the unchanged wall window outside its start/stop timestamps;
 the original wider TaskDuration evidence remains separately recorded. Timing
 fields do not participate in qualification or alter its upper-median/2% rule.
+
+The phase run on commit `8688cae97e8eb23fbc2d774510c0486a78847710`
+([run 38561494198](https://github.com/yuchen-ya/reelterminal/actions/runs/38561494198))
+completed 13 groups; the next light group exhausted both collectors' existing
+30-second budget. Its pre-gesture and verification MCP reads totaled 26,356.968
+ms, dragging 3,702.963 ms (nested renderer rAF waits 369.540 ms), and save/settle
+waits were small. Completed off/light renderer TaskDuration medians were
+3.370/3.422 seconds, while wall medians were 25.649/23.550 seconds. These are
+unequal, incomplete samples (7 off/6 light), not a qualified overhead estimate.
+The retained failure now explicitly identifies `budget:capture_seconds` and
+`main_capture_budget_exceeded` for this run only.
+
+Static inspection found an existing status-path problem: `currentWriter()`
+called full `session.describe`, which constructs capabilities and repeatedly
+runs Python/OpenCV preflights even for ordinary status polling. Every command's
+status/guard/activity updates exercised this unrelated work. The host now reads
+the same session-owned writer flag through an internal, unregistered accessor;
+older injected facades retain the existing fallback. Writer acquisition,
+revocation and project guards are unchanged, and explicit capability/description
+queries still run their real preflights. Regression checks cover lease state,
+read-only/revocation, status ordering, CLI/MCP guards and absence of provider
+preflights from ordinary status. This removes unrelated repeated probing rather
+than increasing the capture budget or altering qualification statistics.

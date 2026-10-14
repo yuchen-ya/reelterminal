@@ -379,6 +379,28 @@ describe("live session host enable/status/disable", () => {
     await host.disable();
   });
 
+  it("ordinary status reads use the session writer snapshot without expensive capability descriptions", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    const createFacade = fixture.deps.createFacade;
+    const describe = vi.fn(async () => { throw new Error("capability preflights must not run for status"); });
+    const host = createLiveSessionHost({
+      ...fixture.deps,
+      createFacade: config => {
+        const facade = createFacade(config);
+        return { ...facade, "session.describe": describe, readWriterStatus: () => config.lease.holder() === config.sessionId } as LiveAgentFacade;
+      },
+    });
+    await host.enable();
+    await host.setAccess("write");
+    await host.callExternal("timeline.get", workspaceReadArgs);
+    expect((await host.getStatus()).writer).toBe("external");
+    expect((await host.getStatus()).writer).toBe("external");
+    expect((await host.setAccess("read-only")).writer).toBeNull();
+    expect(describe).not.toHaveBeenCalled();
+    await host.disable();
+  });
+
   it("stamps snapshots in capture order even when an older writer lookup resolves last", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));

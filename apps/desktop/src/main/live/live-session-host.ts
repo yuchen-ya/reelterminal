@@ -202,11 +202,13 @@ export function createLiveSessionHost(
   const currentAction = (): string | null =>
     inFlight.length > 0 ? inFlight[inFlight.length - 1]! : null;
 
-  /** Writer from the external session's session.describe (Decision 6). */
+  /** The same session-owned writer flag, without running provider preflights. */
   const currentWriter = async (
     session: LiveAgentFacade | null,
   ): Promise<"external" | null> => {
     if (!session) return null;
+    if (session.readWriterStatus) return session.readWriterStatus() ? "external" : null;
+    // Compatibility for injected/older facades without the internal accessor.
     const description = await session["session.describe"]();
     return description.ok && description.value.writer === true ? "external" : null;
   };

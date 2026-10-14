@@ -461,6 +461,8 @@ export interface LiveAgentFacade extends Omit<AgentFacade, "project.save"> {
   ) => Promise<FacadeResult<LiveProjectSaveResult>>;
   /** Release write ownership without losing jobs or idempotency state. */
   releaseWriterLease(): void;
+  /** Internal host metadata; no capability preflights or registered tool. */
+  readWriterStatus?(): boolean;
   dispose(): Promise<void>;
 }
 
@@ -685,6 +687,10 @@ export class LiveFacadeSession {
   }
 
   /* ------------------------------ reads ------------------------------ */
+
+  readWriterStatus(): boolean {
+    return this.writer;
+  }
 
   async sessionDescribe(): Promise<FacadeResult<SessionDescription>> {
     try {
@@ -4362,6 +4368,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "help.search": (params) =>
       session.helpSearch(params as import("./gui-manual").ManualSearchParams),
     releaseWriterLease: () => session.releaseWriterLease(),
+    readWriterStatus: () => session.readWriterStatus(),
     dispose: () => session.dispose(),
   }, "live", (verb) => session.assertVerbAccess(verb as FacadeVerb)) as LiveAgentFacade;
 }
