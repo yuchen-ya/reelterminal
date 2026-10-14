@@ -115,5 +115,15 @@ perceptual confidence. Tempo may have half- or double-time ambiguity.
 
 Inspection frames are sparse samples and do not prove continuous motion,
 editing rhythm, or what a person heard. Audio measurements are anchors for
-review, not automatic beat grids or edit recommendations. For cloud video
+review, not semantic speech detection or automatic edit decisions. The explicit
+`beatGrid` analysis returns inferred beats/BPM, not detected downbeats. For cloud video
 review, see [Cloud video review](CLOUD-VIDEO-REVIEW.md).
+
+## Scope and follow-up work
+
+`silence` is amplitude-based detection, not VAD. Audio analysis does not itself
+cut clips or duck background music. The existing `clip.setDucking` edit can
+consume supplied presence ranges/points; direct analysis-record-driven editing,
+VAD and new transcription/model backends remain planned. See the
+[audio TODO](AUDIO-TODO.md) for priorities and acceptance criteria, and the
+[completed execution record](AUDIO-PIPELINE-EXECUTION-PLAN.md) for A–C evidence.

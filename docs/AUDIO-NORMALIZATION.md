@@ -130,7 +130,7 @@ Registration failure leaves a valid completed output available for an explicit
 retry. Abandoned completed files are not automatically garbage-collected.
 
 Live and headless expose the same commands and `capabilities.get.audioNormalize`.
-Availability requires local FFmpeg/ffprobe, configured media roots and, in live
+Availability requires local FFmpeg/ffprobe with the `loudnorm` filter, configured media roots and, in live
 mode, the existing operational media-import bridge. No live user project is
 needed for development validation.
 
@@ -141,3 +141,12 @@ trimming and then mapped to output zero. Source decoding is bounded by the
 existing local FFmpeg process timeout and output limits. Headless transport
 shutdown waits up to ten seconds for requested audio cancellation to settle;
 forced process termination can leave an unpublished staging directory.
+
+## Follow-up work
+
+Longer ranges, relative audio-stream offsets, headless cross-session recovery
+and abandoned-output management are tracked in [AUDIO-TODO.md](AUDIO-TODO.md).
+They are not supported by this command today. VAD, denoising, transcription
+and source separation are separate planned work; normalization does not imply
+those models are installed. This page describes implemented source behavior;
+query the running installation's catalog and capabilities before invoking it.

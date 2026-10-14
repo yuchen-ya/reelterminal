@@ -2,6 +2,8 @@
 
 日期：2026-10-14。依据用户提供的《音频处理相关优化.txt》及当前代码审阅。
 
+当前状态：A、B、C 均已由协调会话验收；提交 `3fbba4b0`、`2a9cd248`、`8aa24f99` 已按用户后续要求推送到 `origin/main`。下文保留各执行批次的原始范围与验证记录，批次内“未 push”描述的是当时执行边界，不代表当前远端状态。剩余工作的统一待办入口为 [AUDIO-TODO.md](AUDIO-TODO.md)。
+
 ## 授权与执行规则
 
 用户授权协调会话安排其他 Codex 会话执行、测试、提交，并自行处理实施取舍。每个执行会话使用 gpt-6.1-sol / high，三个批次串行运行；执行会话内部可按需委派并发子智能体，子智能体遵守 AGENTS.md 的模型规则。
@@ -46,6 +48,8 @@
 
 ## 后续路线（不属于本轮 A–C 验收）
 
+下面是原始路线摘要；后续任务状态、依赖及验收以 [AUDIO-TODO.md](AUDIO-TODO.md) 为准。
+
 P2：Silero VAD，分析句柄驱动已有 clip.setDucking 和静音剪辑；先支持正向恒速，明确联动轨道、ripple 和既有包络冲突策略。
 
 P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依据样本评测决定分离、diarization、downbeat。固定模型与运行时版本，验证时间戳粒度、事件定位、延迟、内存、速度与听感，不能把模型宣传指标直接当产品保证。
@@ -71,7 +75,7 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
   - 更新了 types、输入/输出 schema、catalog/corpus、CLI 帮助与 MATERIAL-ANALYSIS；桌面内部 loadAnalysisRecord/service.get 继续完整读取，preload 类型补齐 revision、source 坐标与 silenceParams。全库搜索没有现存分析记录 GUI 面板组件，未新增面板；服务回归验证 300 项完整读取与紧凑 job status。
   - 验证：`pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`，75 文件、2002 测试通过、12 既有测试跳过；`pnpm --filter @reelterminal/desktop test:run src/main/analysis/analysis-records-service.test.ts src/main/live/live-session-host.test.ts --maxWorkers=2`，2 文件、22 测试通过；agent-facade、desktop、web 的 `typecheck` 均通过；`git diff --check` 通过。回归包含 >256 全量事件与分页、半开边界/相交区间/同时间排序/cursor、旧记录诚实性、波形上限、live/headless 同记录视图一致、旧任务/batch 恢复及完成 checkpoint 失败清理。
   - 初次针对检查发现 schemaVersion 2 的旧测试断言和查询 union 类型收窄问题，已修复；最终无未解决测试或类型错误。schema 领域筛选及 capabilities 按领域懒探测是独立后续项，本批未扩展。未执行 C、接入模型、访问用户 live API、打开用户工程、push、发布或打包。
-- C：2026-10-14 已完成实现与验证，待协调会话验收。
+- C：2026-10-14 已完成实现与验证，已由协调会话验收（`8aa24f99`）。
   - 新增真实 write/task/filesystem 命令 `audio.process.normalize` 和显式 write/filesystem 命令 `audio.process.register`，输入、输出 schema、catalog/corpus、CLI 帮助、MCP 任务跟踪/进度、workflow await 一并更新；没有把产物生成伪装为只读插件。参数要求 mediaId、零基音轨索引、source seconds 半开范围、LUFS/TP/LRA、48 kHz 和 mono/stereo，normalize 必须带幂等键。
   - 共用本地两遍 loudnorm，第二遍透传第一遍 measured_I/TP/LRA/thresh 和真正的 target_offset；明确 PCM s24le WAV、48 kHz、声道布局，最终 WAV 再测量。只在 integrated 与目标偏差 ≤1 LU 且 true peak 超限 ≤0.2 dBTP 时发布；未达标、静音不可测、无音轨和解码错误真实失败，不伪造指标，不串联 speechnorm/独立 limiter，不做自动补偿重试。
   - source range → 输出零点映射、round((end-start)*48000) 样本数、实际时长和补偿后零处理延迟保存在结果与 provenance.json。使用 copyts 保留共享正时间戳原点后裁切；音轨相对媒体存在非零起点偏移时明确拒绝，避免静默折叠领先时延。

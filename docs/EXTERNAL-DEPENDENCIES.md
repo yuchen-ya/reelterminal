@@ -11,6 +11,7 @@ downloads and user-configured provider requests are described below.
 |---|---|
 | Import, edit, save, export, local templates | Local application and files; no cloud backend required. |
 | Whisper captions | ONNX Community models downloaded directly from Hugging Face by Transformers.js; recognition runs locally. The existing model choices and browser cache remain. First-use download requires network access. |
+| Agent audio analysis and loudness normalization | Local native FFmpeg/ffprobe, resolved from `REELTERMINAL_FFMPEG_PATH` / `REELTERMINAL_FFPROBE_PATH` or PATH. Loudness work requires `loudnorm`. No model download or audio upload; derived WAV/provenance remain in persistent local media roots. See [Audio normalization](AUDIO-NORMALIZATION.md). |
 | Person/face segmentation | Public Google model storage, unpkg and jsDelivr downloads; processing stays local. |
 | FFmpeg.wasm fallback | `unpkg.com/@ffmpeg/core@0.12.6`; downloads code/WASM, not user media. Native FFmpeg is supplied by the user on PATH. |
 | Fonts | Desktop packages local fonts. Web/Image/Studio Google Fonts requests and the core Three.js font download remain. |
@@ -54,6 +55,12 @@ versions when its endpoint is configured; error message, stack and context
 remain local.
 
 ## Rights and release records
+
+Planned Silero/sherpa-onnx, SenseVoice, DeepFilterNet and other audio backends
+in [AUDIO-TODO.md](AUDIO-TODO.md) are not installed or enabled by batches A–C.
+Their model delivery, platform support, rights and network behavior must be
+verified and documented if implemented; the existing Whisper workflow above
+remains distinct.
 
 See [Asset rights review](ASSET-LICENSE-REVIEW.md). Removed sample footage and
 retired private mirrors are not default release dependencies. FFmpeg core
