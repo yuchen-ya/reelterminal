@@ -48,6 +48,7 @@ describe("performance driver helpers", () => {
     const run = async (timing?: DragTiming) => {
       const calls: string[] = [];
       const target = {
+        page: () => page,
         scrollIntoViewIfNeeded: async () => { calls.push("scrollIntoView"); },
         boundingBox: async () => { calls.push("box"); return { x: 100, y: 20, width: 100, height: 32 }; },
         getAttribute: async () => "clip",
