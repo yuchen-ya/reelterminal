@@ -19,6 +19,7 @@ import {
   DESKTOP_DIR,
   LIVE_MCP_CONNECTOR_PATH,
   MAIN_BUNDLE_PATH,
+  ARTIFACTS_DIR,
 } from "./paths";
 import {
   hasProcessExited,
@@ -169,7 +170,9 @@ async function launch(
         );
       }
     }
-    await page.waitForLoadState("domcontentloaded", { timeout: PAGE_LOAD_TIMEOUT_MS });
+    // firstWindow may expose about:blank before main starts loadURL. Its load
+    // state is already complete, but storage is unavailable in that document.
+    await page.waitForURL("app://reelterminal/index.html", { waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
     // Every desktop UI E2E uses English labels. The isolated profile has no
     // user preference, so explicitly seed that preference and reload before
     // a spec starts driving the UI (the host OS can be zh-CN).
@@ -191,6 +194,8 @@ async function launch(
       `main stdout tail: ${mainStdout.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
       `main stderr tail: ${mainStderr.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
     ].join("\n");
+    mkdirSync(ARTIFACTS_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(ARTIFACTS_DIR, `launch-failure-${Date.now()}.png`), timeout: 5_000 }).catch(() => undefined);
     const child = app.process();
     // Exit the native app before killing its Windows command wrapper.
     void app.evaluate(({ app }) => app.exit(0)).catch(() => undefined);

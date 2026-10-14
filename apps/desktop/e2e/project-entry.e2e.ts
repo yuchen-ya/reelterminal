@@ -3,10 +3,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { launchApp } from "./harness/launch";
 import { CHANNELS } from "../src/shared/channels";
+import { createEvidence } from "./harness/evidence";
 
 test("new project chooser preserves the editor and open uses the active project folder", async () => {
   const launched = await launchApp();
   const { app, page, runDir } = launched;
+  const evidence = createEvidence(`project-entry-${Date.now()}`, page);
+  evidence.record("executable", process.env.REELTERMINAL_E2E_APP_EXECUTABLE ?? "checkout Electron");
+  evidence.record("application", await app.evaluate(({ app }) => ({ version: app.getVersion(), packaged: app.isPackaged })));
   page.setDefaultTimeout(15_000);
   const projects = path.join(runDir, "projects");
   mkdirSync(projects);
@@ -19,6 +23,7 @@ test("new project chooser preserves the editor and open uses the active project 
   }));
 
   try {
+    expect(page.url()).toBe("app://reelterminal/index.html");
     // The harness isolates userData, so supply an active folder through the real
     // data-root IPC and capture native dialog options without opening an OS modal.
     await app.evaluate(({ ipcMain, dialog }, { channel, projects }) => {
@@ -62,7 +67,10 @@ test("new project chooser preserves the editor and open uses the active project 
     }, { channel: CHANNELS.menuAction, pickedFile });
     await page.getByRole("button", { name: "Picked Project", exact: true }).waitFor();
     expect(await page.getByTestId("desktop-workspace").isVisible()).toBe(true);
+    await evidence.screenshot("opened-project");
+    evidence.record("passed", true);
   } finally {
+    evidence.flush();
     // Leave temporary diagnostics to the existing harness cleanup policy.
     await launched.close();
   }

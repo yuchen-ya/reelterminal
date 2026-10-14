@@ -133,6 +133,41 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     expect(record.cancellation.artifact).toBeUndefined();
     expect(existsSync(cancelledDestination)).toBe(false);
     await flush();
+    // Terminate only an actual FFmpeg descendant of this isolated app. This
+    // exercises a real encoder failure and queue recovery without a fake backend.
+    const failedDestination = path.join(outputRoot, "encoder-failed.mp4");
+    const failedExport = await call("export_start", { ...target, settings: record.settings, destinationPath: failedDestination });
+    activeJob = failedExport.jobId;
+    const appPid = launched.app.process().pid!;
+    const failureDeadline = Date.now() + 60_000;
+    let encoderPid: number | undefined;
+    while (!encoderPid && Date.now() < failureDeadline) {
+      const rows = execFileSync("ps", ["-A", "-o", "pid=,ppid=,comm="], { encoding: "utf8" }).split("\n").flatMap(line => {
+        const match = /^\s*(\d+)\s+(\d+)\s+(.+)$/.exec(line);
+        return match ? [{ pid: Number(match[1]), parent: Number(match[2]), command: match[3]! }] : [];
+      });
+      const parents = new Map(rows.map(row => [row.pid, row.parent]));
+      encoderPid = rows.find(row => {
+        if (path.basename(row.command) !== "ffmpeg") return false;
+        let pid = row.parent;
+        for (let depth = 0; depth < 30 && pid > 1; depth++) {
+          if (pid === appPid) return true;
+          pid = parents.get(pid) ?? 0;
+        }
+        return false;
+      })?.pid;
+      if (!encoderPid) await launched.page.waitForTimeout(300);
+    }
+    expect(encoderPid, "could not locate this app's real encoder process").toBeDefined();
+    record.failure_injection = { method: "SIGTERM_owned_ffmpeg_descendant", app_pid: appPid, encoder_pid: encoderPid };
+    await flush();
+    process.kill(encoderPid!, "SIGTERM");
+    record.encoder_failure = await waitJob(activeJob!);
+    activeJob = undefined;
+    expect(record.encoder_failure.state).toBe("error");
+    expect(record.encoder_failure.artifact).toBeUndefined();
+    expect(existsSync(failedDestination)).toBe(false);
+    await flush();
     for (let index = 0; index < 10; index++) {
       const destination = path.join(outputRoot, `export-${index}.mp4`);
       const start = performance.now();
@@ -143,6 +178,7 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
       const entry: any = { index, elapsed_ms: performance.now() - start, job };
       record.exports.push(entry); await flush();
       expect(job.state, JSON.stringify(job.error)).toBe("done");
+      record.failure_queue_recovered = true;
       expect(job.deliveredTo).toBe(destination);
       entry.probe = probe(destination);
       expect(entry.probe.streams.find((s: any) => s.codec_type === "video")).toMatchObject({ codec_name: "h264", width: 1920, height: 1080 });
