@@ -228,6 +228,20 @@ export class PerformanceSessionManager {
     const session = this.session;
     if (!session) return { ok: false, error: "no_active_session" };
     if (request.runId !== session.runId) return { ok: false, error: "invalid_request" };
+    if (session.stoppedUs === undefined && this.mainCapture?.pendingSpanCount) {
+      const capture = this.mainCapture;
+      // An IPC reply may still be queued when the renderer asks to stop.
+      // Seal new admissions and let actual retained-sink completions arrive.
+      // Never discard spans or extend the existing hard capture deadline.
+      capture.seal();
+      if (getPerfSink() === capture) setPerfSink(null);
+      const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)));
+      for (let attempt = 0; attempt < 10 && this.session === session &&
+          session.stoppedUs === undefined && capture.pendingSpanCount > 0; attempt++) {
+        await sleep(10);
+      }
+      if (this.session !== session) return { ok: false, error: "no_active_session" };
+    }
     if (session.stoppedUs === undefined) {
       this.finishCapture(session, this.deps.nowUs());
     } else {

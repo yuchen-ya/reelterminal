@@ -135,6 +135,10 @@ export function calibrationEvidence(document) {
       hidden_during_action: typeof capture.hiddenDuringAction === "boolean" ? capture.hiddenDuringAction : null,
       main_status: ["complete", "incomplete", "unavailable"].includes(capture.mainStatus) ? capture.mainStatus : "unknown",
       main_reason_codes: (capture.mainReasonCodes ?? []).filter(value => typeof value === "string" && /^[a-z_:]+$/.test(value)),
+      main_open_spans: numeric(capture.mainOpenSpans),
+      renderer_open_spans: numeric(capture.rendererOpenSpans),
+      main_oldest_open_span_us: numeric(capture.mainOldestOpenSpanUs),
+      main_open_phases: (capture.mainOpenPhases ?? []).filter(value => ["live.ipc.main.request", "other"].includes(value)).slice(0, 8),
     } : null,
   };
 }

@@ -76,10 +76,13 @@ test("resource projection omits arbitrary strings, paths and credentials", () =>
 });
 
 test("failed calibration retains capture reason and timing without raw controls", () => {
-  const record = calibrationEvidence({ status: "invalid", runs: [{ durationMs: 31000 }], controls: { token: "private/token", currentCapture: { status: "incomplete", reasonCodes: ["budget:capture_seconds", "private/token"], wallDurationUs: 31000000, events: [{ token: "private/token" }] } } });
+  const record = calibrationEvidence({ status: "invalid", runs: [{ durationMs: 31000 }], controls: { token: "private/token", currentCapture: { status: "incomplete", reasonCodes: ["budget:capture_seconds", "private/token"], wallDurationUs: 31000000, mainOpenSpans: 1, mainOldestOpenSpanUs: 500, mainOpenPhases: ["live.ipc.main.request", "private/token"], events: [{ token: "private/token" }] } } });
   assert.deepEqual(record.capture.reason_codes, ["budget:capture_seconds"]);
   assert.equal(record.capture.wall_duration_us, 31000000);
   assert.equal(record.completed_groups, 1);
+  assert.equal(record.capture.main_open_spans, 1);
+  assert.equal(record.capture.main_oldest_open_span_us, 500);
+  assert.deepEqual(record.capture.main_open_phases, ["live.ipc.main.request"]);
   assert.equal(JSON.stringify(record).includes("private/token"), false);
 });
 

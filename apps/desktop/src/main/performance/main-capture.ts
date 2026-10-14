@@ -84,6 +84,7 @@ export class MainPerformanceCapture implements PerfSink {
   private truncatedFields = 0;
   private collectorErrors = 0;
   private closed = false;
+  private acceptingSpans = true;
   private readonly labels = new Set<string>();
 
   constructor(
@@ -99,8 +100,13 @@ export class MainPerformanceCapture implements PerfSink {
     this.capacity = capacity;
   }
 
+  get pendingSpanCount(): number { return this.spans.size; }
+
+  /** Stop admitting work; existing operations retain this sink and can finish. */
+  seal(): void { this.acceptingSpans = false; }
+
   begin(phase: string, context: PerfContext): PerfSpan {
-    if (this.closed) return FALLBACK_SPAN;
+    if (this.closed || !this.acceptingSpans) return FALLBACK_SPAN;
     try {
       const label = this.safePhase(phase);
       this.increment(`span:${label}`, 1);

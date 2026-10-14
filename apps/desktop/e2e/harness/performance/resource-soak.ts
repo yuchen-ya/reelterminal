@@ -209,6 +209,10 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
       await page.waitForFunction(() => (globalThis as ResourceGlobal).__reelterminalPerformanceCapture.pendingSpanCount === 0, null, { timeout: options.operationTimeoutMs });
       const evidence = await page.evaluate(() => (globalThis as ResourceGlobal).__reelterminalPerfDriver.stop("ok"));
       activeCapture = false;
+      const main = evidence.main.ok ? evidence.main.mainCapture : null;
+      const ended = new Set(main?.events.filter(event => event.kind === "span_end").map(event => event.spanId));
+      const openDetails = main?.events.flatMap(event => event.kind === "span_begin" && !ended.has(event.spanId)
+        ? [{ phase: event.phase === "live.ipc.main.request" ? event.phase : "other", ageUs: Math.max(0, main.stoppedUs - event.tsUs) }] : []).slice(0, 8) ?? [];
       lastCapture = {
         status: evidence.report.status, reasonCodes: evidence.report.reasonCodes,
         wallDurationUs: evidence.report.wallDurationUs, hiddenDuringAction: evidence.hiddenDuringAction,
@@ -216,6 +220,8 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
         mainStatus: evidence.main.ok ? evidence.main.mainCapture.status : "unavailable",
         mainReasonCodes: evidence.main.ok ? evidence.main.mainCapture.reasonCodes : ["main_capture_unavailable"],
         mainOpenSpans: evidence.main.ok ? evidence.main.mainCapture.openSpans : null,
+        mainOpenPhases: openDetails.map(detail => detail.phase),
+        mainOldestOpenSpanUs: Math.max(0, ...openDetails.map(detail => detail.ageUs)),
       };
       eventsDropped += evidence.report.drops.eventsDropped + (evidence.main.ok ? evidence.main.mainCapture.eventsDropped : 0);
       endpointsDropped += evidence.report.drops.criticalEndpointsDropped;

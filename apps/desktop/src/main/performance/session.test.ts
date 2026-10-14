@@ -46,7 +46,7 @@ function fakeIpc() {
   };
 }
 
-function makeManager(withSampler = false) {
+function makeManager(withSampler = false, onSleep?: () => void | Promise<void>) {
   const harness = fakeIpc();
   let mainUs = 0;
   const sentPings: unknown[] = [];
@@ -77,6 +77,7 @@ function makeManager(withSampler = false) {
     processMetricsSource: withSampler ? metricsSource : null,
     sleep: async () => {
       mainUs += 1_000;
+      await onSleep?.();
     },
   });
   manager.install();
@@ -84,6 +85,69 @@ function makeManager(withSampler = false) {
 }
 
 describe("PerformanceSessionManager", () => {
+  it("retains genuine asynchronous IPC span completion while sealing new stop-time admissions", async () => {
+    let pending: ReturnType<typeof beginPerfOperation>;
+    let sleeps = 0;
+    const { manager, harness } = makeManager(false, () => {
+      sleeps++;
+      expect(getPerfSink()).toBe(NOOP_SINK);
+      expect(beginPerfOperation("new-after-stop")).toBeUndefined();
+      expect(pending!.sink.begin("new-retained-sink-work", pending!.context).id).toBe(0);
+      endPerfOperation(pending, "ok");
+    });
+    try {
+      await harness.invoke(PERFORMANCE_IPC.start, { schemaVersion: SCHEMA, runId: "stop-ipc-tail", mode: "light" });
+      pending = beginPerfOperation("live.ipc.main.request");
+      const reply = await harness.invoke(PERFORMANCE_IPC.stop, { schemaVersion: SCHEMA, runId: "stop-ipc-tail" }) as { ok: boolean; mainCapture: { status: string; openSpans: number; events: { kind: string; phase: string }[] } };
+      expect(sleeps).toBe(1);
+      expect(reply.mainCapture.status).toBe("complete");
+      expect(reply.mainCapture.openSpans).toBe(0);
+      expect(reply.mainCapture.events.filter(event => event.kind === "span_end" && event.phase === "live.ipc.main.request")).toHaveLength(1);
+    } finally { manager.uninstall(); }
+  });
+
+  it("keeps a genuinely unfinished span incomplete after the bounded stop wait", async () => {
+    let sleeps = 0;
+    const { manager, harness } = makeManager(false, () => { sleeps++; });
+    try {
+      await harness.invoke(PERFORMANCE_IPC.start, { schemaVersion: SCHEMA, runId: "stop-stuck", mode: "light" });
+      beginPerfOperation("live.ipc.main.request");
+      const reply = await harness.invoke(PERFORMANCE_IPC.stop, { schemaVersion: SCHEMA, runId: "stop-stuck" }) as { mainCapture: { status: string; openSpans: number; reasonCodes: string[] } };
+      expect(sleeps).toBe(10);
+      expect(reply.mainCapture.status).toBe("incomplete");
+      expect(reply.mainCapture.openSpans).toBe(1);
+      expect(reply.mainCapture.reasonCodes).toContain("main_spans_left_open");
+    } finally { manager.uninstall(); }
+  });
+
+  it("does not let a stopped old session finish or erase a replacement session", async () => {
+    let replacement: unknown;
+    const { manager, harness } = makeManager(false, async () => {
+      manager.abortActiveSession();
+      replacement = await harness.invoke(PERFORMANCE_IPC.start, { schemaVersion: SCHEMA, runId: "stop-new", mode: "light" });
+    });
+    try {
+      await harness.invoke(PERFORMANCE_IPC.start, { schemaVersion: SCHEMA, runId: "stop-old", mode: "light" });
+      beginPerfOperation("live.ipc.main.request");
+      expect(await harness.invoke(PERFORMANCE_IPC.stop, { schemaVersion: SCHEMA, runId: "stop-old" })).toEqual({ ok: false, error: "no_active_session" });
+      expect(replacement).toMatchObject({ ok: true });
+      expect(manager.active?.runId).toBe("stop-new");
+      expect(await harness.invoke(PERFORMANCE_IPC.stop, { schemaVersion: SCHEMA, runId: "stop-new" })).toMatchObject({ ok: true });
+    } finally { manager.uninstall(); }
+  });
+
+  it("keeps the hard capture deadline active while waiting for an IPC tail", async () => {
+    vi.useFakeTimers();
+    const { manager, harness } = makeManager(false, async () => { await vi.advanceTimersByTimeAsync(1000); });
+    try {
+      await harness.invoke(PERFORMANCE_IPC.start, { schemaVersion: SCHEMA, runId: "stop-deadline", mode: "light", budgets: { captureSeconds: 1 } });
+      beginPerfOperation("live.ipc.main.request");
+      const reply = await harness.invoke(PERFORMANCE_IPC.stop, { schemaVersion: SCHEMA, runId: "stop-deadline" }) as { mainCapture: { status: string; openSpans: number; reasonCodes: string[] } };
+      expect(reply.mainCapture.status).toBe("incomplete");
+      expect(reply.mainCapture.openSpans).toBe(1);
+      expect(reply.mainCapture.reasonCodes).toContain("main_capture_budget_exceeded");
+    } finally { manager.uninstall(); vi.useRealTimers(); }
+  });
   it("runs a start → handshake → stop lifecycle with a simulated renderer", async () => {
     const { manager, harness, sentPings } = makeManager(true);
     const start = (await harness.invoke(PERFORMANCE_IPC.start, {

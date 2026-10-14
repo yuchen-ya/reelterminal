@@ -301,3 +301,40 @@ outside the measured interval. The real capacity and all ten plateau assertions
 remain unchanged, with numeric failure counts and the warmup interval recorded.
 No production grouping policy, history cap, operation timeout or performance
 threshold is changed.
+
+The paced-saturation smoke on `d78bd9209fa174450c84aaf39ff9892ecb3f33ab`
+([38578315677](https://github.com/yuchen-ya/reelterminal/actions/runs/38578315677))
+passed five configurations. R02 reached capacity 1,000 via 1,010 real edits, and
+all three idle snapshots during the requested 60 seconds retained 1,000 entries.
+The same-SHA long run
+([38579975409](https://github.com/yuchen-ya/reelterminal/actions/runs/38579975409))
+passed six configurations, including 500 R01 cycles. R02 warmup succeeded, but
+observation stopped after 680 completed cycles and 699.789 seconds. The retained
+cause is precise: renderer complete and visible, main incomplete with
+`main_spans_left_open`, one open main span. Thirty minutes were not completed.
+No crash or data-mismatch error was reported; final R02 resource assertions were
+not reached. The original artifact lacks the open phase and age, so its specific
+request identity cannot be reconstructed. The 31 KB failed artifact is retained
+[here](https://github.com/yuchen-ya/reelterminal/actions/runs/38579975409/artifacts/11904980482).
+
+Lifecycle inspection shows that the real main live-store bridge records a span
+end before resolving each corresponding request. Every R02 edit, undo/redo and
+timeline read was awaited and its state verified before the stop request.
+An additional/background main IPC request can nevertheless overlap that stop.
+The manager previously froze its report immediately, without an event-loop turn
+for a queued response. This is a supported stop-boundary hypothesis, not proof
+of the old span's particular request kind or lifetime.
+
+Stop now seals new span admissions and gives already-started spans at most ten
+10 ms event-loop waits to end naturally through their retained original sink.
+It never clears or forges span completion. A permanently open span still produces
+`main_spans_left_open`; the existing capture timer continues and still reports
+budget exhaustion. Aborted/replaced sessions cannot be finalized by an old stop.
+Focused regression tests cover all those cases. Original complete-capture and
+all product correctness assertions remain unchanged, with no capture-off mode.
+
+This bounded native-stop settling is outside the calibration's unchanged wall
+start/stop timestamps (before capture export), so its pooled-upper-median/2% gate
+is not replaced or relaxed. Wider CPU/export diagnostics continue to include
+export work. Forward resource failures also retain only whitelisted open phase
+names, span counts and same-main-clock ages, never raw operation IDs or events.
