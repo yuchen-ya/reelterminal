@@ -10,6 +10,7 @@ import { enableAgentSessionViaUI } from "../harness/ui";
 import { acquirePerformanceLock, captureComplete, prepareProfile, installProbe, dragTo, waitForMarker, type RendererWindowEvidence, type DragTiming } from "../harness/performance/driver";
 import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/performance/identity";
 import { createPerformanceFixture } from "./fixtures";
+import { writeCalibrationFailure } from "../harness/performance/calibration-failure";
 
 interface CalibrationGlobal {
   __reelterminalPerfDriver: {
@@ -47,15 +48,22 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
     let agent: ExternalAgent | undefined;
     let success = false;
     let artifactWritten = false;
+    let originalFailure: unknown;
+    let stage = "build_identity";
+    let build: Awaited<ReturnType<typeof captureBuildIdentity>> | undefined;
+    let environment: Awaited<ReturnType<typeof readEnvironmentIdentity>> | undefined;
+    let retainedProfile: string | undefined;
     const runs: CalibrationRun[] = [];
     const controls: Record<string, unknown> = {};
     const directory = path.join(ARTIFACTS_DIR, "performance");
     const artifact = path.join(directory, `probe-calibration-${Date.now()}.json`);
     try {
-      const build = await captureBuildIdentity();
+      build = await captureBuildIdentity();
       expect(build.build_verified, build.build_reason).toBe(true);
       const fixture = createPerformanceFixture({ scenarioId: "T01", seed: "42" });
       const runDir = await prepareProfile(fixture);
+      retainedProfile = runDir;
+      stage = "launch";
       launched = await launchApp({ runDir, skipLocaleReload: true });
       const page = launched.page;
       await launched.app.evaluate(({ BrowserWindow }) => {
@@ -64,15 +72,18 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
         window.show();
         window.focus();
       });
-      const environment = await readEnvironmentIdentity(launched);
+      stage = "environment";
+      environment = await readEnvironmentIdentity(launched);
       expect(environment.visible).toBe(true);
       expect(environment.focused).toBe(true);
       expect(environment.devtools_open).toBe(false);
+      stage = "open_fixture";
       await page.getByRole("button", { name: `Open ${fixture.project!.name}`, exact: true }).click();
       await page.getByTestId("agent-access-status").waitFor();
       await enableAgentSessionViaUI(page, launched.endpointFile);
       await launched.waitForEndpointFile();
       agent = await connectExternalAgent(launched.endpointFile);
+      stage = "prime_marker";
       const snap = page.getByRole("button", { name: "Snap on (N)", exact: true });
       if (await snap.count()) await snap.click();
       const zoomBox = (await page.getByRole("slider", { name: "Timeline zoom", exact: true }).boundingBox())!;
@@ -105,6 +116,7 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
         return api.pendingSpanCount === 0;
       }, null, { timeout: 30_000 });
 
+      stage = "controls";
       await start("probe-hidden-window");
       // Inject visibility at the browser boundary. Native window hiding can
       // suspend renderer IPC under automation, including capture teardown.
@@ -152,6 +164,7 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
 
       // Identical six-gesture groups return to the same timeline geometry.
       // CDP metrics and process RSS are read outside the measured workload.
+      stage = "abba";
       for (let block = 0; block < 5; block++) {
         for (const mode of ["off", "light", "light", "off"] as const) {
           await waitForMarker(page, fixture, 30_000);
@@ -247,14 +260,20 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
       expect(calibrated, "probe_overhead_exceeded; inspect calibration artifact").toBe(true);
       await cdp.detach();
       success = true;
+    } catch (error) {
+      originalFailure = error;
+      throw error;
     } finally {
       try {
-        if (!success && !artifactWritten) {
-          await mkdir(directory, { recursive: true });
-          await writeFile(artifact, JSON.stringify({ schema: "reelterminal.probe-calibration/v1", status: "invalid", controls, runs }, null, 2));
-          if (launched && !launched.page.isClosed()) {
-            await launched.page.screenshot({ path: artifact.replace(/\.json$/, ".png"), timeout: 5_000 });
-          }
+        if (!success) {
+          await writeCalibrationFailure({
+            artifact: artifactWritten ? artifact.replace(/\.json$/, ".failure.json") : artifact,
+            error: originalFailure, stage, controls, runs, build, environment,
+            retainedProfile, output: launched?.output,
+            screenshot: launched && !launched.page.isClosed()
+              ? () => launched!.page.screenshot({ path: artifact.replace(/\.json$/, ".png"), timeout: 5_000 })
+              : undefined,
+          }).catch(error => console.error("CALIBRATION_EVIDENCE_WRITE_FAILED", String(error).replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")));
         }
       } finally {
         try {
