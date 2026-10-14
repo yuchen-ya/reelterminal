@@ -340,10 +340,17 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
   if (unexpected.length) throw new Error(`unexpected_pointer_input: ${JSON.stringify({ trim, planned, actual, unexpected })}`);
   if (timing) timing.input_driver_ms += performance.now() - pointerBegan - (timing.raf_wait_ms - priorRafMs);
   const verificationBegan = performance.now();
+  // Preview styles change during pointer movement, before the async commit.
+  // ClipComponent clears this interaction state only in the commit's finally.
+  // Observe that release before returning (including P01's unmeasured resets).
+  await page.waitForFunction((id) => {
+    const element = document.querySelector<HTMLElement>(`[data-live-editor-target-id="${id}"]`);
+    return element && !element.style.willChange.includes("transform") && element.style.pointerEvents !== "none";
+  }, id, { timeout, polling: "raf" });
   await page.waitForFunction(({ id, before, trim }) => {
     const element = document.querySelector<HTMLElement>(`[data-live-editor-target-id="${id}"]`);
     return element && (trim ? element.style.width !== before.width : element.style.transform !== before.transform);
-  }, { id, before, trim }, { timeout, polling: "raf" });
+  }, { id, before, trim }, { timeout: Math.max(1, timeout - (performance.now() - verificationBegan)), polling: "raf" });
   if (timing) timing.verification_ms += performance.now() - verificationBegan;
 }
 

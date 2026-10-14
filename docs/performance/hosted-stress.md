@@ -338,3 +338,28 @@ start/stop timestamps (before capture export), so its pooled-upper-median/2% gat
 is not replaced or relaxed. Wider CPU/export diagnostics continue to include
 export work. Forward resource failures also retain only whitelisted open phase
 names, span counts and same-main-clock ages, never raw operation IDs or events.
+
+The same-SHA smoke for `b1fdafca22798856357137bc10af8df676adcf7e`
+([38589897719](https://github.com/yuchen-ya/reelterminal/actions/runs/38589897719))
+passed 266 contracts and five configurations, with complete main/renderer
+captures, zero open spans and real capacity-1,000 saturation during R02.
+The unique subsequent long run
+([38592016813](https://github.com/yuchen-ya/reelterminal/actions/runs/38592016813))
+failed earlier: T01/H01 passed, P01 failed, four later configurations were not run.
+R02 did not start. The first three P01 gestures completed with one semantic/final
+commit each; the next measured drag had zero commits and timed out waiting for
+inline geometry to change. Its incomplete captures followed the existing
+30-second budget; this is not another `main_spans_left_open` failure. The long
+coverage of the 100 ms stop repair therefore remains unverified.
+
+Driver inspection found a specific completion race. P01's between-repeat trim
+reset was unmeasured and `dragTo()` only waited for preview width/transform to
+change. The production trim handler changes that preview during movement, then
+awaits its commit before clearing `isTrimming`; a body drag while still trimming
+is explicitly ignored. The driver now waits for the existing interaction style
+to return to idle before its original geometry-change assertion. Both waits
+share the original verification budget; no pointer is retried, no extra rAF is
+added, and subsequent state/revision, transaction, capture and save/reopen
+assertions remain. A serialized browser-predicate regression rejects a changed
+preview with a pending commit and a permanently blocked release. This supports
+the driver-race diagnosis; the old artifact cannot prove its exact UI state.
