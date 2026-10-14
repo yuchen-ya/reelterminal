@@ -1,17 +1,31 @@
 name: Performance regression
+run-name: Performance ${{ inputs.profile || 'contracts' }} @ ${{ inputs.commit || github.sha }}
 
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
-  schedule:
-    # 03:00 Asia/Shanghai; the long suite requires the dedicated Windows runner.
-    - cron: '0 19 * * *'
   workflow_dispatch:
+    inputs:
+      commit:
+        description: Full 40-character commit SHA to measure
+        required: true
+        type: string
+      profile:
+        description: Short trial first; stress includes one continuous 30-minute soak
+        required: true
+        default: smoke
+        type: choice
+        options: [smoke, stress]
 
 permissions:
   contents: read
+
+# Serialize manual measurements across branches; never cancel an active soak.
+concurrency:
+  group: performance-${{ github.event_name == 'workflow_dispatch' && 'hosted-manual' || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   contracts:
@@ -20,6 +34,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -45,142 +62,62 @@ jobs:
           --maxWorkers=2
 
   report:
-    name: Serial browser report
-    if: github.event_name != 'schedule'
+    name: Hosted Windows ${{ inputs.profile }}
+    if: github.event_name == 'workflow_dispatch'
     needs: contracts
-    # Untrusted PR code always runs on a disposable hosted runner.
-    runs-on: ${{ github.event_name != 'pull_request' && vars.REELTERMINAL_PERF_FIXED_RUNNER == 'true' && fromJSON('["self-hosted","Windows","reelterminal-performance"]') || 'windows-latest' }}
-    timeout-minutes: 150
-    concurrency:
-      group: reelterminal-performance-${{ github.event_name != 'pull_request' && vars.REELTERMINAL_PERF_FIXED_RUNNER == 'true' && 'fixed' || github.ref }}
-      cancel-in-progress: false
+    runs-on: windows-latest
+    # Existing runner worst-case budgets total < 180 minutes; reserve 30 for setup.
+    timeout-minutes: 210
     defaults:
       run:
         shell: pwsh
     env:
-      PERF_FIXED_RUNNER: ${{ github.event_name != 'pull_request' && vars.REELTERMINAL_PERF_FIXED_RUNNER == 'true' && 'true' || 'false' }}
+      PERF_COMMIT: ${{ inputs.commit }}
+      PERF_PROFILE: ${{ inputs.profile }}
     steps:
       - uses: actions/checkout@v4
         with:
-          clean: true
+          ref: ${{ inputs.commit }}
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: pnpm
+      # No dependency/build cache writes or expanded artifact retention.
+      - name: Record fixed commit, runner and exact scenario parameters
+        run: node scripts/performance/hosted.mjs prepare
       - run: pnpm install --frozen-lockfile
       - name: Build the measured production bundles
         run: pnpm --filter @reelterminal/desktop build
-      - name: Calibrate the production probe on this build and machine
+      - name: Calibrate the production probe without changing thresholds
         run: pnpm --filter @reelterminal/desktop test:perf:calibrate
-      - name: Measure synthetic UI and durable save scenarios
-        run: |
-          $repeats = if ('${{ github.event_name }}' -eq 'pull_request') { 2 } else { 3 }
-          $samples = if ($env:PERF_FIXED_RUNNER -eq 'true') { 100 } else { 25 }
-          pnpm --filter @reelterminal/desktop test:perf:quick -- --scenario T01,T02,H01,H02,P01 --samples $samples --repeats $repeats --run-timeout-seconds 1800 --serial --report-only
-      - name: Verify AV and export contracts on the dedicated runner
-        if: env.PERF_FIXED_RUNNER == 'true'
-        run: pnpm --filter @reelterminal/desktop test:perf:quick -- --scenario A01,E01 --samples 25 --repeats 1 --serial --report-only
+      - name: Run existing synthetic scenarios serially, stopping at the first failure
+        run: node scripts/performance/hosted.mjs run
       - name: Write anonymous report and retain functional failures
-        if: always()
-        run: |
-          $policy = if ($env:PERF_FIXED_RUNNER -eq 'true') { 'warning' } else { 'report-only' }
-          node scripts/performance/ci-report.mjs --directory apps/desktop/e2e/.artifacts/performance --calibration apps/desktop/e2e/.artifacts/performance --baseline docs/performance/baselines/manifest.json --policy $policy --fixed-runner $env:PERF_FIXED_RUNNER --json apps/desktop/e2e/.artifacts/performance-ci/report.json --markdown apps/desktop/e2e/.artifacts/performance-ci/report.md
-      - name: Prepare a baseline proposal for review
-        if: success() && github.event_name != 'pull_request' && env.PERF_FIXED_RUNNER == 'true'
-        run: >-
-          node scripts/performance/manage-baseline.mjs
-          --directory apps/desktop/e2e/.artifacts/performance
-          --calibration apps/desktop/e2e/.artifacts/performance
-          --fixed-runner true
-          --reason "Main build ${{ github.sha }}; review before accepting"
-          --output apps/desktop/e2e/.artifacts/performance-ci/baseline-proposal.json
-      - name: Add the report to the job summary
-        if: always()
-        run: |
-          $summaryPath = 'apps/desktop/e2e/.artifacts/performance-ci/report.md'
-          if (Test-Path -LiteralPath $summaryPath) { Get-Content -LiteralPath $summaryPath | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY }
-      - name: Retain successful anonymous evidence
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: performance-report-${{ github.run_id }}-${{ github.run_attempt }}
-          path: apps/desktop/e2e/.artifacts/performance-ci/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 30
-      - name: Retain failed anonymous evidence
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: performance-failure-${{ github.run_id }}-${{ github.run_attempt }}
-          path: apps/desktop/e2e/.artifacts/performance-ci/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 90
-
-  nightly:
-    name: Nightly bounded resource and scale regression
-    if: github.event_name == 'schedule' && vars.REELTERMINAL_PERF_FIXED_RUNNER == 'true'
-    needs: contracts
-    runs-on: [self-hosted, Windows, reelterminal-performance]
-    timeout-minutes: 210
-    concurrency:
-      group: reelterminal-performance-fixed
-      cancel-in-progress: false
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          clean: true
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @reelterminal/desktop build
-      - run: pnpm --filter @reelterminal/desktop test:perf:calibrate
-      - name: Measure 2000 clips and 50 tracks
-        run: pnpm --filter @reelterminal/desktop test:perf:benchmark -- --scenario T03 --clip-count 2000 --track-count 50 --samples 100 --repeats 1 --run-timeout-seconds 1800 --serial
-      - name: Measure a 1000-node history tree
-        run: pnpm --filter @reelterminal/desktop test:perf:benchmark -- --scenario H01 --node-count 1000 --samples 100 --repeats 1 --run-timeout-seconds 1800 --serial
-      - name: Verify editing and history resources
-        run: pnpm --filter @reelterminal/desktop test:perf:soak -- --scenario R01 --edit-rounds 500 --repeats 1 --run-timeout-seconds 3600 --serial
-      - name: Run the bounded 30-minute soak
-        run: pnpm --filter @reelterminal/desktop test:perf:soak -- --scenario R02 --duration-seconds 1800 --repeats 1 --serial
-      - name: Report validity and resource correctness
         if: always()
         run: >-
           node scripts/performance/ci-report.mjs
           --directory apps/desktop/e2e/.artifacts/performance
           --calibration apps/desktop/e2e/.artifacts/performance
           --baseline docs/performance/baselines/manifest.json
-          --policy warning --fixed-runner true
+          --policy report-only --fixed-runner false
           --json apps/desktop/e2e/.artifacts/performance-ci/report.json
           --markdown apps/desktop/e2e/.artifacts/performance-ci/report.md
-      - name: Add the report to the job summary
+      - name: Add bounded resource evidence and job summary
         if: always()
         run: |
-          $summaryPath = 'apps/desktop/e2e/.artifacts/performance-ci/report.md'
-          if (Test-Path -LiteralPath $summaryPath) { Get-Content -LiteralPath $summaryPath | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY }
-      - name: Retain successful anonymous evidence
-        if: success()
+          node scripts/performance/hosted.mjs summarize
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Content apps/desktop/e2e/.artifacts/performance-ci/hosted.md | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          if (Test-Path apps/desktop/e2e/.artifacts/performance-ci/report.md) {
+            Get-Content apps/desktop/e2e/.artifacts/performance-ci/report.md | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          }
+      - name: Retain only anonymous summaries and small resource diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: performance-nightly-${{ github.run_id }}-${{ github.run_attempt }}
+          name: performance-${{ inputs.profile }}-${{ inputs.commit }}-${{ github.run_attempt }}
           path: apps/desktop/e2e/.artifacts/performance-ci/
           include-hidden-files: true
           if-no-files-found: error
-          retention-days: 30
-      - name: Retain failed anonymous evidence
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: performance-nightly-failure-${{ github.run_id }}-${{ github.run_attempt }}
-          path: apps/desktop/e2e/.artifacts/performance-ci/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 90
+          retention-days: 3
