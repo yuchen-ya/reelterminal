@@ -90,6 +90,7 @@ jobs:
       - name: Build the measured production bundles
         run: pnpm --filter @reelterminal/desktop build
       - name: Calibrate the production probe without changing thresholds
+        timeout-minutes: 12
         run: pnpm --filter @reelterminal/desktop test:perf:calibrate
       - name: Run existing synthetic scenarios serially, stopping at the first failure
         run: node scripts/performance/hosted.mjs run

@@ -180,6 +180,16 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
           const report = mode === "light" ? await stop() : null;
           const exportMs = performance.now() - exportStarted;
           if (report) {
+            // Keep bounded failure diagnostics before asserting completeness.
+            // Raw events, endpoint descriptors and profiles stay on the runner.
+            controls.currentCapture = {
+              status: report.status,
+              reasonCodes: report.reasonCodes,
+              stopReason: report.stopReason,
+              wallDurationUs: report.wallDurationUs,
+              drops: report.drops,
+            };
+            console.info("PERFORMANCE_CALIBRATION_CAPTURE", controls.currentCapture);
             expect(report.status).toBe("complete");
             expect(report.events.filter(event => event.phase === "semantic-state.committed")).toHaveLength(6);
             expect(report.counters["project.full-json-copies"] ?? 0).toBe(0);
@@ -189,6 +199,7 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
           const after = await metrics();
           const rssBytes = await launched.app.evaluate(({ app }) => app.getAppMetrics().filter(metric => metric.type === "Tab").reduce((sum, metric) => sum + metric.memory.workingSetSize * 1024, 0));
           runs.push({ mode, durationMs: stopped - started, taskSeconds: after.TaskDuration! - before.TaskDuration!, heapBytesBefore: before.JSHeapUsedSize!, heapBytesAfter: after.JSHeapUsedSize!, rssBytes, exportMs, events: report ? report.events.length + report.criticalEvents.length : 0 });
+          console.info("PERFORMANCE_CALIBRATION_PROGRESS", { block, mode, completed_groups: runs.length, duration_ms: stopped - started });
         }
       }
       const offMs = median(runs.filter(run => run.mode === "off").map(run => run.durationMs));

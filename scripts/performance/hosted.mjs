@@ -55,6 +55,20 @@ export function resourceEvidence(document) {
   };
 }
 
+export function calibrationEvidence(document) {
+  const capture = document.controls?.currentCapture;
+  return {
+    status: ["qualified", "probe_overhead_exceeded", "invalid"].includes(document.status) ? document.status : "unknown",
+    completed_groups: Array.isArray(document.runs) ? document.runs.length : 0,
+    durations_ms: (document.runs ?? []).map(run => Number.isFinite(run.durationMs) ? run.durationMs : null),
+    capture: capture ? {
+      status: ["complete", "incomplete", "aborted"].includes(capture.status) ? capture.status : "unknown",
+      reason_codes: (capture.reasonCodes ?? []).filter(value => typeof value === "string" && /^[a-z_:]+$/.test(value)),
+      wall_duration_us: Number.isFinite(capture.wallDurationUs) ? capture.wallDurationUs : null,
+    } : null,
+  };
+}
+
 async function main(mode) {
   await mkdir(output, { recursive: true });
   if (mode === "prepare") {
@@ -84,8 +98,12 @@ async function main(mode) {
   } else if (mode === "summarize") {
     const record = JSON.parse(await readFile(evidence, "utf8"));
     record.resources = [];
+    record.calibrations = [];
     const directory = path.join(root, "apps/desktop/e2e/.artifacts/performance");
     for (const file of await readdir(directory).catch(error => { if (error.code === "ENOENT") return []; throw error; })) {
+      if (file.startsWith("probe-calibration-") && file.endsWith(".json")) {
+        record.calibrations.push(calibrationEvidence(JSON.parse(await readFile(path.join(directory, file), "utf8"))));
+      }
       if (!file.endsWith(".result.json")) continue;
       const document = JSON.parse(await readFile(path.join(directory, file), "utf8"));
       if (["R01", "R02"].includes(document.run?.scenario_id)) record.resources.push(resourceEvidence(document));
