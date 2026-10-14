@@ -64,6 +64,7 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
       });
       const environment = await readEnvironmentIdentity(launched);
       expect(environment.visible).toBe(true);
+      expect(environment.focused).toBe(true);
       expect(environment.devtools_open).toBe(false);
       await page.getByRole("button", { name: `Open ${fixture.project!.name}`, exact: true }).click();
       await page.getByTestId("agent-access-status").waitFor();
@@ -177,7 +178,10 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
           await settle();
           const stopped = await page.evaluate(() => performance.now());
           const exportStarted = performance.now();
-          const report = mode === "light" ? await stop() : null;
+          const windowEvidence = mode === "light"
+            ? await page.evaluate(() => (globalThis as unknown as CalibrationGlobal).__reelterminalPerfDriver.stop("ok"))
+            : null;
+          const report = windowEvidence?.report ?? null;
           const exportMs = performance.now() - exportStarted;
           if (report) {
             // Keep bounded failure diagnostics before asserting completeness.
@@ -188,8 +192,14 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
               stopReason: report.stopReason,
               wallDurationUs: report.wallDurationUs,
               drops: report.drops,
+              hiddenDuringAction: windowEvidence!.hiddenDuringAction,
+              mainStatus: windowEvidence!.main?.ok ? windowEvidence!.main.mainCapture.status : "unavailable",
+              mainReasonCodes: windowEvidence!.main?.ok ? windowEvidence!.main.mainCapture.reasonCodes : [],
             };
             console.info("PERFORMANCE_CALIBRATION_CAPTURE", controls.currentCapture);
+            // Qualification covers both collectors and action-window visibility,
+            // as required by the same driver used for performance scenarios.
+            expect(captureComplete(windowEvidence!)).toBe(true);
             expect(report.status).toBe("complete");
             expect(report.events.filter(event => event.phase === "semantic-state.committed")).toHaveLength(6);
             expect(report.counters["project.full-json-copies"] ?? 0).toBe(0);

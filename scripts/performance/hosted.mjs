@@ -57,14 +57,32 @@ export function resourceEvidence(document) {
 
 export function calibrationEvidence(document) {
   const capture = document.controls?.currentCapture;
+  const numeric = value => Number.isFinite(value) && value >= 0 ? value : null;
   return {
     status: ["qualified", "probe_overhead_exceeded", "invalid"].includes(document.status) ? document.status : "unknown",
     completed_groups: Array.isArray(document.runs) ? document.runs.length : 0,
     durations_ms: (document.runs ?? []).map(run => Number.isFinite(run.durationMs) ? run.durationMs : null),
+    // Preserve already-recorded numeric evidence for attribution. CPU scope
+    // includes initialization/export; it is not the wall qualification metric.
+    task_duration_scope: "includes_capture_initialization_and_export",
+    runs: (document.runs ?? []).slice(0, 20).map((run, index) => ({
+      index,
+      mode: ["off", "light"].includes(run.mode) ? run.mode : "unknown",
+      duration_ms: numeric(run.durationMs),
+      task_seconds: numeric(run.taskSeconds),
+      export_ms: numeric(run.exportMs),
+      events: Number.isInteger(run.events) && run.events >= 0 ? run.events : null,
+      heap_bytes_before: numeric(run.heapBytesBefore),
+      heap_bytes_after: numeric(run.heapBytesAfter),
+      rss_bytes: numeric(run.rssBytes),
+    })),
     capture: capture ? {
       status: ["complete", "incomplete", "aborted"].includes(capture.status) ? capture.status : "unknown",
       reason_codes: (capture.reasonCodes ?? []).filter(value => typeof value === "string" && /^[a-z_:]+$/.test(value)),
       wall_duration_us: Number.isFinite(capture.wallDurationUs) ? capture.wallDurationUs : null,
+      hidden_during_action: typeof capture.hiddenDuringAction === "boolean" ? capture.hiddenDuringAction : null,
+      main_status: ["complete", "incomplete", "unavailable"].includes(capture.mainStatus) ? capture.mainStatus : "unknown",
+      main_reason_codes: (capture.mainReasonCodes ?? []).filter(value => typeof value === "string" && /^[a-z_:]+$/.test(value)),
     } : null,
   };
 }

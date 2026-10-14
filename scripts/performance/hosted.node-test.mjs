@@ -33,3 +33,27 @@ test("failed calibration retains capture reason and timing without raw controls"
   assert.equal(record.completed_groups, 1);
   assert.equal(JSON.stringify(record).includes("private/token"), false);
 });
+
+test("calibration diagnostic projection retains CPU/export evidence without changing qualification", () => {
+  const document = {
+    status: "probe_overhead_exceeded",
+    runs: [{ mode: "light", durationMs: 21000, taskSeconds: 1.25, exportMs: 9,
+      events: 512, heapBytesBefore: 100, heapBytesAfter: 200, rssBytes: 300,
+      token: "private/token", endpoint: "private/token" }],
+    comparison: { toleranceMs: 400, overheadPercent: 6.27 },
+  };
+  const before = structuredClone(document);
+  const evidence = calibrationEvidence(document);
+  assert.deepEqual(document, before);
+  assert.equal(evidence.status, "probe_overhead_exceeded");
+  assert.deepEqual(evidence.runs[0], { index: 0, mode: "light", duration_ms: 21000,
+    task_seconds: 1.25, export_ms: 9, events: 512,
+    heap_bytes_before: 100, heap_bytes_after: 200, rss_bytes: 300 });
+  assert.equal(JSON.stringify(evidence).includes("private/token"), false);
+  assert.equal(evidence.task_duration_scope, "includes_capture_initialization_and_export");
+  const invalid = calibrationEvidence({ status: "invalid", runs: [{ mode: "private/token", taskSeconds: "private/token", exportMs: -1, events: 1.5 }] });
+  assert.equal(invalid.runs[0].mode, "unknown");
+  assert.equal(invalid.runs[0].task_seconds, null);
+  assert.equal(invalid.runs[0].export_ms, null);
+  assert.equal(invalid.runs[0].events, null);
+});
