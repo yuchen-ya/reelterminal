@@ -2,6 +2,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { TimelineState } from "@reelterminal/agent-facade";
+import type { CDPSession } from "playwright-core";
 import type { CaptureReport } from "../../../../web/src/performance";
 import type { ProductPerformanceCaptureApi } from "../../../../web/src/performance/product-capture-bridge";
 import type { PerfStopReply } from "../../../src/shared/performance-contract";
@@ -44,6 +45,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
   const runDir = await prepareProfile(fixture);
   let launched: LaunchedApp | undefined;
   let agent: ExternalAgent | undefined;
+  let cdp: CDPSession | undefined;
   let environment: Awaited<ReturnType<typeof readEnvironmentIdentity>> | undefined;
   let failure: unknown;
   let timedOut = false;
@@ -67,6 +69,8 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
   try {
     launched = await launchApp({ runDir, skipLocaleReload: true });
     const page = launched.page;
+    cdp = await page.context().newCDPSession(page);
+    await cdp.send("Performance.enable");
     page.setDefaultTimeout(options.operationTimeoutMs);
     await launched.app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0]!;
@@ -129,12 +133,15 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
       }));
       if (!renderer.visible) throw new Error("resource-soak window hidden");
       if (renderer.resources.workspace.failedWriteCount > 0) throw new Error("resource-soak save failed instead of draining successfully");
+      // Read available V8/DOM metrics during stable idle, without requesting GC.
+      const metrics = await cdp!.send("Performance.getMetrics");
+      const heap = Object.fromEntries(metrics.metrics.map((metric: { name: string; value: number }) => [metric.name, metric.value]));
       const rss = await launched!.app.evaluate(({ app }) => app.getAppMetrics().filter((metric) => ["Browser", "Tab", "Renderer", "GPU", "Utility"].includes(metric.type)).map((metric) => ({
         role: metric.type === "Browser" ? "main" : metric.type === "Tab" ? "renderer" : metric.type.toLowerCase(),
         process_epoch: `${metric.pid}-${metric.creationTime}`,
         rss_bytes: metric.memory?.workingSetSize === undefined ? null : metric.memory.workingSetSize * 1024,
       })));
-      idle.push({ elapsed_ms: performance.now() - started, heap_bytes: renderer.heap, rss, resources: renderer.resources as unknown as Record<string, unknown> });
+      idle.push({ elapsed_ms: performance.now() - started, heap_bytes: heap.JSHeapUsedSize ?? renderer.heap, heap_source: heap.JSHeapUsedSize !== undefined ? "CDP_JSHeapUsedSize" : renderer.heap !== null ? "Chromium_estimate" : "unavailable", heap_total_bytes: heap.JSHeapTotalSize ?? null, dom: { nodes: heap.Nodes ?? null, documents: heap.Documents ?? null, event_listeners: heap.JSEventListeners ?? null }, rss, resources: renderer.resources as unknown as Record<string, unknown> });
       correctness.save_queue_drained_verified = true;
       console.info("PERFORMANCE_RESOURCE_PROGRESS", {
         scenario: scenarioId,
@@ -244,6 +251,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
       catch (error) { failure ??= error; reasons.push("capture_cleanup_failed"); }
     }
     try { await agent?.close(); } catch (error) { failure ??= error; reasons.push("connector_cleanup_failed"); }
+    await cdp?.detach().catch(() => undefined);
     try { await launched?.close({ keepRunDir: true }); } catch (error) { failure ??= error; reasons.push("process_cleanup_failed"); }
   }
   const directory = path.join(ARTIFACTS_DIR, "performance");

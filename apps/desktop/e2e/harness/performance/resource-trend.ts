@@ -1,6 +1,9 @@
 export interface IdleResourceSample {
   elapsed_ms: number;
   heap_bytes: number | null;
+  heap_source?: "CDP_JSHeapUsedSize" | "Chromium_estimate" | "unavailable";
+  heap_total_bytes?: number | null;
+  dom?: { nodes: number | null; documents: number | null; event_listeners: number | null };
   rss: readonly { role: string; process_epoch: string; rss_bytes: number | null }[];
   resources: Record<string, unknown>;
 }
