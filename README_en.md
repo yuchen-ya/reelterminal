@@ -63,7 +63,7 @@ flowchart LR
 3. Click **“Copy startup prompt”** in the notification.
 4. **Paste the prompt into your AI assistant**, such as Cursor, Claude Code, Antigravity, or Windsurf. It includes the local paths and collaboration rules needed to connect to the open project and query the built-in manual on demand.
 
-This release includes a **Windows x64 installer and portable ZIP**. Extract the entire ZIP before running `ReelTerminal.exe`. macOS builds will follow separately. The Windows builds are unsigned and may show an unknown publisher during installation. Some media-processing features require a separate FFmpeg/ffprobe installation; see [desktop distribution](apps/desktop/DISTRIBUTION.md).
+This release includes a **Windows x64 installer and portable ZIP**, plus **macOS (Apple Silicon / Intel) DMG installers**. Extract the entire ZIP before running `ReelTerminal.exe`. Builds on all platforms are unsigned: Windows may show an unknown-publisher warning during installation; on macOS, if Gatekeeper blocks the first launch, open System Settings → Privacy & Security and click "Open Anyway". Some media-processing features require a separate FFmpeg/ffprobe installation; see [desktop distribution](apps/desktop/DISTRIBUTION.md).
 
 ---
 

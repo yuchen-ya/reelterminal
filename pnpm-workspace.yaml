@@ -44,6 +44,7 @@ minimumReleaseAgeExclude:
   - undici@7.29.1
 patchedDependencies:
   braces@3.0.3: patches/braces@3.0.3.patch
+  plist@3.1.0: patches/plist@3.1.0.patch
 auditConfig:
   # Mitigated by the pinned braces patch. The security gate verifies the
   # installed depth guard before accepting this version-based exception.
