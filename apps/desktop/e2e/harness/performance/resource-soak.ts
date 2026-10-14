@@ -18,6 +18,7 @@ import { createPerformanceResult, summarizeOperations, type RawPerformanceOperat
 import { summarizeIdleMemory, type IdleResourceSample } from "./resource-trend";
 import { saturateHistory, HISTORY_WARMUP_INTERVAL_MS } from "./history-saturation";
 import { validateResultDocument } from "../../../../../scripts/performance/result-contract.mjs";
+import { writeResourceLogs } from "./resource-logs";
 
 type ResourceGlobal = typeof globalThis & {
   __reelterminalPerformanceCapture: ProductPerformanceCaptureApi;
@@ -296,6 +297,10 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
     try { await agent?.close(); } catch (error) { failure ??= error; reasons.push("connector_cleanup_failed"); }
     await cdp?.detach().catch(() => undefined);
     try { await launched?.close({ keepRunDir: true }); } catch (error) { failure ??= error; reasons.push("process_cleanup_failed"); }
+    if (launched) {
+      try { await writeResourceLogs(path.join(directory, runId), launched.output); }
+      catch (error) { failure ??= error; reasons.push("log_evidence_write_failed"); }
+    }
   }
   if (!environment) {
     await writeFile(path.join(directory, `${runId}.preflight.json`), JSON.stringify({ schema: "reelterminal.performance-preflight/v1", status: "invalid", reason_codes: [...reasons, "environment_unavailable"], retained_profile: runDir, build }));
