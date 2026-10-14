@@ -85,3 +85,16 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
   - 真实 FFmpeg 8.1.1 回归：44.1→48 kHz、非零 source start、第二音轨/右声道独有信号、12 秒高峰均比素材实际触发 dynamic；范围测量由 −18.96 LUFS / −0.83 dBTP 变为 −17.94 / −1.00，目标 −18 / −1；脉冲相对独立裁切/重采样参考 0 样本位移。共享正时间戳原点脉冲回归与参考相差 1 样本。另覆盖短片段未达标不发布、无音轨/全静音、处理中取消、checkpoint 失败清理、幂等注册、项目/工作区/revision 冲突、持久收据恢复、保存重开并删除分析缓存后引用仍可播放。
   - 验证：`pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`：77 文件，2067 通过、12 既有跳过；`pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2`：13 文件，663 通过、3 既有跳过（harness 自带 CLI 构建成功）；`pnpm --filter @reelterminal/desktop test:run src/main/live/task-ledger.test.ts src/main/analysis/analysis-records-service.test.ts src/main/live/live-session-host.test.ts src/live-mcp/index.test.ts --maxWorkers=2`：4 文件，41 通过。agent-facade、agent-transport、desktop、web 的 typecheck 均通过；git diff --check 通过。
   - 首轮检查发现并修正数字枚举校验、union 调用方类型、真实 target_offset 使用、未达标状态、正时间戳原点和 transport 旧错误文案断言；最终无未解决失败。限制：本批固定 48 kHz/单或双声道、每次最多 120 秒；非零音轨相对偏移不支持；headless 任务登记在内存中，关闭前注册或之后显式 media.import 持久文件；强制进程终止可能留下未发布 pending 目录；已完成但未注册文件不自动 GC。未访问用户 live API、未打开用户工程、未接入新模型、未 push、发布或打安装包。
+
+## CI 回归修复验收记录（2026-10-14）
+
+- 本批从干净的 `main` / `862a49d2` 开始。上面 A–C 的验证均在 Windows 执行，typecheck 仅覆盖各批列出的包；C 只检查 agent-facade、agent-transport、desktop、web 四包，遗漏 runtime-chromium，不能据此宣称仓库级类型检查或 macOS 全绿。保留原始批次记录，本节补记真实 CI 回归及修复。
+- 对照 `gh run view 38550879925 --job 115808248889 --log-failed`：仓库类型检查在 `source-detail.test.ts:45` 报 TS2339，`job.status.result` 新增 NormalizeAudioArtifact 分支后旧调用没有收窄。更深层的错误是 B 已将 onsets 移出默认摘要，此测试仍读取 `summary.audioSummary.onsets[0]`。修复前本机 `pnpm typecheck` 复现同一 TS2339，`pnpm --filter @reelterminal/runtime-chromium test:run src/source-detail.test.ts` 复现读取 undefined 的 TypeError。
+- source-detail 现确认任务已完成、kind 为 analysis，按 result 的 summary 属性收窄联合类型，验证并取得 `summary.analysisRecord.id`，通过 facade 的 `analysis.get` 读取 `view:"events"` / `series:"audioSummary.onsets"`，source 窗口 `[1.4, 1.6)`、limit 1。AnalysisAgentView 仅作为 facade 未定型返回值的读取类型；没有以 AnalysisJobResult/any 强制转换任务结果，没有直接读取落盘文件或恢复默认长数组。原有 1.5 秒精度与 overview/ROI/aligned 像素断言不变，真实完成 evidence → onset → canonical edit → pixel check。扫描全库 `.ts`、`.mts`、`.tsx` 的音频事件与 analysis 调用，未发现其他仍消费默认摘要长数组的真实受影响路径；直接内核/GUI 完整记录的现有调用保留。
+- 对照 `gh run view 38550880040 --job 115808249907 --log-failed`：macos-latest 在 `audio-normalize.test.ts:97` 因 expected `/var/...` 与 actual `/private/var/...` 失败。fixture 的 mkdtemp(tmpdir()) 根目录未规范化，生产产物已使用真实路径。现于 fixture 创建边界调用标准 `fs.realpath`，后续 fixture 与精确产物/provenance 路径比较共用该根目录；保留实际文件、位置、provenance、响度/峰值、时长/样本与脉冲对齐断言，不改音频算法或平台跳过条件。
+- 修复后实测（Windows，Node 22.22.0、FFmpeg 8.1.1，复用已安装 Playwright Chromium 1223，测试临时目录与隔离浏览器）：
+  - `pnpm typecheck`：成功，递归覆盖全部配置 typecheck 的 workspace 包，包含 runtime-chromium；退出码 0。
+  - `pnpm --filter @reelterminal/runtime-chromium test:run src/source-detail.test.ts`：1 文件、1 测试通过；退出码 0。
+  - `pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`：77 文件通过，2067 测试通过、12 项既有跳过；覆盖 audio-normalize、audio-analysis、analysis-audio-views、jobs 和 live/headless facade 回归；退出码 0。
+  - `git diff --check`：成功。
+- 本机未执行 macOS/Linux；macOS 的原生临时目录别名回归与远端 CI 结果待协调会话审阅推送后验证，不能以本机通过替代。仅本批测试调用修复与此记录提交到本地，不 push、不发布、不打包、不操作用户 live 工程。本批修复已完成，没有将这两项错误移入后续待办。

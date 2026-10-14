@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -18,7 +18,7 @@ let positiveOriginPath = "";
 
 beforeAll(async () => {
   if (skip) return;
-  root = await mkdtemp(join(tmpdir(), "audio-normalize-"));
+  root = await realpath(await mkdtemp(join(tmpdir(), "audio-normalize-")));
   sourcePath = join(root, "right channel source 44k.mka");
   longSourcePath = join(root, "long-source.wav");
   silencePath = join(root, "silent.wav");

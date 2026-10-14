@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAgentFacade } from "@reelterminal/agent-facade";
+import type { AnalysisAgentView } from "@reelterminal/agent-facade/analysis-records";
 import { createChromiumProviders } from "./node/providers";
 import { resolveFfmpegBinaries, runProcess, extractFrameRgba } from "./node/ffmpeg";
 
@@ -42,7 +43,27 @@ it("reveals a brief detail with dense source sampling and a real ROI crop", asyn
       const status = await facade["job.status"]({ jobId: job.value.jobId });
       if (!status.ok) throw new Error(status.error.message);
       if (status.value.state === "error") throw new Error(status.value.error?.message);
-      if (status.value.state === "done") { anchor = (status.value.result!.summary.audioSummary as { onsets: number[] }).onsets[0]; break; }
+      if (status.value.state === "done") {
+        const result = status.value.result;
+        if (status.value.kind !== "analysis" || !result || !("summary" in result)) {
+          throw new Error("audio analysis returned no analysis result");
+        }
+        const record = result.summary.analysisRecord;
+        if (!record || typeof record !== "object" || !("id" in record) || typeof record.id !== "string") {
+          throw new Error("audio analysis returned no record id");
+        }
+        const events = await facade["analysis.get"]({
+          recordId: record.id,
+          view: "events",
+          series: "audioSummary.onsets",
+          startSec: 1.4,
+          endSec: 1.6,
+          limit: 1,
+        });
+        if (!events.ok) throw new Error(events.error.message);
+        anchor = (events.value as AnalysisAgentView).events?.items[0]?.timeSec;
+        break;
+      }
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     expect(anchor).toBeCloseTo(1.5, 2);
