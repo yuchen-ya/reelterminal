@@ -145,7 +145,7 @@ export type DesktopLiveEvent =
   | {
       readonly type: "task";
       readonly jobId: string;
-      readonly kind: "export" | "analysis";
+      readonly kind: "export" | "analysis" | "audio-process";
       readonly projectId: string;
       readonly workspaceId: string;
       readonly state: "queued" | "running" | "done" | "error" | "cancelled";

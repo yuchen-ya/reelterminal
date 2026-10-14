@@ -45,6 +45,14 @@ describe("protocol-neutral command catalog", () => {
       effects: ["read", "task", "filesystem"],
       retry: "never",
     });
+    expect(getCommandCatalogEntry("audio.process.normalize", "live")).toMatchObject({
+      effects: ["write", "task", "filesystem"],
+      retry: "never",
+    });
+    expect(getCommandCatalogEntry("audio.process.register", "live")).toMatchObject({
+      effects: ["write", "filesystem"],
+      retry: "idempotent",
+    });
     expect(getCommandCatalogEntry("media.inspect", "live")).toMatchObject({
       effects: ["read", "task", "filesystem"],
       retry: "never",

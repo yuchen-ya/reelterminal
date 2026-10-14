@@ -15,7 +15,7 @@ import { HELP_VERBS } from "./gui-manual";
  * preview, export, verification, live editor context, and bundled tools.
  * Mutations are serialized, revision-checked, and idempotent.
  *
- * The current registry exposes 54 tools (29 base verbs + 8 material verbs +
+ * The current registry exposes 56 tools (31 base verbs + 8 material verbs +
  *   2 font verbs + 6 preset verbs + 3 help verbs + 6 bundled plugin tools);
  *   FACADE_VERBS, MATERIAL_VERBS, FONT_VERBS, PRESET_VERBS, HELP_VERBS, and
  *   PLUGIN_TOOLS below are the mechanical source of truth for the live
@@ -40,6 +40,7 @@ import type {
   ArtifactRef,
   VerifyReport,
 } from "./providers";
+import type { NormalizeAudioArtifact } from "./audio-normalize";
 import { WORKSPACE_VERBS } from "./workspace-library";
 export { WORKSPACE_VERBS } from "./workspace-library";
 export type { WorkspaceVerb } from "./workspace-library";
@@ -67,6 +68,8 @@ export const FACADE_VERBS = [
   "media.import",
   "media.render_html",
   "media.analyze_start",
+  "audio.process.normalize",
+  "audio.process.register",
   "analysis.list",
   "analysis.get",
   "timeline.get",
@@ -310,6 +313,8 @@ export interface Capabilities {
   };
   readonly projectChanges: CapabilityStatus;
   readonly history: CapabilityStatus;
+  /** Local two-pass FFmpeg loudness normalization and post-render measurement. */
+  readonly audioNormalize: CapabilityStatus;
   /** User-level material library (material.* verbs); headless reports unavailable. */
   readonly materialLibrary: import("./material-library").MaterialLibraryCapability;
   /** User-level custom fonts (font.* verbs); headless reports unavailable. */
@@ -613,6 +618,45 @@ export interface MediaImportResult {
 }
 
 /* ------------------------------------------------------------------ */
+/* audio.process.normalize / audio.process.register                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Start two-pass loudness normalization for an imported media item's
+ * selected audio stream and source range. Processing settings are explicit
+ * so the output is reproducible and can be reported with its measurements.
+ */
+export interface AudioProcessNormalizeParams {
+  readonly mediaId: string;
+  readonly audioStream: number;
+  readonly startSec: number;
+  readonly endSec: number;
+  readonly targetLufs: number;
+  readonly truePeakDbtp: number;
+  readonly loudnessRangeLu: number;
+  readonly sampleRate: 48000;
+  readonly channels: 1 | 2;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey: string;
+}
+
+export interface AudioProcessNormalizeResult {
+  readonly jobId: string;
+  readonly kind: "audio-process";
+  readonly state: "queued" | "running" | "done" | "error" | "cancelled";
+  readonly sourceRevision: number;
+  readonly replayed: boolean;
+}
+
+export interface AudioProcessRegisterParams {
+  readonly jobId: string;
+  readonly expectedRevision: number;
+}
+
+/** The completed normalized file imported through the standard media pipeline. */
+export type AudioProcessRegisterResult = MediaImportResult;
+
+/* ------------------------------------------------------------------ */
 /* media.render_html                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -732,7 +776,7 @@ export interface MediaAnalyzeStartResult {
 
 export interface AnalysisJobResult {
   readonly analysisTypes: readonly MediaAnalysisType[];
-  /** Bounded result summary. Large providers must return ArtifactRefs instead. */
+  /** Audio scalar facts/counts and analysisRecord handle; dense audio data is read via analysis.get. */
   readonly summary: Readonly<Record<string, unknown>>;
   readonly artifacts: readonly ArtifactRef[];
 }
@@ -2209,9 +2253,42 @@ export interface AnalysisListParams {
   readonly limit?: number;
 }
 
-export interface AnalysisGetParams {
-  readonly recordId: string;
+export const ANALYSIS_EVENT_SERIES = [
+  "audioSummary.onsets",
+  "audioSummary.silence",
+  "silence.silentRegions",
+  "beatGrid.beats",
+] as const;
+
+export type AnalysisEventSeries = (typeof ANALYSIS_EVENT_SERIES)[number];
+
+interface AnalysisGetSourceWindow {
+  /** Original source-media seconds. The requested interval is half-open. */
+  readonly startSec?: number;
+  readonly endSec?: number;
 }
+
+export type AnalysisGetParams =
+  | {
+      readonly recordId: string;
+      /** Defaults to summary. Summary is intentionally compact. */
+      readonly view?: "summary";
+    }
+  | ({
+      readonly recordId: string;
+      readonly view: "events";
+      readonly series: AnalysisEventSeries;
+      /** Maximum page size is 256; defaults to 100. */
+      readonly limit?: number;
+      /** Opaque cursor returned by the preceding page. */
+      readonly cursor?: string;
+    } & AnalysisGetSourceWindow)
+  | ({
+      readonly recordId: string;
+      readonly view: "waveform";
+      /** Maximum returned points is 600; defaults to 150. */
+      readonly maxPoints?: number;
+    } & AnalysisGetSourceWindow);
 
 export type AnalysisListResult = readonly {
   readonly id: string;
@@ -2280,7 +2357,7 @@ export interface JobParams {
 
 export interface JobStatusView {
   readonly jobId: string;
-  readonly kind: "export" | "analysis";
+  readonly kind: "export" | "analysis" | "audio-process";
   /** Explicit project/workspace whose fixed input this background task uses. */
   readonly projectId?: string;
   readonly workspaceId?: string;
@@ -2297,8 +2374,8 @@ export interface JobStatusView {
    * artifact (no partial file is ever presented as a result).
    */
   readonly artifact: ArtifactRef | null;
-  /** Present for completed analysis jobs; null for export/non-done jobs. */
-  readonly result: AnalysisJobResult | null;
+  /** Present for completed analysis or audio-processing jobs; null otherwise. */
+  readonly result: AnalysisJobResult | NormalizeAudioArtifact | null;
   readonly error: { readonly code: string; readonly message: string } | null;
   /**
    * export.start destinationPath outcome (both null when no destination was

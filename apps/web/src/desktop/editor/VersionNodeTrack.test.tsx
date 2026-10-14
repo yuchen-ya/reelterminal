@@ -239,7 +239,7 @@ describe("inspector archive browser", () => {
     expect(fixture.enter).toHaveBeenNthCalledWith(2, { kind: "node", nodeId: "branch" }, { label: "Alternate A" });
     expect(fixture.enter).toHaveBeenNthCalledWith(3, { kind: "node", nodeId: "child" }, { label: "Continuation A" });
   });
-  it("lays out portal context actions as four full-width rows", () => {
+  it("lays out portal context actions as five full-width rows", () => {
     const style = document.createElement("style");
     style.textContent = desktopThemeCss;
     document.head.append(style);
@@ -247,7 +247,7 @@ describe("inspector archive browser", () => {
       render(<VersionNodeTrack />);
       fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 20, clientY: 20 });
       const actions = within(screen.getByTestId("version-node-menu")).getAllByRole("menuitem");
-      expect(actions).toHaveLength(4);
+      expect(actions).toHaveLength(5);
       for (const action of actions) {
         const computed = getComputedStyle(action);
         expect(computed.display).toBe("block");

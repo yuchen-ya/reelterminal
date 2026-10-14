@@ -3,10 +3,27 @@ import type { StoreApi } from "zustand";
 import type { ProjectState } from "../project-store";
 import { useEngineStore } from "../engine-store";
 import { splitCaptionIntoSingleLineCues, TitleEngine } from "@reelterminal/core";
-import type { Action } from "@reelterminal/core";
+import type { Action, Subtitle, TextClip } from "@reelterminal/core";
 
 type Get = StoreApi<ProjectState>["getState"];
 type Set = StoreApi<ProjectState>["setState"];
+
+function createCaptionClip(trackId: string, subtitle: Subtitle, metadata?: TextClip["metadata"]): TextClip {
+  const style = subtitle.style;
+  return new TitleEngine().createTextClip({
+    trackId,
+    startTime: subtitle.startTime,
+    duration: subtitle.endTime - subtitle.startTime,
+    text: subtitle.text,
+    ...(style ? { style: {
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      color: style.color,
+      backgroundColor: style.backgroundColor || undefined,
+    } } : {}),
+    metadata,
+  });
+}
 
 export type SubtitleSlice = Pick<
   ProjectState,
@@ -50,24 +67,7 @@ export function createSubtitleSlice(_set: Set, get: Get): SubtitleSlice {
           );
         }
 
-        const style = subtitle.style;
-        const clip = new TitleEngine().createTextClip({
-          trackId,
-          startTime: subtitle.startTime,
-          duration: subtitle.endTime - subtitle.startTime,
-          text: subtitle.text,
-          ...(style
-            ? {
-                style: {
-                  fontFamily: style.fontFamily,
-                  fontSize: style.fontSize,
-                  color: style.color,
-                  backgroundColor: style.backgroundColor || undefined,
-                },
-              }
-            : {}),
-          metadata,
-        });
+        const clip = createCaptionClip(trackId, subtitle, metadata);
         actions.push({
           type: "text/create",
           id: uuidv4(),
@@ -122,10 +122,11 @@ export function createSubtitleSlice(_set: Set, get: Get): SubtitleSlice {
       srtContent: string,
       options?: { sourceClipId?: string; maxWordsPerLine?: number },
     ) => {
+      const startingState = get();
       const subtitleEngine = await useEngineStore
         .getState()
         .getSubtitleEngine();
-      const { project, addSubtitle } = get();
+      const { project } = startingState;
       const { result } = subtitleEngine.importSRT(project.timeline, srtContent);
       const errorMessages = result.errors.map(
         (err: { line: number; message: string }) =>
@@ -142,6 +143,13 @@ export function createSubtitleSlice(_set: Set, get: Get): SubtitleSlice {
         };
       }
 
+      const captionsTrack = project.timeline.tracks.find(track => track.type === "text" && track.name === "Captions");
+      const trackId = captionsTrack?.id ?? `track-${uuidv4()}`;
+      const actions: Action[] = [];
+      if (!captionsTrack) actions.push(
+        { type: "track/add", id: uuidv4(), timestamp: Date.now(), params: { trackType: "text", position: 0, trackId } },
+        { type: "track/rename", id: uuidv4(), timestamp: Date.now(), params: { trackId, name: "Captions" } },
+      );
       for (const subtitle of result.subtitles) {
         const maxWordsPerLine = options?.maxWordsPerLine;
         const cues = maxWordsPerLine
@@ -153,7 +161,7 @@ export function createSubtitleSlice(_set: Set, get: Get): SubtitleSlice {
             )
           : [subtitle];
         for (const cue of cues) {
-          await addSubtitle(
+          const clip = createCaptionClip(trackId,
             {
               ...subtitle,
               text: cue.text,
@@ -166,9 +174,23 @@ export function createSubtitleSlice(_set: Set, get: Get): SubtitleSlice {
               captionMaxWordsPerLine: maxWordsPerLine,
             },
           );
+          actions.push({ type: "text/create", id: uuidv4(), timestamp: Date.now(), params: { clip } });
         }
       }
-
+      const apply = () => {
+        const state = get();
+        if (!state.hasOpenProject || state.readOnlyPreview || state.project !== project || state.actionExecutor !== startingState.actionExecutor) {
+          return { success: false, errors: ["The project changed or is read-only. Import the subtitles again."] };
+        }
+        const batch = state.executeActionBatch(actions, { groupLabel: "Import subtitles", historyOwner: state.actionHistory.getActiveOwner() });
+        return { success: batch.result.success, errors: batch.result.success ? errorMessages : [batch.result.error?.message ?? "Subtitle import failed."] };
+      };
+      const outcome = startingState.submitWorkspaceMutation ? await startingState.submitWorkspaceMutation(apply) : apply();
+      if (!outcome.success) return outcome;
+      if (options?.sourceClipId) {
+        const sourceTrack = get().project.timeline.tracks.find(track => track.clips.some(clip => clip.id === options.sourceClipId));
+        if (sourceTrack) await get().groupTracks(sourceTrack.id, trackId);
+      }
       return { success: true, errors: errorMessages };
     },
 

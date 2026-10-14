@@ -86,6 +86,9 @@ export function createAnalysisRecordsService(
       };
     },
 
+    // The GUI reads the durable record directly so it can show every stored
+    // observation. Agent analysis.get has a separate compact summary plus
+    // paged detail views; the GUI's full-record contract does not use that view.
     get({ projectId, recordId }) {
       return loadForProject(projectId, recordId);
     },
@@ -121,6 +124,7 @@ export function createAnalysisRecordsService(
         analysisTypes: [...record.config.analysisTypes],
         startSec: record.config.startSec,
         endSec: record.config.endSec,
+        ...(record.config.silenceParams ? { silenceParams: record.config.silenceParams } : {}),
         recheckOfRecordId: record.id,
         idempotencyKey: `analysis-gui-recheck-${randomUUID()}`,
         ...(usesCloud

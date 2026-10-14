@@ -71,4 +71,15 @@ describe("EditPage lower collaboration panel", () => {
     expect(useUIStore.getState().activeModal).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Requirements" })).not.toBeInTheDocument();
   });
+
+  it("mounts and closes the recorder requested by the asset menu", async () => {
+    render(<EditPage />);
+    await screen.findByTestId("stub-timeline");
+    act(() => useUIStore.getState().openModal("recorder"));
+    expect(screen.getByRole("dialog", { name: t("Screen Recording") })).toBeVisible();
+    // Unsupported environments must show a reason, rather than a dead entry.
+    expect(screen.getByText(t("Screen recording not supported"))).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: t("Cancel") }));
+    expect(screen.queryByRole("dialog", { name: t("Screen Recording") })).not.toBeInTheDocument();
+  });
 });

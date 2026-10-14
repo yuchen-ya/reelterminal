@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { ToolcraftText as Text } from "@reelterminal/ui";
 
 import { AssetsPanel } from "../../components/editor/AssetsPanel";
+import { RecordingDialogHost } from "../../components/editor/RecordingDialogHost";
 import { DesktopInspector } from "../editor/DesktopInspector";
 import { AgentMediaTaskDialog } from "../../components/editor/dialogs/AgentMediaTaskDialog";
 import { PanelErrorBoundary } from "../../components/ErrorBoundary";
@@ -175,6 +176,7 @@ export function EditPage(): JSX.Element {
           artifacts can still be inspected and imported. Generation is paused
           until it has an independent task mechanism. */}
       <AgentMediaTaskDialog />
+      <RecordingDialogHost />
       {/* Window-level shortcut dispatch for the edit page (the web shell gets
           this from EditorInterface; the desktop tree never mounted it, which
           left every keyboard shortcut dead there). Renders null until the

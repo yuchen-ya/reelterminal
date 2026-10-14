@@ -200,7 +200,7 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
     return typeof token === "string" || typeof token === "number" ? token : undefined;
   };
 
-  const watchExportProgress = (jobId: string, progressToken: McpProgressToken): void => {
+  const watchJobProgress = (jobId: string, progressToken: McpProgressToken): void => {
     progressWatches.get(jobId)?.stop();
     const watch = startJobProgressWatch({
       jobId,
@@ -254,13 +254,13 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
         p: unknown,
       ) => Promise<FacadeResult<unknown>>;
       const result = await call(params);
-      if ((verb === "export.start" || verb === "media.analyze_start") && result.ok) {
+      if ((verb === "export.start" || verb === "media.analyze_start" || verb === "audio.process.normalize") && result.ok) {
         const value = result.value as { readonly jobId?: unknown };
         if (typeof value?.jobId === "string") {
           session.trackJob(value.jobId);
           const progressToken = progressTokenFor(request);
-          if (verb === "export.start" && progressToken !== undefined) {
-            watchExportProgress(value.jobId, progressToken);
+          if ((verb === "export.start" || verb === "audio.process.normalize") && progressToken !== undefined) {
+            watchJobProgress(value.jobId, progressToken);
           }
         }
       }

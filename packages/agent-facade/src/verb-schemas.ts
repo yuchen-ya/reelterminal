@@ -16,7 +16,7 @@ import { REQUIREMENTS_GET_SCHEMA, REQUIREMENTS_LIST_SCHEMA } from "./requirement
  * boundary superset filter, and the runtime validators remain the only
  * authority — a payload can be schema-valid and still fail INVALID_PARAMS.
  */
-import { EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES } from "./types";
+import { ANALYSIS_EVENT_SERIES, EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES } from "./types";
 import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
 import { FONT_LIBRARY_LIMITS } from "./font-library";
 import { PRESET_LIBRARY_LIMITS } from "./preset-verbs";
@@ -274,6 +274,89 @@ export const MEDIA_IMPORT_SCHEMA: ObjectSchema = {
     check: isNonEmptyString,
     describe: "a non-empty string",
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const AUDIO_PROCESS_NORMALIZE_SCHEMA: ObjectSchema = {
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "a non-empty media-library id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  audioStream: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative audio stream index",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  startSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative finite source time in seconds",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  endSec: {
+    check: isPositiveNumber,
+    describe: "a positive finite source end time in seconds, greater than startSec",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  targetLufs: {
+    check: (value) => typeof value === "number" && isFiniteNumber(value) && value >= -70 && value <= -5,
+    describe: "a finite integrated loudness target in [-70, -5] LUFS",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: -70, maximum: -5 } },
+  },
+  truePeakDbtp: {
+    check: (value) => typeof value === "number" && isFiniteNumber(value) && value >= -9 && value <= 0,
+    describe: "a finite true-peak ceiling in [-9, 0] dBTP",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: -9, maximum: 0 } },
+  },
+  loudnessRangeLu: {
+    check: (value) => typeof value === "number" && isFiniteNumber(value) && value >= 1 && value <= 50,
+    describe: "a finite loudness-range target in [1, 50] LU",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 1, maximum: 50 } },
+  },
+  sampleRate: {
+    check: (value) => value === 48_000,
+    describe: "48000 Hz",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 48_000, maximum: 48_000 } },
+  },
+  channels: {
+    check: (value) => value === 1 || value === 2,
+    describe: "1 or 2 output channels",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: [1, 2] } },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative project revision",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty key that replays the same normalization job",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const AUDIO_PROCESS_REGISTER_SCHEMA: ObjectSchema = {
+  jobId: {
+    check: isNonEmptyString,
+    describe: "a non-empty completed audio-process job id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "the non-negative current project revision",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
   },
 };
 
@@ -860,6 +943,41 @@ export const ANALYSIS_GET_SCHEMA: ObjectSchema = {
     describe: 'an analysis record id ("analysis-<uuid>") from analysis.list',
     required: true,
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  view: {
+    check: oneOf(["summary", "events", "waveform"] as const),
+    describe: '"summary" (default), "events", or "waveform"',
+    emits: { kind: "leaf", schema: { enum: ["summary", "events", "waveform"] } },
+  },
+  series: {
+    check: oneOf(ANALYSIS_EVENT_SERIES),
+    describe: "an event series; valid only for view=events",
+    emits: { kind: "leaf", schema: { enum: ANALYSIS_EVENT_SERIES } },
+  },
+  startSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative source-media second; valid only for events/waveform windows",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  endSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative source-media second greater than startSec; windows are half-open",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  limit: {
+    check: (value) => typeof value === "number" && isPositiveInteger(value) && value <= 256,
+    describe: "an integer from 1 to 256; valid only for events (default 100)",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: 256 } },
+  },
+  cursor: {
+    check: isNonEmptyString,
+    describe: "a non-empty cursor returned by the preceding events page",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  maxPoints: {
+    check: (value) => typeof value === "number" && isPositiveInteger(value) && value <= 600,
+    describe: "an integer from 1 to 600; valid only for waveform (default 150)",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: 600 } },
   },
 };
 
@@ -1932,6 +2050,8 @@ export const VERB_PARAM_SCHEMAS: {
   "requirements.get": REQUIREMENTS_GET_SCHEMA,
   "project.changes": PROJECT_CHANGES_SCHEMA,
   "media.import": MEDIA_IMPORT_SCHEMA,
+  "audio.process.normalize": AUDIO_PROCESS_NORMALIZE_SCHEMA,
+  "audio.process.register": AUDIO_PROCESS_REGISTER_SCHEMA,
   "media.render_html": MEDIA_RENDER_HTML_SCHEMA,
   "media.analyze_start": MEDIA_ANALYZE_START_SCHEMA,
   "timeline.get": EMPTY_PARAMS_SCHEMA,

@@ -305,6 +305,7 @@ const capabilities = (): OutputSchemaNode =>
       ),
       projectChanges: capabilityStatus(),
       history: capabilityStatus(),
+      audioNormalize: capabilityStatus(),
       pluginTools: openObject(),
       mediaAnalysis: objectSchema(
         {
@@ -374,7 +375,7 @@ const capabilities = (): OutputSchemaNode =>
       export: capabilityStatus(),
       verify: capabilityStatus(),
     },
-    ["runtime", "stateModel", "mediaImport", "projectChanges", "history", "mediaAnalysis", "professionalEditing", "editOps", "manual", "textOverlay", "preview", "visualInspection", "editorControl", "export", "verify"],
+    ["runtime", "stateModel", "mediaImport", "projectChanges", "history", "audioNormalize", "mediaAnalysis", "professionalEditing", "editOps", "manual", "textOverlay", "preview", "visualInspection", "editorControl", "export", "verify"],
   );
 
 const mediaImportResult = (): OutputSchemaNode =>
@@ -536,6 +537,77 @@ const exportStartResult = (): OutputSchemaNode =>
     ["jobId", "state", "sourceRevision", "replayed"],
   );
 
+const audioProcessNormalizeResult = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      jobId: stringSchema(),
+      kind: constSchema("audio-process"),
+      state: enumSchema(["queued", "running", "done", "error", "cancelled"]),
+      sourceRevision: integerSchema(0),
+      replayed: booleanSchema(),
+    },
+    ["jobId", "kind", "state", "sourceRevision", "replayed"],
+  );
+
+const normalizeAudioMeasurement = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      integratedLufs: numberSchema(),
+      truePeakDbtp: numberSchema(),
+      loudnessRangeLu: numberSchema(),
+      thresholdLufs: numberSchema(),
+    },
+    ["integratedLufs", "truePeakDbtp", "loudnessRangeLu", "thresholdLufs"],
+  );
+
+const normalizeAudioArtifact = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      path: stringSchema(),
+      provenancePath: stringSchema(),
+      source: objectSchema(
+        {
+          mediaId: stringSchema(),
+          path: stringSchema(),
+          audioStream: integerSchema(0),
+          startSec: numberSchema(0),
+          endSec: numberSchema(0),
+          projectId: stringSchema(),
+          workspaceId: stringSchema(),
+          revision: integerSchema(0),
+        },
+        ["mediaId", "path", "audioStream", "startSec", "endSec", "projectId", "revision"],
+      ),
+      parameters: openObject(),
+      before: normalizeAudioMeasurement(),
+      after: normalizeAudioMeasurement(),
+      timing: objectSchema(
+        {
+          sampleRate: enumSchema([48_000]),
+          channels: enumSchema([1, 2]),
+          sampleCount: integerSchema(0),
+          durationSec: numberSchema(0),
+          outputStartSec: numberSchema(0, 0),
+          processingDelaySamples: integerSchema(0, 0),
+        },
+        ["sampleRate", "channels", "sampleCount", "durationSec", "outputStartSec", "processingDelaySamples"],
+      ),
+      bytes: integerSchema(1),
+      sha256: stringSchema(),
+    },
+    ["path", "provenancePath", "source", "parameters", "before", "after", "timing", "bytes", "sha256"],
+  );
+
+const analysisJobResult = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      analysisTypes: arraySchema(enumSchema(MEDIA_ANALYSIS_TYPES), { minItems: 1, maxItems: MEDIA_ANALYSIS_TYPES.length }),
+      summary: openObject(),
+      artifacts: arraySchema(artifactRef()),
+    },
+    ["analysisTypes", "summary", "artifacts"],
+  );
+
 const jobProgress = (): OutputSchemaNode =>
   objectSchema(
     {
@@ -552,11 +624,11 @@ const jobStatus = (): OutputSchemaNode =>
   objectSchema(
     {
       jobId: stringSchema(),
-      kind: enumSchema(["export", "analysis"]),
+      kind: enumSchema(["export", "analysis", "audio-process"]),
       state: enumSchema(["queued", "running", "done", "error", "cancelled"]),
       progress: nullable(jobProgress()),
       artifact: nullable(artifactRef()),
-      result: nullable(openObject()),
+      result: nullable({ anyOf: [analysisJobResult(), normalizeAudioArtifact()] }),
       error: nullable(objectSchema({ code: stringSchema(), message: stringSchema() }, ["code", "message"])),
       deliveredTo: nullable(stringSchema()),
       deliveryError: nullable(stringSchema()),
@@ -761,6 +833,8 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   }, ["revision", "requirement"]),
   "project.changes": projectChangesResult(),
   "media.import": mediaImportResult(),
+  "audio.process.normalize": audioProcessNormalizeResult(),
+  "audio.process.register": mediaImportResult(),
   "media.render_html": objectSchema(
     {
       path: stringSchema(),
@@ -831,7 +905,7 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
     { maxItems: 200 },
   ),
   "analysis.get": objectSchema({
-    schemaVersion: integerSchema(2),
+    schemaVersion: enumSchema([3]),
     id: stringSchema(),
     projectId: stringSchema(),
     sourceRevision: nullable(integerSchema(0)),
@@ -851,7 +925,51 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
     cloudOpinion: nullable(openObject()),
     stale: openObject(),
     recordPath: stringSchema(),
-  }, ["schemaVersion", "id", "projectId", "sourceRevision", "coordinateSpace", "createdAt", "finishedAt", "subject", "analysisTypes", "rangeSec", "config", "provenance", "observations", "inferences", "recommendations", "unknowns", "recheckOf", "cloudOpinion", "stale", "recordPath"]),
+    audioDetailsComplete: booleanSchema(),
+    view: enumSchema(["summary", "events", "waveform"]),
+    details: arraySchema(objectSchema({
+      series: enumSchema([
+        "audioSummary.onsets",
+        "audioSummary.silence",
+        "silence.silentRegions",
+        "beatGrid.beats",
+      ]),
+      totalCount: nullable(integerSchema(0)),
+      storedCount: integerSchema(0),
+      complete: booleanSchema(),
+    }, ["series", "totalCount", "storedCount", "complete"]), { maxItems: 4 }),
+    events: objectSchema({
+      series: enumSchema([
+        "audioSummary.onsets",
+        "audioSummary.silence",
+        "silence.silentRegions",
+        "beatGrid.beats",
+      ]),
+      window: objectSchema({ startSec: numberSchema(0), endSec: numberSchema(0) }, ["startSec", "endSec"]),
+      limit: integerSchema(1, 256),
+      totalMatched: nullable(integerSchema(0)),
+      storedMatched: integerSchema(0),
+      items: arraySchema({
+        anyOf: [
+          objectSchema({ id: stringSchema(), timeSec: numberSchema(0) }, ["id", "timeSec"], true),
+          objectSchema({ id: stringSchema(), startSec: numberSchema(0), endSec: numberSchema(0) }, ["id", "startSec", "endSec"], true),
+        ],
+      }, { maxItems: 256 }),
+      nextCursor: nullable(stringSchema()),
+      complete: booleanSchema(),
+    }, ["series", "window", "limit", "totalMatched", "storedMatched", "items", "nextCursor", "complete"]),
+    waveform: objectSchema({
+      window: objectSchema({ startSec: numberSchema(0), endSec: numberSchema(0) }, ["startSec", "endSec"]),
+      maxPoints: integerSchema(1, 600),
+      points: arraySchema(objectSchema({
+        startSec: numberSchema(0),
+        endSec: numberSchema(0),
+        rms: numberSchema(0),
+        peak: numberSchema(0),
+      }, ["startSec", "endSec", "rms", "peak"]), { maxItems: 600 }),
+      complete: booleanSchema(),
+    }, ["window", "maxPoints", "points", "complete"]),
+  }, ["schemaVersion", "id", "projectId", "sourceRevision", "coordinateSpace", "createdAt", "finishedAt", "subject", "analysisTypes", "rangeSec", "config", "provenance", "observations", "inferences", "recommendations", "unknowns", "recheckOf", "cloudOpinion", "stale", "recordPath", "view", "details"]),
   "export.start": exportStartResult(),
   "job.status": jobStatus(),
   "job.cancel": jobStatus(),

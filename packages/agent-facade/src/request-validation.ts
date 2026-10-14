@@ -51,6 +51,20 @@ function validateFacadeFields(verb: string, params: unknown, mode: "headless" | 
     case "timeline.query":
       validateTimelineQueryTimeRange(valid as unknown as TimelineQueryParams);
       return;
+    case "audio.process.normalize":
+      if ((valid.endSec as number) <= (valid.startSec as number)) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "audio.process.normalize: endSec must be greater than startSec",
+        );
+      }
+      if ((valid.endSec as number) - (valid.startSec as number) > 120) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "audio.process.normalize: the selected source range cannot exceed 120 seconds",
+        );
+      }
+      return;
     case "edit.validate":
     case "edit.apply": {
       const ops = validateEditOpList(valid.ops as unknown[]);

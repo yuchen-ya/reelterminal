@@ -48,6 +48,21 @@ their folder is not on PATH. macOS/Linux packaged prompts invoke the installed
 Electron executable with `ELECTRON_RUN_AS_NODE=1` and the CLI entry in app.asar.
 The desktop does not change Agent configuration.
 
+## Audio analysis and processing
+
+For local audio measurements, start with [material analysis](MATERIAL-ANALYSIS.md).
+Read compact job/record summaries first, then request the needed event window;
+waveforms are opt-in. Silence detection is not speech recognition, and inferred
+beats are not detected downbeats.
+
+For loudness processing, follow [audio normalization](AUDIO-NORMALIZATION.md):
+start the job, inspect the remeasured result, then explicitly register the
+derived asset in the original project/workspace. Registration does not replace
+clips. Keep generated WAV/provenance files as persistent project media, separate
+from disposable analysis caches. Check the running catalog/capabilities rather
+than assuming a published package matches current source. Planned VAD, model
+backends and analysis-driven edits are tracked in [AUDIO-TODO.md](AUDIO-TODO.md).
+
 ## MCP compatibility
 
 Configure an MCP-capable Agent to launch the CLI with `mcp serve` arguments. The

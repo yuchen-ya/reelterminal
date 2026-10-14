@@ -37,6 +37,7 @@ export interface CommandCatalogEntry {
 
 const TASK_VERBS = new Set<FacadeVerb>([
   "media.analyze_start",
+  "audio.process.normalize",
   "preview.render_frame",
   "preview.render_comparison",
   "visual.inspect",
@@ -51,6 +52,8 @@ const FILESYSTEM_VERBS = new Set<FacadeVerb>([
   "media.import",
   "media.render_html",
   "media.analyze_start",
+  "audio.process.normalize",
+  "audio.process.register",
   "preview.render_frame",
   "preview.render_comparison",
   "visual.inspect",
@@ -82,7 +85,7 @@ function retryFor(verb: FacadeVerb, schema: JsonSchemaObject): CommandRetryPolic
   // an idempotency key exists, transports must make retry decisions explicit.
   if (effectsFor(verb).includes("task")) return "never";
   if (!effectsFor(verb).includes("write")) return "safe";
-  return hasIdempotencyKey(schema) ? "idempotent" : "never";
+  return hasIdempotencyKey(schema) || verb === "audio.process.register" ? "idempotent" : "never";
 }
 
 function entryFor(verb: FacadeVerb, mode: CommandCatalogMode): CommandCatalogEntry {

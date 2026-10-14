@@ -47,6 +47,7 @@ function fakeSession(overrides: {
     "edit.apply": () => { calls.push({ verb: "edit.apply", params: {} }); return Promise.resolve({ ok: true, value: { revision: 2, applied: [], replayed: false } }); },
     "preview.render_frame": () => Promise.resolve({ ok: true, value: { artifact: { path: "/a/f.png" } } as any }),
     "export.start": () => Promise.resolve({ ok: true, value: { jobId: overrides.statusQueue?.[0]?.jobId ?? "job-1", state: "queued", sourceRevision: 2, replayed: false } }),
+    "audio.process.normalize": (params: unknown) => { calls.push({ verb: "audio.process.normalize", params }); return Promise.resolve(overrides.verbResults?.["audio.process.normalize"] ?? { ok: true, value: { jobId: "audio-job-1", kind: "audio-process", state: "queued", sourceRevision: 2, replayed: false } as any }); },
     "job.status": () => {
       const queue = overrides.statusQueue ?? [{ jobId: "job-1", state: "done", artifact: { path: "/a/out.mp4" } }];
       const value = queue[Math.min(statusPointer, queue.length - 1)];
@@ -130,7 +131,7 @@ describe("static validation (B.6): reject before step 1", () => {
     expect(staticValidate(steps).some((e) => e.message.includes("no sibling keys"))).toBe(true);
   });
 
-  it("await jobIds may only reference earlier export or analysis job-start steps", () => {
+  it("await jobIds may only reference earlier export, analysis, or audio-process job-start steps", () => {
     const { steps, errors } = parseWorkflowLines(
       [
         JSON.stringify({ id: "t", verb: "timeline.get" }),
@@ -139,7 +140,27 @@ describe("static validation (B.6): reject before step 1", () => {
     );
     expect(errors).toEqual([]);
     const staticErrors = staticValidate(steps);
-    expect(staticErrors.some((e) => e.message.includes("may only reference an earlier export.start or media.analyze_start step"))).toBe(true);
+    expect(staticErrors.some((e) => e.message.includes("may only reference an earlier export.start, media.analyze_start, or audio.process.normalize step"))).toBe(true);
+  });
+
+  it("tracks and awaits audio.process.normalize jobs", async () => {
+    const { steps, errors } = parseWorkflowLines([
+      JSON.stringify({ id: "normalize", verb: "audio.process.normalize", params: { mediaId: "m1", idempotencyKey: "n1" } }),
+      JSON.stringify({ id: "wait", await: { jobId: { $ref: "normalize#/jobId" }, timeoutMs: 1000 } }),
+    ].join("\n"));
+    expect(errors).toEqual([]);
+    expect(staticValidate(steps)).toEqual([]);
+
+    const base = fakeSession({
+      statusQueue: [{ jobId: "audio-job-1", state: "done", progress: null }],
+    });
+    const tracked: string[] = [];
+    const session = { ...base, trackJob: (jobId: string) => tracked.push(jobId) } as TransportSession;
+    const lines = await run(session, steps);
+
+    expect(tracked).toEqual(["audio-job-1"]);
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toMatchObject({ id: "wait", result: { ok: true, value: { jobId: "audio-job-1", state: "done" } } });
   });
 
   it("await bounds: timeoutMs required and ≤ 3 600 000; pollMs bounded 250–30 000", () => {

@@ -128,7 +128,9 @@ describe("media.analyze_start technicalQuality color disclosure", () => {
       expect(status.ok).toBe(true);
       if (!status.ok) throw new Error("status failed");
       if (status.value.state === "done") {
-        return status.value.result!.summary.technicalQuality as {
+        const result = status.value.result;
+        if (!result || !("summary" in result)) throw new Error("technical quality job returned no analysis result");
+        return result.summary.technicalQuality as {
           color: { support: string; facts: { matrix: string | null }; notes: readonly string[] };
         };
       }

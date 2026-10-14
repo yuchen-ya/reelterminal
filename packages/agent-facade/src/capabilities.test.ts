@@ -45,6 +45,28 @@ describe("capabilities.get / session.describe", () => {
     expect(res.value.textOverlay.pixelRendering).toBe(false);
   });
 
+  it("reports audio analysis unavailable without artifactRoot and matches the start gate", async () => {
+    await facade["project.create"]({ name: "Audio capability" });
+    const capabilities = await facade["capabilities.get"]();
+    expect(capabilities.ok).toBe(true);
+    if (!capabilities.ok) return;
+
+    for (const type of ["audioSummary", "silence", "beatGrid"] as const) {
+      const status = capabilities.value.mediaAnalysis.types[type];
+      expect(status.available).toBe(false);
+      expect(status.reason).toContain("artifactRoot");
+    }
+
+    const started = await facade["media.analyze_start"]({
+      mediaId: "media-a",
+      analysisTypes: ["audioSummary"],
+    });
+    expect(started).toMatchObject({
+      ok: false,
+      error: { code: "UNSUPPORTED", message: expect.stringContaining("artifactRoot") },
+    });
+  });
+
   it("reports local-file media import with the configured roots, no URLs", async () => {
     const res = await facade["capabilities.get"]();
     expect(res.ok).toBe(true);

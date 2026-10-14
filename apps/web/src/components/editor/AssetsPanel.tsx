@@ -1,8 +1,7 @@
 import { MediaProductionEditor } from "./MediaProductionEditor";
-import { PRODUCTION_OPERATIONS } from "@reelterminal/core/types/media-production";
 import { captureWorkAssetFromClip, captureWorkAssetFromClips } from "@reelterminal/core/work-assets/capture";
 import { openBoardForEntities } from "../../services/requirement-board";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { formatDuration } from "../../utils/format";
 import { useTranslation } from "react-i18next";
 import {
@@ -22,7 +21,7 @@ import {
   validateSvgContent,
   type SvgValidationErrorCode,
 } from "@reelterminal/core";
-import { useProjectStore } from "../../stores/project-store";
+import { getActiveProjectRuntimeStore, useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useTimelineStore } from "../../stores/timeline-store";
 import type { MediaItem } from "@reelterminal/core";
@@ -58,8 +57,12 @@ import { saveProjectMediaToLibrary } from "../../services/material-library/proje
 import { WorkAssetsTab } from "./panels/WorkAssetsTab";
 import { ToolcraftPopover as Popover, ToolcraftDropdownMenu as DropdownMenu } from "@reelterminal/ui";
 import { SlidersHorizontal, MoreHorizontal, Play } from "@/icons/lucide-compat";
-import { AssetSearch, AssetViewToggle, type AssetView } from "./asset-browser-controls";
+import { AssetSearch, type AssetView } from "./asset-browser-controls";
 import { ProjectMediaPreview } from "./ProjectMediaPreview";
+import { workspaceManager } from "../../services/workspace-manager";
+import { ProjectNodeAssets, ProjectSubtitleList } from "./ProjectNodeAssets";
+import { ProjectAssetResults } from "./ProjectAssetResults";
+import { filterProjectWorkAssets, sortProjectMedia, type ProjectAssetSort, type ProjectMediaType } from "./project-asset-filters";
 
 // Maps shared SVG validation error codes to localized copy so every
 // rejection category (active content, external references, size limits,
@@ -736,6 +739,8 @@ export const AssetsPanel: React.FC = () => {
       setAssetFilter("all");
       setMediaSearch("");
       setShowOnlyMissing(false);
+      setMediaType("all");
+      setNodeScope(null);
       if ((event as CustomEvent<{ workAsset?: boolean }>).detail.workAsset) requestAnimationFrame(() => {
         const card = Array.from(document.querySelectorAll<HTMLElement>("[data-work-asset-id]")).find((element) => element.dataset.workAssetId === id);
         card?.scrollIntoView({ block: "nearest" });
@@ -757,7 +762,7 @@ export const AssetsPanel: React.FC = () => {
     videoHeight: number;
     itemToAdd: MediaItem;
   } | null>(null);
-  const [sortOrder, setSortOrder] = useState<"none" | "asc" | "desc">("none");
+  const [sortOrder, setSortOrder] = useState<ProjectAssetSort>("newest");
   const [generatingBackground, setGeneratingBackground] = useState<
     string | null
   >(null);
@@ -774,6 +779,7 @@ export const AssetsPanel: React.FC = () => {
     replaceMediaAsset,
     relinkMediaAsset,
     updateSettings,
+    readOnlyPreview,
   } = useProjectStore();
   const mediaItems = project.mediaLibrary.items;
   const previewMedia = mediaItems.find((item) => item.id === previewMediaId);
@@ -791,7 +797,68 @@ export const AssetsPanel: React.FC = () => {
   // displayName ?? name).
   const [mediaSearch, setMediaSearch] = useState("");
   const [productionMediaId, setProductionMediaId] = useState<string | null>(null);
-  const [productionFilter, setProductionFilter] = useState("");
+  const [mediaType, setMediaType] = useState<ProjectMediaType>("all");
+  const [showNodeTree, setShowNodeTree] = useState(false);
+  const [relatedMedia, setRelatedMedia] = useState<MediaItem | null>(null);
+  const [nodeScope, setNodeScope] = useState<{ projectId: string; nodeId: string } | null>(null);
+  const workspaceSnapshot = useSyncExternalStore(workspaceManager.subscribe, workspaceManager.getSnapshot);
+  const projectNodes = useMemo(() => {
+    const nodes = workspaceSnapshot.nodes.filter(node => node.projectId === project.id && node.recycledAt === undefined).sort((a, b) => a.createdAt - b.createdAt);
+    const ids = new Set(nodes.map(node => node.id));
+    const children = new Map<string | null, typeof nodes>();
+    for (const node of nodes) {
+      const parentId = node.parentNodeId && ids.has(node.parentNodeId) ? node.parentNodeId : null;
+      const siblings = children.get(parentId) ?? [];
+      siblings.push(node);
+      children.set(parentId, siblings);
+    }
+    const ordered: typeof nodes = [];
+    const append = (parentId: string | null) => {
+      for (const node of children.get(parentId) ?? []) {
+        ordered.push(node);
+        append(node.id);
+      }
+    };
+    append(null);
+    return ordered;
+  }, [workspaceSnapshot.nodes, project.id]);
+  const nodeDepths = useMemo(() => {
+    const depths = new Map<string, number>();
+    for (const node of projectNodes) depths.set(node.id, node.parentNodeId ? (depths.get(node.parentNodeId) ?? -1) + 1 : 0);
+    return depths;
+  }, [projectNodes]);
+  const chooseNode = (nodeId: string | null) => {
+    setNodeScope(nodeId ? { projectId: project.id, nodeId } : null);
+    setShowNodeTree(false);
+    setShowOnlyMissing(false);
+    setRelatedMedia(null);
+  };
+  const scopedNode = nodeScope?.projectId === project.id ? projectNodes.find(node => node.id === nodeScope.nodeId) : undefined;
+  useEffect(() => {
+    setNodeScope(null);
+    setShowNodeTree(false);
+    setRelatedMedia(null);
+    setMediaType("all");
+    setMediaSearch("");
+    setShowOnlyMissing(false);
+    setAssetFilter("all");
+  }, [project.id]);
+  useEffect(() => {
+    const filterByNode = (event: Event) => {
+      const target = (event as CustomEvent<{ projectId: string; nodeId: string }>).detail;
+      if (target.projectId !== project.id) return;
+      setNodeScope(target);
+      setShowNodeTree(false);
+      setRelatedMedia(null);
+      setAssetFilter("all");
+      setActiveTabRaw("media");
+      setMediaType("all");
+      setMediaSearch("");
+      setShowOnlyMissing(false);
+    };
+    window.addEventListener("reelterminal:node-assets", filterByNode);
+    return () => window.removeEventListener("reelterminal:node-assets", filterByNode);
+  }, [project.id]);
   useEffect(() => {
     const edit = (event: Event) => setProductionMediaId((event as CustomEvent<string>).detail);
     window.addEventListener("reelterminal:production-edit", edit);
@@ -802,20 +869,16 @@ export const AssetsPanel: React.FC = () => {
   const normalizedMediaSearch = mediaSearch.trim().toLowerCase();
 
   // Filter media items by the missing-assets toggle and the search box, then optional sort
-  const baseFilteredItems = mediaItems.filter((item) => !productionFilter || item.production?.status === productionFilter || item.production?.steps.some((step) => step.operation === productionFilter)).filter((item) =>
+  const baseFilteredItems = mediaItems.filter((item) => mediaType === "all" || item.type === mediaType).filter((item) =>
     showOnlyMissing ? item.isPlaceholder : true,
   ).filter((item) =>
     normalizedMediaSearch
       ? mediaDisplayName(item).toLowerCase().includes(normalizedMediaSearch)
       : true,
   );
-  const filteredItems =
-    sortOrder === "none"
-      ? baseFilteredItems
-      : [...baseFilteredItems].sort((a, b) => {
-          const comparison = mediaDisplayName(a).localeCompare(mediaDisplayName(b));
-          return sortOrder === "desc" ? -comparison : comparison;
-        });
+  const filteredItems = sortProjectMedia(baseFilteredItems, sortOrder);
+  const filteredWorkItems = showOnlyMissing ? [] : filterProjectWorkAssets(project, mediaType, assetFilter, mediaSearch, sortOrder);
+  const visibleItemCount = ((assetFilter === "all" || assetFilter === "media") ? filteredItems.length : 0) + filteredWorkItems.length;
 
   // Items whose resolved display name collides with another item get a short
   // id suffix so same-named assets stay distinguishable in the panel.
@@ -847,15 +910,24 @@ export const AssetsPanel: React.FC = () => {
 
   // Handle file import with loading state
   const handleFileImport = useCallback(
-    async (files: FileList | null) => {
+    async (files: FileList | readonly File[] | null) => {
       if (!files || files.length === 0) return;
 
       setIsImporting(true);
+      setNodeScope(null);
+      setMediaType("all");
+      setMediaSearch("");
       const fileArray = Array.from(files);
+      const targetStore = getActiveProjectRuntimeStore();
+      const targetProject = targetStore.getState().project.id;
 
       try {
         for (let i = 0; i < fileArray.length; i++) {
           const file = fileArray[i];
+          if (getActiveProjectRuntimeStore() !== targetStore || targetStore.getState().project.id !== targetProject || targetStore.getState().readOnlyPreview) {
+            toast.error(t("media.importFailedTitle"), t("projectMediaFilters.importTargetChanged"));
+            break;
+          }
           setImportProgress(
             t("media.importingProgress", {
               name: file.name,
@@ -864,6 +936,23 @@ export const AssetsPanel: React.FC = () => {
             }),
           );
 
+          if (/\.(srt|vtt)$/i.test(file.name)) {
+            const content = await file.text();
+            if (getActiveProjectRuntimeStore() !== targetStore || targetStore.getState().project.id !== targetProject || targetStore.getState().readOnlyPreview) {
+              toast.error(t("media.importFailedTitle"), t("projectMediaFilters.importTargetChanged"));
+              break;
+            }
+            const result = await targetStore.getState().importSRT(content);
+            if (!result.success) toast.error(t("media.importFailedTitle"), result.errors.join("\n"));
+            else {
+              setNodeScope(null);
+              setMediaType("subtitle");
+              setMediaSearch("");
+              toast.success(t("projectMediaFilters.subtitleImported"), file.name);
+              if (result.errors.length) toast.warning(t("projectMediaFilters.subtitleWarnings"), result.errors.join("\n"));
+            }
+            continue;
+          }
           const result = await importMedia(file);
 
           // Surface import failures (e.g. the FFmpeg.wasm transcode fallback
@@ -884,7 +973,7 @@ export const AssetsPanel: React.FC = () => {
           }
         }
       } catch (error) {
-        console.error("Import failed:", error);
+        toast.error(t("media.importFailedTitle"), error instanceof Error ? error.message : String(error));
       } finally {
         setIsImporting(false);
         setImportProgress("");
@@ -900,7 +989,7 @@ export const AssetsPanel: React.FC = () => {
       setIsDragOver(false);
 
       // Snapshot dataTransfer synchronously — it becomes inert after the first await.
-      const droppedFiles = e.dataTransfer.files;
+      const droppedFiles = Array.from(e.dataTransfer.files);
       const handlePromises =
         "getAsFileSystemHandle" in DataTransferItem.prototype
           ? Array.from(e.dataTransfer.items)
@@ -1196,6 +1285,7 @@ export const AssetsPanel: React.FC = () => {
   );
 
   const triggerFileInput = useCallback(() => {
+    setNodeScope(null);
     fileInputRef.current?.click();
   }, []);
 
@@ -1282,62 +1372,63 @@ export const AssetsPanel: React.FC = () => {
           <div className="asset-browser" data-testid="project-asset-browser">
             <div className="asset-browser-header">
               {productionMedia && <MediaProductionEditor key={productionMedia.id} item={productionMedia} onClose={() => setProductionMediaId(null)} />}
-              <div className="asset-browser-title">
-                {t("projectAssets.title")}
-                <span className="asset-browser-count">{mediaItems.length + (project.workAssets?.length ?? 0)}</span>
-              </div>
-              <div className="asset-browser-toolbar">
+              <div className="asset-browser-toolbar project-media-toolbar">
+                <div className="asset-browser-title">
+                  {t("projectAssets.title")}
+                  <span className="asset-browser-count">{scopedNode ? scopedNode.mediaIds.length : mediaItems.length + (project.workAssets?.length ?? 0)}</span>
+                </div>
                 <button type="button" aria-label={t("Import media")} onClick={triggerFileInput}
                   className="asset-browser-button asset-browser-button-primary"><Plus size={14} aria-hidden />{t("Import")}</button>
-                <button type="button" aria-label={t("projectAssets.capture")} title={t("projectAssets.capture")}
-                  disabled={!selectedTimelineItems.some((item) => item.type === "clip")} onClick={() => setCaptureName("")}
-                  className="asset-browser-button asset-browser-button-icon"><FolderPlus size={14} aria-hidden /></button>
-                <div className="flex-1" />
-                <AssetViewToggle value={mediaView} onChange={setMediaView} />
                 <DropdownMenu alignment="end" size="sm" button={{ label: t("assetBrowser.more"), isIconOnly: true,
                   variant: "ghost", icon: <MoreHorizontal size={15} />, className: "asset-browser-button asset-browser-button-icon" }}
-                  items={[{ label: t("Record"), icon: <Circle size={14} />, onClick: () => openModal("recorder") }]} />
+                  items={[
+                    { label: t("Record"), icon: <Circle size={14} />, onClick: () => openModal("recorder") },
+                    { label: t(mediaView === "grid" ? "assetBrowser.list" : "assetBrowser.grid"), onClick: () => setMediaView(mediaView === "grid" ? "list" : "grid") },
+                    { label: t("projectAssets.capture"), icon: <FolderPlus size={14} />, isDisabled: Boolean(scopedNode) || !selectedTimelineItems.some(item => item.type === "clip"), onClick: () => setCaptureName("") },
+                  ]} />
               </div>
               {captureName !== null && <form className="mb-3 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void captureSelection(); }}>
-                <input autoFocus aria-label={t("workAssets.renameAriaLabel")} placeholder={t("projectAssets.name")} value={captureName} onChange={(event) => setCaptureName(event.target.value)} className="w-full rounded border border-border bg-bg-2 px-2 py-1 text-xs text-fg" />
+                <input aria-label={t("workAssets.renameAriaLabel")} placeholder={t("projectAssets.name")} value={captureName} onChange={(event) => setCaptureName(event.target.value)} className="w-full rounded border border-border bg-bg-2 px-2 py-1 text-xs text-fg" />
                 <button disabled={!captureName.trim() || capturing} className="rounded bg-accent px-2 py-1 text-xs text-accent-fg disabled:opacity-40">{t("projectAssets.save")}</button>
                 <button type="button" onClick={() => setCaptureName(null)} className="text-xs text-fg-muted">{t("common.cancel")}</button>
               </form>}
               <div className="asset-browser-search-row">
                 <AssetSearch value={mediaSearch} onChange={setMediaSearch} label={t("projectAssets.search")} />
-                <Popover alignment="end" label={t("assetBrowser.filters")} content={
-                  <div className="asset-filter-panel">
-                    <label>{t("production.filter")}
-                      <select aria-label={t("production.filter")} value={productionFilter} onChange={(event) => setProductionFilter(event.target.value)}>
-                        <option value="">{t("production.all")}</option>
-                        {["pending", "adopted", "rejected", ...PRODUCTION_OPERATIONS].map((value) => <option key={value} value={value}>{t(`production.${value}`)}</option>)}
-                      </select>
-                    </label>
-                    <label>{t("Sort media")}
-                      <select aria-label={t("Sort media")} value={sortOrder} onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}>
-                        <option value="none">{t("assetBrowser.importOrder")}</option>
-                        <option value="asc">{t("assetBrowser.nameAsc")}</option>
-                        <option value="desc">{t("assetBrowser.nameDesc")}</option>
-                      </select>
-                    </label>
-                    <button type="button" className="asset-browser-button" onClick={() => { setProductionFilter(""); setSortOrder("none"); }}>{t("assetBrowser.resetFilters")}</button>
-                  </div>
-                }>
-                  <button type="button" aria-label={t("assetBrowser.filters")} title={t("assetBrowser.filters")}
-                    className="asset-browser-button asset-browser-button-icon"><SlidersHorizontal size={14} aria-hidden />
-                    {productionFilter && <span className="h-1 w-1 rounded-full bg-accent" />}
-                  </button>
-                </Popover>
               </div>
-              <div className="asset-browser-tabs" role="group" aria-label={t("assetBrowser.categories")}>
-                {(["all", "media", "single", "multi"] as const).map((kind) => <button key={kind} type="button"
-                  aria-label={t(`projectAssets.${kind}`)} aria-pressed={assetFilter === kind}
-                  onClick={() => setAssetFilter(kind)}>{t(`assetBrowser.${kind}`)}</button>)}
+              <div className="project-media-types" role="group" aria-label={t("projectMediaFilters.type")}>
+                {(["all", "video", "audio", "image", "subtitle"] as const).map(type => <button key={type} type="button" aria-pressed={mediaType === type} onClick={() => { setMediaType(type); if (type === "subtitle") setAssetFilter("all"); }}>{t(`projectMediaFilters.${type}`)}</button>)}
               </div>
+              <div className="project-media-context">
+                {scopedNode ? <div className="project-media-scope-chip">
+                  <span>{t("projectMediaFilters.selectedNode", { name: scopedNode.name })}</span>
+                  <button type="button" aria-label={t("projectMediaFilters.clearNode")} onClick={() => chooseNode(null)}>×</button>
+                </div> : <span className="text-xs text-fg-muted">{t(readOnlyPreview ? "projectMediaFilters.preview" : "projectMediaFilters.current")}</span>}
+                <div className="project-media-context-actions">
+                  <button type="button" className="asset-browser-button" aria-expanded={showNodeTree} onClick={() => setShowNodeTree(!showNodeTree)}>{t("projectMediaFilters.browseNodes")}</button>
+                  <Popover alignment="end" label={t("projectMediaFilters.filters")} content={
+                    <div className="asset-filter-panel">
+                      <label>{t("projectMediaFilters.kind")}
+                        <select aria-label={t("projectMediaFilters.kind")} disabled={mediaType === "subtitle"} value={assetFilter} onChange={event => setAssetFilter(event.target.value as typeof assetFilter)}>
+                          {(["all", "media", "single", "multi"] as const).map(kind => <option key={kind} value={kind}>{t(`projectAssets.${kind}`)}</option>)}
+                        </select>
+                      </label>
+                      <button type="button" className="asset-browser-button" onClick={() => { chooseNode(null); setMediaType("all"); setShowOnlyMissing(false); setMediaSearch(""); setAssetFilter("all"); }}>{t("assetBrowser.resetFilters")}</button>
+                    </div>
+                  }><button type="button" className="asset-browser-button" aria-label={t("projectMediaFilters.filters")}><SlidersHorizontal size={14} aria-hidden />{t("projectMediaFilters.filters")}{assetFilter !== "all" && " · 1"}</button></Popover>
+                </div>
+              </div>
+              {showNodeTree && <div className="project-media-node-tree" role="group" aria-label={t("projectMediaFilters.nodes")}>
+                <button type="button" aria-pressed={!scopedNode} onClick={() => chooseNode(null)}>{t(readOnlyPreview ? "projectMediaFilters.preview" : "projectMediaFilters.current")}</button>
+                {projectNodes.length === 0 && <p className="p-2 text-xs text-fg-muted">{t("projectMediaFilters.noNodes")}</p>}
+                {projectNodes.map(node => <button key={node.id} type="button" data-testid={`asset-node-${node.id}`} aria-pressed={scopedNode?.id === node.id} style={{ paddingLeft: 8 + Math.min(nodeDepths.get(node.id) ?? 0, 6) * 12 }} onClick={() => chooseNode(node.id)}>
+                  <span>{(nodeDepths.get(node.id) ?? 0) > 0 ? "└ " : ""}{node.name}</span><span className="text-fg-muted">{node.mediaIds.length}</span>
+                </button>)}
+              </div>}
+
             </div>
             <div className="asset-browser-content custom-scrollbar">
 
-            {missingAssetsCount > 0 && (
+            {!scopedNode && mediaType !== "subtitle" && missingAssetsCount > 0 && (
               <div className="px-4 pb-3 space-y-2">
                 <PanelButton
                   label={t("Show Only Missing Assets")}
@@ -1374,16 +1465,18 @@ export const AssetsPanel: React.FC = () => {
               onDragLeave={handleDragLeave}
             >
               <div className="relative">
+                {scopedNode ? <ProjectNodeAssets key={`${project.id}:${scopedNode.id}`} projectId={project.id} nodeId={scopedNode.id} mediaType={mediaType} search={mediaSearch} sortOrder={sortOrder} onSort={setSortOrder} kind={assetFilter} onSelectMedia={setRelatedMedia} /> : mediaType === "subtitle" ? <ProjectSubtitleList project={{ ...project, textClips: useProjectStore.getState().getAllTextClips() }} search={mediaSearch} sortOrder={sortOrder} onSort={setSortOrder} /> : <>
+                <ProjectAssetResults count={visibleItemCount} sort={sortOrder} onSort={setSortOrder} />
                 {(assetFilter === "all" || assetFilter === "media") && <>
-                {filteredItems.length > 0 && (
+                {filteredItems.length > 0 && filteredWorkItems.length > 0 && (
                   <div className="asset-browser-section">
                     <span>{t("Project Media")}</span>
                     <span>{filteredItems.length}</span>
                   </div>
                 )}
                 {filteredItems.length === 0 ? (
-                  assetFilter === "all" && (project.workAssets?.length ?? 0) > 0 ? null :
-                  <EmptyState onImport={triggerFileInput} />
+                  filteredWorkItems.length > 0 ? null :
+                  mediaType !== "all" || mediaSearch || showOnlyMissing ? <p className="p-4 text-sm text-fg-muted">{t("projectMediaFilters.noMatches")}</p> : <EmptyState onImport={triggerFileInput} />
                 ) : (
                   <div className={mediaView === "grid" ? "asset-browser-grid" : "flex flex-col gap-1"}>
                     {filteredItems.map((item) => (
@@ -1393,7 +1486,7 @@ export const AssetsPanel: React.FC = () => {
                         isSelected={isSelected(item.id)}
                         viewMode={mediaView === "grid" ? "large" : "list"}
                         hasNameConflict={duplicateNameIds.has(item.id)}
-                        onSelect={() => handleSelectItem(item.id)}
+                        onSelect={() => { handleSelectItem(item.id); setRelatedMedia(item); }}
                         onDelete={() => handleDeleteItem(item.id)}
                         onReplace={() => handleReplaceAsset(item.id)}
                         onRename={(name) => handleRenameMedia(item.id, name)}
@@ -1407,7 +1500,8 @@ export const AssetsPanel: React.FC = () => {
                 )}
 
                 </>}
-                {assetFilter !== "media" && <WorkAssetsTab embedded search={mediaSearch} kind={assetFilter === "all" ? undefined : assetFilter} />}
+                {assetFilter !== "media" && <WorkAssetsTab embedded items={filteredWorkItems} search={mediaSearch} kind={assetFilter === "all" ? undefined : assetFilter} />}
+                </>}
 
                 {isDragOver && (
                   <div className="absolute inset-4 border-2 border-dashed border-accent rounded-xl flex items-center justify-center bg-accent-soft pointer-events-none z-50 backdrop-blur-sm">
@@ -1417,6 +1511,14 @@ export const AssetsPanel: React.FC = () => {
                 )}
               </div>
             </div>
+            {relatedMedia && <div className="project-media-relations" data-testid="media-node-relations">
+              <div className="flex items-center justify-between gap-2"><span className="min-w-0 break-words text-xs text-fg">{mediaDisplayName(relatedMedia)}</span><button type="button" className="asset-browser-button" aria-label={t("projectMediaFilters.closeRelations")} onClick={() => setRelatedMedia(null)}>×</button></div>
+              <p className="mb-2 text-xs text-fg-muted">{t("projectMediaFilters.relatedNodes")}</p>
+              <div className="flex flex-wrap gap-1">
+                {projectNodes.filter(node => node.mediaIds.includes(relatedMedia.id)).map(node => <button key={node.id} type="button" className="asset-browser-button asset-browser-button-primary" onClick={() => chooseNode(node.id)}>{node.name} ↗</button>)}
+                {!projectNodes.some(node => node.mediaIds.includes(relatedMedia.id)) && <span className="text-xs text-fg-muted">{t("projectMediaFilters.noRelatedNodes")}</span>}
+              </div>
+            </div>}
             </div>
           </div>
         );
@@ -1768,7 +1870,7 @@ export const AssetsPanel: React.FC = () => {
           ref={fileInputRef}
           type="file"
           aria-label={t("Import media")}
-          accept="video/*,audio/*,image/*"
+          accept="video/*,audio/*,image/*,.srt,.vtt"
           multiple
           className="hidden"
           onChange={(event) => {

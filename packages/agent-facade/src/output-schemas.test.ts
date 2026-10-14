@@ -54,6 +54,37 @@ describe("emitted MCP output schemas", () => {
     expect((value.properties as Schema).type).toEqual({ enum: ["video", "audio", "image"] });
   });
 
+  it("describes audio-process start, artifact status, registration, and capability results", () => {
+    const start = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["audio.process.normalize"] as unknown as Schema;
+    const startValue = (start.properties as Schema).value as Schema;
+    expect(startValue.required).toEqual(["jobId", "kind", "state", "sourceRevision", "replayed"]);
+    expect((startValue.properties as Schema).kind).toEqual({ const: "audio-process" });
+
+    const register = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["audio.process.register"] as unknown as Schema;
+    expect((register.properties as Schema).value).toEqual(
+      ((EMITTED_VERB_OUTPUT_JSON_SCHEMAS["media.import"] as unknown as Schema).properties as Schema).value,
+    );
+
+    const status = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["job.status"] as unknown as Schema;
+    const statusValue = (status.properties as Schema).value as Schema;
+    expect((statusValue.properties as Schema).kind).toEqual({ enum: ["export", "analysis", "audio-process"] });
+    const result = (statusValue.properties as Schema).result as Schema;
+    const variants = ((result.anyOf as Schema[])[0].anyOf as Schema[]);
+    expect(variants).toHaveLength(2);
+    const normalized = variants[1];
+    expect(normalized.required).toEqual([
+      "path", "provenancePath", "source", "parameters", "before", "after", "timing", "bytes", "sha256",
+    ]);
+    expect(((normalized.properties as Schema).timing as Schema).properties).toMatchObject({
+      sampleRate: { enum: [48000] },
+      outputStartSec: { type: "number", minimum: 0, maximum: 0 },
+      processingDelaySamples: { type: "integer", minimum: 0, maximum: 0 },
+    });
+
+    const capabilities = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["capabilities.get"] as unknown as Schema;
+    expect(((capabilities.properties as Schema).value as Schema).properties).toHaveProperty("audioNormalize");
+  });
+
   it("makes evidence coordinates and identity explicit in visual and analysis results", () => {
     const visual = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["visual.inspect"] as unknown as Schema;
     const visualValue = (visual.properties as Schema).value as Schema;
@@ -75,6 +106,30 @@ describe("emitted MCP output schemas", () => {
     const analysisValue = (analysis.properties as Schema).value as Schema;
     expect(analysisValue.required).toContain("sourceRevision");
     expect((analysisValue.properties as Schema).coordinateSpace).toEqual({ const: "source" });
+  });
+
+  it("bounds analysis event pages and waveform output while exposing historical completeness", () => {
+    const schema = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["analysis.get"] as unknown as Schema;
+    const value = (schema.properties as Schema).value as Schema;
+    const properties = value.properties as Schema;
+    expect((properties.schemaVersion as Schema).enum).toEqual([3]);
+    expect(properties.view).toEqual({ enum: ["summary", "events", "waveform"] });
+
+    const details = properties.details as Schema;
+    expect(details.maxItems).toBe(4);
+    const detail = details.items as Schema;
+    expect(detail.required).toEqual(["series", "totalCount", "storedCount", "complete"]);
+    expect((detail.properties as Schema).totalCount).toMatchObject({ anyOf: [{ type: "integer", minimum: 0 }, { const: null }] });
+
+    const events = properties.events as Schema;
+    expect(((events.properties as Schema).items as Schema).maxItems).toBe(256);
+    expect(((events.properties as Schema).limit as Schema)).toMatchObject({ type: "integer", minimum: 1, maximum: 256 });
+    expect(events.required).toContain("storedMatched");
+    expect((events.properties as Schema).storedMatched).toEqual({ type: "integer", minimum: 0 });
+    expect((events.properties as Schema).totalMatched).toMatchObject({ anyOf: [{ type: "integer", minimum: 0 }, { const: null }] });
+    const waveform = properties.waveform as Schema;
+    expect(((waveform.properties as Schema).points as Schema).maxItems).toBe(600);
+    expect((waveform.properties as Schema).maxPoints).toMatchObject({ type: "integer", minimum: 1, maximum: 600 });
   });
 
   it("exposes workspace routing identity from editor.get_context without requiring it headlessly", () => {

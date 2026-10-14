@@ -14,8 +14,11 @@ Files saved/imported outside this root retain their chosen locations.
                                    bytes, the user-level material library),
                                    settings, live artifacts, caches
   projects/                        default save folder for .oreel projects
-  agent-workspace/                 the Agent workspace (jobs/ + shared/);
+  agent-workspace/                 the Agent workspace;
                                    `capabilities.get` → `value.mediaImport.recommendedRoot`
+    generated-assets/              persistent generated media, including
+                                   audio-normalize/<jobId>/ WAV + provenance;
+                                   referenced assets are not analysis caches
   logs/                            reserved
 ```
 

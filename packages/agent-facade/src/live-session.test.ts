@@ -26,7 +26,7 @@ import {
   LiveWriterLease,
   type LiveAgentFacade,
 } from "./index";
-import type { LivePersistedTaskRecord, LiveTaskInputReferences } from "./live-session";
+import type { LivePersistedTaskRecord, LiveTaskInput, LiveTaskInputReferences, LiveTaskLifecycle } from "./live-session";
 import { LiveStoreConflictError } from "./live-store";
 import { stableStringify } from "./idempotency";
 import type {
@@ -46,8 +46,11 @@ import type {
   RenderProvider,
 } from "./providers";
 import { READ_ONLY_VERBS } from "./types";
-import type { MediaImportResult } from "./types";
+import type { AnalysisGetParams, JobStatusView, MediaImportResult } from "./types";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
+import { resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
+
+const LIVE_AUDIO_TOOLCHAIN = await resolveToolFfmpeg();
 
 /* --------------------------- FakeLiveStore --------------------------- */
 
@@ -504,6 +507,7 @@ function liveFacade(
     store: LiveProjectStore;
     prepareRenderProject: (project: Project) => Promise<Project>;
     taskInputReferences: LiveTaskInputReferences;
+    taskLifecycle: import("./live-session").LiveTaskLifecycle;
     executionScope: () => string;
   }>,
 ): LiveAgentFacade {
@@ -521,8 +525,80 @@ function liveFacade(
     ...(opts?.workspaceLibrary ? { workspaceLibrary: opts.workspaceLibrary } : {}),
     ...(opts?.prepareRenderProject ? { prepareRenderProject: opts.prepareRenderProject } : {}),
     ...(opts?.taskInputReferences ? { taskInputReferences: opts.taskInputReferences } : {}),
+    ...(opts?.taskLifecycle ? { taskLifecycle: opts.taskLifecycle } : {}),
     ...(opts?.executionScope ? { executionScope: opts.executionScope } : {}),
   });
+}
+
+function memoryTaskLifecycle(): { lifecycle: LiveTaskLifecycle; records: Map<string, LivePersistedTaskRecord> } {
+  const records = new Map<string, LivePersistedTaskRecord>();
+  const lifecycle: LiveTaskLifecycle = {
+    list: () => [...records.values()].map((record) => structuredClone(record)),
+    begin: (input: LiveTaskInput) => {
+      const now = new Date().toISOString();
+      const status: JobStatusView = {
+        jobId: input.jobId,
+        kind: input.kind,
+        sourceRevision: input.sourceRevision,
+        state: "queued",
+        progress: null,
+        artifact: null,
+        result: null,
+        error: null,
+        deliveredTo: null,
+        deliveryError: null,
+        route: null,
+        upscalingRequestedButInactive: false,
+        cancelRequested: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+      records.set(input.jobId, {
+        projectId: input.projectId,
+        workspaceId: input.workspaceId,
+        status,
+        parameters: structuredClone(input.parameters),
+      });
+    },
+    update: (status) => {
+      const record = records.get(status.jobId);
+      if (record) records.set(status.jobId, { ...record, status: structuredClone(status) });
+    },
+  };
+  return { lifecycle, records };
+}
+
+async function writeFloatWav(
+  root: string,
+  durationSec: number,
+  beatTimes: readonly number[] = [],
+): Promise<string> {
+  const sampleRate = 8000;
+  const data = Buffer.alloc(sampleRate * durationSec * 4);
+  for (const time of beatTimes) {
+    for (let offset = 0; offset < 960; offset++) {
+      const index = Math.round(time * sampleRate) + offset;
+      if (index >= sampleRate * durationSec) break;
+      const sample = 0.8 * Math.sin(offset * 0.06) * Math.exp(-offset / 220);
+      data.writeFloatLE(sample, index * 4);
+    }
+  }
+  const header = Buffer.alloc(44);
+  header.write("RIFF");
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write("WAVEfmt ", 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(3, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 4, 28);
+  header.writeUInt16LE(4, 32);
+  header.writeUInt16LE(32, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(data.length, 40);
+  const filePath = path.join(root, `audio-${durationSec}.wav`);
+  await writeFile(filePath, Buffer.concat([header, data]));
+  return filePath;
 }
 
 const TEXT_BATCH = [
@@ -2591,7 +2667,9 @@ describe("live cloud review is read-only", () => {
       }
       expect(job).toMatchObject({ ok: true, value: { state: "done", sourceRevision: state.revision, result: { summary: { videoReview: { provider: "qwen3.5-omni-flash" } } } } });
       if (!job?.ok) throw new Error("analysis did not finish");
-      const recordId = (job.value.result?.summary.analysisRecord as { id?: string } | undefined)?.id;
+      const result = job.value.result;
+      if (!result || !("summary" in result)) throw new Error("video review returned no analysis result");
+      const recordId = (result.summary.analysisRecord as { id?: string } | undefined)?.id;
       expect(recordId).toBeTruthy();
       const analysisRecord = await facade["analysis.get"]({ recordId: recordId! });
       expect(analysisRecord).toMatchObject({
@@ -2603,6 +2681,282 @@ describe("live cloud review is read-only", () => {
       expect(await facade["media.analyze_start"](request)).toMatchObject({ ok: true, value: { replayed: true, jobId: started.value.jobId } });
       expect(network).toHaveBeenCalledTimes(1);
     } finally { facade.dispose(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
+});
+
+describe("live local audio analysis parity", () => {
+  it("removes a saved record when the completion checkpoint fails", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-audio-checkpoint-"));
+    const sourcePath = await writeFloatWav(mediaRoot, 6, [.5, 1, 1.5, 2, 2.5, 3]);
+    const localStore = new FakeLiveStore();
+    const facade = liveFacade({
+      store: localStore,
+      mediaRoots: [mediaRoot],
+      taskLifecycle: {
+        list: () => [],
+        begin: () => undefined,
+        update: (job) => {
+          if (job.state === "done") throw new Error("checkpoint unavailable");
+        },
+      },
+    });
+    try {
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const started = await facade["media.analyze_start"]({ mediaId: imported.value.mediaId, analysisTypes: ["audioSummary"] });
+      if (!started.ok) throw new Error(started.error.message);
+      const job = await waitForJob(facade, started.value.jobId, 15000);
+      expect(job).toMatchObject({ state: "error", result: null, error: { code: "BATCH_PERSISTENCE_FAILED" } });
+      expect(await facade["analysis.list"]({ mediaId: imported.value.mediaId })).toMatchObject({ ok: true, value: [] });
+    } finally {
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 20000);
+
+  it("runs silence and beatGrid, records effective silence parameters, and discloses matching limits", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-audio-"));
+    const sourcePath = await writeFloatWav(mediaRoot, 6, [.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5]);
+    const importedStore = new FakeLiveStore();
+    const facade = liveFacade({ store: importedStore, mediaRoots: [mediaRoot] });
+    try {
+      const caps = await facade["capabilities.get"]();
+      expect(caps.ok).toBe(true);
+      if (!caps.ok) throw new Error(caps.error.message);
+      expect(caps.value.mediaAnalysis.types.silence).toMatchObject({
+        available: true,
+        details: { maxRangeSec: 120, maxConcurrentPerSession: 2, maxEventsPerPage: 256, coordinateSpace: "source" },
+      });
+      expect(caps.value.mediaAnalysis.types.beatGrid).toMatchObject({
+        available: true,
+        details: { maxRangeSec: 120, maxConcurrentPerSession: 2, maxEventsPerPage: 256, coordinateSpace: "source" },
+      });
+
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const silenceParamsWithoutSilence = await facade["media.analyze_start"]({
+        mediaId: imported.value.mediaId,
+        analysisTypes: ["beatGrid"],
+        silenceParams: { thresholdDb: -40 },
+      });
+      expect(silenceParamsWithoutSilence).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
+
+      const started = await facade["media.analyze_start"]({
+        mediaId: imported.value.mediaId,
+        analysisTypes: ["audioSummary", "silence", "beatGrid"],
+        silenceParams: { minDurationSec: 0.1 },
+      });
+      if (!started.ok) throw new Error(started.error.message);
+      const job = await waitForJob(facade, started.value.jobId, 15000);
+      expect(job).toMatchObject({ state: "done" });
+      const result = job.result;
+      if (!result || !("summary" in result)) throw new Error("audio analysis returned no analysis result");
+      const summary = result.summary as Record<string, any>;
+      expect(summary.silence).toMatchObject({
+        parameters: { thresholdDb: -40, minDurationSec: 0.1, paddingSec: 0.1 },
+        coordinateSpace: "source",
+        mediaId: imported.value.mediaId,
+      });
+      expect(summary.silence.regionCount).toBeGreaterThan(0);
+      expect(summary.silence).not.toHaveProperty("silentRegions");
+      expect(summary.beatGrid).toMatchObject({ coordinateSpace: "source", mediaId: imported.value.mediaId });
+      expect(summary.beatGrid.bpm).toBeGreaterThan(100);
+      expect(summary.beatGrid.beatCount).toBeGreaterThan(0);
+      expect(summary.beatGrid).not.toHaveProperty("beats");
+      expect(summary.audioSummary).not.toHaveProperty("waveform");
+      expect(summary.audioSummary).not.toHaveProperty("onsets");
+      expect(summary.audioSummary).not.toHaveProperty("silence");
+
+      const recordId = (summary.analysisRecord as { id: string }).id;
+      const record = await facade["analysis.get"]({ recordId });
+      expect(record).toMatchObject({
+        ok: true,
+        value: {
+          config: { silenceParams: { thresholdDb: -40, minDurationSec: 0.1, paddingSec: 0.1 } },
+          provenance: expect.arrayContaining([
+            { kind: "local-measurement", provider: "local-ffmpeg-pcm-silence-kernel", analysisType: "silence" },
+            { kind: "local-measurement", provider: "local-ffmpeg-pcm-beat-engine", analysisType: "beatGrid" },
+          ]),
+          observations: expect.arrayContaining([
+            expect.objectContaining({ source: "silence" }),
+            expect.objectContaining({ source: "beatGrid" }),
+          ]),
+        },
+      });
+
+      const headless = createAgentFacade({ artifactRoot });
+      const expectParity = async (params: AnalysisGetParams) => {
+        const headlessResult = await headless["analysis.get"](params);
+        const liveResult = await facade["analysis.get"](params);
+        expect(headlessResult.ok).toBe(true);
+        expect(liveResult).toEqual(headlessResult);
+        return headlessResult;
+      };
+      await expectParity({ recordId });
+
+      const query: AnalysisGetParams = { recordId, view: "events", series: "beatGrid.beats", startSec: 1, endSec: 3, limit: 2 };
+      const firstPage = await expectParity(query);
+      if (!firstPage.ok) throw new Error(firstPage.error.message);
+      const firstEvents = (firstPage.value as { events: { items: Array<{ timeSec: number }>; nextCursor: string | null } }).events;
+      expect(firstEvents.items.every((event) => event.timeSec >= 1 && event.timeSec < 3)).toBe(true);
+      expect(firstEvents.nextCursor).toBeTruthy();
+      const nextPage = await expectParity({ ...query, cursor: firstEvents.nextCursor! });
+      if (!nextPage.ok) throw new Error(nextPage.error.message);
+      const nextEvents = (nextPage.value as { events: { items: Array<{ timeSec: number }> } }).events;
+      expect(nextEvents.items.every((event) => event.timeSec >= 1 && event.timeSec < 3)).toBe(true);
+      expect(nextEvents.items.some((event) => firstEvents.items.some((item) => item.timeSec === event.timeSec))).toBe(false);
+
+      const waveform = await expectParity({ recordId, view: "waveform", startSec: 0, endSec: 6, maxPoints: 7 });
+      if (!waveform.ok) throw new Error(waveform.error.message);
+      expect((waveform.value as { waveform: { points: unknown[]; maxPoints: number } }).waveform)
+        .toMatchObject({ maxPoints: 7 });
+      expect((waveform.value as { waveform: { points: unknown[] } }).waveform.points.length).toBeLessThanOrEqual(7);
+
+      const longPath = await writeFloatWav(mediaRoot, 121);
+      const longImport = await facade["media.import"]({ path: longPath });
+      if (!longImport.ok) throw new Error(longImport.error.message);
+      const tooLong = await facade["media.analyze_start"]({
+        mediaId: longImport.value.mediaId,
+        analysisTypes: ["beatGrid"],
+        startSec: 0,
+        endSec: 120.5,
+      });
+      expect(tooLong).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS", message: expect.stringContaining("120 seconds") } });
+    } finally {
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 30000);
+});
+
+describe("live audio normalization task lifecycle", () => {
+  it.skipIf(LIVE_AUDIO_TOOLCHAIN === null)("normalizes into a completed job and registers only through the revision-guarded media import path", { timeout: 60_000 }, async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-audio-normalize-"));
+    const sourcePath = path.join(mediaRoot, "normalization-source.wav");
+    await runToolProcess(LIVE_AUDIO_TOOLCHAIN!.ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=120",
+      "-c:a", "pcm_s16le", sourcePath,
+    ]);
+
+    const importedStore = new FakeLiveStore();
+    const { lifecycle, records } = memoryTaskLifecycle();
+    const retained: string[] = [];
+    const released: string[] = [];
+    const taskInputReferences: LiveTaskInputReferences = {
+      retain: async (input) => {
+        retained.push(input.jobId);
+        return input.inputProject;
+      },
+      release: async (jobId) => { released.push(jobId); },
+    };
+    const options = { store: importedStore, mediaRoots: [mediaRoot], taskLifecycle: lifecycle, taskInputReferences };
+    const facade = liveFacade(options);
+    let restartedFacade: LiveAgentFacade | undefined;
+    let postImportFacade: LiveAgentFacade | undefined;
+    let cancelFacade: LiveAgentFacade | undefined;
+    try {
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const sourceRevision = importedStore.revision;
+      const request = {
+        mediaId: imported.value.mediaId,
+        audioStream: 0,
+        startSec: 0.1,
+        endSec: 2.1,
+        targetLufs: -18,
+        truePeakDbtp: -1,
+        loudnessRangeLu: 7,
+        sampleRate: 48_000 as const,
+        channels: 2 as const,
+        expectedRevision: sourceRevision,
+        idempotencyKey: "live-audio-normalize-1",
+      };
+      const started = await facade["audio.process.normalize"](request);
+      if (!started.ok) throw new Error(started.error.message);
+      expect(started.value).toMatchObject({ kind: "audio-process", sourceRevision, state: "queued", replayed: false });
+
+      const completed = await waitForJob(facade, started.value.jobId, 30_000);
+      expect(completed).toMatchObject({ kind: "audio-process", state: "done", artifact: null, route: "local-ffmpeg-loudnorm-two-pass" });
+      const result = completed.result;
+      if (!result || !("source" in result)) throw new Error("audio-process completed without normalized provenance");
+      expect(result.source).toMatchObject({ mediaId: imported.value.mediaId, startSec: 0.1, endSec: 2.1, projectId: importedStore.project.id, workspaceId: "workspace-live-1", revision: sourceRevision });
+      expect(Number.isFinite(result.before.integratedLufs)).toBe(true);
+      expect(Number.isFinite(result.after.integratedLufs)).toBe(true);
+      expect(result.timing).toMatchObject({ sampleRate: 48_000, channels: 2, outputStartSec: 0, processingDelaySamples: 0 });
+      expect(await stat(result.path)).toBeTruthy();
+      expect(importedStore.revision).toBe(sourceRevision);
+      expect(importedStore.mediaImports).toHaveLength(1);
+      expect(importedStore.project.mediaLibrary.items).toHaveLength(1);
+      expect(records.get(started.value.jobId)?.status.state).toBe("done");
+      expect(retained).toEqual([started.value.jobId]);
+      await vi.waitFor(() => expect(released).toContain(started.value.jobId));
+
+      restartedFacade = liveFacade(options);
+      const replayedStart = await restartedFacade["audio.process.normalize"](request);
+      expect(replayedStart).toMatchObject({ ok: true, value: { jobId: started.value.jobId, replayed: true, state: "done" } });
+
+      const staleRegistration = await restartedFacade["audio.process.register"]({ jobId: started.value.jobId, expectedRevision: 0 });
+      expect(staleRegistration).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+      expect(importedStore.mediaImports).toHaveLength(1);
+
+      const originalProject = importedStore.project;
+      importedStore.project = createEmptyProject("Switched project");
+      const projectSwitch = await restartedFacade["audio.process.register"]({ jobId: started.value.jobId, expectedRevision: sourceRevision });
+      expect(projectSwitch).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+      importedStore.project = originalProject;
+
+      const originalIdentity = importedStore.getIdentity.bind(importedStore);
+      importedStore.getIdentity = async () => ({ ...await originalIdentity(), workspaceId: "workspace-switched" });
+      const workspaceSwitch = await restartedFacade["audio.process.register"]({ jobId: started.value.jobId, expectedRevision: sourceRevision });
+      expect(workspaceSwitch).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+      importedStore.getIdentity = originalIdentity;
+
+      const registered = await restartedFacade["audio.process.register"]({ jobId: started.value.jobId, expectedRevision: sourceRevision });
+      if (!registered.ok) throw new Error(registered.error.message);
+      expect(registered.value).toMatchObject({ mediaId: expect.any(String), replayed: false, revision: sourceRevision + 1 });
+      expect(registered.value.mediaId).not.toBe(imported.value.mediaId);
+      expect(importedStore.mediaImports).toHaveLength(2);
+      expect(importedStore.project.mediaLibrary.items).toHaveLength(2);
+      expect(importedStore.project.mediaLibrary.items[0]?.id).toBe(imported.value.mediaId);
+      expect(importedStore.project.mediaLibrary.items[1]?.id).toBe(registered.value.mediaId);
+
+      postImportFacade = liveFacade(options);
+      const registeredReplay = await postImportFacade["audio.process.register"]({ jobId: started.value.jobId, expectedRevision: importedStore.revision });
+      expect(registeredReplay).toMatchObject({ ok: true, value: { mediaId: registered.value.mediaId, replayed: true, revision: sourceRevision + 1 } });
+      expect(importedStore.mediaImports).toHaveLength(2);
+
+      cancelFacade = liveFacade(options);
+      const cancelStart = await cancelFacade["audio.process.normalize"]({
+        ...request,
+        startSec: 0.1,
+        endSec: 119.9,
+        expectedRevision: importedStore.revision,
+        idempotencyKey: "live-audio-normalize-cancel",
+      });
+      if (!cancelStart.ok) throw new Error(cancelStart.error.message);
+      const cancelRequested = await cancelFacade["job.cancel"]({ jobId: cancelStart.value.jobId });
+      expect(cancelRequested).toMatchObject({ ok: true, value: { kind: "audio-process", cancelRequested: true } });
+      const cancelled = await waitForJob(cancelFacade, cancelStart.value.jobId, 30_000);
+      expect(cancelled).toMatchObject({ state: "cancelled", result: null, artifact: null });
+      await expect(stat(path.join(mediaRoot, "generated-assets", "audio-normalize", cancelStart.value.jobId))).rejects.toMatchObject({ code: "ENOENT" });
+
+      const disposeStart = await cancelFacade["audio.process.normalize"]({
+        ...request,
+        startSec: 0.1,
+        endSec: 119.9,
+        expectedRevision: importedStore.revision,
+        idempotencyKey: "live-audio-normalize-dispose",
+      });
+      if (!disposeStart.ok) throw new Error(disposeStart.error.message);
+      await cancelFacade.dispose();
+      const disposed = await cancelFacade["job.status"]({ jobId: disposeStart.value.jobId });
+      expect(disposed).toMatchObject({ ok: true, value: { state: "cancelled", result: null, artifact: null } });
+      await expect(stat(path.join(mediaRoot, "generated-assets", "audio-normalize", disposeStart.value.jobId))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await Promise.all([facade.dispose(), restartedFacade?.dispose(), postImportFacade?.dispose(), cancelFacade?.dispose()]);
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
   });
 });
 

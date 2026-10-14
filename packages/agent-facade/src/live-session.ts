@@ -1,5 +1,9 @@
+import { AUDIO_NORMALIZE_MAX_RANGE_SEC } from "./audio-normalize";
+import { runAudioNormalizationTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
+import type { AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult } from "./types";
+import { AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA } from "./verb-schemas";
 import { reviewVideo, videoReviewPreflight } from "./video-review";
-import { analyzeLocalAudio, audioAnalysisPreflight } from "./audio-analysis";
+import { AUDIO_LIMITS, analyzeBeatGrid, analyzeLocalAudio, analyzeSilence, audioAnalysisPreflight, resolveSilenceAnalysisParams } from "./audio-analysis";
 import { runVideoCandidateAnalyses, videoCandidatesPreflight, type VideoCandidateBundle } from "./video-candidates";
 import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
 import { probeVideoFacts } from "./media/frame-exact";
@@ -109,10 +113,13 @@ import { probeLocalMediaFile } from "./media/node-media-adapter";
 import { produceHtmlRenderArtifact } from "./media-render-html";
 import { assessColorSupport, probeColorMetadata } from "./color-policy";
 import {
-  loadAnalysisRecord,
+  compactAnalysisFacts,
+  getAnalysisRecordView,
   listAnalysisRecords,
+  removeAnalysisRecord,
   resolveRecheckTarget,
   saveAnalysisRecord,
+  validateAnalysisGetQuery,
 } from "./analysis-records";
 import {
   composeComparisonVideo,
@@ -351,7 +358,7 @@ export const LIVE_UNAVAILABLE_VERBS = [
 ] as const satisfies readonly FacadeVerb[];
 
 export interface LiveTaskInput extends RetainTaskInputsParams {
-  readonly kind: "export" | "analysis";
+  readonly kind: "export" | "analysis" | "audio-process";
   readonly inputProject: Project;
   readonly parameters: unknown;
 }
@@ -465,6 +472,7 @@ export class LiveFacadeSession {
   private writer: boolean;
   private disposed = false;
   private readonly analysisControllers = new Map<string, AbortController>();
+  private readonly audioProcessTasks = new Map<string, Promise<void>>();
   private readonly releasedTaskIds = new Set<string>();
   private readonly chains = new Map<string, Promise<void>>();
   private taskStartChain: Promise<void> = Promise.resolve();
@@ -491,7 +499,7 @@ export class LiveFacadeSession {
               value: { jobId: record.status.jobId, sourceRevision: record.status.sourceRevision },
               payloadHash: item.payloadHash,
             });
-          } else if (Array.isArray(item.analysisTypes) && item.analysisTypes.every((value) => typeof value === "string")) {
+          } else if (record.status.kind === "analysis" && Array.isArray(item.analysisTypes) && item.analysisTypes.every((value) => typeof value === "string")) {
             this.ledger.record(scope, "media.analyze_start", item.idempotencyKey, {
               revision: record.status.sourceRevision,
               value: {
@@ -499,6 +507,12 @@ export class LiveFacadeSession {
                 sourceRevision: record.status.sourceRevision,
                 analysisTypes: item.analysisTypes,
               },
+              payloadHash: item.payloadHash,
+            });
+          } else if (record.status.kind === "audio-process") {
+            this.ledger.record(scope, "audio.process.normalize", item.idempotencyKey, {
+              revision: record.status.sourceRevision,
+              value: { jobId: record.status.jobId, sourceRevision: record.status.sourceRevision },
               payloadHash: item.payloadHash,
             });
           }
@@ -588,7 +602,8 @@ export class LiveFacadeSession {
     await prior;
     let retained = false;
     try {
-      this.assertTaskCapacity(input.kind === "export" ? "export.start" : "media.analyze_start");
+      this.assertTaskCapacity(input.kind === "export" ? "export.start"
+        : input.kind === "analysis" ? "media.analyze_start" : "audio.process.normalize");
       let taskInput = input;
       if (this.config.taskInputReferences) {
         const preparedProject = await this.config.taskInputReferences.retain(input);
@@ -1109,195 +1124,45 @@ export class LiveFacadeSession {
   async mediaImport(
     params: MediaImportParams,
   ): Promise<FacadeResult<MediaImportResult>> {
-    return this.enqueue(async () => {
-      this.gate("media.import");
-      const valid = validateObject<MediaImportParams>(
-        params,
-        // Keep the same closed schema and payload semantics as headless.
-        // expectedRevision is a guard, not part of the idempotency payload.
-        MEDIA_IMPORT_SCHEMA,
-        "media.import params",
-      );
+    return this.enqueue(() => this.importMediaWithinMutation(params));
+  }
 
-      const payload = { path: valid.path, name: valid.name };
-      const receipt = await this.replayLookup<
-        Omit<MediaImportResult, "revision" | "replayed">
-      >("media.import", valid.idempotencyKey, payload);
-      if (receipt?.prior) {
-        return ok<MediaImportResult>({
-          ...receipt.prior.value,
-          revision: receipt.prior.revision,
-          replayed: true,
-        });
-      }
+  private async importMediaWithinMutation(
+    params: MediaImportParams,
+    target?: { projectId: string; workspaceId?: string },
+    beforeImport?: () => Promise<void>,
+  ): Promise<FacadeResult<MediaImportResult>> {
+    this.gate("media.import");
+    const valid = validateObject<MediaImportParams>(
+      params,
+      // Keep the same closed schema and payload semantics as headless.
+      // expectedRevision is a guard, not part of the idempotency payload.
+      MEDIA_IMPORT_SCHEMA,
+      "media.import params",
+    );
 
-      if (
-        valid.idempotencyKey !== undefined &&
-        this.config.store.getMediaImportReplay
-      ) {
-        let durablePrior: MediaImportResult | null;
-        try {
-          durablePrior = await this.config.store.getMediaImportReplay(
-            valid.idempotencyKey,
-            payload,
-          );
-        } catch (error) {
-          if (isLiveStoreConflict(error)) {
-            throw new FacadeError(
-              "CONFLICT",
-              `media.import: ${error instanceof Error ? error.message : String(error)}`,
-              error instanceof LiveStoreConflictError ? error.details : undefined,
-            );
-          }
-          throw error;
-        }
-        if (durablePrior) {
-          const value: Omit<MediaImportResult, "revision" | "replayed"> = {
-            mediaId: durablePrior.mediaId,
-            name: durablePrior.name,
-            type: durablePrior.type,
-            metadata: durablePrior.metadata,
-          };
-          receipt?.commit(value, durablePrior.revision);
-          return ok<MediaImportResult>({
-            ...value,
-            revision: durablePrior.revision,
-            replayed: true,
-          });
-        }
-      }
+    const payload = { path: valid.path, name: valid.name };
+    const receipt = await this.replayLookup<
+      Omit<MediaImportResult, "revision" | "replayed">
+    >("media.import", valid.idempotencyKey, payload);
+    if (receipt?.prior) {
+      return ok<MediaImportResult>({
+        ...receipt.prior.value,
+        revision: receipt.prior.revision,
+        replayed: true,
+      });
+    }
 
-      // Read the revision before touching the filesystem. This preserves the
-      // headless precedence contract: a stale caller revision is CONFLICT,
-      // even when its source path is missing or malformed. The store repeats
-      // the CAS at commit time to catch a human edit during probing.
-      const { revision } = await this.config.store.getState();
-      if (
-        valid.expectedRevision !== undefined &&
-        valid.expectedRevision !== revision
-      ) {
-        throw new FacadeError(
-          "CONFLICT",
-          `revision conflict: expected ${valid.expectedRevision}, current is ${revision}`,
-          { currentRevision: revision },
-        );
-      }
-
-      const importer = this.config.store.importMedia;
-      if (typeof importer !== "function") {
-        throw new FacadeError(
-          "UNSUPPORTED",
-          "media.import: the live store does not expose an import bridge",
-        );
-      }
-
-      const roots = this.config.mediaRoots ?? [];
-      if (roots.length === 0) {
-        throw new FacadeError(
-          "UNSUPPORTED",
-          "media.import: no media roots configured for this live session",
-        );
-      }
-      if (hasUrlScheme(valid.path)) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "media.import: URLs are not accepted in live mode — pass an absolute local file path inside a configured media root",
-          { path: valid.path },
-        );
-      }
-      if (!isAbsolute(valid.path)) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "media.import: paths must be absolute — nothing is resolved against the host process cwd",
-          { path: valid.path },
-        );
-      }
-      const resolution = resolveContainedPathDetailed(valid.path, roots);
-      if (resolution.kind === "outside") {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "media.import: path escapes the configured media roots",
-          { path: valid.path, mediaRoots: [...roots] },
-        );
-      }
-      if (resolution.kind === "unresolvable") {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "media.import: path cannot be read (not found or unreadable)",
-          { path: valid.path },
-        );
-      }
-
-      const resolved = resolution.path;
-      const fileStat = await stat(resolved).catch(() => null);
-      if (!fileStat || !fileStat.isFile()) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "media.import: path is not a regular file",
-          { path: valid.path },
-        );
-      }
-      if (fileStat.size > MAX_LIVE_IMPORT_FILE_BYTES) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          `media.import: file exceeds the ${MAX_LIVE_IMPORT_FILE_BYTES}-byte live import limit`,
-          {
-            path: valid.path,
-            bytes: fileStat.size,
-            maxBytes: MAX_LIVE_IMPORT_FILE_BYTES,
-          },
-        );
-      }
-
-      let probed: Awaited<ReturnType<typeof probeLocalMediaFile>>;
+    if (
+      valid.idempotencyKey !== undefined &&
+      this.config.store.getMediaImportReplay
+    ) {
+      let durablePrior: MediaImportResult | null;
       try {
-        probed = await probeLocalMediaFile(resolved);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          `media.import: cannot read media metadata: ${message}`,
-          { path: resolved },
+        durablePrior = await this.config.store.getMediaImportReplay(
+          valid.idempotencyKey,
+          payload,
         );
-      }
-
-      const name = valid.name ?? basename(resolved);
-      const request: LiveMediaImportRequest = {
-        path: resolved,
-        name,
-        type: probed.type,
-        metadata: {
-          durationSec: probed.durationSec,
-          width: probed.width,
-          height: probed.height,
-          frameRate: probed.frameRate,
-          codec: probed.codec,
-          fileSize: probed.fileSize,
-        },
-        sourceFile: {
-          name: basename(resolved),
-          size: fileStat.size,
-          lastModified: Math.round(fileStat.mtimeMs),
-        },
-        ...(valid.idempotencyKey !== undefined
-          ? { idempotencyKey: valid.idempotencyKey }
-          : {}),
-      };
-
-      let committed: LiveMediaImportResult;
-      try {
-        this.gate("media.import");
-        // Preserve the store receiver: concrete bridges may implement this
-        // as a class method with stateful revision/history bookkeeping.
-        committed = await this.config.store.importMedia(request, {
-          groupLabel: "agent: media.import",
-          // As with live edit.apply, omitted expectedRevision is still an
-          // unconditional CAS against the snapshot we validated/probed.
-          expectedRevision: valid.expectedRevision ?? revision,
-          ...(valid.idempotencyKey !== undefined
-            ? { idempotencyKey: valid.idempotencyKey, idempotencyPayload: payload }
-            : {}),
-        });
       } catch (error) {
         if (isLiveStoreConflict(error)) {
           throw new FacadeError(
@@ -1306,49 +1171,212 @@ export class LiveFacadeSession {
             error instanceof LiveStoreConflictError ? error.details : undefined,
           );
         }
-        // Renderer bridges retain a typed error code on ordinary failures.
-        // Keep invalid/decode input failures in the facade's public taxonomy
-        // instead of letting the enqueue boundary turn them into INTERNAL.
-        const typed =
-          typeof error === "object" && error !== null
-            ? (error as { code?: unknown; details?: Record<string, unknown> })
-            : undefined;
-        if (typed?.code === "INVALID_PARAMS") {
-          throw new FacadeError(
-            "INVALID_PARAMS",
-            error instanceof Error ? error.message : String(error),
-            typed.details,
-          );
-        }
-        if (typed?.code === "DECODE_ERROR") {
-          throw new FacadeError(
-            "INVALID_PARAMS",
-            error instanceof Error ? error.message : String(error),
-            { ...typed.details, bridgeCode: "DECODE_ERROR" },
-          );
-        }
-        if (typed?.code === "NO_PROJECT") {
-          throw new FacadeError(
-            "NOT_FOUND",
-            "media.import: no project is open in the GUI",
-            typed.details,
-          );
-        }
         throw error;
       }
+      if (durablePrior) {
+        const value: Omit<MediaImportResult, "revision" | "replayed"> = {
+          mediaId: durablePrior.mediaId,
+          name: durablePrior.name,
+          type: durablePrior.type,
+          metadata: durablePrior.metadata,
+        };
+        receipt?.commit(value, durablePrior.revision);
+        return ok<MediaImportResult>({
+          ...value,
+          revision: durablePrior.revision,
+          replayed: true,
+        });
+      }
+    }
 
-      const value: Omit<MediaImportResult, "revision" | "replayed"> = {
-        mediaId: committed.mediaId,
-        name,
-        type: probed.type,
-        metadata: request.metadata,
-      };
-      receipt?.commit(value, committed.revision);
-      return ok<MediaImportResult>({
-        ...value,
-        revision: committed.revision,
-        replayed: false,
+    // Read the revision before touching the filesystem. This preserves the
+    // headless precedence contract: a stale caller revision is CONFLICT,
+    // even when its source path is missing or malformed. The store repeats
+    // the CAS at commit time to catch a human edit during probing.
+    const { revision } = await this.config.store.getState();
+    if (
+      valid.expectedRevision !== undefined &&
+      valid.expectedRevision !== revision
+    ) {
+      throw new FacadeError(
+        "CONFLICT",
+        `revision conflict: expected ${valid.expectedRevision}, current is ${revision}`,
+        { currentRevision: revision },
+      );
+    }
+
+    const importer = this.config.store.importMedia;
+    if (typeof importer !== "function") {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        "media.import: the live store does not expose an import bridge",
+      );
+    }
+
+    await beforeImport?.();
+    const roots = this.config.mediaRoots ?? [];
+    if (roots.length === 0) {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        "media.import: no media roots configured for this live session",
+      );
+    }
+    if (hasUrlScheme(valid.path)) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        "media.import: URLs are not accepted in live mode — pass an absolute local file path inside a configured media root",
+        { path: valid.path },
+      );
+    }
+    if (!isAbsolute(valid.path)) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        "media.import: paths must be absolute — nothing is resolved against the host process cwd",
+        { path: valid.path },
+      );
+    }
+    const resolution = resolveContainedPathDetailed(valid.path, roots);
+    if (resolution.kind === "outside") {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        "media.import: path escapes the configured media roots",
+        { path: valid.path, mediaRoots: [...roots] },
+      );
+    }
+    if (resolution.kind === "unresolvable") {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        "media.import: path cannot be read (not found or unreadable)",
+        { path: valid.path },
+      );
+    }
+
+    const resolved = resolution.path;
+    const fileStat = await stat(resolved).catch(() => null);
+    if (!fileStat || !fileStat.isFile()) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        "media.import: path is not a regular file",
+        { path: valid.path },
+      );
+    }
+    if (fileStat.size > MAX_LIVE_IMPORT_FILE_BYTES) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `media.import: file exceeds the ${MAX_LIVE_IMPORT_FILE_BYTES}-byte live import limit`,
+        {
+          path: valid.path,
+          bytes: fileStat.size,
+          maxBytes: MAX_LIVE_IMPORT_FILE_BYTES,
+        },
+      );
+    }
+
+    let probed: Awaited<ReturnType<typeof probeLocalMediaFile>>;
+    try {
+      probed = await probeLocalMediaFile(resolved);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `media.import: cannot read media metadata: ${message}`,
+        { path: resolved },
+      );
+    }
+
+    const name = valid.name ?? basename(resolved);
+    const request: LiveMediaImportRequest = {
+      path: resolved,
+      name,
+      type: probed.type,
+      metadata: {
+        durationSec: probed.durationSec,
+        width: probed.width,
+        height: probed.height,
+        frameRate: probed.frameRate,
+        codec: probed.codec,
+        fileSize: probed.fileSize,
+      },
+      sourceFile: {
+        name: basename(resolved),
+        size: fileStat.size,
+        lastModified: Math.round(fileStat.mtimeMs),
+      },
+      ...(valid.idempotencyKey !== undefined
+        ? { idempotencyKey: valid.idempotencyKey }
+        : {}),
+    };
+
+    let committed: LiveMediaImportResult;
+    try {
+      this.gate("media.import");
+      // Preserve the store receiver: concrete bridges may implement this
+      // as a class method with stateful revision/history bookkeeping.
+      if (target) {
+        const identity = await this.config.store.getIdentity();
+        if (identity.projectId !== target.projectId || (identity.workspaceId ?? "default") !== (target.workspaceId ?? "default")) {
+          throw new FacadeError("CONFLICT", "audio.process.register: target project/workspace changed during import");
+        }
+      }
+      committed = await this.config.store.importMedia(request, {
+        groupLabel: "agent: media.import",
+        // As with live edit.apply, omitted expectedRevision is still an
+        // unconditional CAS against the snapshot we validated/probed.
+        expectedRevision: valid.expectedRevision ?? revision,
+        ...(valid.idempotencyKey !== undefined
+          ? { idempotencyKey: valid.idempotencyKey, idempotencyPayload: payload }
+          : {}),
       });
+    } catch (error) {
+      if (isLiveStoreConflict(error)) {
+        throw new FacadeError(
+          "CONFLICT",
+          `media.import: ${error instanceof Error ? error.message : String(error)}`,
+          error instanceof LiveStoreConflictError ? error.details : undefined,
+        );
+      }
+      // Renderer bridges retain a typed error code on ordinary failures.
+      // Keep invalid/decode input failures in the facade's public taxonomy
+      // instead of letting the enqueue boundary turn them into INTERNAL.
+      const typed =
+        typeof error === "object" && error !== null
+          ? (error as { code?: unknown; details?: Record<string, unknown> })
+          : undefined;
+      if (typed?.code === "INVALID_PARAMS") {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          error instanceof Error ? error.message : String(error),
+          typed.details,
+        );
+      }
+      if (typed?.code === "DECODE_ERROR") {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          error instanceof Error ? error.message : String(error),
+          { ...typed.details, bridgeCode: "DECODE_ERROR" },
+        );
+      }
+      if (typed?.code === "NO_PROJECT") {
+        throw new FacadeError(
+          "NOT_FOUND",
+          "media.import: no project is open in the GUI",
+          typed.details,
+        );
+      }
+      throw error;
+    }
+
+    const value: Omit<MediaImportResult, "revision" | "replayed"> = {
+      mediaId: committed.mediaId,
+      name,
+      type: probed.type,
+      metadata: request.metadata,
+    };
+    receipt?.commit(value, committed.revision);
+    return ok<MediaImportResult>({
+      ...value,
+      revision: committed.revision,
+      replayed: false,
     });
   }
 
@@ -1518,6 +1546,86 @@ export class LiveFacadeSession {
       : project;
   }
 
+  async audioProcessNormalize(params: AudioProcessNormalizeParams): Promise<FacadeResult<AudioProcessNormalizeResult>> {
+    return this.enqueue<AudioProcessNormalizeResult>(async () => {
+      this.gate("audio.process.normalize");
+      const valid = validateObject<AudioProcessNormalizeParams>(params, AUDIO_PROCESS_NORMALIZE_SCHEMA, "audio.process.normalize params");
+      if (!(valid.endSec > valid.startSec) || valid.endSec - valid.startSec > AUDIO_NORMALIZE_MAX_RANGE_SEC) {
+        throw new FacadeError("INVALID_PARAMS", "audio.process.normalize requires startSec < endSec and a range of at most 120 seconds");
+      }
+      const { expectedRevision, idempotencyKey, ...parameters } = valid;
+      const identity = await this.config.store.getIdentity();
+      const receipt = this.ledger.lookup<{ jobId: string; sourceRevision: number }>(
+        this.ledgerScope(identity.projectId, identity.workspaceId),
+        "audio.process.normalize", idempotencyKey, parameters,
+      );
+      if (receipt?.prior) {
+        const job = this.jobs.get(receipt.prior.value.jobId);
+        if (!job) throw new FacadeError("NOT_FOUND", "audio.process.normalize: prior job is no longer available");
+        return ok({ ...receipt.prior.value, kind: "audio-process", state: job.state, replayed: true });
+      }
+      const state = await this.config.store.getState();
+      if (expectedRevision !== undefined && expectedRevision !== state.revision) {
+        throw new FacadeError("CONFLICT", `revision conflict: expected ${expectedRevision}, current is ${state.revision}`, { currentRevision: state.revision });
+      }
+      if (identity.projectId !== state.project.id) throw new FacadeError("CONFLICT", "audio.process.normalize: target project changed while preparing input");
+      const media = state.project.mediaLibrary.items.find((item) => item.id === valid.mediaId);
+      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.normalize: media "${valid.mediaId}" not found`);
+      if (valid.endSec > media.metadata.duration) throw new FacadeError("INVALID_PARAMS", "audio.process.normalize: range exceeds source duration");
+      const roots = this.config.mediaRoots ?? [];
+      if (roots.length === 0 || typeof this.config.store.importMedia !== "function") throw new FacadeError("UNSUPPORTED", "audio.process.normalize requires media roots and a live media import bridge for generated assets");
+      const sourcePath = await this.resolveLiveMediaItemFile(media);
+      const resolution = resolveContainedPathDetailed(sourcePath ?? "", roots);
+      if (resolution.kind !== "ok") throw new FacadeError("UNSUPPORTED", "audio.process.normalize requires a readable source inside configured media roots");
+      const ready = await audioAnalysisPreflight();
+      if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
+      this.gate("audio.process.normalize");
+      this.assertTaskCapacity("audio.process.normalize");
+      const currentIdentity = await this.config.store.getIdentity();
+      if (currentIdentity.projectId !== identity.projectId || currentIdentity.workspaceId !== identity.workspaceId) {
+        throw new FacadeError("CONFLICT", "audio.process.normalize: target project/workspace changed while preparing input");
+      }
+      const jobId = `job-${crypto.randomUUID()}`;
+      const workspaceId = identity.workspaceId ?? "default";
+      await this.createTrackedTask({
+        jobId, kind: "audio-process", projectId: state.project.id, workspaceId,
+        sourceRevision: state.revision, inputProject: structuredClone(state.project),
+        parameters: { ...parameters, idempotencyKey, payloadHash: stableStringify(parameters) },
+      });
+      const controller = new AbortController();
+      this.analysisControllers.set(jobId, controller);
+      const value = { jobId, sourceRevision: state.revision };
+      receipt?.commit(value, state.revision);
+      const task = runAudioNormalizationTask(this.jobs, this.analysisControllers, jobId, controller, {
+        sourcePath: resolution.path, mediaRoots: roots, params: parameters,
+        sourceProjectId: state.project.id, sourceWorkspaceId: workspaceId, sourceRevision: state.revision,
+      });
+      this.audioProcessTasks.set(jobId, task);
+      void task.then(
+        () => this.audioProcessTasks.delete(jobId),
+        () => this.audioProcessTasks.delete(jobId),
+      );
+      return ok({ ...value, kind: "audio-process", state: "queued", replayed: false });
+    });
+  }
+
+  async audioProcessRegister(params: AudioProcessRegisterParams): Promise<FacadeResult<AudioProcessRegisterResult>> {
+    return this.enqueue(async () => {
+      this.gate("audio.process.register");
+      const valid = validateObject<AudioProcessRegisterParams>(params, AUDIO_PROCESS_REGISTER_SCHEMA, "audio.process.register params");
+      const artifact = completedAudioArtifact(this.jobs, valid.jobId);
+      const identity = await this.config.store.getIdentity();
+      if (artifact.source.projectId !== identity.projectId || artifact.source.workspaceId !== (identity.workspaceId ?? "default")) {
+        throw new FacadeError("CONFLICT", "audio.process.register: job belongs to another project/workspace");
+      }
+      return this.importMediaWithinMutation({
+        path: artifact.path, expectedRevision: valid.expectedRevision,
+        idempotencyKey: `audio-process-register:${valid.jobId}`,
+      }, { projectId: artifact.source.projectId, workspaceId: artifact.source.workspaceId },
+      () => verifyAudioArtifact(artifact, this.config.mediaRoots ?? []));
+    });
+  }
+
   async mediaAnalyzeStart(
     params: MediaAnalyzeStartParams,
   ): Promise<FacadeResult<MediaAnalyzeStartResult>> {
@@ -1534,19 +1642,28 @@ export class LiveFacadeSession {
       } else if (valid.reviewQuestion !== undefined || valid.cloudUpload !== undefined) {
         throw new FacadeError("INVALID_PARAMS", "cloudUpload/reviewQuestion apply only to videoReview");
       }
-      if (valid.analysisTypes.includes("audioSummary")) {
+      if (valid.silenceParams !== undefined && !valid.analysisTypes.includes("silence")) {
+        throw new FacadeError("INVALID_PARAMS", "silenceParams apply only when analysisTypes includes \"silence\"");
+      }
+      const silenceParams = valid.analysisTypes.includes("silence")
+        ? resolveSilenceAnalysisParams(valid.silenceParams) : undefined;
+      const audioBackedTypes = valid.analysisTypes.filter(
+        (type) => type === "audioSummary" || type === "silence" || type === "beatGrid",
+      );
+      if (audioBackedTypes.length > 0) {
+        requireArtifactRoot(this.config.artifactRoot, "media.analyze_start audio analysis");
         const ready = await audioAnalysisPreflight();
         if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       }
       const unavailable = valid.analysisTypes.filter(
-        (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview" &&
+        (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview" && type !== "silence" && type !== "beatGrid" &&
           type !== "sceneCuts" && type !== "blackFrames" && type !== "duplicateFrames",
       );
       if (unavailable.length > 0) {
         throw new FacadeError(
           "UNSUPPORTED",
           `media.analyze_start: unavailable analysis types: ${unavailable.join(", ")}`,
-          { unavailableTypes: unavailable, availableTypes: ["technicalQuality", "sceneCuts", "blackFrames", "duplicateFrames"] },
+          { unavailableTypes: unavailable, availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid", "sceneCuts", "blackFrames", "duplicateFrames"] },
         );
       }
       const videoCandidateTypes = valid.analysisTypes.filter(
@@ -1571,13 +1688,14 @@ export class LiveFacadeSession {
       const startSec = valid.startSec ?? 0;
       const endSec = valid.endSec ?? media.metadata.duration;
       if (!(endSec > startSec) || endSec > media.metadata.duration ||
-          (valid.analysisTypes.includes("audioSummary") && endSec - startSec > 120)) {
-        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration; audioSummary range is at most 120 seconds. Split longer sources into explicit ranges.");
+          (audioBackedTypes.length > 0 && endSec - startSec > AUDIO_LIMITS.maxRangeSec)) {
+        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration; audioSummary, silence and beatGrid ranges are at most 120 seconds. Split longer sources into explicit ranges.");
       }
       const payload = {
         mediaId: valid.mediaId,
         analysisTypes: [...valid.analysisTypes].sort(),
         startSec: valid.startSec, endSec: valid.endSec, cloudUpload: valid.cloudUpload, reviewQuestion: valid.reviewQuestion,
+        silenceParams,
       };
       const receipt = await this.replayLookup<{
         jobId: string;
@@ -1668,6 +1786,7 @@ export class LiveFacadeSession {
         state.revision,
         valid.reviewQuestion,
         valid.recheckOfRecordId,
+        silenceParams,
       );
       return ok<MediaAnalyzeStartResult>({
         ...ledgerValue,
@@ -2804,13 +2923,14 @@ export class LiveFacadeSession {
     });
   }
 
-  /** analysis.get — one full record with provenance and staleness. */
+  /** analysis.get — compact view by default; explicit detail requests are paged. */
   async analysisGet(params: AnalysisGetParams): Promise<FacadeResult<unknown>> {
     return this.enqueue(async () => {
       this.gate("analysis.get");
       const valid = validateObject<AnalysisGetParams>(params, ANALYSIS_GET_SCHEMA, "analysis.get params");
+      validateAnalysisGetQuery(valid);
       const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "analysis.get");
-      return ok(await loadAnalysisRecord(artifactRoot, valid.recordId));
+      return ok(await getAnalysisRecordView(artifactRoot, valid));
     });
   }
 
@@ -2855,6 +2975,11 @@ export class LiveFacadeSession {
         this.jobs.markCancelRequested(valid.jobId);
         this.analysisControllers.get(valid.jobId)?.abort();
         this.jobs.markCancelled(valid.jobId);
+        return ok(jobStatusView(this.jobs.get(valid.jobId) ?? job));
+      }
+      if (job.kind === "audio-process") {
+        this.jobs.markCancelRequested(valid.jobId);
+        this.analysisControllers.get(valid.jobId)?.abort();
         return ok(jobStatusView(this.jobs.get(valid.jobId) ?? job));
       }
       const provider = this.config.exportProvider;
@@ -3717,9 +3842,16 @@ export class LiveFacadeSession {
     await Promise.all([...this.chains.values()].map((chain) => chain.catch(() => undefined)));
 
     const provider = this.config.exportProvider;
+    const audioProcessTasks: Promise<void>[] = [];
     const cancellations = this.jobs.list().map(async (job) => {
       if (job.state === "queued" || job.state === "running") {
         this.jobs.markCancelRequested(job.jobId);
+        if (job.kind === "audio-process") {
+          this.analysisControllers.get(job.jobId)?.abort();
+          const task = this.audioProcessTasks.get(job.jobId);
+          if (task) audioProcessTasks.push(task);
+          return;
+        }
         if (job.kind === "analysis") {
           this.analysisControllers.get(job.jobId)?.abort();
         } else if (provider) {
@@ -3729,6 +3861,7 @@ export class LiveFacadeSession {
       }
     });
     await Promise.all(cancellations);
+    await Promise.all(audioProcessTasks);
   }
 
   /* ---------------------------- internals ----------------------------- */
@@ -3789,7 +3922,9 @@ export class LiveFacadeSession {
     sourceRevision: number,
     reviewQuestion?: string,
     recheckOfRecordId?: string,
+    silenceParams?: import("./types").MediaSilenceAnalysisParams,
   ): Promise<void> {
+    let persistedRecordId: string | null = null;
     try {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       if (controller.signal.aborted) {
@@ -3811,8 +3946,13 @@ export class LiveFacadeSession {
       this.jobs.markProgress(jobId, { phase: "preparing", percent: .1 });
       const video = analysisTypes.includes("videoReview")
         ? await reviewVideo(sourcePath, range, this.config.artifactRoot!, controller.signal, reviewQuestion, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: .1 + percent * .7 })) : undefined;
+      const otherAudioRequested = analysisTypes.includes("silence") || analysisTypes.includes("beatGrid");
       const audio = analysisTypes.includes("audioSummary")
-        ? await analyzeLocalAudio(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .8 + percent * .15 : percent })) : undefined;
+        ? await analyzeLocalAudio(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .8 + percent * .15 : otherAudioRequested ? percent * .5 : percent })) : undefined;
+      const silence = analysisTypes.includes("silence")
+        ? await analyzeSilence(sourcePath, range, silenceParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .95 + percent * .025 : otherAudioRequested || analysisTypes.includes("audioSummary") ? .5 + percent * .25 : percent })) : undefined;
+      const beatGrid = analysisTypes.includes("beatGrid")
+        ? await analyzeBeatGrid(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .975 + percent * .025 : analysisTypes.includes("audioSummary") || analysisTypes.includes("silence") ? .75 + percent * .25 : percent })) : undefined;
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
       const videoCandidateTypes = analysisTypes.filter(
         (type) => type === "sceneCuts" || type === "blackFrames" || type === "duplicateFrames",
@@ -3843,6 +3983,8 @@ export class LiveFacadeSession {
       const summary = {
         ...(video ? { videoReview: { ...video, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         ...(audio ? { audioSummary: { ...audio, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
+        ...(silence ? { silence: { ...silence, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
+        ...(beatGrid ? { beatGrid: { ...beatGrid, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         technicalQuality: {
           mediaId,
           name,
@@ -3872,9 +4014,15 @@ export class LiveFacadeSession {
         ...(candidates?.blackFrames ? { blackFrames: { ...candidates.blackFrames, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         ...(candidates?.duplicateFrames ? { duplicateFrames: { ...candidates.duplicateFrames, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
       };
-      // Durable, traceable record (P2) — mirrors headless exactly.
-      // Records need an artifactRoot; without one the analysis completes
-      // exactly as before (ephemeral job summary only).
+      const compactSummary = {
+        ...summary,
+        ...(audio ? { audioSummary: compactAnalysisFacts("audioSummary", summary.audioSummary!) } : {}),
+        ...(silence ? { silence: compactAnalysisFacts("silence", summary.silence!) } : {}),
+        ...(beatGrid ? { beatGrid: compactAnalysisFacts("beatGrid", summary.beatGrid!) } : {}),
+      };
+      // Durable, traceable record: audio analysis requires artifactRoot so
+      // full event facts remain readable; non-audio analyses can still return
+      // an ephemeral job summary when no record root is configured.
       let recordRef: { id: string; recordPath: string; recheckOf: string | null } | null = null;
       if (this.config.artifactRoot) {
       let recheckTarget = null;
@@ -3899,6 +4047,7 @@ export class LiveFacadeSession {
           endSec: range.endSec,
           cloudUpload: analysisTypes.includes("videoReview"),
           ...(reviewQuestion !== undefined ? { reviewQuestion } : {}),
+          ...(silence ? { silenceParams: silence.parameters } : {}),
         },
         provenance: [
           ...(analysisTypes.includes("technicalQuality")
@@ -3906,6 +4055,12 @@ export class LiveFacadeSession {
             : []),
           ...(analysisTypes.includes("audioSummary")
             ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-ebur128", analysisType: "audioSummary" }]
+            : []),
+          ...(analysisTypes.includes("silence")
+            ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-pcm-silence-kernel", analysisType: "silence" }]
+            : []),
+          ...(analysisTypes.includes("beatGrid")
+            ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-pcm-beat-engine", analysisType: "beatGrid" }]
             : []),
           ...(analysisTypes.includes("sceneCuts")
             ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-scene-score", analysisType: "sceneCuts" }]
@@ -3921,13 +4076,20 @@ export class LiveFacadeSession {
         observations: [
           { source: "technicalQuality", facts: summary.technicalQuality },
           ...(audio ? [{ source: "audioSummary", facts: audio }] : []),
+          ...(silence ? [{ source: "silence", facts: silence }] : []),
+          ...(beatGrid ? [{ source: "beatGrid", facts: beatGrid }] : []),
           ...(candidates?.sceneCuts ? [{ source: "sceneCuts", facts: candidates.sceneCuts }] : []),
           ...(candidates?.blackFrames ? [{ source: "blackFrames", facts: candidates.blackFrames }] : []),
           ...(candidates?.duplicateFrames ? [{ source: "duplicateFrames", facts: candidates.duplicateFrames }] : []),
         ],
-        inferences: audio?.bpmCandidates
-          ? [{ source: "audioSummary", note: "BPM candidates are analyzer inferences from periodicity, not ground truth", bpmCandidates: audio.bpmCandidates }]
-          : [],
+        inferences: [
+          ...(audio?.bpmCandidates
+            ? [{ source: "audioSummary", note: "BPM candidates are analyzer inferences from periodicity, not ground truth", bpmCandidates: audio.bpmCandidates }]
+            : []),
+          ...(beatGrid
+            ? [{ source: "beatGrid", note: "beats and bpm are analyzer inferences from energy periodicity, not ground truth; no downbeat detector is installed", bpm: beatGrid.bpm, confidence: beatGrid.confidence, beatCount: beatGrid.beatCount }]
+            : []),
+        ],
         recommendations: [],
         unknowns: [
           ...(video ? [{ field: "videoReview.serverSamplingFps", note: "The cloud provider does not disclose its sampling rate; short events may be missed" }] : []),
@@ -3936,6 +4098,9 @@ export class LiveFacadeSession {
             { field: "videoReview.eventLocalizationUncertaintySec", note: "The provider does not disclose frame-level event localization uncertainty." },
             { field: "videoReview.audioDetectionUncertaintySec", note: "The provider does not disclose frame-level audio event localization uncertainty." },
           ] : []),
+          ...(analysisTypes.includes("beatGrid")
+            ? [{ field: "beatGrid.downbeats", note: "No downbeat detector is installed; beatGrid results intentionally omit downbeats" }]
+            : []),
         ],
         recheckOf: recheckTarget ? recheckTarget.id : null,
         cloudOpinion: video
@@ -3948,20 +4113,43 @@ export class LiveFacadeSession {
           : null,
       });
       recordRef = { id: saved.id, recordPath: saved.recordPath, recheckOf: saved.recheckOf };
+      persistedRecordId = saved.id;
+      }
+      if (controller.signal.aborted) {
+        if (persistedRecordId && this.config.artifactRoot) {
+          await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId);
+          persistedRecordId = null;
+        }
+        this.jobs.markCancelled(jobId);
+        return;
       }
       this.jobs.markAnalysisDone(jobId, {
         analysisTypes,
         summary: {
-          ...summary,
+          ...compactSummary,
           ...(recordRef ? { analysisRecord: recordRef } : {}),
         },
         artifacts: [],
       });
+      if (this.jobs.get(jobId)?.state === "done") {
+        persistedRecordId = null;
+      } else if (persistedRecordId && this.config.artifactRoot) {
+        await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId);
+        persistedRecordId = null;
+      }
     } catch (error) {
-      if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
+      let failure: unknown = error;
+      if (persistedRecordId && this.config.artifactRoot) {
+        try {
+          await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId);
+        } catch (cleanupError) {
+          failure = new Error(`${error instanceof Error ? error.message : String(error)}; saved analysis record cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+        }
+      }
+      if (controller.signal.aborted && failure === error) { this.jobs.markCancelled(jobId); return; }
       this.jobs.markError(jobId, {
-        code: error instanceof FacadeError ? error.code : "JOB_FAILED",
-        message: error instanceof Error ? error.message : String(error),
+        code: failure instanceof FacadeError ? failure.code : "JOB_FAILED",
+        message: failure instanceof Error ? failure.message : String(failure),
       });
     } finally {
       this.analysisControllers.delete(jobId);
@@ -4131,6 +4319,8 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "media.import": (params) => session.mediaImport(params),
     "media.render_html": (params) => session.mediaRenderHtml(params),
     "media.analyze_start": (params) => session.mediaAnalyzeStart(params),
+    "audio.process.normalize": (params) => session.audioProcessNormalize(params),
+    "audio.process.register": (params) => session.audioProcessRegister(params),
     "timeline.get": () => session.timelineGet(),
     "timeline.query": (params) => session.timelineQuery(params),
     "timeline.mapSourceTimes": (params) => session.timelineMapSourceTimes(params),

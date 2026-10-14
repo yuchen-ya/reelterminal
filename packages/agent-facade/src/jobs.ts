@@ -20,20 +20,55 @@ import type {
   ExportProgressEvent,
   ExportProvider,
 } from "./providers";
+import { compactAnalysisFacts } from "./analysis-records";
+import type { NormalizeAudioArtifact } from "./audio-normalize";
 import type { AnalysisJobResult, JobStatusView } from "./types";
+
+function compactAnalysisJobResult(result: AnalysisJobResult): AnalysisJobResult {
+  const summary: Record<string, unknown> = {};
+  for (const [source, value] of Object.entries(result.summary)) {
+    const projected = (source === "audioSummary" || source === "silence" || source === "beatGrid") &&
+      value !== null && typeof value === "object" && !Array.isArray(value)
+      ? compactAnalysisFacts(source, value as Record<string, unknown>)
+      : value;
+    // Clone only after dropping audio arrays so status reads do not copy dense
+    // waveform/event data merely to omit it from the returned view.
+    summary[source] = structuredClone(projected);
+  }
+  return {
+    analysisTypes: [...result.analysisTypes],
+    summary,
+    artifacts: structuredClone(result.artifacts),
+  };
+}
+
+/** Compact a status loaded from disk or a registry; never mutates its source. */
+export function compactJobStatusView(status: JobStatusView): JobStatusView {
+  const { result, ...fields } = status;
+  return {
+    ...structuredClone(fields),
+    // Persisted legacy results can contain pre-compact audio arrays, and old
+    // failed/cancelled records could retain results from before the invariant.
+    result: status.state !== "done" || !result
+      ? null
+      : status.kind === "analysis"
+        ? compactAnalysisJobResult(result as AnalysisJobResult)
+        : structuredClone(result),
+  };
+}
 
 /** The public job.status view of a registry record (a fresh copy). */
 export function jobStatusView(job: JobRecord): JobStatusView {
-  return {
+  return compactJobStatusView({
     jobId: job.jobId,
     kind: job.kind,
     ...(job.projectId !== undefined ? { projectId: job.projectId } : {}),
     ...(job.workspaceId !== undefined ? { workspaceId: job.workspaceId } : {}),
     state: job.state,
-    progress: job.progress ? { ...job.progress } : null,
-    artifact: job.artifact ? { ...job.artifact } : null,
-    result: job.result ? structuredClone(job.result) : null,
-    error: job.error ? { ...job.error } : null,
+    progress: job.progress,
+    artifact: job.artifact,
+    result: job.result,
+    error: job.error,
     deliveredTo: job.deliveredTo,
     deliveryError: job.deliveryError,
     sourceRevision: job.sourceRevision,
@@ -42,7 +77,7 @@ export function jobStatusView(job: JobRecord): JobStatusView {
     cancelRequested: job.cancelRequested,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
-  };
+  });
 }
 
 export const JOB_STATES = ["queued", "running", "done", "error", "cancelled"] as const;
@@ -58,13 +93,13 @@ export interface JobProgressView {
 
 export interface JobRecord {
   readonly jobId: string;
-  readonly kind: "export" | "analysis";
+  readonly kind: "export" | "analysis" | "audio-process";
   readonly projectId?: string;
   readonly workspaceId?: string;
   readonly state: JobState;
   readonly progress: JobProgressView | null;
   readonly artifact: ArtifactRef | null;
-  readonly result: AnalysisJobResult | null;
+  readonly result: AnalysisJobResult | NormalizeAudioArtifact | null;
   readonly error: { readonly code: string; readonly message: string } | null;
   /** destinationPath delivery outcome (both null when none was requested). */
   readonly deliveredTo: string | null;
@@ -268,6 +303,39 @@ export class JobRegistry {
         route: "built-in-technical-quality",
         error: null,
       };
+    });
+  }
+
+  markAudioProcessDone(jobId: string, result: NormalizeAudioArtifact): void {
+    this.transition(jobId, (job) => {
+      if (TERMINAL.has(job.state)) return job;
+      return {
+        ...job,
+        state: "done" as JobState,
+        result: structuredClone(result),
+        artifact: null,
+        route: "local-ffmpeg-loudnorm-two-pass",
+        error: null,
+      };
+    });
+  }
+
+  /** Cleanup failure takes precedence over a failed terminal checkpoint. */
+  markAudioProcessCleanupFailed(jobId: string, message: string): void {
+    const job = this.jobs.get(jobId);
+    if (!job || job.kind !== "audio-process" || job.state === "done") return;
+    this.publish({
+      ...job,
+      state: "error",
+      artifact: null,
+      result: null,
+      error: {
+        code: "JOB_FAILED",
+        message: job.error
+          ? `${job.error.message}; audio output cleanup failed: ${message}`
+          : `Audio output cleanup failed: ${message}`,
+      },
+      updatedAt: new Date().toISOString(),
     });
   }
 

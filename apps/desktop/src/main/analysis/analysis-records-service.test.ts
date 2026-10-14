@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { saveAnalysisRecord } from "@reelterminal/agent-facade/analysis-records";
+import { JobRegistry, jobStatusView } from "@reelterminal/agent-facade";
+import { saveAnalysisRecord, type AnalysisRecord } from "@reelterminal/agent-facade/analysis-records";
 import { createAnalysisRecordsService } from "./analysis-records-service";
 
 const dirs: string[] = [];
@@ -11,7 +12,11 @@ afterEach(async () => {
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true })));
 });
 
-async function fixture(cloudUpload = false) {
+async function fixture(
+  cloudUpload = false,
+  silenceParams?: AnalysisRecord["config"]["silenceParams"],
+  overrides: { observations?: readonly Record<string, unknown>[]; sourceRevision?: number } = {},
+) {
   const root = await mkdtemp(path.join(os.tmpdir(), "reelterminal-analysis-ui-"));
   dirs.push(root);
   const sourcePath = path.join(root, "source.mp4");
@@ -19,7 +24,7 @@ async function fixture(cloudUpload = false) {
   const sourceStat = await stat(sourcePath);
   const record = await saveAnalysisRecord(root, {
     projectId: "project-a",
-    sourceRevision: 1,
+    sourceRevision: overrides.sourceRevision ?? 1,
     coordinateSpace: "source",
     subject: {
       mediaId: "media-a",
@@ -32,19 +37,20 @@ async function fixture(cloudUpload = false) {
     },
     analysisTypes: cloudUpload
       ? ["technicalQuality", "videoReview"]
-      : ["technicalQuality", "audioSummary"],
+      : silenceParams ? ["silence"] : ["technicalQuality", "audioSummary"],
     rangeSec: { startSec: 1, endSec: 3 },
     config: {
       analysisTypes: cloudUpload
         ? ["technicalQuality", "videoReview"]
-        : ["technicalQuality", "audioSummary"],
+        : silenceParams ? ["silence"] : ["technicalQuality", "audioSummary"],
       startSec: 1,
       endSec: 3,
       cloudUpload,
+      ...(silenceParams ? { silenceParams } : {}),
       ...(cloudUpload ? { reviewQuestion: "Check sync" } : {}),
     },
     provenance: [],
-    observations: [],
+    observations: overrides.observations ?? [],
     inferences: [],
     recommendations: [],
     unknowns: [],
@@ -104,6 +110,74 @@ describe("analysis records desktop service", () => {
     });
     expect(params).not.toHaveProperty("cloudUpload");
     expect(params).not.toHaveProperty("reviewQuestion");
+    expect(params).not.toHaveProperty("silenceParams");
+  });
+
+  it("rechecks silence with the effective tuning saved in its record", async () => {
+    const silenceParams = { thresholdDb: -32, minDurationSec: 0.3, paddingSec: 0.05 };
+    const { root, record } = await fixture(false, silenceParams);
+    const host = { isEnabled: true, callExternal: vi.fn().mockResolvedValue({ ok: true }) };
+    const service = createAnalysisRecordsService(root, host);
+
+    await service.recheck({ projectId: "project-a", recordId: record.id });
+
+    expect(host.callExternal).toHaveBeenCalledWith("media.analyze_start", expect.objectContaining({
+      mediaId: record.subject.mediaId,
+      analysisTypes: ["silence"],
+      startSec: 1,
+      endSec: 3,
+      silenceParams,
+      recheckOfRecordId: record.id,
+    }));
+  });
+
+  it("loads complete GUI audio records while job status stays compact", async () => {
+    const silenceParams = { thresholdDb: -32, minDurationSec: 0.3, paddingSec: 0.05 };
+    const silentRegions = Array.from({ length: 300 }, (_, index) => ({
+      id: `silence-${index}`,
+      startSec: index * 0.25,
+      endSec: index * 0.25 + 0.1,
+      durationSec: 0.1,
+    }));
+    const silenceFacts = {
+      silentRegions,
+      regionCount: silentRegions.length,
+      totalSilenceDurationSec: 30,
+      truncated: false,
+    };
+    const { root, record } = await fixture(false, silenceParams, {
+      sourceRevision: 27,
+      observations: [{ source: "silence", facts: silenceFacts }],
+    });
+
+    const registry = new JobRegistry();
+    registry.create("audio-job-compact", 27, "analysis");
+    registry.markAnalysisDone("audio-job-compact", {
+      analysisTypes: ["silence"],
+      summary: { silence: { ...silenceFacts, mediaId: "media-a" } },
+      artifacts: [],
+    });
+    const jobView = jobStatusView(registry.get("audio-job-compact")!);
+    const callExternal = vi.fn(async () => ({ ok: true as const, value: jobView }));
+    const service = createAnalysisRecordsService(root, { isEnabled: true, callExternal });
+
+    const guiRecord = await service.get({ projectId: "project-a", recordId: record.id });
+    expect(guiRecord).toMatchObject({
+      sourceRevision: 27,
+      coordinateSpace: "source",
+      audioDetailsComplete: true,
+      config: { silenceParams },
+    });
+    expect((guiRecord.observations[0]!.facts as typeof silenceFacts).silentRegions).toHaveLength(300);
+    expect((guiRecord.observations[0]!.facts as typeof silenceFacts).silentRegions[299]).toEqual(silentRegions[299]);
+
+    const status = await service.jobStatus("audio-job-compact");
+    expect(status).toMatchObject({ ok: true, value: { state: "done" } });
+    if (!status.ok) throw new Error(status.error.message);
+    const result = status.value.result;
+    if (!result || !("summary" in result)) throw new Error("analysis job returned no analysis result");
+    expect((result.summary.silence as Record<string, unknown>)).not.toHaveProperty("silentRegions");
+    expect(callExternal).toHaveBeenCalledWith("job.status", { jobId: "audio-job-compact" });
   });
 
   it("requires fresh per-run authorization before repeating cloud review", async () => {

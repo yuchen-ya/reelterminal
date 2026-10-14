@@ -196,7 +196,7 @@ export async function handleRpc(
         };
         const token = progressToken(message.params);
         const started = jobInfo(result);
-        if (token !== undefined && started !== null && (entry.name === "export.start" || entry.name === "media.analyze_start")) {
+        if (token !== undefined && started !== null && (entry.name === "export.start" || entry.name === "media.analyze_start" || entry.name === "audio.process.normalize")) {
           if (watchSignal !== undefined) void watchJob(client, started.jobId, token, notify, watchSignal);
         }
         return response;

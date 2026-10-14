@@ -129,4 +129,32 @@ describe("durable desktop task ledger", () => {
     const statusDoc = JSON.parse(readFileSync(path.join(root, "job-export-4.status.json"), "utf8"));
     expect(statusDoc.status.state).toBe("done");
   });
+
+  it("persists and restores audio-process task identity and fixed inputs", () => {
+    const { root, input } = setup();
+    const ledger = new DurableTaskLedger(root);
+    const audioInput: DurableTaskInput = {
+      ...input,
+      jobId: "job-audio-process-1",
+      kind: "audio-process",
+      parameters: { idempotencyKey: "normalize-1", payloadHash: "payload-hash" },
+    };
+    ledger.begin(audioInput);
+    ledger.update({
+      ...ledger.get(audioInput.jobId)!.status,
+      state: "running",
+      progress: { phase: "measuring", percent: 0.5 },
+    });
+
+    const restored = new DurableTaskLedger(root).get(audioInput.jobId)!;
+    expect(restored.kind).toBe("audio-process");
+    expect(restored.parameters).toEqual(audioInput.parameters);
+    expect(restored.status).toMatchObject({
+      kind: "audio-process",
+      state: "error",
+      error: { code: "INTERRUPTED" },
+      artifact: null,
+      sourceRevision: 7,
+    });
+  });
 });

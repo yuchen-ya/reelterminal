@@ -128,6 +128,35 @@ describe("emitted schema per-verb structure", () => {
     expect(props.expectedRevision).toEqual({ type: "integer", minimum: 0 });
   });
 
+  it("audio.process commands expose closed processing and registration inputs", () => {
+    const normalize = EMITTED_VERB_JSON_SCHEMAS["audio.process.normalize"];
+    expect(normalize.required).toEqual([
+      "mediaId", "audioStream", "startSec", "endSec", "targetLufs",
+      "truePeakDbtp", "loudnessRangeLu", "sampleRate", "channels", "idempotencyKey",
+    ]);
+    const normalizeProps = normalize.properties as Schema;
+    expect(normalize.additionalProperties).toBe(false);
+    expect(normalizeProps.audioStream).toEqual({ type: "integer", minimum: 0 });
+    expect(normalizeProps.targetLufs).toEqual({ type: "number", minimum: -70, maximum: -5 });
+    expect(normalizeProps.truePeakDbtp).toEqual({ type: "number", minimum: -9, maximum: 0 });
+    expect(normalizeProps.loudnessRangeLu).toEqual({ type: "number", minimum: 1, maximum: 50 });
+    expect(normalizeProps.sampleRate).toEqual({ type: "integer", minimum: 48000, maximum: 48000 });
+    expect(normalizeProps.channels).toEqual({ enum: [1, 2] });
+    expect(normalizeProps.expectedRevision).toEqual({ type: "integer", minimum: 0 });
+
+    const liveNormalize = LIVE_VERB_INPUT_SCHEMA_OVERRIDES["audio.process.normalize"];
+    expect(liveNormalize?.required).toEqual([
+      "mediaId", "audioStream", "startSec", "endSec", "targetLufs",
+      "truePeakDbtp", "loudnessRangeLu", "sampleRate", "channels", "idempotencyKey",
+      "projectId", "workspaceId",
+    ]);
+
+    const register = EMITTED_VERB_JSON_SCHEMAS["audio.process.register"];
+    expect(register.required).toEqual(["jobId", "expectedRevision"]);
+    const liveRegister = LIVE_VERB_INPUT_SCHEMA_OVERRIDES["audio.process.register"];
+    expect(liveRegister?.required).toEqual(["jobId", "expectedRevision", "projectId", "workspaceId"]);
+  });
+
   it("edit.apply: the discriminated op union lives as a nested anyOf inside items", () => {
     const schema = EMITTED_VERB_JSON_SCHEMAS["edit.apply"];
     expect(schema.required).toEqual(["ops"]);

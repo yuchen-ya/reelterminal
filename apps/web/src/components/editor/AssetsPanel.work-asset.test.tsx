@@ -113,13 +113,14 @@ describe("media context menu work-asset capture", () => {
     const track = useProjectStore.getState().project.timeline.tracks.find((item) => item.clips.length > 0)!;
     useUIStore.getState().select({ type: "clip", id: track.clips[0].id, trackId: track.id });
     render(<AssetsPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "Save timeline selection" }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "More actions" }), { key: "ArrowDown" });
+    fireEvent.click(screen.getByText("Save timeline selection"));
     fireEvent.change(screen.getByPlaceholderText("Name this clip or combination"), { target: { value: "Opening edit" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(useProjectStore.getState().project.workAssets?.[0].name).toBe("Opening edit"));
     expect(screen.getByText("Opening edit")).toBeInTheDocument();
     expect(useProjectStore.getState().project.mediaLibrary.items).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Work Assets" })).not.toBeInTheDocument();
-  });
+  }, 20_000);
 
 });

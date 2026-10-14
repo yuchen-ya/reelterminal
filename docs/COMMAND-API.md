@@ -59,6 +59,26 @@ key, no new version. `node.restore` adopts a node into a target workspace.
 arguments; workspace operations are described in
 [MULTI-PROJECT-USAGE.md](MULTI-PROJECT-USAGE.md).
 
+## Local audio workflow
+
+`media.analyze_start` supports `audioSummary`, `silence` and `beatGrid` in live
+and headless sessions. Audio analysis requires an artifact root. `job.status`
+returns compact audio statistics and a record ID; `analysis.get` defaults to a
+summary. Request `view: "events"` for time-window pagination or
+`view: "waveform"` for bounded waveform points. See
+[MATERIAL-ANALYSIS.md](MATERIAL-ANALYSIS.md) for the series and window contract.
+
+`audio.process.normalize` starts a local two-pass loudness job. After it reaches
+`done`, `audio.process.register` explicitly imports the persistent derived WAV
+into its source project/workspace with revision checks. Neither command replaces
+timeline clips. Both require write access in live mode. Parameters, measured
+target tolerances and the 120-second/48 kHz limits are documented in
+[AUDIO-NORMALIZATION.md](AUDIO-NORMALIZATION.md).
+
+Use `reelctl schema` for the command index and `reelctl schema <command>` for
+exact arguments. Domain-filtered schemas and scoped lazy capability probes are
+still [TODO items](AUDIO-TODO.md), not supported flags promised by this guide.
+
 ## MCP and headless sessions
 
 MCP clients can start `reelctl mcp serve`. It uses the same command catalog and

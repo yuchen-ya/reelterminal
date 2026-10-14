@@ -69,7 +69,9 @@ describe("media.analyze_start video candidate types", () => {
     if (!status.ok) return;
     expect(status.value.state).toBe("done");
     if (status.value.state !== "done") return;
-    const summary = status.value.result!.summary as Record<string, {
+    const result = status.value.result;
+    if (!result || !("summary" in result)) throw new Error("video analysis returned no analysis result");
+    const summary = result.summary as Record<string, {
       candidates?: { frameIndex: number | null; startFrameIndex: number | null }[];
       parameters?: unknown; limitations?: string[]; frameTiming?: { timing: string };
     }>;
@@ -92,7 +94,9 @@ describe("media.analyze_start video candidate types", () => {
     if (!started.ok) throw new Error(started.error.message);
     const status = await waitForJob(started.value.jobId);
     if (!status.ok || status.value.state !== "done") throw new Error("job did not finish");
-    const technical = (status.value.result!.summary as { technicalQuality: { frames: { decodedFrameCount: number | null; headerFrameCount: number | null; timeBase: string | null; frameTiming: { timing: string; fps: number | null } } | null } }).technicalQuality;
+    const result = status.value.result;
+    if (!result || !("summary" in result)) throw new Error("technical quality job returned no analysis result");
+    const technical = (result.summary as { technicalQuality: { frames: { decodedFrameCount: number | null; headerFrameCount: number | null; timeBase: string | null; frameTiming: { timing: string; fps: number | null } } | null } }).technicalQuality;
     expect(technical.frames).not.toBeNull();
     expect(technical.frames!.decodedFrameCount ?? technical.frames!.headerFrameCount).toBe(75);
     expect(technical.frames!.timeBase).toBe("1/10240");
@@ -105,7 +109,9 @@ describe("media.analyze_start video candidate types", () => {
     if (!started.ok) throw new Error(started.error.message);
     const status = await waitForJob(started.value.jobId);
     if (!status.ok || status.value.state !== "done") throw new Error("job did not finish");
-    const recordRef = (status.value.result!.summary as { analysisRecord: { id: string; recordPath: string } }).analysisRecord;
+    const result = status.value.result;
+    if (!result || !("summary" in result)) throw new Error("video analysis returned no analysis result");
+    const recordRef = (result.summary as { analysisRecord: { id: string; recordPath: string } }).analysisRecord;
     const record = JSON.parse(await readFile(recordRef.recordPath, "utf8"));
     expect(record.provenance).toContainEqual(
       expect.objectContaining({ kind: "local-measurement", provider: "local-ffmpeg-scene-score", analysisType: "sceneCuts" }),

@@ -109,7 +109,11 @@ export function CollabStatusBar(): JSX.Element {
         </span>
       ) : null}
       {runningTasks.length > 0 && <span data-testid="background-task-progress" className="max-w-64 truncate text-fg-2" title={runningTasks.map((task) => `${task.jobId} · ${task.projectId} / ${task.workspaceId} · r${task.sourceRevision}`).join("\n")}>
-        {runningTasks.map((task) => `${t(task.kind === "export" ? "versioning.exportTask" : "versioning.analysisTask")} ${Math.round(task.progress?.percent ?? 0)}%`).join(" · ")}
+        {runningTasks.map((task) => {
+          const taskLabel = task.kind === "export" ? "versioning.exportTask"
+            : task.kind === "analysis" ? "versioning.analysisTask" : "versioning.audioProcessTask";
+          return `${t(taskLabel)} ${Math.round(task.progress?.percent ?? 0)}%`;
+        }).join(" · ")}
       </span>}
 
       <div className="ml-auto flex shrink-0 items-center gap-1">

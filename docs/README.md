@@ -2,6 +2,7 @@
 
 ## Product and usage
 
+- [`PROJECT-ASSETS-FILTERS.md`](PROJECT-ASSETS-FILTERS.md) — project media types, save-point scope and SRT/VTT import.
 - [`../README.md`](../README.md) — product overview and quick start.
 - [`USER-GUIDE.md`](USER-GUIDE.md) — desktop onboarding, editor help, and save-versus-retain basics.
 - [`AGENT-GUIDE.md`](AGENT-GUIDE.md) — connecting an external Agent.
@@ -22,6 +23,8 @@
 - [`CLOUD-VIDEO-REVIEW.md`](CLOUD-VIDEO-REVIEW.md) — opt-in cloud video review.
 - [`MATERIAL-ANALYSIS.md`](MATERIAL-ANALYSIS.md) and
   [`MATERIAL-LIBRARY.md`](MATERIAL-LIBRARY.md) — material inspection and reuse.
+- [`AUDIO-NORMALIZATION.md`](AUDIO-NORMALIZATION.md) — local two-pass loudness processing, remeasurement and explicit derived-asset registration.
+- [`AUDIO-SPEED.md`](AUDIO-SPEED.md) — audio speed behavior and rendering limits.
 - [`MEDIA-REVIEW-WORKFLOWS.md`](MEDIA-REVIEW-WORKFLOWS.md) — reference comparison and media
   replacement workflows.
 - [`PRODUCTION-MANAGEMENT.md`](PRODUCTION-MANAGEMENT.md) — source history, candidates, review tasks, and persistent analysis batches.
@@ -48,7 +51,13 @@
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — setup, checks, and pull requests.
 - [`../SECURITY.md`](../SECURITY.md) — private security report instructions.
 
+## Current planning
+
+- [`AUDIO-TODO.md`](AUDIO-TODO.md) — current audio backlog, dependencies and acceptance criteria; planned features are not current capabilities.
+
 ## Historical acceptance records
+
+- [`AUDIO-PIPELINE-EXECUTION-PLAN.md`](AUDIO-PIPELINE-EXECUTION-PLAN.md) — completed audio batches A–C, commits and validation evidence.
 
 Dated records are kept as evidence and are not overwritten by newer rounds.
 Treat them as history, not current specs; the current specs are the documents

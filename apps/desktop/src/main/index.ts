@@ -11,6 +11,7 @@ import { z } from "zod";
 import { getPerfSink } from "@reelterminal/core";
 import { registerAppSchemePrivileges, handleAppScheme, APP_INDEX } from "./protocol";
 import { installNavigationGuard, isAllowedNavigation } from "./nav-guard";
+import { installScreenCapture } from "./screen-capture";
 import { handle, assertEditorIpcSender } from "./ipc";
 import { CHANNELS } from "../shared/ipc-contract";
 import { collectHardwareInfo } from "./ipc/hardware";
@@ -184,6 +185,7 @@ function createWindow(): void {
     },
   });
   registerEditorWindow(win);
+  installScreenCapture(win);
   win.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
     if (!isInPlace && isMainFrame) performanceSessionManager?.abortActiveSession();
   });

@@ -34,6 +34,10 @@ import type {
   MediaRenderHtmlResult,
   MediaAnalyzeStartParams,
   MediaAnalyzeStartResult,
+  AudioProcessNormalizeParams,
+  AudioProcessNormalizeResult,
+  AudioProcessRegisterParams,
+  AudioProcessRegisterResult,
   AnalysisGetParams,
   AnalysisListParams,
   AnalysisListResult,
@@ -101,6 +105,12 @@ export interface AgentFacade extends BundledToolBindings {
   readonly "media.analyze_start": (
     params: MediaAnalyzeStartParams,
   ) => Promise<FacadeResult<MediaAnalyzeStartResult>>;
+  readonly "audio.process.normalize": (
+    params: AudioProcessNormalizeParams,
+  ) => Promise<FacadeResult<AudioProcessNormalizeResult>>;
+  readonly "audio.process.register": (
+    params: AudioProcessRegisterParams,
+  ) => Promise<FacadeResult<AudioProcessRegisterResult>>;
   readonly "timeline.get": () => Promise<FacadeResult<TimelineState>>;
   readonly "timeline.query": (
     params?: TimelineQueryParams,
@@ -252,6 +262,8 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "media.import": (params) => session.mediaImport(params),
     "media.render_html": (params) => session.mediaRenderHtml(params),
     "media.analyze_start": (params) => session.mediaAnalyzeStart(params),
+    "audio.process.normalize": (params) => session.audioProcessNormalize(params),
+    "audio.process.register": (params) => session.audioProcessRegister(params),
     "timeline.get": () => session.timelineGet(),
     "timeline.query": (params) => session.timelineQuery(params),
     "timeline.mapSourceTimes": (params) => session.timelineMapSourceTimes(params),
