@@ -26,6 +26,24 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
   const ffprobe = process.env.REELTERMINAL_FFPROBE_PATH || "ffprobe";
   const run = (bin: string, args: string[]) => execFileSync(bin, args, { maxBuffer: 32 * 1024 * 1024, timeout: 180_000 });
   const probe = (file: string) => JSON.parse(run(ffprobe, ["-v", "error", "-show_streams", "-show_format", "-of", "json", file]).toString());
+  // Homebrew FFmpeg may omit drawtext. Ten visible binary cells encode the
+  // exact source frame number using only the built-in drawbox filter.
+  const counterFilters = ["drawbox=x=40:y=960:w=280:h=24:color=black:t=fill", ...Array.from({ length: 10 }, (_, bit) => `drawbox=x=${40 + bit * 28}:y=960:w=24:h=24:color=white:t=fill:enable='bitand(n,${2 ** bit})'`)].join(",");
+  record.frame_marker = { type: "10bit_source_frame_lsb_first", origin: [40, 960], cell_size: 24, cell_step: 28, frame_rate: 30, tolerance_frames: 1 };
+  const readCounter = (file: string, seconds: number, overlay?: "green" | "blue") => {
+    const scale = overlay ? 0.3 : 1;
+    const width = overlay ? 84 : 280;
+    const height = overlay ? 8 : 24;
+    const x = overlay === "green" ? 1184 : overlay === "blue" ? 184 : 40;
+    const y = overlay ? 416 : 960;
+    const bytes = run(ffmpeg, ["-v", "error", "-ss", String(seconds), "-i", file, "-frames:v", "1", "-vf", `crop=${width}:${height}:${x}:${y}`, "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]);
+    let frame = 0;
+    for (let bit = 0; bit < 10; bit++) {
+      const offset = (Math.floor(12 * scale) * width + Math.floor((bit * 28 + 12) * scale)) * 3;
+      if (bytes[offset]! + bytes[offset + 1]! + bytes[offset + 2]! > 384) frame += 2 ** bit;
+    }
+    return frame;
+  };
   let target: Record<string, unknown> = {};
   const call = async (name: string, args: Record<string, unknown> = {}): Promise<any> => {
     const reply = await agent!.callTool<any>(name, args, { timeoutMs: 120_000 });
@@ -94,8 +112,10 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     for (const [index, color] of ["red", "lime", "blue"].entries()) {
       const duration = index === 1 ? 18 : 12;
       const file = path.join(sourceRoot, `independent-${color}.mp4`);
-      run(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", `testsrc2=size=1920x1080:rate=30:duration=${duration}`, "-f", "lavfi", "-i", `sine=frequency=${440 + index * 220}:sample_rate=48000:duration=${duration}`, "-vf", `hue=h=${index * 45},drawbox=x=860:y=440:w=200:h=200:color=${color}:t=fill,drawtext=fontfile=/System/Library/Fonts/Monaco.ttf:text='SOURCE${index} FRAME %{n}':x=40:y=60:fontsize=52:fontcolor=white:box=1:boxcolor=black`, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-shortest", file]);
+      run(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", `testsrc2=size=1920x1080:rate=30:duration=${duration}`, "-f", "lavfi", "-i", `sine=frequency=${440 + index * 220}:sample_rate=48000:duration=${duration}`, "-vf", `hue=h=${index * 45},drawbox=x=860:y=440:w=200:h=200:color=${color}:t=fill,${counterFilters}`, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-shortest", file]);
       record.sources.push({ path: file, sha256: createHash("sha256").update(await readFile(file)).digest("hex"), probe: probe(file) });
+      record.sources[index].counter_at_2_seconds = readCounter(file, 2);
+      expect(Math.abs(record.sources[index].counter_at_2_seconds - 60)).toBeLessThanOrEqual(1);
       await copyFile(file, path.join(evidence, `source-${index}.mp4`));
       const imported = await call("media_import", { ...target, path: file, expectedRevision: (await state()).revision, idempotencyKey: `${id}-import-${index}` });
       mediaIds.push(imported.mediaId);
@@ -166,7 +186,7 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     const failedExport = await call("export_start", { ...target, settings: record.settings, destinationPath: failedDestination });
     activeJob = failedExport.jobId;
     record.failure_progress = await waitForEncodedProgress(activeJob!);
-    const appPid = launched.app.process().pid!;
+    const appPid = await launched.app.evaluate(() => process.pid);
     const failureDeadline = Date.now() + 60_000;
     let encoderPid: number | undefined;
     while (!encoderPid && Date.now() < failureDeadline) {
@@ -219,6 +239,10 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
         expect(pixel[channel!], `export ${index} frame ${seconds}: ${pixel}`).toBeGreaterThan(180);
         expect(pixel[(channel! + 1) % 3]).toBeLessThan(80);
         entry.frames.push({ seconds, pixel });
+        const frameMarkers = { base: readCounter(destination, seconds!), green: readCounter(destination, seconds!, "green"), blue: readCounter(destination, seconds!, "blue") };
+        const expectedMarkers = { base: Math.round((seconds! >= 6 ? seconds! - 6 : seconds!) * 30), green: Math.round(seconds! * 1.5 * 30), blue: Math.round(seconds! * 30) };
+        for (const key of ["base", "green", "blue"] as const) expect(Math.abs(frameMarkers[key] - expectedMarkers[key]), `${key} source frame at ${seconds}: ${JSON.stringify(frameMarkers)}`).toBeLessThanOrEqual(1);
+        entry.frames.push({ seconds, frameMarkers, expectedMarkers, tolerance_frames: 1 });
         run(ffmpeg, ["-v", "error", "-ss", String(seconds), "-i", destination, "-frames:v", "1", path.join(evidence, `export-${index}-at-${seconds}.png`)]);
       }
       const frameHash = async (seconds: number) => createHash("sha256").update(await readFile(path.join(evidence, `export-${index}-at-${seconds}.png`))).digest("hex");
