@@ -3,6 +3,7 @@ import { open, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import { isDeepStrictEqual } from "node:util";
 import type { Locator, Page } from "playwright-core";
 import type { Project } from "@reelterminal/core/types/project";
 import type { TimelineState } from "@reelterminal/agent-facade";
@@ -483,11 +484,17 @@ export async function runPerformanceScenario(scenarioId: TimelinePerformanceScen
         if (scenarioId !== "P01") correctness.target_frame_verified = true;
       };
       const verifyUndoRedo = async (before: TimelineState, after: TimelineState) => {
-        const equal = (actual: TimelineState, expected: TimelineState) => JSON.stringify({ tracks: actual.tracks, text: actual.textOverlays }) === JSON.stringify({ tracks: expected.tracks, text: expected.textOverlays });
+        const equal = (actual: TimelineState, expected: TimelineState) => isDeepStrictEqual({ tracks: actual.tracks, text: actual.textOverlays }, { tracks: expected.tracks, text: expected.textOverlays });
         for (const [action, expected] of [["undo", before], ["redo", after]] as const) {
           const current = await timeline(agent!, targetIdentity);
           const reply = await agent!.callTool("history_control", { ...targetIdentity, action, expectedRevision: current.revision, idempotencyKey: `${runId}-${current.revision}-${action}` });
-          if (!reply.ok || !equal(await timeline(agent!, targetIdentity), expected)) throw new Error(`large timeline ${action} did not restore the full state`);
+          const actual = await timeline(agent!, targetIdentity);
+          if (!reply.ok || !equal(actual, expected)) {
+            const directory = path.join(ARTIFACTS_DIR, "performance");
+            await mkdir(directory, { recursive: true });
+            await writeFile(path.join(directory, `${runId}.${action}-failure.json`), JSON.stringify({ reply: { ok: reply.ok, error: reply.error }, expected, actual }, null, 2));
+            throw new Error(`large timeline ${action} did not restore the full state`);
+          }
         }
         await waitForMarker(launched!.page, fixture, options.operationTimeoutMs);
         correctness.undo_redo_full_state_verified = true;
