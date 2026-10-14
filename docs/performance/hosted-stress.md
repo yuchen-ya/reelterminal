@@ -363,3 +363,69 @@ added, and subsequent state/revision, transaction, capture and save/reopen
 assertions remain. A serialized browser-predicate regression rejects a changed
 preview with a pending commit and a permanently blocked release. This supports
 the driver-race diagnosis; the old artifact cannot prove its exact UI state.
+
+## 2026-10-14 completed hosted stability round
+
+The tested source is exactly
+`c971815fbe2716f71c563baf6fcfc23f3ca16a76`. Its
+[stability smoke](https://github.com/yuchen-ya/reelterminal/actions/runs/38596670148)
+passed five configurations, then its single
+[representative stability run](https://github.com/yuchen-ya/reelterminal/actions/runs/38598345984)
+completed successfully. Both runs passed all 266 contracts (56 harness, 34 Node,
+26 core, 46 desktop/bridge and 104 web), with zero failures or skipped tests.
+
+| Configuration | Long-run verified coverage | Outcome |
+| --- | --- | --- |
+| T01 | 50 synthetic clips; 25 operations | Passed |
+| H01 quick | 100 nodes; 5 previews | Passed |
+| P01 | 15 gestures plus save; final revision/timing read back after actual relaunch | Passed |
+| T03 | 2000 clips, 50 tracks, 25 samples / 150 operations, full-state undo/redo | Passed |
+| H01 large | 1000 nodes; 25 previews | Passed |
+| R01 | 500 real edit/undo/redo cycles; 108.926 seconds including final checks | Passed |
+| R02 | One continuous requested 1800-second observation; 1771 cycles; 1801.423 seconds including final checks | Passed |
+
+The long report has seven passed configurations, zero failed and zero not run;
+all five serial command invocations exited zero. Every result records the tested
+source SHA and complete capture validity, with no dropped events or critical
+endpoints. P01 retains the durable final revision assertion. T03 retains full
+undo/redo and multiselection transaction assertions. The report is
+`stability_passed`, with zero warnings/hard failures and
+`performance_qualified: false`; timing remains reference-only. The original
+calibration profiles and failed overhead-gate history above are unchanged.
+
+R02 first reached the real capacity of 1000 through 1010 independent edits at
+150 ms spacing; that 192.993-second warmup is outside the continuous observation.
+All 59 idle samples retained 1000 undo entries, zero redo entries and a bounded
+256-revision journal. The final main/renderer captures were complete and visible,
+with zero open spans or reason codes. Final queued, pending and failed writes
+were zero; media caches/blob ownership and font/runtime counts matched their
+asserted baseline. R01 also completed its final resource and capture assertions.
+These assertions do not establish a general absence of heap leaks or hardware
+performance qualification.
+
+The standard hosted Windows machine recorded image `win25-vs2026`, version
+`20260925.250.1`, AMD EPYC 9V45 and four logical cores. The anonymous
+[long artifact](https://github.com/yuchen-ya/reelterminal/actions/runs/38598345984/artifacts/11914898005)
+is 40,661 bytes, retained for three days. It contains exact commands, runner
+metadata, numeric resource samples and the seven result summaries, without user
+media or private project state.
+
+The cloud round finished before this outcome-only documentation update. Remote
+main was then fast-forwarded to `65e013cdd3f64c5bac5c9e64b7b2f7f4e30b1e76`,
+preserving the concurrent Mac changes. Those newer resource diagnostics,
+assets/audio/recording tests and subtitle repair were not tested by this fixed
+SHA run; their presence is not Mac passing coverage. The existing independent
+`project.openreel.json` naming failure is outside this task. Physical GPU,
+hardware decode/encode, actual audio output, real-media exports and local
+interaction still require the user's machine. This round is not release
+qualification.
+
+To reproduce this completed stability coverage manually, first run the short
+profile and inspect it, then run the long profile on the same SHA:
+
+```sh
+gh workflow run performance.yml --repo yuchen-ya/reelterminal --ref main -f commit=c971815fbe2716f71c563baf6fcfc23f3ca16a76 -f profile=stability-smoke
+gh run list --repo yuchen-ya/reelterminal --workflow performance.yml --event workflow_dispatch
+# Only after that smoke passes:
+gh workflow run performance.yml --repo yuchen-ya/reelterminal --ref main -f commit=c971815fbe2716f71c563baf6fcfc23f3ca16a76 -f profile=stability
+```
