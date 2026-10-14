@@ -10,7 +10,7 @@
 **Generate anywhere; finish here.**
 
 <p align="center">
-  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.0.1-10B981?style=flat-square" alt="Version" /></a>
+  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.1.1-10B981?style=flat-square" alt="Version" /></a>
   <a href="docs/EXTERNAL-DEPENDENCIES.md"><img src="https://img.shields.io/badge/Privacy-100%25%20Local--First-059669?style=flat-square" alt="Local First" /></a>
   <a href="apps/desktop/DISTRIBUTION.md"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-64748B?style=flat-square" alt="Platform" /></a>
   <a href="https://github.com/yuchen-ya/reelterminal/issues"><img src="https://img.shields.io/badge/Feedback-Issues%20Welcome-3B82F6?style=flat-square" alt="Feedback" /></a>
@@ -31,7 +31,7 @@ AI video models make it easier to create footage, but turning **a collection of 
 * **Bad frames and artifacts:** flicker, distorted shapes, and other defects often affect only a small part of a clip. Repairing that section can be more practical than generating the whole shot again.
 * **Awkward AI collaboration:** traditional editors are difficult for an AI assistant to operate, while batch scripts offer little visual feedback, interaction, or undo.
 
-**ReelTerminal brings a visual editor and an assistant-friendly timeline together.** Drag and adjust clips in the desktop app, or let your AI assistant—Cursor, Claude, Antigravity, and others—operate the same project. **You make the creative decisions; the assistant handles repetitive and structured edits. Changes remain undoable.**
+**ReelTerminal brings a visual editor and an assistant-friendly timeline together.** Drag and adjust clips in the desktop app, or let your AI assistant—Cursor, Claude, Antigravity, and others—operate the same project. **You make the creative decisions; the assistant handles repetitive and structured edits, backed by immutable version nodes, player comparison, and full undo.**
 
 ![ReelTerminal dark desktop interface showing the canvas, multiple timeline tracks, and the Agent collaboration status bar](docs/assets/desktop-screenshot.jpg)
 
@@ -43,9 +43,9 @@ AI video models make it easier to create footage, but turning **a collection of 
 
 | 🤖 **Designed for AI collaboration** | 🎯 **Frame-accurate review and repair** |
 | :--- | :--- |
-| A structured timeline API supports atomic batches, revision checks, and duplicate-request protection, helping assistants apply edits without conflicting with ongoing work. | Uses **zero-based decoded frame indexes** and actual presentation timestamps rather than relying only on nominal frame rates. OpenCV sparse optical flow and mask tools support targeted repairs. |
-| 🤝 **Shared project and undo history** | 🔒 **Local-first editing** |
-| Desktop gestures and assistant edits update the same project. Assistant edits enter the main undo history, so you can undo them from the editor. | Core decoding, rendering, and export run locally through Chromium, WebCodecs, and FFmpeg. Projects and media stay on your machine; no cloud upload is required for local editing. See the external-dependencies guide for optional integrations and resource downloads. |
+| A structured timeline API supports atomic batches, revision checks, and duplicate-request protection, helping assistants apply edits without conflicting with ongoing work. A built-in bilingual manual answers UI how-to queries on demand, reducing guesswork about interface operations. | Uses **zero-based decoded frame indexes** and actual presentation timestamps rather than relying only on nominal frame rates. OpenCV sparse optical flow and mask tools support targeted repairs. |
+| 🌿 **Immutable version nodes & comparison** | 🔒 **100% Local-first & content-addressed** |
+| Decouples regular workspace draft saves from milestone retention (Save vs Retain). Inspect version trees, preview read-only versions, compare historical cuts in the player, and adopt safe branches anytime. | Core decoding, rendering, and export run locally through Chromium, WebCodecs, and FFmpeg. Content-addressed hashing and controlled storage protect media from dangling references and accidental loss. |
 
 ---
 
@@ -59,9 +59,9 @@ flowchart LR
 ```
 
 1. Visit **[Releases](https://github.com/yuchen-ya/reelterminal/releases)** and download an available desktop build for your system.
-2. Open a video project, then switch the collaboration control in the bottom status bar to **`Agent · Editable`**.
+2. Open a video project, then switch the collaboration toggle above the timeline to **`Editable`** (or click Allow editing).
 3. Click **“Copy startup prompt”** in the notification.
-4. **Paste the prompt into your AI assistant**, such as Cursor, Claude Code, Antigravity, or Windsurf. It includes the local paths and collaboration rules needed to connect to the open project.
+4. **Paste the prompt into your AI assistant**, such as Cursor, Claude Code, Antigravity, or Windsurf. It includes the local paths and collaboration rules needed to connect to the open project and query the built-in manual on demand.
 
 This release includes a **Windows x64 installer and portable ZIP**. Extract the entire ZIP before running `ReelTerminal.exe`. macOS builds will follow separately. The Windows builds are unsigned and may show an unknown publisher during installation. Some media-processing features require a separate FFmpeg/ffprobe installation; see [desktop distribution](apps/desktop/DISTRIBUTION.md).
 
@@ -140,6 +140,8 @@ Please share them through **[GitHub Issues](https://github.com/yuchen-ya/reelter
 Some guides are currently in Chinese; command names and code examples are shared across both interfaces.
 
 * 📖 [**Desktop user guide**](docs/USER-GUIDE.md) — installation, interface tour, and common operations. Desktop builds include English and Chinese offline manuals.
+* 🌿 [**Multi-project & version nodes guide**](docs/MULTI-PROJECT-USAGE.md) — compact version track, save-versus-retain workflows, read-only preview, and comparison.
+* 📐 [**Version nodes UX specification**](docs/VERSION-NODES-UX.md) — save-point tree, branch adoption, recycling, and conflict rules.
 * 🤖 [**External Agent guide**](docs/AGENT-GUIDE.md) — access modes, CLI usage, and advanced commands.
 * 🗂️ [**Agent workspace guide**](docs/AGENT-WORKSPACE.md) — task directories and output-file conventions.
 * ⚙️ [**Command API specification**](docs/COMMAND-API.md) — commands, schema validation, and concurrency control.

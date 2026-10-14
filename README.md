@@ -11,7 +11,7 @@
 *Generate anywhere; finish here.*
 
 <p align="center">
-  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.0.1-10B981?style=flat-square" alt="Version" /></a>
+  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.1.1-10B981?style=flat-square" alt="Version" /></a>
   <a href="docs/EXTERNAL-DEPENDENCIES.md"><img src="https://img.shields.io/badge/Privacy-100%25%20Local--First-059669?style=flat-square" alt="Local First" /></a>
   <a href="apps/desktop/DISTRIBUTION.md"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-64748B?style=flat-square" alt="Platform" /></a>
   <a href="https://github.com/yuchen-ya/reelterminal/issues"><img src="https://img.shields.io/badge/Feedback-Issues%20Welcome-3B82F6?style=flat-square" alt="Feedback" /></a>
@@ -33,7 +33,7 @@
 * **缺乏顺手的 AI 协同环境**：传统剪辑软件对大模型助手来说并不友好；而普通的脚本批处理又看不到画面、无法交互和撤销。
 
 **ReelTerminal 试图提供一个平滑的折中解法：**  
-保留现代剪辑器直观的画布和时间线，创作者可以在桌面端随手拖拽微调；同时让你的 AI 助手（Cursor、Claude、Antigravity 等）能直接操作工程时间线——**你负责直观审美，AI 负责批量与结构化处理，改动随时可撤销。**
+保留现代剪辑器直观的画布和时间线，创作者可以在桌面端随手拖拽微调；同时让你的 AI 助手（Cursor、Claude、Antigravity 等）能直接操作工程时间线——**你负责直观审美，AI 负责批量与结构化处理，支持版本节点存档、双向对比与随时撤销。**
 
 ![ReelTerminal 暗色桌面界面：画布、多轨时间线与 Agent 协作状态栏](docs/assets/desktop-screenshot.jpg)
 
@@ -45,9 +45,9 @@
 
 | 🤖 **面向 AI 助手协同设计** | 🎯 **真·帧精度与瑕疵修补** |
 | :--- | :--- |
-| 为 AI 辅助剪辑定制了严谨的时间线接口，支持原子批处理、CAS 乐观锁与防重复提交，确保 AI 助手在执行复杂剪辑时稳定可靠、不冲突。 | 基于 **0-based 解码帧索引** 与真实 PTS 时间戳，避免标称帧率导致的音画漂移。内置 OpenCV 稀疏光流追踪与掩码修复，方便定点修补 AI 瑕疵帧。 |
-| 🤝 **人机双轨与共享撤销栈** | 🔒 **100% 本地优先与隐私安全** |
-| 桌面 GUI 拖拽微调与 AI 助手操作实时双向同步。AI 提交的所有剪辑步骤自动进入主撤销栈，你在界面中随时可以按 `Ctrl+Z` 一键复原。 | 核心编解码、渲染管线均直接运行在本机 Chromium (WebCodecs) 与 FFmpeg，素材和工程文件全在本地，不强制上传任何云端。 |
+| 为 AI 辅助剪辑定制了严谨的时间线接口，支持原子批处理、CAS 乐观锁与防重复提交，帮助 AI 助手可靠地执行复杂剪辑并检测冲突。内置双语操作手册供 Agent 按需检索，减少对界面操作的猜测。 | 基于 **0-based 解码帧索引** 与真实 PTS 时间戳，避免标称帧率导致的音画漂移。内置 OpenCV 稀疏光流追踪与掩码修复，方便定点修补 AI 瑕疵帧。 |
+| 🌿 **不可变版本节点与画面对比** | 🔒 **100% 本地优先与内容寻址** |
+| 工作区草稿与里程碑留存（Save vs Retain）严格解耦。支持一键留存版本节点、只读预览与播放器画面对比，AI 可放手试剪，人类随时比对采用或一键回退。 | 核心编解码、渲染管线均直接运行在本机 Chromium (WebCodecs) 与 FFmpeg。素材基于哈希内容寻址与受控存储，降低丢失素材与无效引用的风险，工程保存在本地。 |
 
 ---
 
@@ -61,9 +61,9 @@ flowchart LR
 ```
 
 1. 前往 **[Releases 页面](https://github.com/yuchen-ya/reelterminal/releases)** 下载对应系统的桌面端安装包；
-2. 打开应用载入视频工程，点击底部状态栏的协作权限切换为 **`Agent · Editable`**；
+2. 打开应用载入视频工程，在时间线上方协作工具栏将协作权限切换为 **`可编辑`**；
 3. 在弹出的通知中直接点击 **「复制启动提示词」**；
-4. 将复制好的内容**直接粘贴发给你的 AI 助手**（如 Cursor、Claude Code、Antigravity、Windsurf 等）——提示词中已自动准备好本地环境路径与协作规则，AI 会自动接入当前项目开始协同！
+4. 将复制好的内容**直接粘贴发给你的 AI 助手**（如 Cursor、Claude Code、Antigravity、Windsurf 等）——提示词中已自动准备好本地环境路径与协作规则，AI 可按需查询内置手册与参数契约，自动接入当前项目开始协同！
 
 本次发布提供 **Windows x64 安装包和便携 ZIP**。便携版请完整解压后运行 `ReelTerminal.exe`；macOS 安装包后续单独构建发布。Windows 构建尚未代码签名，安装时可能提示未知发布者。部分媒体处理功能需要另外安装 FFmpeg/ffprobe，详见[桌面发行说明](apps/desktop/DISTRIBUTION.md)。
 
@@ -135,6 +135,8 @@ ReelTerminal 目前由我一个人独立设计和开发。在日常折腾 AI 视
 深入了解项目的具体实现与工程规范：
 
 - 📖 [**桌面端用户手册**](docs/USER-GUIDE.md) — 桌面端安装、界面导览与常用操作。
+- 🌿 [**多项目与版本节点指南**](docs/MULTI-PROJECT-USAGE.md) — 紧凑版本轨道、保存与留存分离（Save vs Retain）、只读预览与画面对比。
+- 📐 [**版本节点交互规范**](docs/VERSION-NODES-UX.md) — 存档树、采用（Adopt）、回收与冲突保护设计准则。
 - 🤖 [**外部 Agent 协作指南**](docs/AGENT-GUIDE.md) — 权限机制、CLI 详解与进阶接口。
 - 🗂️ [**任务工作区规程**](docs/AGENT-WORKSPACE.md) — 独立工作目录规程与落盘准则。
 - ⚙️ [**Command API 规范**](docs/COMMAND-API.md) — 命令目录、Schema 校验与并发控制。
