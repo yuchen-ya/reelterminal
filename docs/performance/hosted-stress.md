@@ -40,7 +40,9 @@ functional, structural, incomplete-capture and resource failures still fail.
 
 Only anonymous CI reports, exact parameter/runner metadata and numeric resource
 diagnostics are uploaded, with three-day retention. Raw profiles, endpoint
-descriptors, source/export videos, screenshots and traces are excluded. The
+descriptors, source/export videos, full screenshots and traces are excluded. A
+persistently blocked synthetic drag may retain one 200×100 input-point crop as
+failure diagnostics. The
 measurement job creates no new dependency/build cache.
 
 Windows is the minimum useful hosted desktop coverage. Linux can run the contract
@@ -151,3 +153,12 @@ queries still run their real preflights. Regression checks cover lease state,
 read-only/revocation, status ordering, CLI/MCP guards and absence of provider
 preflights from ordinary status. This removes unrelated repeated probing rather
 than increasing the capture budget or altering qualification statistics.
+
+The first status-fix smoke completed eight groups with wall windows around
+3.6 seconds and total MCP-read phases around 0.8–1.0 seconds, confirming the
+large unrelated status overhead was removed. It then failed the existing
+pre-input hit assertion, so it did not produce a qualified calibration. Custom
+mouse input now waits at most the existing 5-second operation ceiling for its
+coordinates to hit the exact target before mouse-down. A permanently blocked
+target still fails and may retain the small input-point crop; no wrong-target
+input is allowed. The original hit assertion and pointer/geometry checks remain.

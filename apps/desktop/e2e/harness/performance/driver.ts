@@ -219,9 +219,33 @@ async function selectClipsWithKeyboard(page: Page, ids: readonly string[]): Prom
   ), ids);
 }
 
-async function verifyHit(target: Locator, x: number, y: number): Promise<void> {
+async function verifyHit(target: Locator, x: number, y: number, timeout: number): Promise<void> {
   const id = await target.getAttribute("data-live-editor-target-id");
-  const hit = await target.page().evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("[data-live-editor-target-id]")?.getAttribute("data-live-editor-target-id"), { x, y });
+  if (!id) throw new Error("clip target has no input identity");
+  const read = () => target.page().evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("[data-live-editor-target-id]")?.getAttribute("data-live-editor-target-id"), { x, y });
+  let hit = await read();
+  if (hit !== id) {
+    console.info("PERFORMANCE_INPUT_HIT_WAIT", { expected: id, actual: hit ?? null, x, y });
+    // Custom mouse input needs the same actionability synchronization that
+    // Playwright's locator actions provide. Never press through an overlay.
+    try {
+      await target.page().waitForFunction(({ id, x, y }) =>
+        document.elementFromPoint(x, y)?.closest("[data-live-editor-target-id]")?.getAttribute("data-live-editor-target-id") === id,
+      { id, x, y }, { timeout, polling: "raf" });
+    } catch (error) {
+      // One tiny crop around this synthetic input point, never a profile or
+      // full application screenshot. Preserve the original action failure.
+      const page = target.page();
+      if (typeof page.screenshot === "function") {
+        const directory = path.join(ARTIFACTS_DIR, "performance-ci");
+        await mkdir(directory, { recursive: true }).then(() =>
+          page.screenshot({ path: path.join(directory, "input-hit-failure.png"), timeout: 2000,
+            clip: { x: Math.max(0, x - 100), y: Math.max(0, y - 50), width: 200, height: 100 } })).catch(() => undefined);
+      }
+      throw error;
+    }
+    hit = await read();
+  }
   if (hit !== id) throw new Error("real input hit the wrong clip");
 }
 
@@ -276,7 +300,7 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
   const x = trim ? box.x + box.width - 3 : box.x + Math.min(box.width / 2, 50);
   // Drag the clip body clear of selectable labels/native image drags.
   const y = trim ? box.y + box.height / 2 : box.y + Math.min(box.height / 4, 8);
-  await verifyHit(target, x, y);
+  await verifyHit(target, x, y, timeout);
   const before = await target.evaluate((element) => ({ transform: (element as HTMLElement).style.transform, width: (element as HTMLElement).style.width }));
   if (timing) timing.geometry_ms += performance.now() - began - timing.raf_wait_ms;
   const pointerBegan = performance.now();

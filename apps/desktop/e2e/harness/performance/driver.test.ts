@@ -46,8 +46,11 @@ function windowEvidence(overrides: Partial<RendererWindowEvidence> = {}): Render
 
 describe("performance driver helpers", () => {
   it("optional drag timing preserves the same browser calls, pointer stimulus and eight rAF waits", async () => {
-    const run = async (timing?: DragTiming) => {
+    let lastCalls: string[] = [];
+    const run = async (timing?: DragTiming, hitState: "good" | "transient" | "blocked" = "good") => {
       const calls: string[] = [];
+      lastCalls = calls;
+      let hitReads = 0;
       const target = {
         page: () => page,
         scrollIntoViewIfNeeded: async () => { calls.push("scrollIntoView"); },
@@ -68,7 +71,10 @@ describe("performance driver helpers", () => {
               requestAnimationFrame: (callback: () => void) => callback(),
             });
           }
-          if (source.includes("elementFromPoint")) return "clip";
+          if (source.includes("elementFromPoint")) {
+            hitReads++;
+            return hitState === "good" || (hitState === "transient" && hitReads > 1) ? "clip" : "other";
+          }
           if (source.includes("return evidence.points")) return Array.from({ length: 7 }, (_, index) => ({ x: 150 + index * 4, y: 28 }));
         },
         mouse: {
@@ -76,7 +82,14 @@ describe("performance driver helpers", () => {
           down: async () => { calls.push("down"); },
           up: async () => { calls.push("up"); },
         },
-        waitForFunction: async () => { calls.push("verify"); },
+        screenshot: async () => { calls.push("diagnostic"); throw new Error("diagnostic unavailable"); },
+        waitForFunction: async (fn: Function, _args: unknown, options: { timeout: number }) => {
+          if (fn.toString().includes("elementFromPoint")) {
+            calls.push("wait:hit");
+            expect(options.timeout).toBe(5000);
+            if (hitState === "blocked") throw new Error("input target never became actionable");
+          } else calls.push("verify");
+        },
       };
       await dragTo(page as unknown as Page, "clip", 24, 5000, false, timing);
       return calls;
@@ -85,6 +98,11 @@ describe("performance driver helpers", () => {
     expect(await run(timing)).toEqual(await run());
     expect(timing.raf_count).toBe(8);
     expect(Object.values(timing).every(value => Number.isFinite(value) && value >= 0)).toBe(true);
+    const transientCalls = await run(undefined, "transient");
+    expect(transientCalls.indexOf("wait:hit")).toBeLessThan(transientCalls.indexOf("down"));
+    await expect(run(undefined, "blocked")).rejects.toThrow("input target never became actionable");
+    expect(lastCalls).not.toContain("down");
+    expect(lastCalls).toContain("diagnostic");
   });
   it("rejects unplanned pointer coordinates while allowing browser pixel rounding", () => {
     const planned = [{ x: 100.4, y: 30.2 }, { x: 110.8, y: 30.2 }];
