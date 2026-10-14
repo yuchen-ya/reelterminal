@@ -498,6 +498,22 @@ describe("ActionExecutor grouped generated IDs", () => {
 });
 
 describe("ActionExecutor transform/update", () => {
+  it("preserves same-track overlapping clip order through move, undo and redo", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip();
+    const track = project.timeline.tracks[0]!;
+    track.clips.push({ ...structuredClone(track.clips[0]!), id: "c2", startTime: 1 });
+    const before = structuredClone(track.clips);
+    const result = await executor.execute({ id: "move-overlap", type: "clip/move", timestamp: 1, params: { clipId: "c1", startTime: 0.5 } } as Action, project);
+    expect(result.success).toBe(true);
+    expect(project.timeline.tracks[0]!.clips.map(clip => clip.id)).toEqual(["c1", "c2"]);
+    expect((await executor.undo(project)).success).toBe(true);
+    expect(project.timeline.tracks[0]!.clips).toEqual(before);
+    expect((await executor.redo(project)).success).toBe(true);
+    expect(project.timeline.tracks[0]!.clips.map(clip => clip.id)).toEqual(["c1", "c2"]);
+    expect(project.timeline.tracks[0]!.clips[0]!.startTime).toBe(0.5);
+  });
+
   it("deep-merges a partial axis (does not drop the other) and round-trips", async () => {
     const executor = new ActionExecutor();
     const project = makeProjectWithClip();

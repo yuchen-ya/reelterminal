@@ -1264,13 +1264,23 @@ export class ActionExecutor {
         };
         const clip = this.findClip(timeline, params.clipId);
         if (clip) {
+          const targetTrackId = params.trackId || clip.trackId;
+          if (targetTrackId === clip.trackId) {
+            // A horizontal move changes timing, not the order of overlapping
+            // clips. Retain the array position so its inverse restores exactly.
+            timeline.tracks = timeline.tracks.map((track: MutableTrack) =>
+              track.id === targetTrackId
+                ? { ...track, clips: track.clips.map((current: MutableClip) => current.id === clip.id ? { ...current, startTime: params.startTime } : current) }
+                : track,
+            );
+            break;
+          }
           timeline.tracks = timeline.tracks.map((track: MutableTrack) => ({
             ...track,
             clips: track.clips.filter(
               (c: MutableClip) => c.id !== params.clipId,
             ),
           }));
-          const targetTrackId = params.trackId || clip.trackId;
           timeline.tracks = timeline.tracks.map((track: MutableTrack) =>
             track.id === targetTrackId
               ? {
