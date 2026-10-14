@@ -39,6 +39,7 @@
 
 ## Distribution and attribution
 
+- [`RELEASE-1.1.1.md`](RELEASE-1.1.1.md) — 1.1.1 change summary, local validation, and remaining release checks.
 - [`ASSET-LICENSE-REVIEW.md`](ASSET-LICENSE-REVIEW.md) — review of artwork, fonts, and runtime model rights.
 - [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) — third-party code,
   assets, and optional sidecars.
