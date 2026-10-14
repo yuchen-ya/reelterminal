@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ARTIFACTS_DIR } from "../paths";
 import type { CaptureReport } from "../../../../web/src/performance";
 import type { PerfStopReply } from "../../../src/shared/performance-contract";
-import { acquirePerformanceLock, captureComplete, markerMatches, type RendererWindowEvidence } from "./driver";
+import { acquirePerformanceLock, captureComplete, markerMatches, unexpectedPointerMoves, type RendererWindowEvidence } from "./driver";
 
 async function expectMissing(filePath: string): Promise<void> {
   await expect(access(filePath)).rejects.toMatchObject({ code: "ENOENT" });
@@ -43,6 +43,11 @@ function windowEvidence(overrides: Partial<RendererWindowEvidence> = {}): Render
 }
 
 describe("performance driver helpers", () => {
+  it("rejects unplanned pointer coordinates while allowing browser pixel rounding", () => {
+    const planned = [{ x: 100.4, y: 30.2 }, { x: 110.8, y: 30.2 }];
+    expect(unexpectedPointerMoves([{ x: 100, y: 30 }, { x: 111, y: 30 }], planned)).toEqual([]);
+    expect(unexpectedPointerMoves([{ x: 80, y: 30 }, { x: 110, y: 50 }], planned)).toHaveLength(2);
+  });
   it("accepts the target marker within tolerance and rejects wrong or stale pixels", () => {
     const target = [200, 60, 80] as const;
     expect(markerMatches([208, 52, 80, 255], target)).toBe(true);

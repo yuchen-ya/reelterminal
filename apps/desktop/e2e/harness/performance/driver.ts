@@ -84,6 +84,11 @@ export function markerMatches(actual: readonly number[], expected: readonly numb
   return actual.length >= 3 && expected.length === 3 && expected.every((value, index) => Math.abs(actual[index]! - value) <= 8);
 }
 
+/** Native/remote pointer input must not silently alter an owned CDP gesture. */
+export function unexpectedPointerMoves(actual: readonly { x: number; y: number }[], planned: readonly { x: number; y: number }[]) {
+  return actual.filter(point => !planned.some(expected => Math.abs(point.x - expected.x) <= 1.5 && Math.abs(point.y - expected.y) <= 1.5));
+}
+
 async function markerPixel(page: Page, fixture: PerformanceFixture): Promise<number[]> {
   return page.getByTestId("preview-canvas").evaluate((element, probe) => {
     const canvas = element as HTMLCanvasElement;
@@ -248,6 +253,13 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
   await verifyHit(target, x, y);
   const before = await target.evaluate((element) => ({ transform: (element as HTMLElement).style.transform, width: (element as HTMLElement).style.width }));
   await page.mouse.move(x, y);
+  await page.evaluate(() => {
+    const root = globalThis as typeof globalThis & { __perfPointerEvidence?: { points: { x: number; y: number }[]; listener: (event: MouseEvent) => void } };
+    const points: { x: number; y: number }[] = [];
+    const listener = (event: MouseEvent) => { if (points.length < 64) points.push({ x: event.clientX, y: event.clientY }); };
+    root.__perfPointerEvidence = { points, listener };
+    window.addEventListener("mousemove", listener, true);
+  });
   await page.mouse.down();
   // Let React install its gesture listener before the first movement.
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
@@ -263,6 +275,16 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
   }
   await page.mouse.up();
+  const actual = await page.evaluate(() => {
+    const root = globalThis as typeof globalThis & { __perfPointerEvidence?: { points: { x: number; y: number }[]; listener: (event: MouseEvent) => void } };
+    const evidence = root.__perfPointerEvidence!;
+    window.removeEventListener("mousemove", evidence.listener, true);
+    delete root.__perfPointerEvidence;
+    return evidence.points;
+  });
+  const planned = Array.from({ length: 7 }, (_, step) => ({ x: x + delta * step / 6, y }));
+  const unexpected = unexpectedPointerMoves(actual, planned);
+  if (unexpected.length) throw new Error(`unexpected_pointer_input: ${JSON.stringify({ trim, planned, actual, unexpected })}`);
   await page.waitForFunction(({ id, before, trim }) => {
     const element = document.querySelector<HTMLElement>(`[data-live-editor-target-id="${id}"]`);
     return element && (trim ? element.style.width !== before.width : element.style.transform !== before.transform);
@@ -460,6 +482,16 @@ export async function runPerformanceScenario(scenarioId: TimelinePerformanceScen
         correctness.final_state_verified = true;
         if (scenarioId !== "P01") correctness.target_frame_verified = true;
       };
+      const verifyUndoRedo = async (before: TimelineState, after: TimelineState) => {
+        const equal = (actual: TimelineState, expected: TimelineState) => JSON.stringify({ tracks: actual.tracks, text: actual.textOverlays }) === JSON.stringify({ tracks: expected.tracks, text: expected.textOverlays });
+        for (const [action, expected] of [["undo", before], ["redo", after]] as const) {
+          const current = await timeline(agent!, targetIdentity);
+          const reply = await agent!.callTool("history_control", { ...targetIdentity, action, expectedRevision: current.revision, idempotencyKey: `${runId}-${current.revision}-${action}` });
+          if (!reply.ok || !equal(await timeline(agent!, targetIdentity), expected)) throw new Error(`large timeline ${action} did not restore the full state`);
+        }
+        await waitForMarker(launched!.page, fixture, options.operationTimeoutMs);
+        correctness.undo_redo_full_state_verified = true;
+      };
       if (scenarioId === "P01") {
         for (let index = 0; index < options.samples; index++) {
           if (index > 0) {
@@ -505,7 +537,9 @@ export async function runPerformanceScenario(scenarioId: TimelinePerformanceScen
           const direction = index % 2 === 0 ? 1 : -1;
           // Each single-selection distribution starts from a known selection.
           if (scenarioId === "T03") await selectClipsWithKeyboard(launched.page, [mediaId]);
+          const beforeDrag = scenarioId === "T03" && index === 0 ? await timeline(agent!, targetIdentity) : null;
           await move(mediaId, direction * pixelsPerSecond * 0.5);
+          if (beforeDrag) await verifyUndoRedo(beforeDrag, await timeline(agent!, targetIdentity));
           if (scenarioId === "T02") await move(textId, direction * pixelsPerSecond * 0.5);
           if (scenarioId === "T03") {
             const state = await timeline(agent, targetIdentity);
@@ -534,9 +568,12 @@ export async function runPerformanceScenario(scenarioId: TimelinePerformanceScen
             });
             await selectClipsWithKeyboard(launched.page, [mediaId]);
             correctness.multiselection_transaction_verified = true;
+            if (index === 0) await verifyUndoRedo(state, await timeline(agent!, targetIdentity));
           }
           if (scenarioId === "T01" || scenarioId === "T03") {
+            const beforeTrim = scenarioId === "T03" && index === 0 ? await timeline(agent!, targetIdentity) : null;
             await move(mediaId, direction * pixelsPerSecond * 0.2, true);
+            if (beforeTrim) await verifyUndoRedo(beforeTrim, await timeline(agent!, targetIdentity));
             const scroller = launched.page.getByTestId("timeline-tracks-scroll");
             const beforeScroll = await scroller.evaluate((element) => element.scrollLeft);
             const box = (await scroller.boundingBox())!;
