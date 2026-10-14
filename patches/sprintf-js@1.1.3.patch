@@ -1,0 +1,16 @@
+diff --git a/src/sprintf.js b/src/sprintf.js
+--- a/src/sprintf.js
++++ b/src/sprintf.js
+@@ -176,6 +176,12 @@
+                     throw new Error('[sprintf] mixing positional and named placeholders is not (yet) supported')
+                 }
+ 
++                // Bound numeric precision before calling the Number formatting methods.
++                // Keep it a string so explicit zero precision remains truthy for e/f.
++                if (match[7] !== undefined && /[efg]/.test(match[8])) {
++                    match[7] = String(Math.min(100, Math.max(match[8] === 'g' ? 1 : 0, Number(match[7]))))
++                }
++
+                 parse_tree.push(
+                     {
+                         placeholder: match[0],

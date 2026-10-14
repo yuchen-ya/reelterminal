@@ -42,7 +42,20 @@ from concurrent filesystem changes or every operating-system redirect.
 Run `pnpm audit:dependencies` for the dependency security gate. The installed
 `braces@3.0.3` has a committed pnpm patch rejecting brace/parenthesis nesting
 above 128 levels before recursive AST walking. The gate first tests the actual
-installed patch. The workspace excludes only GHSA-vfj7-8cjw-p6xm from the
-version-based advisory scan because the vulnerable code is locally patched.
-The registry currently has no fixed braces release. Replace the patch and exception when a
-fixed upstream version becomes available. All other advisories fail the gate.
+installed patch. GHSA-vfj7-8cjw-p6xm is excluded from the version-based scan
+because the vulnerable code is locally patched.
+
+The installed Node entry point of `sprintf-js@1.1.3`, used through
+`global-agent` → `roarr`, also has a committed pnpm patch. Numeric `e`/`f`
+precision is bounded to 0–100 and `g` to 1–100 before calling Number formatting
+methods; valid formats, including explicit zero precision, keep their behavior.
+The gate tests the installed dependency through the actual ONNX dependency
+chain, including an asynchronous child process with oversized precision values.
+GHSA-hp3w-g68c-fv3c is excluded only with this tested mitigation. See the
+[upstream disclosure](https://github.com/alexei/sprintf.js/issues/237) and
+[pending upstream fix](https://github.com/alexei/sprintf.js/pull/239).
+
+Neither package has a fixed registry release as of 2026-10-14. Replace each
+patch and its exception when an appropriate fixed upstream version is available.
+All other advisories fail the gate. These exceptions are not a claim that the
+registry reports zero advisories.
