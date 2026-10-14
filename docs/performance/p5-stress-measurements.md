@@ -28,7 +28,8 @@ pnpm --filter @reelterminal/desktop test:perf:soak -- --scenario R02 --duration-
 # 预热不计入 duration，但计入 run timeout；不改容量、不清空历史、不强制 GC。
 pnpm --filter @reelterminal/desktop test:perf:soak -- --scenario R02 --saturate-history --duration-seconds 3600 --run-timeout-seconds 7200 --serial --report-only
 
-# 独立 1080p 视频、真实运行时软件编码、10 次串行导出及取消恢复。
+# 独立 1080p 视频、默认 WebCodecs 音视频导出、10 次串行导出及取消/工作进程失败恢复。
+# 默认硬件优先配置不等于已证实硬件编码；未暴露的实际编码器应标 unavailable。
 REELTERMINAL_REAL_MEDIA_STRESS=1 pnpm --filter @reelterminal/desktop exec vitest run --config e2e/vitest.config.ts e2e/performance/real-media-stress.e2e.ts
 ```
 

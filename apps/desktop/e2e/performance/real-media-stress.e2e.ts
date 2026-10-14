@@ -20,7 +20,7 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
   const launched = await launchApp({ keepRunDir: true });
   let agent: ExternalAgent | undefined;
   let activeJob: string | undefined;
-  const record: any = { status: "running", scale: { width: 1920, height: 1080, fps: 30, duration_seconds: 12, independent_sources: 3, video_tracks: 3, text_tracks: 1 }, settings: { width: 1920, height: 1080, frameRate: 30, codec: "h264", format: "mp4", videoBitrateKbps: 6000 }, encoding: "software_libx264_runtime_image2pipe", source_encoding: "software_libx264_AAC", exports: [], operations: [], sources: [], retained_profile: launched.runDir };
+  const record: any = { status: "running", scale: { width: 1920, height: 1080, fps: 30, duration_seconds: 12, independent_sources: 3, source_durations_seconds: [12, 18, 12], video_tracks: 3, text_tracks: 1 }, settings: { width: 1920, height: 1080, frameRate: 30, codec: "h264", format: "mp4", videoBitrateKbps: 6000 }, encoding: "runtime_default_chromium_webcodecs_with_audio", encoder_preference: "prefer-hardware_then_no-preference", actual_hardware_encoder: { status: "unsupported_not_exposed", name: null }, source_encoding: "software_libx264_AAC", exports: [], operations: [], sources: [], continuous_playback: [], retained_profile: launched.runDir };
   const flush = () => writeFile(path.join(evidence, "result.json"), JSON.stringify(record, null, 2));
   const ffmpeg = process.env.REELTERMINAL_FFMPEG_PATH || "ffmpeg";
   const ffprobe = process.env.REELTERMINAL_FFPROBE_PATH || "ffprobe";
@@ -60,8 +60,20 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
       await launched.page.waitForTimeout(500);
     }
   };
+  const waitForEncodedProgress = async (jobId: string) => {
+    const deadline = Date.now() + 120_000;
+    for (;;) {
+      const job = await call("job_status", { jobId });
+      if (["done", "error", "cancelled"].includes(job.state)) throw new Error(`export terminated before mid-run intervention: ${JSON.stringify(job)}`);
+      if ((job.progress?.currentFrame ?? 0) > 0) return job.progress;
+      if (Date.now() > deadline) throw new Error("real export made no encoded-frame progress before intervention");
+      await launched.page.waitForTimeout(100);
+    }
+  };
   try {
     record.build = await captureBuildIdentity();
+    record.application = await launched.app.evaluate(({ app }) => ({ packaged: app.isPackaged, version: app.getVersion(), arch: process.arch, versions: process.versions }));
+    record.executable = process.env.REELTERMINAL_E2E_APP_EXECUTABLE ?? "checkout Electron";
     expect(record.build.build_verified).toBe(true);
     await launched.app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]!; w.setContentSize(1280, 800); w.show(); w.focus(); });
     await createProjectViaUI(launched.page);
@@ -80,8 +92,9 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     record.job_root = jobRoot;
     const mediaIds: string[] = [];
     for (const [index, color] of ["red", "lime", "blue"].entries()) {
+      const duration = index === 1 ? 18 : 12;
       const file = path.join(sourceRoot, `independent-${color}.mp4`);
-      run(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30:duration=12", "-f", "lavfi", "-i", `sine=frequency=${440 + index * 220}:sample_rate=48000:duration=12`, "-vf", `hue=h=${index * 45},drawbox=x=860:y=440:w=200:h=200:color=${color}:t=fill,drawtext=fontfile=/System/Library/Fonts/Monaco.ttf:text='SOURCE${index} FRAME %{n}':x=40:y=60:fontsize=52:fontcolor=white:box=1:boxcolor=black`, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-shortest", file]);
+      run(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", `testsrc2=size=1920x1080:rate=30:duration=${duration}`, "-f", "lavfi", "-i", `sine=frequency=${440 + index * 220}:sample_rate=48000:duration=${duration}`, "-vf", `hue=h=${index * 45},drawbox=x=860:y=440:w=200:h=200:color=${color}:t=fill,drawtext=fontfile=/System/Library/Fonts/Monaco.ttf:text='SOURCE${index} FRAME %{n}':x=40:y=60:fontsize=52:fontcolor=white:box=1:boxcolor=black`, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-shortest", file]);
       record.sources.push({ path: file, sha256: createHash("sha256").update(await readFile(file)).digest("hex"), probe: probe(file) });
       await copyFile(file, path.join(evidence, `source-${index}.mp4`));
       const imported = await call("media_import", { ...target, path: file, expectedRevision: (await state()).revision, idempotencyKey: `${id}-import-${index}` });
@@ -89,7 +102,7 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
       await flush();
     }
     await edit([{ op: "track.add", trackType: "text", trackId: "labels" }, { op: "track.add", trackType: "video", trackId: "upper-blue" }, { op: "track.add", trackType: "video", trackId: "upper-green" }, { op: "track.add", trackType: "video", trackId: "background" }]);
-    await edit([{ op: "clip.add", trackId: "background", mediaId: mediaIds[0], startTime: 0, duration: 6 }, { op: "clip.add", trackId: "background", mediaId: mediaIds[2], startTime: 6, duration: 6 }, { op: "clip.add", trackId: "upper-green", mediaId: mediaIds[1], startTime: 0, duration: 12 }, { op: "clip.add", trackId: "upper-blue", mediaId: mediaIds[2], startTime: 0, duration: 12 }, { op: "text.create", trackId: "labels", text: "MAC 1.1.1 REAL MEDIA", startTime: 0, duration: 12, position: { x: 0.5, y: 0.1 } }]);
+    await edit([{ op: "clip.add", trackId: "background", mediaId: mediaIds[0], startTime: 0, duration: 6 }, { op: "clip.add", trackId: "background", mediaId: mediaIds[2], startTime: 6, duration: 6 }, { op: "clip.add", trackId: "upper-green", mediaId: mediaIds[1], startTime: 0, duration: 18 }, { op: "clip.add", trackId: "upper-blue", mediaId: mediaIds[2], startTime: 0, duration: 12 }, { op: "text.create", trackId: "labels", text: "MAC 1.1.1 REAL MEDIA", startTime: 0, duration: 12, position: { x: 0.5, y: 0.1 } }]);
     const tracks = (await state()).project.timeline.tracks;
     const back = tracks.find((t: any) => t.id === "background").clips;
     const green = tracks.find((t: any) => t.id === "upper-green").clips[0];
@@ -97,6 +110,19 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     await edit([{ op: "clip.setTransform", clipId: green.id, transform: { position: { x: 500, y: -250 }, scale: { x: 0.3, y: 0.3 } } }, { op: "clip.setTransform", clipId: blue.id, transform: { position: { x: -500, y: -250 }, scale: { x: 0.3, y: 0.3 } } }, { op: "clip.setSpeedConfig", clipId: green.id, speed: 1.5, reversed: false, pitchCorrection: true, keyframes: [], freezeFrames: [] }, { op: "transition.add", clipAId: back[0].id, clipBId: back[1].id, type: "crossfade", duration: 0.5 }]);
     record.project = (await state()).project;
     await call("node_save", { ...target, expectedRevision: (await state()).revision, name: "Real media fixed project" });
+    for (let pass = 0; pass < 3; pass++) {
+      await control("seek", 0);
+      const start = performance.now();
+      await control("play");
+      await launched.page.waitForTimeout(10_000);
+      await control("pause");
+      const context = await call("editor_get_context", target);
+      record.continuous_playback.push({ pass, elapsed_ms: performance.now() - start, playhead_seconds: context.playheadSeconds });
+      expect(context.playheadSeconds).toBeGreaterThanOrEqual(8.5);
+      expect(context.playheadSeconds).toBeLessThanOrEqual(12.1);
+      expect(await launched.page.evaluate(() => !document.hidden)).toBe(true);
+      await flush();
+    }
     for (let round = 0; round < 20; round++) {
       const start = performance.now();
       expect(await launched.page.evaluate(() => !document.hidden)).toBe(true);
@@ -114,8 +140,9 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     const nodes = await call("node_list", { projectId: target.projectId });
     const saved = nodes.nodes.find((n: any) => n.name === "Real media fixed project");
     expect(saved).toBeDefined();
-    await launched.page.getByTestId("current-archive-entry").click();
-    await launched.page.getByTestId(`version-node-${saved.id}`).dblclick();
+    const node = launched.page.getByTestId(`version-node-${saved.id}`);
+    if (!await node.isVisible()) await launched.page.getByTestId("current-archive-entry").click();
+    await node.scrollIntoViewIfNeeded(); await node.dblclick();
     await launched.page.getByTestId("version-preview-banner").waitFor();
     await launched.page.screenshot({ path: path.join(evidence, "history-preview.png") });
     await launched.page.getByTestId("version-preview-return").click();
@@ -125,7 +152,7 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     const cancelledDestination = path.join(outputRoot, "cancelled.mp4");
     const cancellation = await call("export_start", { ...target, settings: record.settings, destinationPath: cancelledDestination });
     activeJob = cancellation.jobId;
-    await launched.page.waitForTimeout(1200);
+    record.cancel_progress = await waitForEncodedProgress(activeJob!);
     await call("job_cancel", { jobId: activeJob });
     record.cancellation = await waitJob(activeJob!);
     activeJob = undefined;
@@ -133,11 +160,12 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     expect(record.cancellation.artifact).toBeUndefined();
     expect(existsSync(cancelledDestination)).toBe(false);
     await flush();
-    // Terminate only an actual FFmpeg descendant of this isolated app. This
-    // exercises a real encoder failure and queue recovery without a fake backend.
+    // Kill only the dedicated Chromium export worker owned by this isolated
+    // app, after actual frame progress. The visible Electron editor stays alive.
     const failedDestination = path.join(outputRoot, "encoder-failed.mp4");
     const failedExport = await call("export_start", { ...target, settings: record.settings, destinationPath: failedDestination });
     activeJob = failedExport.jobId;
+    record.failure_progress = await waitForEncodedProgress(activeJob!);
     const appPid = launched.app.process().pid!;
     const failureDeadline = Date.now() + 60_000;
     let encoderPid: number | undefined;
@@ -148,7 +176,7 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
       });
       const parents = new Map(rows.map(row => [row.pid, row.parent]));
       encoderPid = rows.find(row => {
-        if (path.basename(row.command) !== "ffmpeg") return false;
+        if (row.parent !== appPid || !/chrom(?:e|ium)|headless_shell/i.test(row.command)) return false;
         let pid = row.parent;
         for (let depth = 0; depth < 30 && pid > 1; depth++) {
           if (pid === appPid) return true;
@@ -158,8 +186,8 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
       })?.pid;
       if (!encoderPid) await launched.page.waitForTimeout(300);
     }
-    expect(encoderPid, "could not locate this app's real encoder process").toBeDefined();
-    record.failure_injection = { method: "SIGTERM_owned_ffmpeg_descendant", app_pid: appPid, encoder_pid: encoderPid };
+    expect(encoderPid, "could not locate this app's dedicated export browser process").toBeDefined();
+    record.failure_injection = { method: "SIGTERM_owned_export_browser_descendant", app_pid: appPid, worker_pid: encoderPid };
     await flush();
     process.kill(encoderPid!, "SIGTERM");
     record.encoder_failure = await waitJob(activeJob!);
@@ -186,13 +214,16 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
       expect(Math.abs(Number(entry.probe.format.duration) - 12)).toBeLessThanOrEqual(0.15);
       run(ffmpeg, ["-v", "error", "-i", destination, "-f", "null", "-"]);
       entry.frames = [];
-      for (const [seconds, channel] of [[2, 0], [8, 2]]) {
+      for (const [seconds, channel] of [[2, 0], [4, 0], [8, 2]]) {
         const pixel = Array.from(run(ffmpeg, ["-v", "error", "-ss", String(seconds), "-i", destination, "-frames:v", "1", "-vf", "crop=2:2:959:539", "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]));
         expect(pixel[channel!], `export ${index} frame ${seconds}: ${pixel}`).toBeGreaterThan(180);
         expect(pixel[(channel! + 1) % 3]).toBeLessThan(80);
         entry.frames.push({ seconds, pixel });
         run(ffmpeg, ["-v", "error", "-ss", String(seconds), "-i", destination, "-frames:v", "1", path.join(evidence, `export-${index}-at-${seconds}.png`)]);
       }
+      const frameHash = async (seconds: number) => createHash("sha256").update(await readFile(path.join(evidence, `export-${index}-at-${seconds}.png`))).digest("hex");
+      entry.motion_frame_hashes = [await frameHash(2), await frameHash(4)];
+      expect(entry.motion_frame_hashes[0]).not.toBe(entry.motion_frame_hashes[1]);
       for (const [x, y, channel] of [[1460, 290, 1], [460, 290, 2]]) {
         const pixel = Array.from(run(ffmpeg, ["-v", "error", "-ss", "2", "-i", destination, "-frames:v", "1", "-vf", `crop=2:2:${x}:${y}`, "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]));
         expect(pixel[channel!], `overlay ${x},${y}: ${pixel}`).toBeGreaterThan(180);
@@ -225,6 +256,9 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
       }
     };
     await collectStatuses(launched.runDir);
+    for (const [name, lines] of Object.entries(launched.output)) {
+      await writeFile(path.join(evidence, `${name}.redacted.log`), lines.join("\n").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]"));
+    }
     await flush();
     await agent?.close();
     await launched.close({ keepRunDir: record.status !== "passed" });
