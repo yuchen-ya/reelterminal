@@ -148,6 +148,8 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     });
     await launched.page.screenshot({ path: path.join(evidence, "transition-midpoint.png") });
     await flush();
+    expect(record.transition_markers[0][0]).toBeGreaterThan(30);
+    expect(record.transition_markers[0][2]).toBeGreaterThan(30);
     expect(record.transition_markers[1][1], "green layer retained through background transition").toBeGreaterThan(180);
     expect(record.transition_markers[1][0]).toBeLessThan(80);
     expect(record.transition_markers[2][2], "blue layer retained through background transition").toBeGreaterThan(180);
@@ -270,24 +272,30 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
       expect(Math.abs(Number(entry.probe.format.duration) - 12)).toBeLessThanOrEqual(0.15);
       run(ffmpeg, ["-v", "error", "-i", destination, "-f", "null", "-"]);
       entry.frames = [];
-      for (const [seconds, channel] of [[2, 0], [4, 0], [8, 2]]) {
+      for (const [seconds, channel] of [[2, 0], [4, 0], [6, 2], [8, 2]]) {
         const pixel = Array.from(run(ffmpeg, ["-v", "error", "-ss", String(seconds), "-i", destination, "-frames:v", "1", "-vf", "crop=2:2:959:539", "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]));
-        expect(pixel[channel!], `export ${index} frame ${seconds}: ${pixel}`).toBeGreaterThan(180);
-        expect(pixel[(channel! + 1) % 3]).toBeLessThan(80);
+        if (seconds === 6) {
+          expect(pixel[0], "transition midpoint retains outgoing red").toBeGreaterThan(30);
+          expect(pixel[2], "transition midpoint retains incoming blue").toBeGreaterThan(30);
+          expect(pixel[1]).toBeLessThan(40);
+        } else {
+          expect(pixel[channel!], `export ${index} frame ${seconds}: ${pixel}`).toBeGreaterThan(180);
+          expect(pixel[(channel! + 1) % 3]).toBeLessThan(80);
+        }
         entry.frames.push({ seconds, pixel });
         const frameMarkers = { base: readCounter(destination, seconds!), green: readCounter(destination, seconds!, "green"), blue: readCounter(destination, seconds!, "blue") };
         const expectedMarkers = { base: Math.round((seconds! >= 6 ? seconds! - 6 : seconds!) * 30), green: Math.round(seconds! * 1.5 * 30), blue: Math.round(seconds! * 30) };
-        for (const key of ["base", "green", "blue"] as const) expect(Math.abs(frameMarkers[key] - expectedMarkers[key]), `${key} source frame at ${seconds}: ${JSON.stringify(frameMarkers)}`).toBeLessThanOrEqual(1);
+        for (const key of (seconds === 6 ? ["green", "blue"] : ["base", "green", "blue"]) as ("base" | "green" | "blue")[]) expect(Math.abs(frameMarkers[key] - expectedMarkers[key]), `${key} source frame at ${seconds}: ${JSON.stringify(frameMarkers)}`).toBeLessThanOrEqual(1);
         entry.frames.push({ seconds, frameMarkers, expectedMarkers, tolerance_frames: 1 });
         run(ffmpeg, ["-v", "error", "-ss", String(seconds), "-i", destination, "-frames:v", "1", path.join(evidence, `export-${index}-at-${seconds}.png`)]);
       }
       const frameHash = async (seconds: number) => createHash("sha256").update(await readFile(path.join(evidence, `export-${index}-at-${seconds}.png`))).digest("hex");
       entry.motion_frame_hashes = [await frameHash(2), await frameHash(4)];
       expect(entry.motion_frame_hashes[0]).not.toBe(entry.motion_frame_hashes[1]);
-      for (const [x, y, channel] of [[1460, 290, 1], [460, 290, 2]]) {
-        const pixel = Array.from(run(ffmpeg, ["-v", "error", "-ss", "2", "-i", destination, "-frames:v", "1", "-vf", `crop=2:2:${x}:${y}`, "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]));
+      for (const [seconds, x, y, channel] of [[2, 1460, 290, 1], [2, 460, 290, 2], [6, 1460, 290, 1], [6, 460, 290, 2]]) {
+        const pixel = Array.from(run(ffmpeg, ["-v", "error", "-ss", String(seconds), "-i", destination, "-frames:v", "1", "-vf", `crop=2:2:${x}:${y}`, "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]));
         expect(pixel[channel!], `overlay ${x},${y}: ${pixel}`).toBeGreaterThan(180);
-        entry.frames.push({ seconds: 2, x, y, pixel });
+        entry.frames.push({ seconds, x, y, pixel });
       }
       const audio = run(ffmpeg, ["-v", "error", "-i", destination, "-t", "2", "-vn", "-f", "f32le", "-ac", "1", "pipe:1"]);
       let squares = 0; for (let offset = 0; offset < audio.length; offset += 4) squares += audio.readFloatLE(offset) ** 2;

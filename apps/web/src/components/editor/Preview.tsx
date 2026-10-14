@@ -12,6 +12,7 @@ import { canCommitHistoryFrame } from "./preview/history-frame-readiness";
 import { SelectionTransformOverlay } from "./preview/SelectionTransformOverlay";
 import { collectNativePlaybackImageClips } from "./preview/native-playback-image-clips";
 import { scrubVideoCacheKey, scrubVideoCacheLimit } from "./preview/scrub-video-cache";
+import { hasLayeredTransition } from "./preview/layered-transition";
 import { computeLetterboxGeometry } from "./preview/overlay-geometry";
 import {
   findNextAudioClipStartTime as findNextAudioClipStartTimeIn,
@@ -2076,7 +2077,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             time < clip.startTime + clip.duration,
         ),
       );
-      if (hasActiveCompound) {
+      const layeredTransition = hasLayeredTransition(timelineTracks, time, getTransitionAtTime(time, timelineTracks));
+      if (hasActiveCompound || layeredTransition) {
         const frame = await getRenderBridge().renderFrame(time);
         markPerfOperation(token?.performance, "frame.decoded", { frameAvailable: Boolean(frame) });
         if (frame) {
@@ -4960,7 +4962,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           const hasActiveCompound = activeClips.some(
             ({ clip }) => typeof clip.metadata?.compoundClipId === "string",
           );
-          if (hasActiveCompound) {
+          const layeredTransition = hasLayeredTransition(timelineTracksRef.current, currentPlayhead, getTransitionAtTime(currentPlayhead, timelineTracksRef.current));
+          if (hasActiveCompound || layeredTransition) {
             await renderFrameDirectlyRef.current(currentPlayhead);
             lastPresentedFrameAtRef.current = performance.now();
             masterClock.reportVideoTime(currentPlayhead);
