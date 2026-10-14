@@ -225,7 +225,32 @@ async function verifyHit(target: Locator, x: number, y: number): Promise<void> {
   if (hit !== id) throw new Error("real input hit the wrong clip");
 }
 
-export async function dragTo(page: Page, id: string, delta: number, timeout: number, trim = false): Promise<void> {
+export interface DragTiming {
+  geometry_ms: number;
+  input_driver_ms: number;
+  verification_ms: number;
+  raf_wait_ms: number;
+  raf_browser_ms: number;
+  raf_max_browser_ms: number;
+  raf_count: number;
+}
+
+export async function dragTo(page: Page, id: string, delta: number, timeout: number, trim = false, timing?: DragTiming): Promise<void> {
+  const began = performance.now();
+  const frame = async () => {
+    const before = performance.now();
+    // Use the existing rAF call: add no browser round trip or extra frame.
+    const browserMs = await page.evaluate(() => {
+      const before = performance.now();
+      return new Promise<number>(resolve => requestAnimationFrame(() => resolve(performance.now() - before)));
+    });
+    if (timing) {
+      timing.raf_wait_ms += performance.now() - before;
+      timing.raf_browser_ms += browserMs;
+      timing.raf_max_browser_ms = Math.max(timing.raf_max_browser_ms, browserMs);
+      timing.raf_count++;
+    }
+  };
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
   const target = clipTarget(page, id);
   await target.scrollIntoViewIfNeeded();
@@ -245,7 +270,7 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
     // gesture inside the viewport even when the clip is wider than it.
     await scroller.evaluate((element) => { element.scrollLeft = 0; });
   }
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  await frame();
   const box = await target.boundingBox();
   if (!box) throw new Error("clip target has no geometry");
   const x = trim ? box.x + box.width - 3 : box.x + Math.min(box.width / 2, 50);
@@ -253,6 +278,9 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
   const y = trim ? box.y + box.height / 2 : box.y + Math.min(box.height / 4, 8);
   await verifyHit(target, x, y);
   const before = await target.evaluate((element) => ({ transform: (element as HTMLElement).style.transform, width: (element as HTMLElement).style.width }));
+  if (timing) timing.geometry_ms += performance.now() - began - timing.raf_wait_ms;
+  const pointerBegan = performance.now();
+  const priorRafMs = timing?.raf_wait_ms ?? 0;
   await page.mouse.move(x, y);
   await page.evaluate(() => {
     const root = globalThis as typeof globalThis & { __perfPointerEvidence?: { points: { x: number; y: number }[]; listener: (event: MouseEvent) => void } };
@@ -263,7 +291,7 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
   });
   await page.mouse.down();
   // Let React install its gesture listener before the first movement.
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  await frame();
   const downBox = await target.boundingBox();
   if (!downBox || Math.abs(downBox.x - box.x) > 1) {
     await page.mouse.up();
@@ -273,7 +301,7 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
     await page.mouse.move(x + delta * step / 6, y);
     // Keep the requested input rate fixed and let React install/update the
     // gesture listener before the next move or pointer-up.
-    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+    await frame();
   }
   await page.mouse.up();
   const actual = await page.evaluate(() => {
@@ -286,10 +314,13 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
   const planned = Array.from({ length: 7 }, (_, step) => ({ x: x + delta * step / 6, y }));
   const unexpected = unexpectedPointerMoves(actual, planned);
   if (unexpected.length) throw new Error(`unexpected_pointer_input: ${JSON.stringify({ trim, planned, actual, unexpected })}`);
+  if (timing) timing.input_driver_ms += performance.now() - pointerBegan - (timing.raf_wait_ms - priorRafMs);
+  const verificationBegan = performance.now();
   await page.waitForFunction(({ id, before, trim }) => {
     const element = document.querySelector<HTMLElement>(`[data-live-editor-target-id="${id}"]`);
     return element && (trim ? element.style.width !== before.width : element.style.transform !== before.transform);
   }, { id, before, trim }, { timeout, polling: "raf" });
+  if (timing) timing.verification_ms += performance.now() - verificationBegan;
 }
 
 async function seek(page: Page, time: number, pixelsPerSecond: number): Promise<void> {

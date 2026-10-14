@@ -116,3 +116,15 @@ existing workload, with the original gate retained, to locate input/RPC/rAF/save
 waiting versus collector cost. Any plan to replace the gate with a paired
 statistic needs metric agreement first; do not relabel the current failure using
 the lower paired mean or repeat runs until one happens to pass.
+
+The existing calibration now records bounded per-group phase totals for MCP
+reads, input driving, geometry, rAF pacing, final-state checks, save completion,
+collector settling, start and export. Drag pacing keeps the same eight rAF calls
+per gesture; the existing browser calls also return their renderer-clock wait
+time. Node await elapsed includes transport/scheduling, whereas renderer rAF
+elapsed does not include the return trip. Their difference is diagnostic latency,
+not a direct measure of operating-system scheduling or pure probe CPU. Drag
+subphases are nested and must not be added to `drag_ms` again. A second pair of
+CDP samples brackets the unchanged wall window outside its start/stop timestamps;
+the original wider TaskDuration evidence remains separately recorded. Timing
+fields do not participate in qualification or alter its upper-median/2% rule.

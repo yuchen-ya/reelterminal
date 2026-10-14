@@ -7,7 +7,7 @@ import { launchApp, type LaunchedApp } from "../harness/launch";
 import { ARTIFACTS_DIR } from "../harness/paths";
 import { connectExternalAgent, type ExternalAgent } from "../harness/mcp-client";
 import { enableAgentSessionViaUI } from "../harness/ui";
-import { acquirePerformanceLock, captureComplete, prepareProfile, installProbe, dragTo, waitForMarker, type RendererWindowEvidence } from "../harness/performance/driver";
+import { acquirePerformanceLock, captureComplete, prepareProfile, installProbe, dragTo, waitForMarker, type RendererWindowEvidence, type DragTiming } from "../harness/performance/driver";
 import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/performance/identity";
 import { createPerformanceFixture } from "./fixtures";
 
@@ -33,6 +33,8 @@ interface CalibrationRun {
   rssBytes: number;
   exportMs: number;
   events: number;
+  taskWindowSeconds: number;
+  phases: Record<string, number>;
 }
 
 const enabled = process.env.REELTERMINAL_PERFORMANCE_CALIBRATION === "1";
@@ -155,34 +157,55 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
           await waitForMarker(page, fixture, 30_000);
           const oldSaves = page.getByTestId("notification-toast").filter({ hasText: "Current edits saved" });
           for (const toast of await oldSaves.all()) await toast.getByRole("button", { name: "Dismiss notification" }).click();
+          const phases: Record<string, number> = {};
+          controls.currentPhases = phases;
+          const time = async <T>(phase: string, action: () => Promise<T>): Promise<T> => {
+            const began = performance.now();
+            try { return await action(); }
+            finally { phases[phase] = (phases[phase] ?? 0) + performance.now() - began; }
+          };
           const before = await metrics();
-          if (mode === "light") await start(`probe-abba-${runs.length}`);
+          if (mode === "light") await time("capture_start_ms", () => start(`probe-abba-${runs.length}`));
+          // Additional CDP samples stay outside the unchanged wall window.
+          const windowCpuBefore = await metrics();
           const started = await page.evaluate(() => performance.now());
           for (let gesture = 0; gesture < 6; gesture++) {
-            const beforeClip = await readClip();
+            const beforeClip = await time("read_before_ms", readClip);
             const delta = gesture % 2 === 0 ? 24 : -24;
             controls.currentGesture = { block, mode, gesture, beforeStartTime: beforeClip.startTime, pixelsPerSecond, delta };
-            await dragTo(page, fixture.targetMediaClipId!, delta, 5_000);
+            const dragTiming: DragTiming = { geometry_ms: 0, input_driver_ms: 0, verification_ms: 0, raf_wait_ms: 0, raf_browser_ms: 0, raf_max_browser_ms: 0, raf_count: 0 };
+            await time("drag_ms", () => dragTo(page, fixture.targetMediaClipId!, delta, 5_000, false, dragTiming));
+            for (const [key, value] of Object.entries(dragTiming)) {
+              const phase = `drag_${key}`;
+              phases[phase] = key === "raf_max_browser_ms" ? Math.max(phases[phase] ?? 0, value) : (phases[phase] ?? 0) + value;
+            }
             const expected = beforeClip.startTime + delta / pixelsPerSecond;
             const deadline = performance.now() + 30_000;
-            let actual = await readClip();
+            let actual = await time("read_verify_ms", readClip);
+            phases.verification_reads = (phases.verification_reads ?? 0) + 1;
             while (Math.abs(actual.startTime - expected) > 0.06 && performance.now() < deadline) {
-              await page.waitForTimeout(25);
-              actual = await readClip();
+              await time("poll_wait_ms", () => page.waitForTimeout(25));
+              phases.poll_wait_count = (phases.poll_wait_count ?? 0) + 1;
+              actual = await time("read_verify_ms", readClip);
+              phases.verification_reads++;
             }
             expect(Math.abs(actual.startTime - expected)).toBeLessThanOrEqual(0.06);
           }
-          await waitForMarker(page, fixture, 30_000);
-          await page.keyboard.press("Control+s");
-          await page.getByTestId("notification-toast").getByText("Current edits saved", { exact: true }).last().waitFor();
-          await settle();
+          await time("marker_ms", () => waitForMarker(page, fixture, 30_000));
+          await time("save_key_ms", () => page.keyboard.press("Control+s"));
+          await time("save_wait_ms", () => page.getByTestId("notification-toast").getByText("Current edits saved", { exact: true }).last().waitFor());
+          await time("settle_ms", settle);
           const stopped = await page.evaluate(() => performance.now());
+          const windowCpuAfter = await metrics();
           const exportStarted = performance.now();
           const windowEvidence = mode === "light"
             ? await page.evaluate(() => (globalThis as unknown as CalibrationGlobal).__reelterminalPerfDriver.stop("ok"))
             : null;
           const report = windowEvidence?.report ?? null;
           const exportMs = performance.now() - exportStarted;
+          phases.capture_export_ms = exportMs;
+          controls.currentWindowTaskSeconds = windowCpuAfter.TaskDuration! - windowCpuBefore.TaskDuration!;
+          console.info("PERFORMANCE_CALIBRATION_PHASES", { block, mode, phases, task_window_seconds: controls.currentWindowTaskSeconds });
           if (report) {
             // Keep bounded failure diagnostics before asserting completeness.
             // Raw events, endpoint descriptors and profiles stay on the runner.
@@ -208,7 +231,7 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
           }
           const after = await metrics();
           const rssBytes = await launched.app.evaluate(({ app }) => app.getAppMetrics().filter(metric => metric.type === "Tab").reduce((sum, metric) => sum + metric.memory.workingSetSize * 1024, 0));
-          runs.push({ mode, durationMs: stopped - started, taskSeconds: after.TaskDuration! - before.TaskDuration!, heapBytesBefore: before.JSHeapUsedSize!, heapBytesAfter: after.JSHeapUsedSize!, rssBytes, exportMs, events: report ? report.events.length + report.criticalEvents.length : 0 });
+          runs.push({ mode, durationMs: stopped - started, taskSeconds: after.TaskDuration! - before.TaskDuration!, taskWindowSeconds: windowCpuAfter.TaskDuration! - windowCpuBefore.TaskDuration!, phases, heapBytesBefore: before.JSHeapUsedSize!, heapBytesAfter: after.JSHeapUsedSize!, rssBytes, exportMs, events: report ? report.events.length + report.criticalEvents.length : 0 });
           console.info("PERFORMANCE_CALIBRATION_PROGRESS", { block, mode, completed_groups: runs.length, duration_ms: stopped - started });
         }
       }

@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import { ARTIFACTS_DIR } from "../paths";
 import type { CaptureReport } from "../../../../web/src/performance";
 import type { PerfStopReply } from "../../../src/shared/performance-contract";
-import { acquirePerformanceLock, captureComplete, markerMatches, unexpectedPointerMoves, type RendererWindowEvidence } from "./driver";
+import type { Page } from "playwright-core";
+import { acquirePerformanceLock, captureComplete, markerMatches, unexpectedPointerMoves, dragTo, type DragTiming, type RendererWindowEvidence } from "./driver";
 
 async function expectMissing(filePath: string): Promise<void> {
   await expect(access(filePath)).rejects.toMatchObject({ code: "ENOENT" });
@@ -43,6 +44,39 @@ function windowEvidence(overrides: Partial<RendererWindowEvidence> = {}): Render
 }
 
 describe("performance driver helpers", () => {
+  it("optional drag timing preserves the same browser calls, pointer stimulus and eight rAF waits", async () => {
+    const run = async (timing?: DragTiming) => {
+      const calls: string[] = [];
+      const target = {
+        scrollIntoViewIfNeeded: async () => { calls.push("scrollIntoView"); },
+        boundingBox: async () => { calls.push("box"); return { x: 100, y: 20, width: 100, height: 32 }; },
+        getAttribute: async () => "clip",
+        evaluate: async () => { calls.push("style"); return { transform: "", width: "100px" }; },
+      };
+      const page = {
+        locator: () => ({ first: () => target }),
+        getByTestId: () => ({ evaluate: async () => { calls.push("scrollLeft"); } }),
+        evaluate: async (fn: Function) => {
+          const source = fn.toString(); calls.push(source);
+          if (source.includes("requestAnimationFrame")) return 0;
+          if (source.includes("elementFromPoint")) return "clip";
+          if (source.includes("return evidence.points")) return Array.from({ length: 7 }, (_, index) => ({ x: 150 + index * 4, y: 28 }));
+        },
+        mouse: {
+          move: async (x: number, y: number) => { calls.push(`move:${x},${y}`); },
+          down: async () => { calls.push("down"); },
+          up: async () => { calls.push("up"); },
+        },
+        waitForFunction: async () => { calls.push("verify"); },
+      };
+      await dragTo(page as unknown as Page, "clip", 24, 5000, false, timing);
+      return calls;
+    };
+    const timing: DragTiming = { geometry_ms: 0, input_driver_ms: 0, verification_ms: 0, raf_wait_ms: 0, raf_browser_ms: 0, raf_max_browser_ms: 0, raf_count: 0 };
+    expect(await run(timing)).toEqual(await run());
+    expect(timing.raf_count).toBe(8);
+    expect(Object.values(timing).every(value => Number.isFinite(value) && value >= 0)).toBe(true);
+  });
   it("rejects unplanned pointer coordinates while allowing browser pixel rounding", () => {
     const planned = [{ x: 100.4, y: 30.2 }, { x: 110.8, y: 30.2 }];
     expect(unexpectedPointerMoves([{ x: 100, y: 30 }, { x: 111, y: 30 }], planned)).toEqual([]);

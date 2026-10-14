@@ -47,7 +47,7 @@ test("calibration diagnostic projection retains CPU/export evidence without chan
   assert.deepEqual(document, before);
   assert.equal(evidence.status, "probe_overhead_exceeded");
   assert.deepEqual(evidence.runs[0], { index: 0, mode: "light", duration_ms: 21000,
-    task_seconds: 1.25, export_ms: 9, events: 512,
+    task_seconds: 1.25, task_window_seconds: null, phases: {}, export_ms: 9, events: 512,
     heap_bytes_before: 100, heap_bytes_after: 200, rss_bytes: 300 });
   assert.equal(JSON.stringify(evidence).includes("private/token"), false);
   assert.equal(evidence.task_duration_scope, "includes_capture_initialization_and_export");
@@ -56,4 +56,17 @@ test("calibration diagnostic projection retains CPU/export evidence without chan
   assert.equal(invalid.runs[0].task_seconds, null);
   assert.equal(invalid.runs[0].export_ms, null);
   assert.equal(invalid.runs[0].events, null);
+});
+
+test("phase evidence preserves failed-group timings and drops arbitrary keys and strings", () => {
+  const record = calibrationEvidence({ status: "invalid", controls: {
+    currentPhases: { drag_ms: 20000, drag_raf_count: 48, token: "private/token", save_wait_ms: "private/token", injected_numeric: 123 },
+    currentWindowTaskSeconds: 0.3,
+  }, runs: [{ mode: "off", durationMs: 21000, taskWindowSeconds: 0.4, phases: { read_before_ms: 100, token: "private/token" } }] });
+  assert.deepEqual(record.current_phases, { drag_ms: 20000, drag_raf_count: 48 });
+  assert.equal(record.current_window_task_seconds, 0.3);
+  assert.equal(record.runs[0].task_window_seconds, 0.4);
+  assert.deepEqual(record.runs[0].phases, { read_before_ms: 100 });
+  assert.equal(JSON.stringify(record).includes("private/token"), false);
+  assert.equal(JSON.stringify(record).includes("injected_numeric"), false);
 });

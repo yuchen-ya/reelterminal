@@ -58,6 +58,13 @@ export function resourceEvidence(document) {
 export function calibrationEvidence(document) {
   const capture = document.controls?.currentCapture;
   const numeric = value => Number.isFinite(value) && value >= 0 ? value : null;
+  const phaseEvidence = phases => Object.fromEntries([
+    "capture_start_ms", "capture_export_ms", "read_before_ms", "read_verify_ms",
+    "poll_wait_ms", "poll_wait_count", "verification_reads", "drag_ms",
+    "drag_geometry_ms", "drag_input_driver_ms", "drag_verification_ms",
+    "drag_raf_wait_ms", "drag_raf_browser_ms", "drag_raf_max_browser_ms", "drag_raf_count",
+    "marker_ms", "save_key_ms", "save_wait_ms", "settle_ms",
+  ].filter(key => numeric(phases?.[key]) !== null).map(key => [key, phases[key]]));
   return {
     status: ["qualified", "probe_overhead_exceeded", "invalid"].includes(document.status) ? document.status : "unknown",
     completed_groups: Array.isArray(document.runs) ? document.runs.length : 0,
@@ -65,11 +72,17 @@ export function calibrationEvidence(document) {
     // Preserve already-recorded numeric evidence for attribution. CPU scope
     // includes initialization/export; it is not the wall qualification metric.
     task_duration_scope: "includes_capture_initialization_and_export",
+    task_window_scope: "CDP_samples_bracket_unchanged_wall_window_without_capture_start_or_export",
+    phase_scope: "Node_await_elapsed; drag_raf_browser_ms_uses_renderer_clock; drag_subphases_are_nested",
+    current_phases: phaseEvidence(document.controls?.currentPhases),
+    current_window_task_seconds: numeric(document.controls?.currentWindowTaskSeconds),
     runs: (document.runs ?? []).slice(0, 20).map((run, index) => ({
       index,
       mode: ["off", "light"].includes(run.mode) ? run.mode : "unknown",
       duration_ms: numeric(run.durationMs),
       task_seconds: numeric(run.taskSeconds),
+      task_window_seconds: numeric(run.taskWindowSeconds),
+      phases: phaseEvidence(run.phases),
       export_ms: numeric(run.exportMs),
       events: Number.isInteger(run.events) && run.events >= 0 ? run.events : null,
       heap_bytes_before: numeric(run.heapBytesBefore),
