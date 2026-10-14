@@ -57,7 +57,7 @@ release qualification.
 
 The diagnostic smoke on commit `3e15fc94de57360dde952b528c6489998e27043a`
 ([run 38556573514](https://github.com/yuchen-ya/reelterminal/actions/runs/38556573514))
-completed all 20 groups and failed the existing overhead gate. No measurement
+completed all 20 runs (five ABBA blocks) and failed the existing overhead gate. No measurement
 scenario or representative stress run executed. The gate pools 10 off and 10
 light durations and selects each sorted sample's sixth value (upper median).
 It compares their difference with `max(offUpperMedian * 0.02, 30 ms)`.
@@ -133,7 +133,7 @@ fields do not participate in qualification or alter its upper-median/2% rule.
 
 The phase run on commit `8688cae97e8eb23fbc2d774510c0486a78847710`
 ([run 38561494198](https://github.com/yuchen-ya/reelterminal/actions/runs/38561494198))
-completed 13 groups; the next light group exhausted both collectors' existing
+completed 13 runs; the next light run exhausted both collectors' existing
 30-second budget. Its pre-gesture and verification MCP reads totaled 26,356.968
 ms, dragging 3,702.963 ms (nested renderer rAF waits 369.540 ms), and save/settle
 waits were small. Completed off/light renderer TaskDuration medians were
@@ -154,7 +154,7 @@ read-only/revocation, status ordering, CLI/MCP guards and absence of provider
 preflights from ordinary status. This removes unrelated repeated probing rather
 than increasing the capture budget or altering qualification statistics.
 
-The first status-fix smoke completed eight groups with wall windows around
+The first status-fix smoke completed eight runs with wall windows around
 3.6 seconds and total MCP-read phases around 0.8–1.0 seconds, confirming the
 large unrelated status overhead was removed. It then failed the existing
 pre-input hit assertion, so it did not produce a qualified calibration. Custom
@@ -162,3 +162,64 @@ mouse input now waits at most the existing 5-second operation ceiling for its
 coordinates to hit the exact target before mouse-down. A permanently blocked
 target still fails and may retain the small input-point crop; no wrong-target
 input is allowed. The original hit assertion and pointer/geometry checks remain.
+
+## Fixed-commit smoke and representative stress outcome
+
+Both final runs tested commit `afbeaa6f1549a357da3f96d4c27c7ba84bc65502`.
+The stress run was dispatched once, only after the smoke had completed and its
+actual report had been checked. No threshold, statistic, capture budget or
+scenario assertion changed between these runs.
+
+| Run | Hosted CPU | Contracts | Calibration | Scenario outcomes |
+| --- | --- | --- | --- | --- |
+| [Smoke 38565422782](https://github.com/yuchen-ya/reelterminal/actions/runs/38565422782) | AMD EPYC 7763, 4 logical cores | 258 passed, 0 failed, 0 skipped | Qualified, 20 runs / 5 ABBA blocks | 5 complete, 0 failed, 0 not run |
+| [Stress 38566675353](https://github.com/yuchen-ya/reelterminal/actions/runs/38566675353) | Intel Xeon Platinum 8573C, 4 logical cores | 258 passed, 0 failed, 0 skipped | Failed, 20 runs / 5 ABBA blocks | 0 complete, 0 scenario failures, 7 not run |
+
+Both used the standard `windows-latest` image `20260925.250.1`, with isolated
+synthetic profiles. Scenario counts are result records, not Vitest test counts.
+The smoke exercised T01, H01, P01, ten R01 rounds and a requested 60-second
+continuous R02 observation (59 cycles; 62.043 seconds including final checks).
+Its anonymous report has five results, zero warnings and zero hard failures;
+hosted duration comparisons remain `report_only` with no fixed baseline.
+
+The unchanged calibration gate uses off/light upper medians of
+3,612.775/3,577.035 ms for smoke (-0.989%, tolerance 72.256 ms), and
+3,364.670/3,467.220 ms for stress (+3.048%, difference 102.550 ms, tolerance
+67.293 ms). Negative smoke overhead is not a claim that instrumentation makes
+the product faster. All light captures in the stress calibration were complete
+in both collectors, visible and free of recorded drops; this failure is
+`probe_overhead_exceeded`, not an incomplete capture or drag precondition error.
+
+Stress phase upper medians for off/light were: wall-window renderer CPU
+1.9666/2.0013 seconds, pre-gesture reads 331.114/368.486 ms, verification reads
+249.374/293.485 ms, drag driving 2,548.388/2,559.280 ms, renderer rAF waits
+465.140/462.425 ms and save waits 154.909/213.484 ms. Phase medians come from
+different samples and cannot be added to reconstruct the wall median. Export
+was outside the unchanged wall window. These measurements do not isolate an
+additional intrinsic collector defect, prove that hosted noise caused the
+failure, or qualify the probe as within 2%.
+
+The stress scenario step did not start: quick T01/H01/P01, dense T03, large H01,
+500-round R01 and saturated-history continuous 1,800-second R02 are all
+`not_run`. The report's `no_result_artifacts` hard failure follows from that
+absence; it is not a second product failure. No 30-minute observation or dense
+timeline qualification was obtained. The different CPUs also prevent treating
+the cross-run wall difference as a controlled performance improvement.
+
+This round ends with a passed smoke and a blocked representative stress, not a
+passed long soak. A further change needs a concrete collector/RPC defect with a
+focused reproduction, or explicit agreement on a different qualification metric
+and its validation. Repeating hosted runs until one passes, changing the 2%
+limit, replacing the statistic with the lower paired mean, or choosing another
+OS to erase this Windows failure would not resolve this evidence. macOS GUI
+measurements and Linux display-backed measurements remain untested here.
+
+The Actions artifacts retain small anonymous evidence for three days. This
+document preserves the tested SHA, result summary and run links after expiry.
+The independent normal CI still reports the pre-existing naming violation in
+`packages/agent-facade/src/audio-process.test.ts:89`; the wider Electron suite
+also failed separately (Windows 74 passed / 34 failed / 15 skipped; macOS
+73 passed / 35 failed / 15 skipped). Some tests retain obsolete project/CLI
+contracts; other UI failures need their own reproduction. These are not covered
+or certified fixed by the performance smoke. The user's earlier source-detail
+and macOS audio-normalize corrections were verified rather than reimplemented.
