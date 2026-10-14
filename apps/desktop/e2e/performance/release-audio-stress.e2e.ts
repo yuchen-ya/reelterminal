@@ -107,8 +107,17 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
     expect(headlessStatus.state).toBe("done");
     const headlessSummary: any = unwrap(await headless["analysis.get"]({ recordId: headlessStatus.result.summary.analysisRecord.id }));
     const liveSummary = await c.call("analysis_get", { recordId: fixedRecord });
-    expect(headlessSummary.observations.map((o: any) => o.facts)).toEqual(liveSummary.observations.map((o: any) => o.facts));
-    c.record.headless_parity = { status: headlessStatus, summary_facts_equal: true };
+    // Session identity and import timestamps legitimately differ. Preserve both
+    // originals and compare every analytical fact, including fingerprint size.
+    const comparableFacts = (summary: any) => summary.observations.map((o: any) => {
+      const facts = structuredClone(o.facts);
+      delete facts.mediaId;
+      if (facts.sourceFingerprint) delete facts.sourceFingerprint.lastModified;
+      return facts;
+    });
+    c.record.headless_parity = { status: headlessStatus, live_summary: liveSummary, headless_summary: headlessSummary, excluded_session_fields: ["mediaId", "sourceFingerprint.lastModified"] };
+    expect(comparableFacts(headlessSummary)).toEqual(comparableFacts(liveSummary));
+    c.record.headless_parity.summary_facts_equal = true;
     const badQuery = await c.reply("analysis_get", { recordId: fixedRecord, view: "events", series: "silence.silentRegions", limit: 257 });
     expect(badQuery.ok).toBe(false);
     c.record.invalid_query = { ok: badQuery.ok, error: badQuery.error };

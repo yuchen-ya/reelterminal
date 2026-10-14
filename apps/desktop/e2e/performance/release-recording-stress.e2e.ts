@@ -69,7 +69,14 @@ const native = process.env.REELTERMINAL_FEATURE_NATIVE_CAPTURE === "1";
       const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", file], { encoding: "utf8" }));
       const video = probe.streams.find((s: any) => s.codec_type === "video");
       expect(video.width).toBe(1920); expect(video.height).toBe(1080);
-      expect(Math.abs(Number(probe.format.duration) - seconds)).toBeLessThanOrEqual(1);
+      // Streaming WebM from MediaRecorder can omit Segment Duration. Decode
+      // packet timestamps instead of treating absent metadata as NaN.
+      const packets = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_packets", "-show_entries", "packet=pts_time,duration_time", "-of", "json", file], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }));
+      const packetEnd = Math.max(...packets.packets.map((p: any) => Number(p.pts_time) + Number(p.duration_time ?? 0)));
+      c.record.latest_probe = { index, probe, packets, packet_end_seconds: packetEnd };
+      await c.flush();
+      expect(Number.isFinite(packetEnd)).toBe(true);
+      expect(Math.abs(packetEnd - seconds)).toBeLessThanOrEqual(1);
       execFileSync("ffmpeg", ["-v", "error", "-i", file, "-f", "null", "-"], { timeout: 60_000 });
       const frames = [1, Math.max(1.5, seconds - 1)].map(t => execFileSync("ffmpeg", ["-v", "error", "-ss", String(t), "-i", file, "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"], { maxBuffer: 16 * 1024 * 1024, timeout: 60_000 }));
       const hashes = frames.map(bytes => createHash("sha256").update(bytes).digest("hex"));
@@ -82,7 +89,7 @@ const native = process.env.REELTERMINAL_FEATURE_NATIVE_CAPTURE === "1";
       const ext = path.extname(file);
       expect([".webm", ".mp4"]).toContain(ext);
       await copyFile(file, path.join(c.evidence, "recording-" + index + ext));
-      c.record.recordings.push({ index, elapsed_ms: performance.now() - start, source_ended: index === count - 1, media: added[0], probe, resources, frame_hashes: hashes, center_rgb: rgb });
+      c.record.recordings.push({ index, elapsed_ms: performance.now() - start, source_ended: index === count - 1, media: added[0], probe, packet_end_seconds: packetEnd, packet_count: packets.packets.length, resources, frame_hashes: hashes, center_rgb: rgb });
       await c.sample(); await c.flush(); console.info("REAL_RECORDING_COMPLETE", { index });
     }
     await c.app.page.screenshot({ path: path.join(c.evidence, "recording-assets.png") });
