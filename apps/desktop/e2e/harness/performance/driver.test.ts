@@ -1,5 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { ARTIFACTS_DIR } from "../paths";
 import type { CaptureReport } from "../../../../web/src/performance";
@@ -59,7 +60,14 @@ describe("performance driver helpers", () => {
         getByTestId: () => ({ evaluate: async () => { calls.push("scrollLeft"); } }),
         evaluate: async (fn: Function) => {
           const source = fn.toString(); calls.push(source);
-          if (source.includes("requestAnimationFrame")) return 0;
+          if (source.includes("requestAnimationFrame")) {
+            // Execute the serialized callback in a browser-like realm. Node
+            // imports rewritten by Vite must never leak into page.evaluate.
+            return runInNewContext(`(${source})()`, {
+              performance: { now: () => 0 },
+              requestAnimationFrame: (callback: () => void) => callback(),
+            });
+          }
           if (source.includes("elementFromPoint")) return "clip";
           if (source.includes("return evidence.points")) return Array.from({ length: 7 }, (_, index) => ({ x: 150 + index * 4, y: 28 }));
         },

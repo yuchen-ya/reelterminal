@@ -241,8 +241,8 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
     const before = performance.now();
     // Use the existing rAF call: add no browser round trip or extra frame.
     const browserMs = await page.evaluate(() => {
-      const before = performance.now();
-      return new Promise<number>(resolve => requestAnimationFrame(() => resolve(performance.now() - before)));
+      const before = globalThis.performance.now();
+      return new Promise<number>(resolve => requestAnimationFrame(() => resolve(globalThis.performance.now() - before)));
     });
     if (timing) {
       timing.raf_wait_ms += performance.now() - before;
