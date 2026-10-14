@@ -603,6 +603,7 @@ export async function runPerformanceScenario(scenarioId: TimelinePerformanceScen
               await waitForMarker(launched!.page, fixture, options.operationTimeoutMs);
             });
           }
+          if (scenarioId === "T03" && (index + 1) % 10 === 0) console.info("PERFORMANCE_TIMELINE_PROGRESS", { run_id: runId, completed_rounds: index + 1, completed_per_operation: index + 1 });
         }
       }
     }
