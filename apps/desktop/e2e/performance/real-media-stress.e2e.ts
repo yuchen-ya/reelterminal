@@ -137,11 +137,28 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     record.selected_audio_mode = "1.5x_varispeed_pitch_correction_false";
     record.project = (await state()).project;
     await call("node_save", { ...target, expectedRevision: (await state()).revision, name: "Real media fixed project" });
+    await verifyGuiFrame(2, 0);
+    await verifyGuiFrame(8, 2);
+    await verifyGuiFrame(2, 0);
     for (let pass = 0; pass < 3; pass++) {
       await control("seek", 0);
       const start = performance.now();
       await control("play");
-      await launched.page.waitForTimeout(10_000);
+      await launched.page.waitForTimeout(3000);
+      const markers = await launched.page.getByTestId("preview-canvas").evaluate(element => {
+        const canvas = element as HTMLCanvasElement;
+        const ctx = canvas.getContext("2d")!;
+        return [[0.5, 0.5], [1460 / 1920, 290 / 1080], [460 / 1920, 290 / 1080]].map(([x, y]) => Array.from(ctx.getImageData(Math.floor(x! * canvas.width), Math.floor(y! * canvas.height), 1, 1).data));
+      });
+      record.playing_markers ??= [];
+      record.playing_markers.push({ pass, pixels: markers });
+      await flush();
+      for (const [index, channel] of [0, 1, 2].entries()) {
+        expect(markers[index]![channel]).toBeGreaterThan(180);
+        expect(markers[index]![(channel + 1) % 3]).toBeLessThan(80);
+        expect(markers[index]![(channel + 2) % 3]).toBeLessThan(80);
+      }
+      await launched.page.waitForTimeout(7000);
       await control("pause");
       const context = await call("editor_get_context", target);
       record.continuous_playback.push({ pass, elapsed_ms: performance.now() - start, playhead_seconds: context.playheadSeconds });

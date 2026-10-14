@@ -11,6 +11,7 @@ import { recordCommittedPreviewFrame } from "./preview/frame-performance";
 import { canCommitHistoryFrame } from "./preview/history-frame-readiness";
 import { SelectionTransformOverlay } from "./preview/SelectionTransformOverlay";
 import { collectNativePlaybackImageClips } from "./preview/native-playback-image-clips";
+import { scrubVideoCacheKey, scrubVideoCacheLimit } from "./preview/scrub-video-cache";
 import { computeLetterboxGeometry } from "./preview/overlay-geometry";
 import {
   findNextAudioClipStartTime as findNextAudioClipStartTimeIn,
@@ -187,13 +188,6 @@ import {
   previewFrameOverflows,
   type PreviewZoom,
 } from "./preview/preview-viewport";
-
-// Cache key for the scrub-decode video element cache (videoElementCacheRef).
-// Stabilized clips decode from their own blob, so they cache under a dedicated
-// key instead of evicting the original media's element. Keep every lookup and
-// eviction on this helper so the keys can never drift apart.
-const scrubVideoCacheKey = (mediaId: string, isStabilized: boolean): string =>
-  isStabilized ? `${mediaId}:stabilized` : mediaId;
 
 // Playback frame sourcing must never block the render loop indefinitely: a
 // wedged hardware decoder leaves `CanvasSink.getCanvas` pending forever, which
@@ -1773,7 +1767,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         );
         const isStabilized = vidstab.hasStabilized(clip.id);
         const mediaTime = isStabilized ? adjustedLocalTime : (clip.inPoint || 0) + adjustedLocalTime;
-        const cacheKey = scrubVideoCacheKey(clip.mediaId, isStabilized);
+        const cacheKey = scrubVideoCacheKey(clip.id, clip.mediaId, isStabilized);
         let cached = videoElementCacheRef.current.get(cacheKey);
 
         if (!cached) {
@@ -1819,7 +1813,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           cached = { video, url, lastUsed: Date.now() };
           videoElementCacheRef.current.set(cacheKey, cached);
 
-          while (videoElementCacheRef.current.size > 2) {
+          const cacheLimit = scrubVideoCacheLimit(timelineTracksRef.current, time, id => getMediaItem(id)?.type);
+          while (videoElementCacheRef.current.size > cacheLimit) {
             evictOldestVideoElement();
           }
         }
@@ -1999,9 +1994,9 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         scheduleScrubVideoRelease();
         return frame;
       } catch {
-        // Evict with the same key the entry was cached under (a stabilized
-        // clip caches under `${mediaId}:stabilized`, not its plain mediaId).
+        // Evict using the same clip/source/stabilization identity as lookup.
         const failedKey = scrubVideoCacheKey(
+          clip.id,
           clip.mediaId,
           vidstab.hasStabilized(clip.id),
         );
