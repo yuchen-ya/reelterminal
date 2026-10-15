@@ -35,9 +35,9 @@
 **ReelTerminal 试图提供一个平滑的折中解法：**  
 保留现代剪辑器直观的画布和时间线，创作者可以在桌面端随手拖拽微调；同时让你的 AI 助手（Cursor、Claude、Antigravity 等）能直接操作工程时间线——**你负责直观审美，AI 负责批量与结构化处理，支持版本节点存档、双向对比与随时撤销。**
 
-![ReelTerminal 暗色桌面界面：画布、多轨时间线与 Agent 协作状态栏](docs/assets/desktop-screenshot.jpg)
+![ReelTerminal 中文桌面界面：宣传片工程、R 片段引用标记、素材库、多轨时间线与存档树](docs/assets/desktop-screenshot.png)
 
-*真实桌面界面，使用演示工程展示画布、多轨时间线与 Agent 协作状态。*
+*真实宣传片工程截图：保留便于人与 Agent 沟通的 R 片段引用标记，并展示素材库、多轨时间线和版本存档树。*
 
 ---
 
