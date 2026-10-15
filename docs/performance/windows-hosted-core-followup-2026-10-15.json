@@ -165,5 +165,93 @@
     "mac_local_task",
     "manual_hosted_rerun"
   ],
-  "report": "windows-hosted-core-followup-2026-10-15.md"
+  "report": "windows-hosted-core-followup-2026-10-15.md",
+  "latestContinuation": {
+    "analysisRollback": {
+      "typecheck": "passed",
+      "beforeControlledTest": "failed",
+      "afterCombinedTestsPassed": 83
+    },
+    "clipboardDiagnostic": {
+      "nativeRoundtrip": false,
+      "rootCause": "unresolved OS/runtime boundary",
+      "rendererVisibleToNative": false,
+      "rendererWriteSucceeded": true
+    },
+    "checkpointSharing": {
+      "maxWaitMsPerReplacement": 100,
+      "readerIntegrationReplacements": 200,
+      "beforeIterations": 10000,
+      "batchTestsPassed": 9,
+      "retryAttempts": 5,
+      "beforeEPERM": 2120
+    },
+    "candidateDirectory": "apps/desktop/release/windows-rc-1.1.2-79c5f780",
+    "releaseQualified": false,
+    "sourceSha": "79c5f7802ddbde0c1ded5a9b5b27b30a85703273",
+    "packagedCore": {
+      "m3Seconds": 15.356,
+      "total": 40,
+      "failures": [
+        "multi-project-versioning: native clipboard read empty",
+        "node-ux-fixes: native clipboard read empty"
+      ],
+      "smokeSeconds": 26.88,
+      "passed": 38,
+      "failed": 2,
+      "coreSeconds": 134.54
+    },
+    "hostedRuns": [
+      {
+        "conclusion": "success",
+        "databaseId": 38725157305,
+        "headSha": "79c5f7802ddbde0c1ded5a9b5b27b30a85703273",
+        "name": "Chromium E2E",
+        "status": "completed",
+        "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38725157305"
+      },
+      {
+        "conclusion": "failure",
+        "databaseId": 38725157244,
+        "headSha": "79c5f7802ddbde0c1ded5a9b5b27b30a85703273",
+        "name": "Electron E2E",
+        "status": "completed",
+        "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38725157244"
+      },
+      {
+        "conclusion": "success",
+        "databaseId": 38725157241,
+        "headSha": "79c5f7802ddbde0c1ded5a9b5b27b30a85703273",
+        "name": "Performance contracts @ 79c5f7802ddbde0c1ded5a9b5b27b30a85703273",
+        "status": "completed",
+        "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38725157241"
+      },
+      {
+        "conclusion": "success",
+        "databaseId": 38725157229,
+        "headSha": "79c5f7802ddbde0c1ded5a9b5b27b30a85703273",
+        "name": "CI",
+        "status": "completed",
+        "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38725157229"
+      }
+    ],
+    "hostedElectron": {
+      "macos": {
+        "failed": 1,
+        "passed": 122,
+        "skipped": 13
+      },
+      "windows": {
+        "failed": 4,
+        "passed": 119,
+        "skipped": 13
+      }
+    }
+  },
+  "opacityFollowup": {
+    "typecheck": "passed",
+    "before": "controlled input reverts 0.4 to 0.35 while command pending",
+    "newCandidateRequired": true,
+    "componentTestsPassed": 17
+  }
 }

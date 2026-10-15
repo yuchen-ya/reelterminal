@@ -145,3 +145,64 @@ Evidence: `checkpoint-sharing-regression.log`, `checkpoint-real-reader.log`.
 
 This runtime change requires a new clean candidate. The failed 5aece717
 candidate and its original evidence remain retained and unqualified.
+
+## 79c5f780 terminal results and opacity diagnosis
+
+All ordinary runs reached terminal state without manual reruns:
+[CI passed](https://github.com/yuchen-ya/reelterminal/actions/runs/38725157229),
+[Chromium passed on all three jobs](https://github.com/yuchen-ya/reelterminal/actions/runs/38725157305),
+[performance contracts passed](https://github.com/yuchen-ya/reelterminal/actions/runs/38725157241),
+and [Electron failed](https://github.com/yuchen-ya/reelterminal/actions/runs/38725157244).
+Windows: 119 passed / 4 failed / 13 skipped. Mac: 122 passed / 1 failed /
+13 skipped. Mac close/relaunch, local-font node retention, archive safety,
+M3 and first frame now pass. Windows copy checks pass on the hosted runner;
+the local native clipboard failure remains unresolved.
+
+Windows canvas-point failure repeats exactly `(0.293876,0.666683)`, so the
+additional stable-layout wait did not fix it. A separate controlled Chromium
+input diagnostic proves `pointerdown` preserves fractional protocol positions
+but `click` truncates them: requested `(114.434375,118.865625)` becomes click
+`(114,118)`. A single click aimed at the nearest integer pixel becomes
+`(114,119)` and avoids that systematic bias. The driver now rounds once before
+the one real click; the 0.03 tolerance, actual connector context and pixel/CAS
+checks are unchanged. Geometry is included if it fails again. Evidence:
+`mouse-coordinate-primitive.json`. This explains an input-driver mechanism;
+updated small-window hosted validation is still required.
+
+Windows comparison failure was newly added diagnostic I/O: its artifact
+directory did not yet exist on the clean runner (ENOENT). Directory creation
+is fixed. Mac comparison failure is different: twenty ArrowLeft inputs leave
+opacity 0.4 instead of 0.05. A controlled component test proves a product
+defect: while the project command is deliberately pending, input 0.4 is reset
+immediately to canonical 0.35. The range was controlled by asynchronously
+committed project state, so rapid gestures repeatedly started at the old value.
+
+The normal comparison opacity input now holds its latest local gesture until
+all pending canonical commands finish. It still uses the existing project
+command/history path, returns to canonical state after failure, displays the
+error, and follows external canonical changes when idle. Three regression
+cases cover a pending gesture, overlapping commands and rejection; all 17
+comparison-component tests and web typecheck pass. Original implementation
+fails the controlled pending-command test. Evidence:
+`comparison-pending-opacity-before.log`, `comparison-pending-opacity-after.log`.
+The E2E retains fast consecutive keys to exercise this defect rather than
+serializing each gesture behind command completion. This runtime repair needs
+another candidate; 79c5f780 remains retained as an earlier candidate.
+
+An independent local diagnostic also stopped before renderer setup because
+Windows returned content width 1023 after a 1024 request. It is preserved in
+`canvas-gesture-coordinate-diagnostic.log` and is not counted as a product
+startup timeout or a functional pass. No size acceptance guard was relaxed.
+Normal-window follow-up exercises all eight real comparison/connector/pixel/
+undo/save-reopen tests successfully (16.57 s); small-window confirmation is
+reserved for hosted evidence.
+
+Mac picker report `ef1fa632` was read from Git. It confirms system picker
+present and a 10.030 s source-start timeout, with no product fallback. Recording
+remains unaccepted; manual selection is not assumed to solve it. This Windows
+continuation needs no Mac file edits. If the parent later authorizes more Mac
+investigation, the minimum useful evidence is the retained original startup
+primary error/command timing and PID-correlated native memory-region samples
+from the existing export/idle round. Do not repeat the ten-export run merely
+to obtain another RSS number. No recorder code, permissions or user Mac task
+was changed here.

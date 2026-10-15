@@ -1,7 +1,7 @@
 /** Real desktop + loopback acceptance for the combined P0–P2/library delivery. */
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ARTIFACTS_DIR } from "./harness/paths";
 import { launchApp, type LaunchedApp } from "./harness/launch";
@@ -80,14 +80,12 @@ describe("combined delivery: live replacement + GUI comparison", () => {
     expect((await state()).project.referenceComparison?.layout).toBe("overlay");
     await page.getByRole("button", { name: "Advanced", exact: true }).click();
     const opacity = page.getByLabel("Overlay opacity", { exact: true });
-    // Native range Home handling differs on macOS. Move to the minimum with
-    // ordinary arrow keys, then verify each controlled-input update settles.
+    // Use portable range keys, keeping rapid input so pending project
+    // commands cannot be hidden by waiting between each individual step.
     for (let step = 0; step < 20; step += 1) await opacity.press("ArrowLeft");
     await vi.waitFor(async () => expect(await opacity.inputValue()).toBe("0.05"));
-    for (let step = 1; step <= 5; step += 1) {
-      await opacity.press("ArrowRight");
-      await vi.waitFor(async () => expect(await opacity.inputValue()).toBe((0.05 + step * 0.05).toFixed(2).replace(/0$/, "")));
-    }
+    for (let step = 0; step < 5; step += 1) await opacity.press("ArrowRight");
+    mkdirSync(ARTIFACTS_DIR, { recursive: true });
     writeFileSync(path.join(ARTIFACTS_DIR, `repair-opacity-${Date.now()}.json`), JSON.stringify({
       dom: await page.evaluate(() => ({
         value: (document.querySelector('[aria-label="Overlay opacity"]') as HTMLInputElement)?.value,

@@ -156,6 +156,7 @@ describe("in-player reference comparison", () => {
     fixture.loadMediaBlob.mockResolvedValue(null);
     fixture.project.referenceComparison.layout = "overlay";
     fixture.project.referenceComparison.audioSide = "reference";
+    fixture.project.referenceComparison.overlayOpacity = 0.35;
     fixture.project.mediaLibrary.items = [{
       id: "ref",
       name: "Reference cut",
@@ -182,6 +183,57 @@ describe("in-player reference comparison", () => {
     expect(screen.queryByTestId("reference-comparison-viewport")).toBeNull();
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.getByRole("button", { name: "Reference comparison" })).toHaveTextContent("Compare");
+  });
+
+  it("keeps an opacity gesture visible while its project command is pending", async () => {
+    let finish!: (result: { success: boolean }) => void;
+    fixture.executeAction.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const { rerender } = render(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
+    const opacity = screen.getByLabelText("Overlay opacity") as HTMLInputElement;
+    fireEvent.change(opacity, { target: { value: "0.4" } });
+    try {
+      expect(opacity.value).toBe("0.4");
+    } finally {
+      fixture.project.referenceComparison.overlayOpacity = 0.4;
+      await act(async () => { finish({ success: true }); await Promise.resolve(); });
+      rerender(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
+    }
+    expect(opacity.value).toBe("0.4");
+  });
+
+  it("keeps the newest opacity gesture while an earlier command commits", async () => {
+    const finish: Array<(result: { success: boolean }) => void> = [];
+    fixture.executeAction.mockImplementation(() => new Promise(resolve => { finish.push(resolve); }));
+    const { rerender } = render(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
+    const opacity = screen.getByLabelText("Overlay opacity") as HTMLInputElement;
+    fireEvent.change(opacity, { target: { value: "0.4" } });
+    fireEvent.change(opacity, { target: { value: "0.45" } });
+    fixture.project.referenceComparison.overlayOpacity = 0.4;
+    await act(async () => { finish[0]!({ success: true }); await Promise.resolve(); });
+    rerender(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
+    expect(opacity.value).toBe("0.45");
+    fixture.project.referenceComparison.overlayOpacity = 0.45;
+    await act(async () => { finish[1]!({ success: true }); await Promise.resolve(); });
+    rerender(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
+    expect(opacity.value).toBe("0.45");
+    fixture.project.referenceComparison.overlayOpacity = 0.7;
+    rerender(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
+    expect(opacity.value).toBe("0.7");
+  });
+
+  it("returns opacity to canonical state and exposes a rejected command", async () => {
+    let reject!: (reason: Error) => void;
+    fixture.executeAction.mockImplementationOnce(() => new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
+    render(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
+    const opacity = screen.getByLabelText("Overlay opacity") as HTMLInputElement;
+    fireEvent.change(opacity, { target: { value: "0.4" } });
+    expect(opacity.value).toBe("0.4");
+    await act(async () => { reject(new Error("Preview is read-only")); await Promise.resolve(); });
+    expect(opacity.value).toBe("0.35");
+    expect(screen.getByText("Preview is read-only")).toBeTruthy();
   });
 
   it("places both frames inside the player and keeps timeline transport out of the comparison UI", async () => {

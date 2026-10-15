@@ -262,11 +262,16 @@ export async function setCanvasPointViaUI(
   const scale = Math.min(box.width / bitmap.width, box.height / bitmap.height);
   const width = bitmap.width * scale;
   const height = bitmap.height * scale;
-  await page.mouse.click(box.x + (box.width - width) / 2 + width * fx, box.y + (box.height - height) / 2 + height * fy);
+  const requested = { x: box.x + (box.width - width) / 2 + width * fx, y: box.y + (box.height - height) / 2 + height * fy };
+  // Chromium's click MouseEvent truncates fractional protocol coordinates,
+  // unlike pointerdown. Aim at the nearest real pixel to avoid a one-sided
+  // error on a small canvas; retain one gesture and the original tolerance.
+  const click = { x: Math.round(requested.x), y: Math.round(requested.y) };
+  await page.mouse.click(click.x, click.y);
   await waitFor(async () => (await readCanvasPoint()) !== null, 5_000, "target point from the real canvas click");
   const point = await readCanvasPoint();
   if (point === null || Math.abs(point.x - fx) > tolerance || Math.abs(point.y - fy) > tolerance) {
-    throw new Error(`canvas point missed: wanted (${fx}, ${fy}), got ${JSON.stringify(point)}`);
+    throw new Error(`canvas point missed: wanted (${fx}, ${fy}), got ${JSON.stringify(point)}; geometry=${JSON.stringify({ box, bitmap, requested, click })}`);
   }
   return point;
 }

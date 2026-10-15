@@ -62,7 +62,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
   }, 300_000);
 
   afterAll(async () => {
-    evidence.flush();
+    evidence?.flush();
     await agent?.close();
     await launched?.close();
   });

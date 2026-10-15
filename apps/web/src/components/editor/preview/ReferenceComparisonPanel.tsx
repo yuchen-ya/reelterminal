@@ -443,6 +443,8 @@ export const ReferenceComparisonPanel: React.FC<{
   const [referenceUrl, setReferenceUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [opacityDraft, setOpacityDraft] = useState<number | null>(null);
+  const pendingOpacityCommands = useRef(0);
   const [referenceTime, setReferenceTime] = useState(0);
   const [referenceReady, setReferenceReady] = useState(false);
   const [historyFrameState, setHistoryFrameState] = useState<HistoryFrameResult>("frame");
@@ -633,6 +635,23 @@ export const ReferenceComparisonPanel: React.FC<{
     if (!config) return;
     void executeAction(setComparisonAction({ ...config, ...patch })).then((result) => {
       setError(result.success ? null : result.error?.message ?? t("Could not update comparison."));
+    });
+  }, [config, executeAction, t]);
+
+  const updateOpacity = useCallback((value: number) => {
+    if (!config) return;
+    // Keep the native range's latest gesture while the canonical project
+    // command is pending. Otherwise React restores the old value after each
+    // input event and fast keyboard/drag changes repeatedly start there.
+    pendingOpacityCommands.current += 1;
+    setOpacityDraft(value);
+    void executeAction(setComparisonAction({ ...config, overlayOpacity: value })).then((result) => {
+      setError(result.success ? null : result.error?.message ?? t("Could not update comparison."));
+    }).catch((failure: unknown) => {
+      setError(failure instanceof Error ? failure.message : t("Could not update comparison."));
+    }).finally(() => {
+      pendingOpacityCommands.current -= 1;
+      if (pendingOpacityCommands.current === 0) setOpacityDraft(null);
     });
   }, [config, executeAction, t]);
 
@@ -871,8 +890,8 @@ export const ReferenceComparisonPanel: React.FC<{
                 min={0.05}
                 max={1}
                 step={0.05}
-                value={config!.overlayOpacity ?? 0.5}
-                onChange={(event) => updateConfig({ overlayOpacity: Number(event.target.value) })}
+                value={opacityDraft ?? config!.overlayOpacity ?? 0.5}
+                onChange={(event) => updateOpacity(Number(event.target.value))}
                 className="flex-1 accent-emerald-500"
               />
             </label>

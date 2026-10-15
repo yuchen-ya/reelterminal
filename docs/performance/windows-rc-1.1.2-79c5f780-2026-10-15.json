@@ -1,0 +1,182 @@
+{
+  "report": "windows-rc-1.1.2-2026-10-15.md",
+  "packagedCore": {
+    "failed": 2,
+    "total": 40,
+    "m3": {
+      "timeoutMs": 120000,
+      "seconds": 15.356,
+      "passed": true
+    },
+    "passed": 38,
+    "failures": [
+      {
+        "test": "multi-project-versioning: project switch copied prompt",
+        "firstCondition": "native clipboard text empty, expected project identity",
+        "attribution": "native Electron synthetic roundtrip also failed; OS/runtime cause unresolved"
+      },
+      {
+        "test": "node-ux-fixes: rename copied prompt",
+        "firstCondition": "native clipboard text empty, expected project name",
+        "attribution": "same unresolved clipboard boundary"
+      }
+    ]
+  },
+  "reportDate": "2026-10-15",
+  "identity": {
+    "schema": "reelterminal.windows-local-rc/v1",
+    "sourceSha": "79c5f7802ddbde0c1ded5a9b5b27b30a85703273",
+    "version": "1.1.2",
+    "platform": "win32",
+    "arch": "x64",
+    "published": false,
+    "installed": false,
+    "buildStamp": {
+      "schema": "reelterminal.performance-build/v1",
+      "build_type": "production",
+      "source_head": "79c5f7802ddbde0c1ded5a9b5b27b30a85703273",
+      "dirty": false,
+      "source_digest": "9e131fa0f7dbfd78a2a2f71ba42799d9003fd0d77f5f42a7e8358b15ed1fec2e",
+      "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+      "main_bundle_sha256": "6330a595f8506730bd03265c29cf8518f5cf13e6366df11340e923a6da8404bd",
+      "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+      "renderer_manifest_sha256": "81702755beefc20ad941fa943e38c7d7705873f60b70a3809c64510804a79d7f",
+      "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+      "executable_sha256": "49b61a030a520fc36a4b8fa5cce53fb4e935a7bdbbe4b80e9222f598e49cc7fa",
+      "app_version": "1.1.2"
+    },
+    "files": [
+      {
+        "path": "ReelTerminal-1.1.2-x64.exe",
+        "bytes": 138861223,
+        "sha256": "c7cda350fee810d868f23bb8e9356ada1a42d6fb5365cba986fb9c1a4d92991f"
+      },
+      {
+        "path": "ReelTerminal-1.1.2-x64.zip",
+        "bytes": 188922560,
+        "sha256": "472e71273b5862894398d60deb1c73402b48134f1e09f46dd9e4a1ef741e76e9"
+      },
+      {
+        "path": "ReelTerminal-1.1.2-x64.exe.blockmap",
+        "bytes": 146436,
+        "sha256": "0ee2f7b3442c2f1972027af4680b351a5e5975317c748dd96b91694ed049f8d3"
+      },
+      {
+        "path": "win-unpacked/ReelTerminal.exe",
+        "bytes": 245726208,
+        "sha256": "8afd9c4e2d5b5e989a28a30eabf952089c3e245c1778922c846a1267ede28f5a"
+      },
+      {
+        "path": "win-unpacked/resources/app.asar",
+        "bytes": 93721291,
+        "sha256": "926d0fd28b8fa5a69781070bf4f5bea027fb4719c2d584cdb34fdef1eea6f68f"
+      }
+    ],
+    "components": [
+      {
+        "path": "dist/main/index.js",
+        "sha256": "6330a595f8506730bd03265c29cf8518f5cf13e6366df11340e923a6da8404bd",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/preload/index.js",
+        "sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/browser-entry.mjs",
+        "sha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/live-mcp/index.js",
+        "sha256": "72c056918dc7380ac235a0b325cf676f6ab0e3f1a95e2f246446324ccb1e27aa",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/reelctl/index.js",
+        "sha256": "66c6f55c52c9e920cc6cf05d6d44cfccd75603def4295eee59540755cb244a81",
+        "matchesBuiltSource": true
+      }
+    ],
+    "renderer": {
+      "fileCount": 190,
+      "mismatches": []
+    },
+    "signatures": {
+      "installer": "NotSigned",
+      "application": "NotSigned"
+    }
+  },
+  "overallStabilityQualification": "incomplete",
+  "schema": "reelterminal.windows-rc-gate/v1",
+  "macEvidenceAccess": "committed reports and hosted artifacts only; original Mac logs not read",
+  "releaseDecision": "withheld_clipboard_and_remaining_platform_evidence",
+  "candidateDirectory": "apps/desktop/release/windows-rc-1.1.2-79c5f780",
+  "evidence": [
+    {
+      "sha256": "a12f888c2cd8f3d6334eb0adece55882022141e1cb3c9f795ab465f395d1eea4",
+      "bytes": 13482,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-79c5f780-build.log"
+    },
+    {
+      "sha256": "ae117baf7c558edece7e8b71adb3868eba4434e926bdd149674b3a97875b4b46",
+      "bytes": 819,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-79c5f780-identity.log"
+    },
+    {
+      "sha256": "07064a3e46e3c8a607a8c93fceaa0cd7950d73f0b953201a509e6eced588d1b1",
+      "bytes": 1704,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-79c5f780-smoke.log"
+    },
+    {
+      "sha256": "145295c2c832660cfae4403be82658fb6f84406e4af55400c1bb172b0cc794d5",
+      "bytes": 6693,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-79c5f780-core.log"
+    },
+    {
+      "sha256": "193a7e31d483e4f11fa81f10c85ff7039d5671f155e45db733eb4b9f81efdcf8",
+      "bytes": 1369,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/rollback-regression-before.log"
+    },
+    {
+      "sha256": "82b2679cd7ffb6008442afdbf5b605dfafb2318db8df1eef23477cb8807cf005",
+      "bytes": 368,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/rollback-regression.log"
+    },
+    {
+      "sha256": "3b816153120cd87519c63af708d5390c10648bd2743f5121e7fa0c7ba4fb6284",
+      "bytes": 368,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/checkpoint-sharing-regression.log"
+    },
+    {
+      "sha256": "b0ded47c15d644a63675bf5ac87bc5df2d43f3cb8b14cb11129606e2e8ba17d5",
+      "bytes": 298,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/checkpoint-real-reader.log"
+    },
+    {
+      "sha256": "f892592436c0d9ff9ba60a169717cd44b8057c1d1d74eb99c524f5ad87e09100",
+      "bytes": 202,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/batch-rename-repro.json"
+    }
+  ],
+  "remaining": [
+    "original Mac startup incidents not attributed",
+    "native picker actual source selection/cancel/record/import/decode not accepted, ef1fa632",
+    "native export/shared memory and history heap retention not attributed, long-term bound unproved",
+    "local clipboard roundtrip unresolved"
+  ],
+  "noActions": [
+    "publish",
+    "tag",
+    "upload installers",
+    "sign",
+    "install",
+    "change account permissions",
+    "start user Mac task",
+    "reset",
+    "force push",
+    "terminate user applications"
+  ]
+}

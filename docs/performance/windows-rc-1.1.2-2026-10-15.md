@@ -1,5 +1,44 @@
 # Windows local release candidate, 2026-10-15
 
+## Latest candidate: 79c5f780
+
+The latest retained candidate is **79c5f7802ddbde0c1ded5a9b5b27b30a85703273**,
+version 1.1.2, Windows x64, under
+`apps/desktop/release/windows-rc-1.1.2-79c5f780/`. It is unsigned,
+uninstalled and unpublished. Its embedded stamp is clean; five runtime
+components and 190 renderer files match the built source. It supersedes the
+e04622a3 candidate described in the historical sections below.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Installer | 138861223 | `c7cda350fee810d868f23bb8e9356ada1a42d6fb5365cba986fb9c1a4d92991f` |
+| ZIP | 188922560 | `472e71273b5862894398d60deb1c73402b48134f1e09f46dd9e4a1ef741e76e9` |
+
+Packaged core checks: **38 passed / 2 failed across 40 tests**, in two
+serial invocations (11/11 in 26.88 s; 27/29 in 134.54 s). The two failures
+are copied-prompt assertions reading an empty native clipboard; a separate
+synthetic native Electron roundtrip also fails on this host. Its OS/runtime
+cause remains unknown. No assertion or clipboard policy was bypassed.
+M3 passed in 15.36 s, including exact frame evidence, strict rejection,
+adoption/undo, durable checkpoint agreement and process recovery, with the
+original 120-second condition. Comparison at minimum window size, decode
+first frame, edit/CAS/undo, read-only archive, protected draft, recycling,
+save/reopen, immutable media and fixed-input MP4 export checks passed.
+
+Additional runtime fixes since e04622a3: minimum-window grid space
+(`5aece717`), failed analysis-record completion rollback (`cbdc9b09`),
+bounded Windows checkpoint sharing conflicts (`79c5f780`). Test-only native
+lifecycle and input contracts are `0e706cd0`. Full diagnosis, original
+failures, controlled reproductions and hosted terminal results are in
+[the continuation report](windows-hosted-core-followup-2026-10-15.md).
+
+Release qualification remains withheld. The old Mac startup incidents,
+native-picker acceptance, shared-memory retention and history heap trend
+retain their earlier evidence limitations. No original Mac logs were read
+from this Windows host and no new task was started on the user's Mac.
+
+## Historical e04622a3 candidate
+
 **A local Windows candidate is prepared; release approval is withheld.** The
 frozen product source is `e04622a372797a50fc056f4614baeb04ee73b009`, version
 1.1.2, win32 x64. Subsequent report-only commits do not change that package.
