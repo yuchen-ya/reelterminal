@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { Action } from "../types/actions";
 import { ActionHistory, type HistoryEntry } from "./action-history";
 
@@ -408,5 +408,48 @@ describe("ActionHistory batched pushes (executeActionBatch path)", () => {
     expect(history.undoGroup()).toHaveLength(2);
     expect(history.undoGroup()).toHaveLength(1);
     expect(history.undoGroup()).toHaveLength(1);
+  });
+});
+
+describe("external history boundaries", () => {
+  it("orders commits independently of equal or decreasing wall-clock time and preserves order on replay", () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1000);
+    try {
+      const history = new ActionHistory();
+      history.push(act("track/add"), inv("track/remove"));
+      const first = history.peekUndo()!.sequence;
+      const external = history.nextSequence();
+      clock.mockReturnValue(900);
+      history.push(act("track/add"), inv("track/remove"));
+      const last = history.peekUndo()!.sequence;
+      expect(first).toBeLessThan(external);
+      expect(external).toBeLessThan(last);
+      history.undoGroup();
+      history.redoGroup();
+      expect(history.peekUndo()!.sequence).toBe(last);
+    } finally { clock.mockRestore(); }
+  });
+
+  it("splits an open gesture without closing its handle or changing its owner", () => {
+    const history = new ActionHistory();
+    const group = history.beginGroup("drag", "human");
+    history.push(act("transform/update", { clipId: "c" }), inv("transform/update"), "human");
+    history.breakGroup();
+    history.push(act("transform/update", { clipId: "c" }), inv("transform/update"), "human");
+    history.endGroup(group);
+    const entries = history.getHistoryEntries();
+    expect(entries[0]!.groupId).not.toBe(entries[1]!.groupId);
+    expect(entries.map(e => e.owner)).toEqual(["human", "human"]);
+    expect(history.undoGroup()).toHaveLength(1);
+    expect(history.undoGroup()).toHaveLength(1);
+    expect(history.redoGroup()).toHaveLength(1);
+    expect(history.redoGroup()).toHaveLength(1);
+  });
+
+  it("keeps new group handles equal to their entry ids after a boundary", () => {
+    const history = new ActionHistory();
+    history.breakGroup();
+    const group = history.pushGroup([{ action: act("track/add"), inverseAction: inv("track/remove") }]);
+    expect(history.peekUndo()!.groupId).toBe(group);
   });
 });

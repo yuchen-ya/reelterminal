@@ -89,6 +89,11 @@ branch test. Renderer build/typechecks pass. No installer/package was produced.
 
 ## Limits
 
+The following limits were unverified source-audit leads when this original patch
+was submitted. A subsequent investigation has reproduced several of them; see
+[follow-up evidence and patch scope](history-boundary-verification-2026-10-15.md)
+for current evidence levels, exact triggering operations and content impact.
+
 macOS/Linux GUI execution was not performed. This fixes redo invalidation at the
 identified action/recipe commit paths, not every existing history behavior:
 
@@ -112,3 +117,9 @@ claim that the two existing history systems are now universally transactional.
 Together with the separately confirmed native export data-loss risk, a 1.2.1
 patch release is recommended after platform acceptance. Tags and release assets
 remain unchanged by this task.
+
+The subsequent [unified history boundary repair](history-boundary-fix-2026-10-15.md)
+addresses whole-project replacement, direct persisted-edit redo invalidation and
+explicit order/group boundaries. The original limits above describe this initial
+patch; the follow-up documents distinguish repaired behavior from injected engine
+restoration faults that remain open.

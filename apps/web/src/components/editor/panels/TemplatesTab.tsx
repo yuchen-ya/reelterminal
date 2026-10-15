@@ -75,9 +75,10 @@ export const TemplatesTab: React.FC = () => {
         if (!template) return;
 
         const result = engine.applyTemplate(template, {});
-        useProjectStore.setState(() => ({
-          project: { ...result.project, modifiedAt: Date.now() },
-        }));
+        useProjectStore.getState().loadProject({
+          ...result.project,
+          modifiedAt: Date.now(),
+        });
       } finally {
         setApplying(null);
       }

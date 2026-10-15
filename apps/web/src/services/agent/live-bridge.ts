@@ -145,6 +145,7 @@ function historySummary(state: ProjectState, revision: number, limit: number): H
       actionType: entry.action.type,
       owner: entry.owner === AGENT_HISTORY_OWNER ? "agent" as const : "human" as const,
       timestamp: entry.timestamp,
+      sequence: entry.sequence,
       groupId: entry.groupId ?? null,
     })),
     ...state.actionHistory.getRedoEntries().map((entry) => ({
@@ -153,16 +154,18 @@ function historySummary(state: ProjectState, revision: number, limit: number): H
       actionType: entry.action.type,
       owner: entry.owner === AGENT_HISTORY_OWNER ? "agent" as const : "human" as const,
       timestamp: entry.timestamp,
+      sequence: entry.sequence,
       groupId: entry.groupId ?? null,
     })),
   ];
-  const auxiliary: HistoryEntrySummary[] = [
+  const auxiliary: Array<HistoryEntrySummary & { sequence: number }> = [
     ...state.templateUndoStack.map((entry) => ({
       direction: "undo" as const,
       description: "Apply editing template",
       actionType: "template/apply",
       owner: "human" as const,
       timestamp: entry.timestamp,
+      sequence: entry.sequence,
       groupId: null,
     })),
     ...state.templateRedoStack.map((entry) => ({
@@ -171,6 +174,7 @@ function historySummary(state: ProjectState, revision: number, limit: number): H
       actionType: "template/apply",
       owner: "human" as const,
       timestamp: entry.timestamp,
+      sequence: entry.sequence,
       groupId: null,
     })),
   ];
@@ -186,8 +190,9 @@ function historySummary(state: ProjectState, revision: number, limit: number): H
       state.actionHistory.getRedoStackSize() +
       state.templateRedoStack.length,
     entries: [...actionEntries, ...auxiliary]
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, limit),
+      .sort((a, b) => b.sequence - a.sequence)
+      .slice(0, limit)
+      .map(({ sequence: _sequence, ...entry }) => entry),
   };
 }
 

@@ -62,6 +62,7 @@ interface ProjectView {
   project: {
     timeline: { tracks: TrackView[] };
     mediaLibrary: { items: Array<{ id: string; name: string }> };
+    textClips?: Array<{ id: string; text: string; transform: { rotate3d?: { x: number }; perspective?: number; transformStyle?: string } }>;
   };
 }
 
@@ -299,4 +300,45 @@ describe("editing recipe branches away from an undone timeline action", () => {
       afterRedo: { revision: afterRecipeRedo.revision, history: historyAfterRecipeRedo },
     });
   }, 180_000);
+  test("recipe undo branches on real text overlay 3D controls", async () => {
+    const page = launched.page;
+    const inspector = page.getByTestId("inspector-properties");
+    for (const field of ["rotate3d", "perspective", "transformStyle"] as const) {
+      await page.getByRole("button", { name: `Select clip ${VIDEO_FILE_NAME}`, exact: true }).click();
+      await inspector.getByRole("button", { name: "Edit", exact: true }).click();
+      await inspector.getByRole("textbox", { name: "Name", exact: true }).fill(`Updated ${field}`);
+      await inspector.getByRole("button", { name: "Update", exact: true }).click();
+      await vi.waitFor(async () => expect((await readProject()).project.textClips?.some(c => c.text === `Updated ${field}`)).toBe(true));
+      // Blur the form before invoking editor undo.
+      await page.getByRole("button", { name: `Select clip ${VIDEO_FILE_NAME}`, exact: true }).click();
+      await pressUndoViaKeyboard(page);
+      expect((await readHistory()).canRedo).toBe(true);
+      const overlay = (await readProject()).project.textClips?.find(c => c.text === "Creator");
+      expect(overlay).toBeDefined();
+      await page.getByRole("button", { name: "Select text clip Creator", exact: true }).click();
+      const expand3d = inspector.getByRole("button", { name: /3D Transforms section$/ });
+      if (await expand3d.getAttribute("aria-expanded") !== "true") await expand3d.click();
+      if (field === "transformStyle") {
+        const selector = inspector.getByRole("combobox", { name: "Transform Style", exact: true });
+        await selector.click();
+        await selector.press("ArrowDown");
+        await selector.press("Enter");
+      } else {
+        const label = field === "rotate3d" ? "Rotation X" : "Perspective";
+        await inspector.getByRole("button", { name: `Edit ${label} value`, exact: true }).click();
+        await inspector.getByRole("textbox", { name: `${label} value`, exact: true }).fill(field === "rotate3d" ? "33" : "840");
+        await inspector.getByRole("textbox", { name: `${label} value`, exact: true }).press("Enter");
+      }
+      await page.getByRole("button", { name: "Select text clip Creator", exact: true }).click();
+      const beforeRedo = await readProject();
+      expect((await readHistory()).canRedo).toBe(false);
+      const transform = beforeRedo.project.textClips?.find(c => c.id === overlay!.id)?.transform;
+      expect(field === "rotate3d" ? transform?.rotate3d?.x : transform?.[field]).toBe(field === "rotate3d" ? 33 : field === "perspective" ? 840 : "preserve-3d");
+      await pressRedoViaKeyboard(page);
+      expect(await readProject()).toEqual(beforeRedo);
+      await observe(`3d-${field}-blocks-old-recipe-redo`);
+      await evidence.screenshot(`3d-${field}`);
+    }
+  }, 180_000);
+
 });

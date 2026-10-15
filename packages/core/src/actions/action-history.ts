@@ -4,6 +4,8 @@ export interface HistoryEntry {
   readonly action: Action;
   readonly inverseAction: Action | null;
   readonly timestamp: number;
+  /** Commit order shared with non-action history, independent of wall clock. */
+  readonly sequence: number;
   readonly description: string;
   readonly groupId?: string;
   /** Prevent an adjacent rapid-update action from merging across this entry. */
@@ -47,6 +49,7 @@ export interface HistorySnapshot {
 interface OpenActionGroup {
   readonly id: string;
   readonly owner?: string;
+  readonly segmentId?: string;
 }
 
 const ACTION_DESCRIPTIONS: Record<
@@ -182,6 +185,8 @@ export class ActionHistory {
   private openGroups: OpenActionGroup[] = [];
   private activeOwner: string | undefined = undefined;
   private groupCounter = 0;
+  private sequence = 0;
+  private groupSegment = 0;
   private snapshots: HistorySnapshot[] = [];
   private listeners: Set<() => void> = new Set();
   private evictionListener: HistoryEvictionListener | null = null;
@@ -344,9 +349,10 @@ export class ActionHistory {
     // Pick the newest open group owned by this push. A human gesture and an
     // Agent transaction can therefore overlap without either stealing or
     // closing the other's grouping context.
-    let groupId = [...this.openGroups]
+    const openGroup = [...this.openGroups]
       .reverse()
-      .find((group) => group.owner === effectiveOwner)?.id ?? null;
+      .find((group) => group.owner === effectiveOwner);
+    let groupId = openGroup ? openGroup.segmentId ?? openGroup.id : null;
     if (
       !groupId &&
       lastEntry &&
@@ -359,7 +365,7 @@ export class ActionHistory {
       const lastTarget = getActionTargetId(lastEntry.action);
       const currentTarget = getActionTargetId(action);
       if (lastTarget !== null && lastTarget === currentTarget) {
-        groupId = lastEntry.groupId ?? `auto-${now}`;
+        groupId = lastEntry.groupId ?? `auto-${now}-${++this.groupCounter}`;
         if (!lastEntry.groupId) {
           this.undoStack[this.undoStack.length - 1] = { ...lastEntry, groupId };
         }
@@ -370,6 +376,7 @@ export class ActionHistory {
       action,
       inverseAction,
       timestamp: now,
+      sequence: this.nextSequence(),
       description: getActionDescription(action),
       groupId: groupId || undefined,
       owner: effectiveOwner,
@@ -433,6 +440,24 @@ export class ActionHistory {
       }
     });
     return groupId;
+  }
+
+  /** Allocate an order for an edit recorded outside the action stack. */
+  nextSequence(): number {
+    return ++this.sequence;
+  }
+
+  /** Split proximity and open gesture groups at an external edit boundary. */
+  breakGroup(): void {
+    this.groupSegment += 1;
+    this.openGroups = this.openGroups.map((group) => ({
+      ...group,
+      segmentId: `${group.id}:segment-${this.groupSegment}`,
+    }));
+    const index = this.undoStack.length - 1;
+    if (index >= 0) {
+      this.undoStack[index] = { ...this.undoStack[index]!, autoGroupBarrier: true };
+    }
   }
 
   beginGroup(_description?: string, owner?: string): string {

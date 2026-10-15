@@ -22,11 +22,13 @@ const makeEntry = (
   action: Action;
   inverseAction: Action | null;
   timestamp: number;
+  sequence: number;
   description: string;
 } => ({
   action,
   inverseAction,
   timestamp: Date.now(),
+  sequence: 1,
   description: action.type,
 });
 

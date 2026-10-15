@@ -98,6 +98,18 @@ describe("motion drag undo coalescing", () => {
     expect(getComposition("comp-drag").layers[0].transform.position.x).toBe(50);
   });
 
+  it("transient previews preserve redo until the gesture commits", async () => {
+    const before = getComposition("comp-drag");
+    await useProjectStore.getState().addTrack("audio");
+    await useProjectStore.getState().undo();
+    expect(useProjectStore.getState().canRedo()).toBe(true);
+    useProjectStore.getState().updateMotionCompositionPreview(moveLayerX(before, 20));
+    expect(useProjectStore.getState().canRedo()).toBe(true);
+    await useProjectStore.getState().commitMotionCompositionGesture(before, getComposition("comp-drag"));
+    expect(useProjectStore.getState().canRedo()).toBe(false);
+    expect((await useProjectStore.getState().redo()).success).toBe(false);
+  });
+
   it("commits a coalesced gesture as exactly one undoable action", async () => {
     const before = getComposition("comp-drag");
     const startSize = undoStackSize();

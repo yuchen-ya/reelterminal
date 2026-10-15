@@ -81,6 +81,7 @@ export interface EditingTemplateHistoryEntry
   type: "editing-template";
   mode: "apply" | "update";
   timestamp: number;
+  sequence: number;
   description: string;
   previousState?: EditingTemplateApplicationState;
 }

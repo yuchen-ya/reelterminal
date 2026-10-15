@@ -783,7 +783,22 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
   });
   let syncForegroundRuntime = (): void => undefined;
   const store = create<ProjectState>()(
-  subscribeWithSelector((set, get, api) => {
+  subscribeWithSelector((rawSet, get, api) => {
+    // Default project writes are new persisted edits, including direct engine
+    // setters and media recovery. Replay and lifecycle replacement use rawSet.
+    // Recorded commits supply their branch state themselves.
+    const set: typeof rawSet = (update, replace) => {
+      const previous = get();
+      const patch = typeof update === "function" ? update(previous) : update;
+      if (patch.project && patch.project !== previous.project &&
+          !("redoJournal" in patch) && !("actionHistory" in patch)) {
+        previous.actionHistory.breakGroup();
+        rawSet({ ...patch, ...invalidateRedoBranches() }, replace);
+      } else {
+        rawSet(patch, replace);
+      }
+    };
+    api.setState = set;
     const actionHistory = new ActionHistory();
     const actionExecutor = new ActionExecutor(actionHistory);
     let executingBatchOperation: PerfOperation | undefined;
@@ -1969,7 +1984,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
       lastPastedClipIds: [] as string[],
       copiedEffects: [] as Effect[],
 
-      ...createProjectLifecycleSlice(set, get, {
+      ...createProjectLifecycleSlice(rawSet, get, {
         syncProjectEffectsBridge,
         syncProjectTransitionsBridge,
         isForeground: () => get().isForeground,
@@ -2763,7 +2778,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
       },
 
       // Undo/Redo
-      ...createHistorySlice(set, get, {
+      ...createHistorySlice(rawSet, get, {
         syncOverlayEnginesFromProject,
         syncProjectEffectsBridge,
         syncProjectTransitionsBridge,
@@ -3037,7 +3052,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
       },
 
       // Auto-save methods
-      ...createProjectPersistenceSlice(set, get, {
+      ...createProjectPersistenceSlice(rawSet, get, {
         subscribeToProject: (listener): (() => void) =>
           api.subscribe((state, previousState) => {
             if (state.project !== previousState.project) listener();
@@ -3066,8 +3081,10 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
           return null;
         }
 
+        get().actionHistory.breakGroup();
         const historyEntry: EditingTemplateHistoryEntry = {
           type: "editing-template",
+          sequence: get().actionHistory.nextSequence(),
           mode: "apply",
           timestamp: Date.now(),
           description: `Apply ${applied.applicationState.appliedTemplate.name}`,
@@ -3120,14 +3137,17 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
           );
 
           if (restoredProject) {
-            set({ project: restoredProject });
+            // Compensating a rejected recipe update is not a new edit.
+            rawSet({ project: restoredProject });
           }
 
           return false;
         }
 
+        get().actionHistory.breakGroup();
         const historyEntry: EditingTemplateHistoryEntry = {
           type: "editing-template",
+          sequence: get().actionHistory.nextSequence(),
           mode: "update",
           timestamp: Date.now(),
           description: `Update ${updated.applicationState.appliedTemplate.name}`,
@@ -3166,6 +3186,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
           matchingEntry?.trackSnapshots.map((snapshot) => snapshot.track.id) || [],
         );
 
+        get().actionHistory.breakGroup();
         set({
           project: updatedProject,
           templateUndoStack: templateUndoStack.filter(
@@ -3245,7 +3266,8 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
                 : candidate,
             )
           : [...existing, previewComposition];
-        set({
+        // Transient gesture preview: the final action commit owns branching.
+        rawSet({
           project: {
             ...project,
             motionCompositions: nextCompositions,

@@ -56,6 +56,7 @@ export function createHistorySlice(
 
   const applyHistoryChange = async (operation: () => Promise<ActionResult>): Promise<ActionResult> => {
     const result = await operation();
+    if (result.success) get().actionHistory.breakGroup();
     const state = get();
     // Prune based on post-operation state even when the operation failed: a
     // partially applied undo (e.g. an inverse action throwing midway) can
@@ -88,15 +89,15 @@ export function createHistorySlice(
         templateRedoStack,
       } = get();
 
-      const latestActionTimestamp = actionHistory.peekUndo()?.timestamp ?? -1;
-      const latestTemplateTimestamp =
+      const latestActionSequence = actionHistory.peekUndo()?.sequence ?? -1;
+      const latestTemplateSequence =
         templateUndoStack.length > 0
-          ? templateUndoStack[templateUndoStack.length - 1].timestamp
+          ? templateUndoStack[templateUndoStack.length - 1].sequence
           : -1;
 
       if (
-        latestTemplateTimestamp >= 0 &&
-        latestTemplateTimestamp > latestActionTimestamp
+        latestTemplateSequence >= 0 &&
+        latestTemplateSequence > latestActionSequence
       ) {
         const entry = templateUndoStack[templateUndoStack.length - 1];
         const removedProject = removeEditingTemplateApplicationStateFromProject(
