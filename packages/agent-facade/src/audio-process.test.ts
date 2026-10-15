@@ -86,7 +86,7 @@ describe("audio normalization asset lifecycle (isolated headless project)", () =
     if (!state.ok) throw new Error(state.error.message);
     expect(state.value.project.mediaLibrary.items).toHaveLength(2);
     expect(state.value.project.timeline.tracks).toHaveLength(0);
-    const saved = await facade["project.save"]({ path: join(root, "project.openreel.json") });
+    const saved = await facade["project.save"]({ path: join(root, "project.oreel") });
     if (!saved.ok) throw new Error(saved.error.message);
     await rm(cache, { recursive: true, force: true });
     const reopened = createAgentFacade({ mediaRoots: [root], projectRoots: [root] });

@@ -17,7 +17,7 @@ interface Context {
   projectRevision: number;
   contextRevision: number;
   selectedTextIds: string[];
-  identity: { projectId: string; projectEpoch: string };
+  identity: { projectId: string; workspaceId: string; projectEpoch: string };
 }
 
 describe("reelctl against a real desktop project", () => {
@@ -62,6 +62,7 @@ describe("reelctl against a real desktop project", () => {
     const context = (await cli(["context"])).result.value as Context;
     expect(context.selectedTextIds).toHaveLength(1);
     const args = {
+      projectId: context.identity.projectId, workspaceId: context.identity.workspaceId,
       ops: [{ op: "text.update", overlayId: context.selectedTextIds[0], text: "CLI and MCP share one project" }],
       expectedRevision: context.projectRevision,
       expectedContextRevision: context.contextRevision,
@@ -83,7 +84,7 @@ describe("reelctl against a real desktop project", () => {
     const next = (await cli(["context"])).result.value as Context;
     expect(next.projectRevision).toBe(applied.result.value.revision);
     const undone = await cli(["history", "undo", "--expected-revision", String(next.projectRevision),
-      "--project-id", next.identity.projectId, "--project-epoch", next.identity.projectEpoch]);
+      "--project-id", next.identity.projectId, "--workspace-id", next.identity.workspaceId, "--project-epoch", next.identity.projectEpoch]);
     expect(undone.code, JSON.stringify({ result: undone.result, stderr: undone.stderr }).replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")).toBe(0);
     await timelineTextClip(launched.page, "New Title").waitFor();
   });
@@ -92,7 +93,8 @@ describe("reelctl against a real desktop project", () => {
     const context = (await cli(["context"])).result.value as Context;
     const file = path.join(launched.runDir, "stale-edit.json");
     writeFileSync(file, JSON.stringify({
-      arguments: { expectedRevision: 0, ops: [{ op: "track.add", trackType: "video" }] },
+      arguments: { projectId: context.identity.projectId, workspaceId: context.identity.workspaceId,
+        expectedRevision: 0, ops: [{ op: "track.add", trackType: "video" }] },
       expectedProjectId: context.identity.projectId,
       expectedProjectEpoch: context.identity.projectEpoch,
     }));
@@ -110,7 +112,11 @@ describe("reelctl against a real desktop project", () => {
 
     const sourcePath = path.join(launched.runDir, "reelctl-import.png");
     copyFileSync(path.join(DESKTOP_DIR, "build/icon.png"), sourcePath);
-    const imported = await cli(["media", "import", sourcePath]);
+    const context = (await cli(["context"])).result.value as Context;
+    const target = { projectId: context.identity.projectId, workspaceId: context.identity.workspaceId };
+    const imported = await cli(["media", "import", sourcePath, "--project-id", target.projectId,
+      "--workspace-id", target.workspaceId, "--expected-revision", String(context.projectRevision),
+      "--idempotency-key", "reelctl-import"]);
     expect(imported.code).toBe(0);
     expect(imported.result.ok).toBe(true);
     await launched.page.getByRole("button", { name: "Project assets", exact: true }).click();
@@ -119,13 +125,16 @@ describe("reelctl against a real desktop project", () => {
 
     const beforeSave = await agent.callTool<{
       project: { mediaLibrary: { items: Array<{ id: string; name: string; originalUrl?: string }> } };
-    }>("project_get_state");
+      revision: number;
+    }>("project_get_state", target);
     const media = beforeSave.value?.project.mediaLibrary.items.find(
       (item) => item.id === imported.result.value.mediaId,
     );
     expect(media).toMatchObject({ name: "reelctl-import.png", originalUrl: sourcePath });
 
-    const saved = await cli(["call", "project.save"]);
+    const saved = await cli(["call", "project.save", "--project-id", target.projectId,
+      "--workspace-id", target.workspaceId, "--expected-revision", String(beforeSave.value!.revision),
+      "--idempotency-key", "reelctl-save-before-relaunch"]);
     expect(saved.code).toBe(0);
     expect(saved.result.ok).toBe(true);
     await agent.close();
@@ -140,7 +149,7 @@ describe("reelctl against a real desktop project", () => {
 
     const afterReopen = await agent.callTool<{
       project: { mediaLibrary: { items: Array<{ id: string; name: string; originalUrl?: string }> } };
-    }>("project_get_state");
+    }>("project_get_state", target);
     expect(afterReopen.value?.project.mediaLibrary.items.find(
       (item) => item.id === imported.result.value.mediaId,
     )).toMatchObject({ name: "reelctl-import.png", originalUrl: sourcePath });
