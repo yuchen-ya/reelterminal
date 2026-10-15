@@ -11,7 +11,7 @@
 *Generate anywhere; finish here.*
 
 <p align="center">
-  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.1.2-10B981?style=flat-square" alt="Version" /></a>
+  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.2.0-10B981?style=flat-square" alt="Version" /></a>
   <a href="docs/EXTERNAL-DEPENDENCIES.md"><img src="https://img.shields.io/badge/Privacy-100%25%20Local--First-059669?style=flat-square" alt="Local First" /></a>
   <a href="apps/desktop/DISTRIBUTION.md"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-64748B?style=flat-square" alt="Platform" /></a>
   <a href="https://github.com/yuchen-ya/reelterminal/issues"><img src="https://img.shields.io/badge/Feedback-Issues%20Welcome-3B82F6?style=flat-square" alt="Feedback" /></a>
@@ -66,6 +66,8 @@ flowchart LR
 4. 将复制好的内容**直接粘贴发给你的 AI 助手**（如 Cursor、Claude Code、Antigravity、Windsurf 等）——提示词中已自动准备好本地环境路径与协作规则，AI 可按需查询内置手册与参数契约，自动接入当前项目开始协同！
 
 桌面发行格式包括 **Windows x64 安装包和便携 ZIP**，以及 **macOS（Apple Silicon / Intel）DMG 安装包**；各版本实际提供的平台、架构与签名状态以 [Releases 附件和说明](https://github.com/yuchen-ya/reelterminal/releases)为准。Windows 便携版请完整解压后运行 `ReelTerminal.exe`。未签名的 Windows 构建可能提示未知发布者。部分媒体处理功能需要另外安装 FFmpeg/ffprobe，详见[桌面发行说明](apps/desktop/DISTRIBUTION.md)。
+
+**v1.2.0 提供未签名 Windows x64 安装包和 ZIP**，本次不附 macOS 1.2.0 包。验证范围与已知限制见 [1.2.0 发布说明](docs/RELEASE-1.2.0.md)；历史 1.1.2 报告仍对应原始构建。
 
 ---
 

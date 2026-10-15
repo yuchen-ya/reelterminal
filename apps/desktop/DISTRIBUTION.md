@@ -1,5 +1,26 @@
 # Desktop distribution
 
+## Version 1.2.0
+
+The 1.2.0 distribution is an unsigned Windows x64 installer and portable ZIP.
+No macOS 1.2.0 package is attached to this release. Historical macOS 1.1.2
+results do not qualify a new Mac package. See [release notes](../../docs/RELEASE-1.2.0.md)
+for the evidence scope and remaining limitations.
+
+A release build must use a clean, frozen source commit and an independent output
+directory; do not rename an older package to a new version. For example:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm build:wasm
+pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.2.0-<short-sha>
+```
+
+Verify the packaged app version and `dist/performance-build.json` source SHA,
+run the relevant packaged smoke tests, and compute SHA-256 checksums before
+uploading. The installer wizard must be identified as untested unless actually
+exercised; running the unpacked application does not verify installation.
+
 ## Build
 
 From the repository root:

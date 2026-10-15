@@ -10,7 +10,7 @@
 **Generate anywhere; finish here.**
 
 <p align="center">
-  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.1.2-10B981?style=flat-square" alt="Version" /></a>
+  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.2.0-10B981?style=flat-square" alt="Version" /></a>
   <a href="docs/EXTERNAL-DEPENDENCIES.md"><img src="https://img.shields.io/badge/Privacy-100%25%20Local--First-059669?style=flat-square" alt="Local First" /></a>
   <a href="apps/desktop/DISTRIBUTION.md"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-64748B?style=flat-square" alt="Platform" /></a>
   <a href="https://github.com/yuchen-ya/reelterminal/issues"><img src="https://img.shields.io/badge/Feedback-Issues%20Welcome-3B82F6?style=flat-square" alt="Feedback" /></a>
@@ -64,6 +64,8 @@ flowchart LR
 4. **Paste the prompt into your AI assistant**, such as Cursor, Claude Code, Antigravity, or Windsurf. It includes the local paths and collaboration rules needed to connect to the open project and query the built-in manual on demand.
 
 Desktop distribution formats include a **Windows x64 installer and portable ZIP**, plus **macOS (Apple Silicon / Intel) DMG installers**. Check each version's [release assets and notes](https://github.com/yuchen-ya/reelterminal/releases) for available platforms, architectures, and signing status. Extract the entire Windows ZIP before running `ReelTerminal.exe`. Unsigned Windows builds may show an unknown-publisher warning during installation. Some media-processing features require a separate FFmpeg/ffprobe installation; see [desktop distribution](apps/desktop/DISTRIBUTION.md).
+
+The **v1.2.0 release provides unsigned Windows x64 packages**. A macOS 1.2.0 package is not included. See [1.2.0 release notes](docs/RELEASE-1.2.0.md) for validation scope and known limitations; older 1.1.2 test reports describe their original builds.
 
 ---
 

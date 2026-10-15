@@ -48,7 +48,7 @@ pnpm --filter @reelterminal/desktop test:e2e e2e/project-media-filters.e2e.ts
 
 桌面回归使用独立 profile 和合成音频/图片，验证音频筛选、存档树联动、只读范围、
 SRT 导入和一次撤销。截图输出到既有 `apps/desktop/e2e/.artifacts/`。
-内置手册内容版本更新为 1.7.3，此功能随应用版本 1.1.2 打包。
+内置手册内容版本更新为 1.7.3，此功能随应用版本 1.2.0 打包。
 
 ## 1.1.2 录制修复
 
