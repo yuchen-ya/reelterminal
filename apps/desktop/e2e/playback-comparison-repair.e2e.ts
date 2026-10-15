@@ -5,12 +5,14 @@ import path from "node:path";
 import { launchApp } from "./harness/launch";
 import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
 import { createProjectViaUI, enableAgentSessionViaUI } from "./harness/ui";
+import { createEvidence } from "./harness/evidence";
 
 test("decimal-adjacent clips use native playback and comparison settings leave both pictures clear", async () => {
   const jobRoot = process.env.REELTERMINAL_FIXES_JOB_ROOT;
   const launched = await launchApp({
     runDir: jobRoot ? path.join(jobRoot, "work", `comparison-profile-${crypto.randomUUID()}`) : undefined,
   });
+  const evidence = createEvidence(`comparison-layout-${Date.now()}`, launched.page);
   let agent: ExternalAgent | undefined;
   try {
     const page = launched.page;
@@ -67,13 +69,26 @@ test("decimal-adjacent clips use native playback and comparison settings leave b
     const settings = page.getByTestId("comparison-settings");
     await settings.waitFor();
     await page.waitForFunction(() => {
-      const picture = document.querySelector('[data-testid="reference-comparison-viewport"]')?.getBoundingClientRect();
+      const pictureElement = document.querySelector('[data-testid="reference-comparison-viewport"]');
+      const picture = pictureElement?.getBoundingClientRect();
+      const frame = pictureElement?.parentElement;
       const controls = document.querySelector('[data-testid="comparison-controls"]')?.getBoundingClientRect();
-      return picture && controls && controls.bottom <= picture.top + 1;
+      // Resizing the window and opening the sidebar both change the observed
+      // video area. Wait for the frame's existing CSS size transition before
+      // reading its final bounds; toolbar placement alone can settle earlier.
+      const settling = [frame, frame?.parentElement].some(element =>
+        element?.getAnimations().some(animation => animation.playState === "running"));
+      return picture && controls && frame && !settling &&
+        Math.abs(picture.width - parseFloat(frame.style.width)) < 1 &&
+        Math.abs(picture.height - parseFloat(frame.style.height)) < 1 &&
+        controls.bottom <= picture.top + 1;
     }, undefined, { timeout: 5_000 });
     const settingsBounds = (await settings.boundingBox())!;
     const pictureBounds = (await viewport.boundingBox())!;
     const controlsBounds = (await page.getByTestId("comparison-controls").boundingBox())!;
+    evidence.record("smallWindow", { settingsBounds, pictureBounds, controlsBounds });
+    evidence.flush();
+    await evidence.screenshot("advanced-small");
     expect(pictureBounds.width).toBeGreaterThan(0);
     expect(pictureBounds.height).toBeGreaterThan(40);
     expect(settingsBounds.x).toBeGreaterThanOrEqual(pictureBounds.x + pictureBounds.width - 1);
@@ -112,6 +127,7 @@ test("decimal-adjacent clips use native playback and comparison settings leave b
     expect(await reference.evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(0, 2);
     expect(await reference.evaluate((video: HTMLVideoElement) => video.paused)).toBe(true);
   } finally {
+    evidence.flush();
     await agent?.close();
     await launched.close();
   }

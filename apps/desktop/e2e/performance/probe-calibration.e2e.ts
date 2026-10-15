@@ -79,9 +79,13 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
       expect(environment.devtools_open).toBe(false);
       stage = "open_fixture";
       await page.getByRole("button", { name: `Open ${fixture.project!.name}`, exact: true }).click();
+      stage = "await_editor";
       await page.getByTestId("agent-access-status").waitFor();
+      stage = "enable_agent_session";
       await enableAgentSessionViaUI(page, launched.endpointFile);
+      stage = "await_endpoint";
       await launched.waitForEndpointFile();
+      stage = "connect_agent";
       agent = await connectExternalAgent(launched.endpointFile);
       stage = "prime_marker";
       const snap = page.getByRole("button", { name: "Snap on (N)", exact: true });
