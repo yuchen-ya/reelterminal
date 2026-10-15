@@ -1,7 +1,9 @@
 /** Real desktop + loopback acceptance for the combined P0–P2/library delivery. */
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
+import { ARTIFACTS_DIR } from "./harness/paths";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
 import { createProjectViaUI, enableAgentSessionViaUI, openRecentProjectViaUI, pressUndo, pressRedo } from "./harness/ui";
@@ -78,8 +80,21 @@ describe("combined delivery: live replacement + GUI comparison", () => {
     expect((await state()).project.referenceComparison?.layout).toBe("overlay");
     await page.getByRole("button", { name: "Advanced", exact: true }).click();
     const opacity = page.getByLabel("Overlay opacity", { exact: true });
-    await opacity.press("Home");
-    for (let step = 0; step < 5; step += 1) await opacity.press("ArrowRight");
+    // Native range Home handling differs on macOS. Move to the minimum with
+    // ordinary arrow keys, then verify each controlled-input update settles.
+    for (let step = 0; step < 20; step += 1) await opacity.press("ArrowLeft");
+    await vi.waitFor(async () => expect(await opacity.inputValue()).toBe("0.05"));
+    for (let step = 1; step <= 5; step += 1) {
+      await opacity.press("ArrowRight");
+      await vi.waitFor(async () => expect(await opacity.inputValue()).toBe((0.05 + step * 0.05).toFixed(2).replace(/0$/, "")));
+    }
+    writeFileSync(path.join(ARTIFACTS_DIR, `repair-opacity-${Date.now()}.json`), JSON.stringify({
+      dom: await page.evaluate(() => ({
+        value: (document.querySelector('[aria-label="Overlay opacity"]') as HTMLInputElement)?.value,
+        opacity: (document.querySelector('[aria-label="Reference video"]') as HTMLElement)?.style.opacity,
+        activeElement: document.activeElement?.getAttribute("aria-label"),
+      })), comparison: (await state()).project.referenceComparison,
+    }, null, 2));
     await page.waitForFunction(() => (document.querySelector('[aria-label="Reference video"]') as HTMLElement)?.style.opacity === "0.3");
     await page.getByRole("button", { name: "Advanced", exact: true }).click();
     await page.keyboard.press("ArrowRight");
@@ -94,6 +109,8 @@ describe("combined delivery: live replacement + GUI comparison", () => {
     expect(await page.getByLabel("Reference video", { exact: true }).evaluate((v: HTMLVideoElement) => v.muted)).toBe(true);
   });
   test("live replacement predicts shortening, rejects stale CAS and is one undo/redo", async () => {
+    const advanced = launched.page.getByRole("button", { name: "Advanced", exact: true });
+    if ((await advanced.getAttribute("aria-expanded")) === "true") await advanced.click();
     const before = await state();
     const ops = [{ op: "media.replace", mediaId, filePath: shorter, scope: "project" }];
     const preview = await callTool<{ warnings: Array<{ code: string }> }>("edit_validate", { ops, expectedRevision: before.revision });

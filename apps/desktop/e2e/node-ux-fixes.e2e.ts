@@ -75,7 +75,8 @@ test("visible isolated desktop: title close waits, rename is shared, local fonts
     observations.copiedNameMatches = true;
     const state = call("project.get_state", target);
     const textId = state.project.textClips[0].id;
-    call("edit.apply", { ...target, expectedRevision: state.revision, idempotencyKey: "local-font", ops: [{ op: "text.update", overlayId: textId, style: { fontFamily: "Microsoft YaHei" } }] });
+    const localFont = process.platform === "darwin" ? "Arial" : "Microsoft YaHei";
+    call("edit.apply", { ...target, expectedRevision: state.revision, idempotencyKey: "local-font", ops: [{ op: "text.update", overlayId: textId, style: { fontFamily: localFont } }] });
     const saved = call("node.save", { ...target, expectedRevision: call("project.get_state", target).revision, name: "Actual local font", idempotencyKey: "font-node" });
     expect(saved.node.missingDependencies).toEqual([]);
     observations.fontNode = { nodeId: saved.node.id, missingDependencies: saved.node.missingDependencies };

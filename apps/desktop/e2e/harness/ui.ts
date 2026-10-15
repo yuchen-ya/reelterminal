@@ -236,13 +236,23 @@ export async function setCanvasPointViaUI(
   await waitFor(async () => (await armButton.getAttribute("aria-pressed")) === "true", 5_000, "target-point crosshair to arm");
   // Selection/inspector changes can still resize the player. Read geometry
   // after arming and after its actual transitions, never reuse the old box.
-  await page.waitForFunction(() => {
+  await page.waitForFunction(async () => {
     const canvas = document.querySelector('[data-testid="preview-canvas"]');
     if (!canvas) return false;
     for (let element: Element | null = canvas; element; element = element.parentElement) {
       if (element.getAnimations().some(animation => animation.playState === "running")) return false;
     }
     const rect = canvas.getBoundingClientRect();
+    // A ResizeObserver update can schedule a transition after the current
+    // action has returned. Require stable layout across rendered frames too.
+    for (let frame = 0; frame < 3; frame += 1) {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      const next = canvas.getBoundingClientRect();
+      if (next.x !== rect.x || next.y !== rect.y || next.width !== rect.width || next.height !== rect.height) return false;
+      for (let element: Element | null = canvas; element; element = element.parentElement) {
+        if (element.getAnimations().some(animation => animation.playState === "running")) return false;
+      }
+    }
     return rect.width > 0 && rect.height > 0;
   }, undefined, { timeout: 5_000 });
   const box = await canvas.boundingBox();

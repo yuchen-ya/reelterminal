@@ -268,7 +268,20 @@ describe("multi-project version nodes UX on the real desktop", () => {
   async function closeWindowAndAwaitExit(timeoutMs = 40_000): Promise<void> {
     const child = launched.app.process();
     await requestWindowClose();
-    await waitForProcessExit(child, timeoutMs);
+    await waitForClosedWindowAndExit(child, timeoutMs);
+  }
+  async function waitForClosedWindowAndExit(child: ReturnType<LaunchedApp["app"]["process"]>, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    if (process.platform === "darwin" && !hasProcessExited(child)) {
+      // macOS intentionally keeps the app in the Dock after its last window
+      // closes. Prove the real close finished before normally quitting this
+      // owned test app for the subsequent process-restart assertions.
+      await vi.waitFor(async () => {
+        expect(await launched.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(0);
+      }, { timeout: Math.max(1, deadline - Date.now()), interval: 100 });
+      await launched.app.evaluate(({ app }) => app.quit());
+    }
+    await waitForProcessExit(child, Math.max(1, deadline - Date.now()));
   }
   /** Relaunch on the SAME run dir and reopen the given project. */
   async function relaunchAndOpen(projectName: string, projectId: string): Promise<void> {
@@ -729,7 +742,7 @@ describe("multi-project version nodes UX on the real desktop", () => {
       .getByTestId("close-directly-button")
       .click({ timeout: 10_000 })
       .catch(() => undefined);
-    await waitForProcessExit(child, 40_000);
+    await waitForClosedWindowAndExit(child, 40_000);
     record("G1-ask-close-directly", { cancelledStayedOpen: true, nodesAtClose: aNodesAtClose });
   });
 
@@ -756,7 +769,7 @@ describe("multi-project version nodes UX on the real desktop", () => {
     await dialog.waitFor({ timeout: 30_000 });
     await page().getByTestId("close-pref-select").getByLabel(L.nextTimeClosing).selectOption("retain");
     await page().getByTestId("close-retain-button").click();
-    await waitForProcessExit(child, 40_000);
+    await waitForClosedWindowAndExit(child, 40_000);
   });
 
   test("close preference auto: the next close retains silently with no dialog", async () => {
