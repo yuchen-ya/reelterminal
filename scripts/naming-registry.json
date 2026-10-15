@@ -359,6 +359,12 @@
       "reason": "兼容入口：OPENREEL_BROWSER_ENTRY_BUNDLE 旧 env 名回退测试；夹具内容标记串 OPENREEL-F02-R3-PREBUNDLE-MARKER 为同一测试内写读的夹具数据。"
     },
     {
+      "files": "packages/runtime-chromium/src/export-memory-diagnostic.e2e.test.ts",
+      "pattern": "__openreelRender",
+      "category": 5,
+      "reason": "Manual attribution uses the existing internal browser injection API paired with runtime.ts and browser/entry.ts; it does not introduce a public legacy surface."
+    },
+    {
       "files": "packages/runtime-chromium/src/node/runtime.ts",
       "pattern": "openreel[-_.][a-z0-9_-]*|openreel[a-z]",
       "category": 5,

@@ -93,8 +93,6 @@ The evidence includes `context-unit-before.log`, `context-unit-after.log`,
 `flow-a-selection-trace.json`, `context-fixed-build.log`, and
 `explicit-target-flows-fixed.log` under the task artifact directory below.
 
-## Retained local evidence
-
 ## Personal library: product dialog occlusion
 
 The baseline small-window test reproduced a real hit-testing failure: the
@@ -128,6 +126,35 @@ Task evidence: `library-dialog-before.log`,
 `library-fixed-build.log`, `library-portal-unit-isolated.log`, and
 `library-browser-fixed.log`. Intermediate fixture failures remain in the
 `library-portal-unit*` logs; they are not counted as passing runs.
+
+## Retained local evidence
+
+## Current connector, CLI and archive contracts
+
+The real CLI and generated-tool-registry tests now pass explicit project and
+workspace targets. Their writes keep revision/context guards, idempotency
+replay, stale-revision rejection and shared GUI undo assertions. Live save
+provides the required revision/idempotency key, and the advertised save schema
+must contain those fields without exposing the headless filesystem path.
+
+The paused-title regression waits for the current `Current edits saved` toast
+before the full relaunch; its reopened visible-pixel assertion is unchanged.
+The archive/board test now expects all five current menu actions by exact text
+and still checks every row's minimum size, alignment and non-overlap, preview
+isolation, trial edits, board targeting and project-switch form retention.
+All **9 Electron tests in these four files passed in 25.90 seconds**.
+
+The three pre-existing naming failures were reproduced and removed individually:
+the audio checkpoint fixture uses `.oreel`; the historical cloud-round text no
+longer repeats the obsolete filename; the manual export diagnostic's existing
+internal browser API has an exact-file/category-5 registry entry. The naming
+gate passed, and all **5 audio-process checkpoint tests passed** (2.81 seconds).
+The historical cloud run is still a fixed older SHA, not current release
+qualification.
+
+Evidence: `cli-registry-guards.log`, `archive-paused-current-ui.log` (intermediate
+failures), `current-contract-e2e.log`, `naming-before.log`, `naming-after.log`,
+and `audio-checkpoint-fixture.log` in the task artifact directory.
 
 ## Retained local evidence
 

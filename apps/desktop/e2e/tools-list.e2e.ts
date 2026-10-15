@@ -15,6 +15,7 @@ describe("tools/list is exactly the facade tool registry", () => {
   let launched: LaunchedApp;
   let agent: ExternalAgent;
   let evidence: EvidenceRecord;
+  let target: { projectId: string; workspaceId: string };
 
   beforeAll(async () => {
     launched = await launchApp();
@@ -23,6 +24,9 @@ describe("tools/list is exactly the facade tool registry", () => {
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     await launched.waitForEndpointFile();
     agent = await connectExternalAgent(launched.endpointFile);
+    const context = await agent.callTool<{ identity: typeof target }>("editor_get_context");
+    expect(context.ok).toBe(true);
+    target = { projectId: context.value!.identity.projectId, workspaceId: context.value!.identity.workspaceId };
   }, 300_000);
 
   afterAll(async () => {
@@ -41,12 +45,15 @@ describe("tools/list is exactly the facade tool registry", () => {
       expect(tool.inputSchema?.type).toBe("object");
       expect(typeof tool.description).toBe("string");
     }
-    // Live-honest contract: live project.save takes no params (the GUI owns
-    // the save target) and must not advertise the headless `path` argument.
+    // Live save creates a guarded immutable workspace node and must not
+    // advertise the headless filesystem `path` argument.
     const projectSave = tools.find((t) => t.name === "project_save");
     expect(
       (projectSave?.inputSchema as { required?: string[] } | undefined)?.required ?? [],
     ).not.toContain("path");
+    expect((projectSave?.inputSchema as { required?: string[] })?.required).toEqual(
+      expect.arrayContaining(["projectId", "workspaceId", "expectedRevision", "idempotencyKey"]),
+    );
     evidence.record("tools_list", {
       count: names.length,
       names,
@@ -57,6 +64,7 @@ describe("tools/list is exactly the facade tool registry", () => {
   test("the seven post-slice tools traverse the shipped connector and live facade", async () => {
     const initial = await agent.callTool<{ revision: number; project: { name: string } }>(
       "project_get_state",
+      target,
     );
     expect(initial.ok).toBe(true);
     const baseRevision = initial.value!.revision;
@@ -66,6 +74,7 @@ describe("tools/list is exactly the facade tool registry", () => {
       previousName: string;
       name: string;
     }>("project_rename", {
+      ...target,
       name: "Live Registry E2E",
       expectedRevision: baseRevision,
       idempotencyKey: "tools-list-rename",
@@ -78,7 +87,7 @@ describe("tools/list is exactly the facade tool registry", () => {
 
     const changes = await agent.callTool<{ changes: unknown[] }>(
       "project_changes",
-      { sinceRevision: baseRevision },
+      { ...target, sinceRevision: baseRevision },
     );
     expect(changes.ok).toBe(true);
     expect(changes.value!.changes.length).toBeGreaterThan(0);
@@ -87,17 +96,19 @@ describe("tools/list is exactly the facade tool registry", () => {
     // missing media id is a facade domain result, proving the call traversed
     // the connector instead of failing as a JSON-RPC Unknown live tool.
     const analysis = await agent.callTool("media_analyze_start", {
+      ...target,
       mediaId: "missing-media",
       analysisTypes: ["technicalQuality"],
     });
     expect(analysis.ok).toBe(false);
     expect(analysis.error?.code).toBe("NOT_FOUND");
 
-    const query = await agent.callTool<{ items: unknown[] }>("timeline_query");
+    const query = await agent.callTool<{ items: unknown[] }>("timeline_query", target);
     expect(query.ok).toBe(true);
     expect(query.value!.items).toEqual([]);
 
     const validated = await agent.callTool<{ valid: boolean }>("edit_validate", {
+      ...target,
       ops: [{ op: "track.add", trackType: "video", trackId: "dry-run-track" }],
       expectedRevision: renamed.value!.revision,
     });
@@ -107,13 +118,13 @@ describe("tools/list is exactly the facade tool registry", () => {
     const stateAfterValidate = await agent.callTool<{
       revision: number;
       project: { timeline: { tracks: Array<{ id: string }> } };
-    }>("project_get_state");
+    }>("project_get_state", target);
     expect(stateAfterValidate.value!.revision).toBe(renamed.value!.revision);
     expect(stateAfterValidate.value!.project.timeline.tracks).not.toContainEqual(
       expect.objectContaining({ id: "dry-run-track" }),
     );
 
-    const history = await agent.callTool<{ canUndo: boolean }>("history_get");
+    const history = await agent.callTool<{ canUndo: boolean }>("history_get", target);
     expect(history.ok).toBe(true);
     expect(history.value!.canUndo).toBe(true);
 
@@ -121,6 +132,7 @@ describe("tools/list is exactly the facade tool registry", () => {
       revision: number;
       replayed: boolean;
     }>("history_control", {
+      ...target,
       action: "undo",
       expectedRevision: renamed.value!.revision,
       idempotencyKey: "tools-list-undo",
@@ -131,6 +143,7 @@ describe("tools/list is exactly the facade tool registry", () => {
     const replayed = await agent.callTool<{ revision: number; replayed: boolean }>(
       "history_control",
       {
+        ...target,
         action: "undo",
         expectedRevision: renamed.value!.revision,
         idempotencyKey: "tools-list-undo",

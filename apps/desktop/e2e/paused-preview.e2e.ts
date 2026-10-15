@@ -10,7 +10,7 @@ test("a saved title paints immediately after reopening a paused project", async 
     await launched.page.getByRole("button", { name: "Add Title", exact: true }).click();
     await launched.page.getByRole("button", { name: "Select text clip New Title", exact: true }).waitFor();
     await launched.page.keyboard.press("ControlOrMeta+s");
-    await launched.page.getByText("Saved", { exact: true }).waitFor();
+    await launched.page.getByTestId("notification-toast").getByText("Current edits saved", { exact: true }).waitFor();
 
     launched = await launched.relaunch();
     await openRecentProjectViaUI(launched.page, "Horizontal");

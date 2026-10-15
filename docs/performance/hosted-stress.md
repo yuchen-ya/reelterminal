@@ -415,7 +415,7 @@ main was then fast-forwarded to `65e013cdd3f64c5bac5c9e64b7b2f7f4e30b1e76`,
 preserving the concurrent Mac changes. Those newer resource diagnostics,
 assets/audio/recording tests and subtitle repair were not tested by this fixed
 SHA run; their presence is not Mac passing coverage. The existing independent
-`project.openreel.json` naming failure is outside this task. Physical GPU,
+checkpoint-filename naming failure was outside that fixed-SHA round. Physical GPU,
 hardware decode/encode, actual audio output, real-media exports and local
 interaction still require the user's machine. This round is not release
 qualification.

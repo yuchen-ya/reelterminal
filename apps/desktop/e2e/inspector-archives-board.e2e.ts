@@ -59,7 +59,10 @@ test("inspector archives and board preserve preview, target, forms and main layo
     await launched.page.getByTestId(`version-node-${first.id}`).click({ button: "right" });
     const menu = launched.page.getByTestId("version-node-menu");
     const actions = await menu.getByRole("menuitem").all();
-    expect(actions).toHaveLength(4);
+    expect(actions).toHaveLength(5);
+    expect(await menu.getByRole("menuitem").allTextContents()).toEqual([
+      "View this node's media", "Preview save point", "Rename", "Continue from this save point", "Move save point to recycle bin",
+    ]);
     const rows = await Promise.all(actions.map(action => action.boundingBox()));
     for (let index = 0; index < rows.length; index++) {
       const row = rows[index]!;
