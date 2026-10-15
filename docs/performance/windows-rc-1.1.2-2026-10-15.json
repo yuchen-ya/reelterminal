@@ -1,0 +1,182 @@
+{
+  "schema": "reelterminal.windows-rc-gate/v1",
+  "reportDate": "2026-10-15",
+  "releaseDecision": "withheld_pending_parent_scope",
+  "overallStabilityQualification": "incomplete",
+  "candidateDirectory": "apps/desktop/release/windows-rc-1.1.2-ca8126cf",
+  "identity": {
+    "schema": "reelterminal.windows-local-rc/v1",
+    "sourceSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+    "version": "1.1.2",
+    "platform": "win32",
+    "arch": "x64",
+    "signatures": {
+      "installer": "NotSigned",
+      "application": "NotSigned"
+    },
+    "published": false,
+    "installed": false,
+    "buildStamp": {
+      "schema": "reelterminal.performance-build/v1",
+      "build_type": "production",
+      "source_head": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+      "dirty": false,
+      "source_digest": "d0c4882622f02698c7d11bc553bbd2f47a73b98db60ab4e2792aee7263b15519",
+      "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+      "main_bundle_sha256": "d4df6232fee898c56162d0ada33392c9e89d4e25e42d12a19458c35ed598e889",
+      "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+      "renderer_manifest_sha256": "0995c2ccb9411a2b7b48799d3a94d2853c236a54a027e444111b04056ff99068",
+      "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+      "executable_sha256": "49b61a030a520fc36a4b8fa5cce53fb4e935a7bdbbe4b80e9222f598e49cc7fa",
+      "app_version": "1.1.2"
+    },
+    "files": [
+      {
+        "path": "ReelTerminal-1.1.2-x64.exe",
+        "bytes": 138859577,
+        "sha256": "0f10b16f1e665405ce9ac43e69e9fa4ff723f0236c422e5b40e3ad0d1a4ab702"
+      },
+      {
+        "path": "ReelTerminal-1.1.2-x64.zip",
+        "bytes": 188917860,
+        "sha256": "cae6c8cf6df988f65c702a2658b14bcd7c699408820fcf6879cc080fe25d62c5"
+      },
+      {
+        "path": "ReelTerminal-1.1.2-x64.exe.blockmap",
+        "bytes": 146093,
+        "sha256": "2d5dbab23b8b04d4a816dcd60ba6a678ec0188f42db5b77b3a674a89e2c27ff3"
+      },
+      {
+        "path": "win-unpacked/ReelTerminal.exe",
+        "bytes": 245726208,
+        "sha256": "a7f70dfca4a0c4d142fe49e4cc93c3dbc92d6eca243aa1733b0e7b223ccabd3d"
+      },
+      {
+        "path": "win-unpacked/resources/app.asar",
+        "bytes": 93710935,
+        "sha256": "a8f70a779156e634ca84b13dd83e0357e86212bb60b70c7b264a61643f67e444"
+      }
+    ],
+    "components": [
+      {
+        "path": "dist/main/index.js",
+        "sha256": "d4df6232fee898c56162d0ada33392c9e89d4e25e42d12a19458c35ed598e889",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/preload/index.js",
+        "sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/browser-entry.mjs",
+        "sha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/live-mcp/index.js",
+        "sha256": "72c056918dc7380ac235a0b325cf676f6ab0e3f1a95e2f246446324ccb1e27aa",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/reelctl/index.js",
+        "sha256": "66c6f55c52c9e920cc6cf05d6d44cfccd75603def4295eee59540755cb244a81",
+        "matchesBuiltSource": true
+      }
+    ],
+    "renderer": {
+      "fileCount": 190,
+      "excludedNonRuntime": [
+        "workers/.gitkeep"
+      ],
+      "mismatches": []
+    },
+    "smoke": {
+      "status": "passed",
+      "files": 5,
+      "tests": 14,
+      "duration_seconds": 34.5,
+      "application": {
+        "version": "1.1.2",
+        "packaged": true
+      },
+      "evidence": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-smoke.log",
+      "sha256": "f74000a5313252b07cb12dbcb1754b994b2a77a6d83e9a52b5c5c2dd52d2ae09"
+    }
+  },
+  "gates": {
+    "packagedWindowsCore": "passed_14_tests_34.50_seconds",
+    "reviewTargetRouting": "targeted_fix_verified",
+    "batchProcessRecovery": "blocked_120_second_all_done_assertion_failed",
+    "macNativeRecording": "blocked_not_validated_on_windows",
+    "oldMacStartup": "unattributed",
+    "nativeAndHistoryMemory": "unattributed_no_long_term_bound",
+    "installer": "unsigned_not_installed",
+    "fullSuite": "not_qualified_in_progress_at_snapshot"
+  },
+  "frozenSourceCI": [
+    {
+      "conclusion": "",
+      "databaseId": 38714368748,
+      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+      "status": "in_progress",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368748",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "",
+      "databaseId": 38714368814,
+      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+      "status": "in_progress",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368814",
+      "workflowName": "Chromium E2E"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38714368764,
+      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368764",
+      "workflowName": "Performance regression"
+    },
+    {
+      "conclusion": "",
+      "databaseId": 38714368785,
+      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+      "status": "in_progress",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368785",
+      "workflowName": "Electron E2E"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-smoke.log",
+      "sha256": "f74000a5313252b07cb12dbcb1754b994b2a77a6d83e9a52b5c5c2dd52d2ae09"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/production-recovery-explicit-retry.log",
+      "sha256": "e91943f232d714998c983ca1a6fc6118148bb20697a4e0c191cd84d04dd4dda6"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-recovery-failure-summary.json",
+      "sha256": "4f4eee0e6c31ed034f0ea0d0dc07fdb1f45c8d76abee8a2cc433a5ee77bbd457"
+    }
+  ],
+  "productCommits": [
+    "255503c4ec2fd3d60660cfe8f4261da30798a269",
+    "f0dd64d19b71eb82a8048855c46499f50ecdb46b",
+    "ca8126cfe297aadb47c2dcc9d6e9163e73add609"
+  ],
+  "macEvidenceAccess": "committed_reports_and_json_only_no_raw_mac_files",
+  "noActions": [
+    "release_publish",
+    "tag",
+    "installer_upload",
+    "installation",
+    "signing",
+    "mac_task",
+    "repeat_mac_ten_export_round"
+  ],
+  "report": "windows-rc-1.1.2-2026-10-15.md"
+}

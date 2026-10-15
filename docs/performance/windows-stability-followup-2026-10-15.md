@@ -232,6 +232,12 @@ Earlier unit-fixture/type failures are retained separately. Mac report
 
 ## Retained local evidence
 
+The later authorized local Windows 1.1.2 candidate is frozen at `ca8126cf`.
+Its actual packaged application passed 14 targeted E2E tests in 34.50 seconds.
+Package identity, hashes, CI links and remaining release gates are recorded in
+[the candidate report](windows-rc-1.1.2-2026-10-15.md) and its JSON companion.
+No release was published; M3 recovery and Mac recording remain blocked.
+
 Under `apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/`:
 
 - `electron-baseline.log`, `ci-baseline.log`: latest fixed-SHA remote failures.
