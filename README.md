@@ -67,7 +67,7 @@ flowchart LR
 
 桌面发行格式包括 **Windows x64 安装包和便携 ZIP**，以及 **macOS（Apple Silicon / Intel）DMG 安装包**；各版本实际提供的平台、架构与签名状态以 [Releases 附件和说明](https://github.com/yuchen-ya/reelterminal/releases)为准。Windows 便携版请完整解压后运行 `ReelTerminal.exe`。未签名的 Windows 构建可能提示未知发布者。部分媒体处理功能需要另外安装 FFmpeg/ffprobe，详见[桌面发行说明](apps/desktop/DISTRIBUTION.md)。
 
-**v1.2.0 提供未签名 Windows x64 安装包和 ZIP**，本次不附 macOS 1.2.0 包。验证范围与已知限制见 [1.2.0 发布说明](docs/RELEASE-1.2.0.md)；历史 1.1.2 报告仍对应原始构建。
+**v1.2.0 发布准备中**，已有未签名 Windows x64 候选安装包和 ZIP；新回归失败待归因，正式附件以 Releases 为准，本次不附 macOS 1.2.0 包。验证范围与已知限制见 [1.2.0 发布说明](docs/RELEASE-1.2.0.md)；历史 1.1.2 报告仍对应原始构建。
 
 ---
 
