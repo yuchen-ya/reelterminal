@@ -21,21 +21,25 @@ test("project browser keeps search and view controls usable at narrow and wide w
   const panel = page.getByTestId("project-asset-browser");
   await page.locator('input[type="file"][aria-label="Import media"]').setInputFiles(imagePath);
   await panel.getByText("opening-shot.png", { exact: true }).waitFor();
-  await panel.getByRole("button", { name: "List view", exact: true }).click();
+  await panel.getByRole("button", { name: "More actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "List view", exact: true }).click();
   await panel.getByRole("button", { name: "Preview opening-shot.png" }).click();
   await page.getByRole("dialog").getByRole("img", { name: "opening-shot.png" }).waitFor();
   await page.getByRole("dialog").getByRole("button", { name: "Add to timeline", exact: true }).click();
-  await page.getByRole("button", { name: "Select clip opening-shot.png", exact: true }).waitFor();
-  await panel.getByRole("button", { name: "Thumbnail view", exact: true }).click();
+  await page.getByTestId("timeline-tracks-scroll").getByRole("button", { name: "Select clip opening-shot.png", exact: true }).waitFor();
+  await panel.getByRole("button", { name: "More actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Thumbnail view", exact: true }).click();
   const search = panel.getByRole("textbox", { name: "Search project assets" });
   await search.fill("no matching media");
   await vi.waitFor(async () => expect(await panel.locator("[data-live-media-id]").count()).toBe(0));
   await panel.getByRole("button", { name: "Clear search" }).click();
   await vi.waitFor(async () => expect(await panel.locator("[data-live-media-id]").count()).toBe(1));
-  await panel.getByRole("button", { name: "Filter and sort", exact: true }).click();
-  await page.getByLabel("Sort media", { exact: true }).selectOption("asc");
+  await panel.getByRole("button", { name: "Filters", exact: true }).click();
+  await page.getByLabel("Asset form", { exact: true }).selectOption("media");
   await page.keyboard.press("Escape");
   await page.locator(".asset-filter-panel").waitFor({ state: "hidden" });
+  await page.getByLabel("Sort media", { exact: true }).selectOption("nameAsc");
+  expect(await page.getByLabel("Sort media", { exact: true }).inputValue()).toBe("nameAsc");
   const separator = page.locator('[role="separator"][aria-orientation="vertical"]').first();
   const evidence = createEvidence("asset-browser-project", page);
   for (const width of [320, 480, 240]) {
@@ -46,7 +50,7 @@ test("project browser keeps search and view controls usable at narrow and wide w
     await page.mouse.up();
     const bounds = await panel.evaluate((element) => ({ width: element.clientWidth, content: element.scrollWidth }));
     expect(bounds.content).toBeLessThanOrEqual(bounds.width + 1);
-    expect(await panel.getByRole("button", { name: "Filter and sort", exact: true }).isVisible()).toBe(true);
+    expect(await panel.getByRole("button", { name: "Filters", exact: true }).isVisible()).toBe(true);
     evidence.record(`width-${width}`, bounds);
     await evidence.screenshot(`width-${width}`);
   }
@@ -71,6 +75,16 @@ test("personal library supports add, preview, view switching and selection-only 
   await panel.getByRole("button", { name: "Add", exact: true }).click();
   await page.getByRole("menuitem", { name: "Add link", exact: true }).click();
   await page.getByPlaceholder("https://example.com/tutorial").fill("https://example.com/tutorial");
+  const dialogEvidence = createEvidence(`asset-link-dialog-${Date.now()}`, page);
+  const saveHit = await page.getByRole("button", { name: "Save", exact: true }).evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    const front = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    return { bounds: bounds.toJSON(), unobstructed: front === element || element.contains(front), frontTag: front?.tagName, frontClass: front?.className };
+  });
+  dialogEvidence.record("saveHit", saveHit);
+  dialogEvidence.flush();
+  await dialogEvidence.screenshot("before-save");
+  expect(saveHit.unobstructed).toBe(true);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await panel.getByRole("button", { name: /Preview.*example/ }).waitFor();
   await panel.getByRole("button", { name: "Batch selection", exact: true }).click();

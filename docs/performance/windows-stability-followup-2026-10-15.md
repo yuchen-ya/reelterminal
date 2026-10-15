@@ -61,8 +61,6 @@ preservation: **5 passed, 11.33 seconds**. The unchanged first-frame condition
 still has its original eight-second timeout. No product layout change was
 justified by this reproduction.
 
-## Retained local evidence
-
 ## Duplicate selection: product context-CAS defect
 
 Updating the old flow tests to pass explicit project/workspace ids exposed a
@@ -94,6 +92,42 @@ the required revision and idempotency key as well as the target ids.
 The evidence includes `context-unit-before.log`, `context-unit-after.log`,
 `flow-a-selection-trace.json`, `context-fixed-build.log`, and
 `explicit-target-flows-fixed.log` under the task artifact directory below.
+
+## Retained local evidence
+
+## Personal library: product dialog occlusion
+
+The baseline small-window test reproduced a real hit-testing failure: the
+center of the Add link dialog's Save button was covered by the timeline
+toolbar (`relative z-50`). Its unchanged normal Playwright click timed out.
+The retained screenshot also shows the lower dialog controls occluded.
+
+Both library entry dialogs were rendered inside the asset region, outside the
+app's established body-portal layer contract. They now portal to `document.body`
+using the existing `--z-dialog` level and desktop theme scope. The same Save
+button center now hits the button, and an ordinary mouse click persists the
+link. Dialog labels/roles expose the modal boundary without changing the
+existing forms or save behavior.
+
+The current project-browser test was also updated to use the existing More
+actions menu, Filters/Asset form and separate sort selector. Its original
+240/320/480-pixel overflow assertions are unchanged; timeline selection is
+scoped to the real timeline rather than matching the asset representation.
+
+Verification: **6 unit tests** (both portal ownership/cancel paths plus the four
+existing library cases), source renderer build/typecheck, and **2 real Electron
+asset-browser tests, 6.86 seconds**, passed. Failed attempts to drive the Radix
+menu in JSDOM are retained; the focused unit fixture now stubs only that menu's
+action callbacks. The Electron tests still drive the real menus, normal
+pointer events, preview, link save, batch organization and project attachment.
+No test timeout or assertion threshold was relaxed.
+
+Task evidence: `library-dialog-before.log`,
+`asset-link-dialog-1792054420749` JSON/PNG (blocked),
+`asset-link-dialog-1792054580729` JSON/PNG (unobstructed),
+`library-fixed-build.log`, `library-portal-unit-isolated.log`, and
+`library-browser-fixed.log`. Intermediate fixture failures remain in the
+`library-portal-unit*` logs; they are not counted as passing runs.
 
 ## Retained local evidence
 

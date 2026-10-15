@@ -6,6 +6,7 @@
  * one-click undoable from the journal menu.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
   Bot,
@@ -506,9 +507,12 @@ export function MaterialLibraryPanel() {
       ) : null}
 
       {/* add method dialog */}
-      {addMethodOpen ? (
-        <div className="fixed inset-0 z-50" onClick={() => setAddMethodOpen(false)}>
+      {addMethodOpen ? createPortal(
+        <div className="reelterminal-desktop fixed inset-0 z-[var(--z-dialog)]" onClick={() => setAddMethodOpen(false)}>
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("material.addMethod")}
             className="absolute left-1/2 top-1/2 w-[440px] -translate-x-1/2 -translate-y-1/2 rounded-[14px] border border-border bg-bg-1 p-4 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
@@ -562,7 +566,7 @@ export function MaterialLibraryPanel() {
               </button>
             </div>
           </div>
-        </div>
+        </div>, document.body,
       ) : null}
 
       <MaterialDetailDialog />
@@ -584,9 +588,12 @@ function SimplePromptDialog(props: {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
-  return (
-    <div className="fixed inset-0 z-50" onClick={props.onCancel}>
+  return createPortal(
+    <div className="reelterminal-desktop fixed inset-0 z-[var(--z-dialog)]" onClick={props.onCancel}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={props.title}
         className="absolute left-1/2 top-1/2 w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-[14px] border border-border bg-bg-1 p-4 shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
@@ -618,6 +625,6 @@ function SimplePromptDialog(props: {
           </button>
         </div>
       </div>
-    </div>
+    </div>, document.body,
   );
 }

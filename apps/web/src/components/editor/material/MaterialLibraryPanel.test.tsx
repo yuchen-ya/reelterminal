@@ -4,8 +4,8 @@
  * the neutral no-results message, and the unfiltered empty library keeps
  * the first-use copy (with its browser-scope persistence wording).
  */
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   MaterialStorage,
   MaterialStorageCommit,
@@ -17,6 +17,19 @@ import {
 import { useMaterialLibraryStore } from "../../../stores/material-library-store";
 import { useNotificationStore } from "../../../stores/notification-store";
 import { MaterialLibraryPanel } from "./MaterialLibraryPanel";
+
+// These unit tests inspect the dialogs' portal ownership. The real dropdown
+// and pointer hit testing are covered by asset-browser.e2e.ts; avoid carrying
+// Radix's separate focus/scroll-lock lifecycle between JSDOM fixtures here.
+vi.mock("@reelterminal/ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@reelterminal/ui")>();
+  return {
+    ...actual,
+    ToolcraftDropdownMenu: ({ items = [] }: { items?: Array<{ label: string; onClick?: () => void }> }) => (
+      <div>{items.map((item, index) => <button key={index} type="button" onClick={item.onClick}>{item.label}</button>)}</div>
+    ),
+  };
+});
 
 class MemoryStorage implements MaterialStorage {
   readonly materials = new Map<string, unknown>();
@@ -96,6 +109,20 @@ describe("MaterialLibraryPanel empty states", () => {
   afterEach(() => {
     cleanup();
     resetStore();
+  });
+
+  it.each(["Add link", "Add method"])("portals %s above editor regions and closes it through Cancel", async (name) => {
+    setMaterialLibraryServiceForTests(new MaterialLibraryService(new MemoryStorage()));
+    const { container } = render(<MaterialLibraryPanel />);
+    await screen.findByText("Collect first, organize later");
+    fireEvent.click(screen.getByText(name));
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog).not.toBeNull();
+    expect(dialog.getAttribute("aria-label")).toBe(name);
+    expect(container.contains(dialog)).toBe(false);
+    expect(dialog.parentElement?.parentElement).toBe(document.body);
+    fireEvent.click(within(dialog).getByText("Cancel"));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("shows only the load error, never the first-use welcome copy", async () => {
