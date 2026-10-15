@@ -18,6 +18,38 @@ const ARTIFACT: ArtifactRef = {
 };
 
 describe("JobRegistry", () => {
+  it("keeps task durability and batch checkpoints subscribed to the same job", () => {
+    const registry = new JobRegistry();
+    registry.create("shared-checkpoints", 2, "analysis");
+    const durable: string[] = [];
+    const batch: string[] = [];
+    registry.observe("shared-checkpoints", status => durable.push(status.state), "task-lifecycle");
+    registry.observe("shared-checkpoints", status => batch.push(status.state));
+    // Resuming an active batch replaces its callback, without accumulating it.
+    registry.observe("shared-checkpoints", status => batch.push(status.state));
+    registry.markRunning("shared-checkpoints");
+    registry.markAnalysisDone("shared-checkpoints", { analysisTypes: ["technicalQuality"], summary: {}, artifacts: [] });
+    expect(durable).toEqual(["queued", "running", "done"]);
+    expect(batch).toEqual(["queued", "queued", "running", "done"]);
+  });
+
+  it.each(["durable", "batch"])("corrects every checkpoint when the %s completion write fails", failing => {
+    const registry = new JobRegistry();
+    registry.create("failed-checkpoints", 2, "analysis");
+    const persisted = new Map<string, JobStatusView>();
+    for (const owner of ["durable", "batch"]) {
+      registry.observe("failed-checkpoints", status => {
+        if (owner === failing && status.state === "done") throw new Error(`${owner} unavailable`);
+        persisted.set(owner, status);
+      }, owner);
+    }
+    registry.markAnalysisDone("failed-checkpoints", { analysisTypes: ["technicalQuality"], summary: {}, artifacts: [] });
+    expect(registry.get("failed-checkpoints")).toMatchObject({ state: "error", result: null, error: { code: "BATCH_PERSISTENCE_FAILED" } });
+    for (const status of persisted.values()) {
+      expect(status).toMatchObject({ state: "error", result: null, error: { code: "BATCH_PERSISTENCE_FAILED" } });
+    }
+  });
+
   it("projects restored audio jobs compactly and hides legacy failed or cancelled results", () => {
     const legacyResult = {
       analysisTypes: ["audioSummary", "silence", "beatGrid"] as const,

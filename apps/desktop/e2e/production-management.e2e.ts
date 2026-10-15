@@ -353,6 +353,10 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
       "m3-live.json",
     );
     const readBatch = () => JSON.parse(readFileSync(manifestPath, "utf8"));
+    const readDurableStatus = (jobId: string) => JSON.parse(readFileSync(
+      path.join(launched.userDataDir, "live-artifacts", "task-records", `${jobId}.status.json`),
+      "utf8",
+    )).status;
     await batchCall("job_cancel", { jobId: batch.items[1].jobId });
     await vi.waitFor(
       () =>
@@ -366,6 +370,10 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
       jobId: item.jobId,
       state: item.status.state,
     }));
+    // Both checkpoint owners must agree before the process exits. A batch
+    // observer must never replace the desktop task ledger's subscription.
+    expect(readDurableStatus(batch.items[0].jobId).state).toBe("done");
+    expect(readDurableStatus(batch.items[1].jobId).state).toBe("cancelled");
     const retry = await batchCall("batch_resume", { batchId: "m3-live" });
     expect(retry.items[0].jobId).toBe(batch.items[0].jobId);
     expect(retry.items[1].jobId).not.toBe(batch.items[1].jobId);
@@ -379,6 +387,10 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
     await enable();
     current = await state();
     agent = await connectExternalAgent(launched.endpointFile);
+    expect(readDurableStatus(batch.items[0].jobId).state).toBe("done");
+    expect(readDurableStatus(retry.items[1].jobId)).toMatchObject({
+      state: "error", error: { code: "INTERRUPTED" },
+    });
     const resumed = await batchCall("batch_resume", {
       batchId: "m3-live",
       expectedRevision: current.revision,
@@ -399,6 +411,9 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
       jobId: item.jobId,
       state: item.status.state,
     }));
+    for (const item of readBatch().items) {
+      expect(readDurableStatus(item.jobId)).toMatchObject({ state: "done", error: null });
+    }
     expect(
       current.project.requirements.items[0].reviewRange.evidence.timelineFrame,
     ).toBe(15);

@@ -151,26 +151,37 @@ export async function cancelExportWithin(
 
 export class JobRegistry {
   private readonly jobs = new Map<string, JobRecord>();
-  private readonly observers = new Map<string, (job: JobStatusView) => void>();
+  private readonly observers = new Map<string, Map<string, (job: JobStatusView) => void>>();
 
-  /** Persist transitions before exposing them; terminal observers release automatically. */
-  observe(jobId: string, persist: (job: JobStatusView) => void): void {
+  /** Persist before publication. Owners coexist; re-observing one owner replaces it. */
+  observe(jobId: string, persist: (job: JobStatusView) => void, owner = "default"): void {
     const job = this.jobs.get(jobId);
     if (!job) throw new Error(`Cannot observe unknown job ${jobId}`);
     persist(jobStatusView(job));
-    if (!TERMINAL.has(job.state)) this.observers.set(jobId, persist);
+    if (!TERMINAL.has(job.state)) {
+      const observers = this.observers.get(jobId) ?? new Map();
+      observers.set(owner, persist);
+      this.observers.set(jobId, observers);
+    }
   }
 
   private publish(record: JobRecord): void {
-    const observer = this.observers.get(record.jobId);
+    const observers = this.observers.get(record.jobId);
     let next = record;
-    if (observer) {
+    for (const observer of observers?.values() ?? []) {
       try {
-        observer(jobStatusView(record));
+        observer(jobStatusView(next));
       } catch (error) {
         // A disk failure must never expose a successfully checkpointed completion.
         next = { ...record, state: "error", artifact: null, result: null,
           error: { code: "BATCH_PERSISTENCE_FAILED", message: `Batch checkpoint failed: ${error instanceof Error ? error.message : String(error)}` } };
+      }
+    }
+    if (next !== record) {
+      // A later checkpoint can fail after an earlier one recorded completion.
+      // Correct every writable checkpoint before exposing the failed transition.
+      for (const observer of observers?.values() ?? []) {
+        try { observer(jobStatusView(next)); } catch { /* The failed store remains unavailable. */ }
       }
     }
     this.jobs.set(next.jobId, next);

@@ -230,6 +230,39 @@ Evidence: `production-target-before.log`, `production-target-after.log`,
 Earlier unit-fixture/type failures are retained separately. Mac report
 `ef1fa632` is preserved; its native recording release gate remains blocked.
 
+## M3 recovery continuation: checkpoint observer overwrite
+
+The release owner requested continued diagnosis after the first candidate.
+The 120-second assertion reads the persisted batch manifest and waits for all
+items to be done. The retained failure screenshot shows a live reopened editor;
+the durable task records disagree with the batch checkpoint. This was a real
+product defect: `JobRegistry.observe` stored one callback per job, and the batch
+callback replaced the live session's task-ledger callback. The batch could record
+done while the task ledger stayed queued, becoming INTERRUPTED on restart.
+
+A regression failed before the fix: the durability observer received only
+queued, missing running and done. Observers now coexist by internal owner;
+re-registering the batch owner replaces its previous callback without growth.
+If any checkpoint fails, the registry reports error and corrects every writable
+checkpoint, including one that already wrote done. No new user feature was added.
+
+Validation so far: registry/batch **18 tests**, ledger **8 tests**, live session
+**77 tests** passed; facade and desktop typechecks passed. The real M3 test
+passed in **18.08 seconds** with its original 120-second all-done assertion.
+Completed, cancelled and unfinished ledger states were inspected on disk;
+additional E2E assertions now require both stores to agree before and after
+restart. Original failed artifacts remain intact. The former M3 blocker is
+superseded by this diagnosis and verification, subject to the replacement
+packaged-candidate test recorded separately.
+
+Evidence: `m3-observers-before.log`, `m3-observers-after.log`,
+`m3-ledger-after.log`, `m3-live-session-after.log`,
+`m3-facade-typecheck.log`, `m3-desktop-typecheck.log`,
+`m3-recovery-main-build.log`, `m3-recovery-fixed.log`.
+The first frozen SHA's remaining CI, Chromium and Electron workflows ended
+cancelled after the subsequent documentation push; performance succeeded.
+Cancelled workflows do not establish qualification.
+
 ## Retained local evidence
 
 The later authorized local Windows 1.1.2 candidate is frozen at `ca8126cf`.

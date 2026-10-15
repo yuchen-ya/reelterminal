@@ -594,7 +594,7 @@ export class LiveFacadeSession {
           });
         }
       }
-    });
+    }, "task-lifecycle");
   }
 
   private async createTrackedTask(input: LiveTaskInput): Promise<Project> {

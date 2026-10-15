@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Project } from "@reelterminal/core";
+import { JobRegistry } from "@reelterminal/agent-facade";
 import { DurableTaskLedger, type DurableTaskInput } from "./task-ledger";
 
 const directories: string[] = [];
@@ -21,6 +22,30 @@ afterEach(() => {
 });
 
 describe("durable desktop task ledger", () => {
+  it("retains a completed batch result across restart while unfinished work is interrupted", () => {
+    const { root, input, ledger } = setup();
+    const registry = new JobRegistry();
+    const batchStates = new Map<string, string>();
+    for (const jobId of ["batch-done", "batch-pending"]) {
+      ledger.begin({ ...input, jobId, kind: "analysis" });
+      registry.create(jobId, input.sourceRevision, "analysis");
+      registry.observe(jobId, status => ledger.update(status), "task-lifecycle");
+      registry.observe(jobId, status => batchStates.set(jobId, status.state));
+      registry.markRunning(jobId);
+    }
+    registry.markAnalysisDone("batch-done", {
+      analysisTypes: ["technicalQuality"], summary: { measured: true }, artifacts: [],
+    });
+    expect(batchStates.get("batch-done")).toBe("done");
+    const restored = new DurableTaskLedger(root);
+    expect(restored.get("batch-done")?.status).toMatchObject({
+      state: "done", result: { summary: { measured: true } }, error: null,
+    });
+    expect(restored.get("batch-pending")?.status).toMatchObject({
+      state: "error", result: null, error: { code: "INTERRUPTED" },
+    });
+  });
+
   it("captures detached fixed input and reports unfinished tasks as interrupted after restart", () => {
     const { root, input, ledger } = setup();
     ledger.begin(input);
