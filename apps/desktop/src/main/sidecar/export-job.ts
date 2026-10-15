@@ -1,4 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { closeSync, openSync, renameSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import path from "node:path";
 import { resolveFfmpegPath } from "./ffmpeg-path";
 import { videoEncodeArgs, type EncodeMode, type ExportCodec } from "./encode-args";
 import {
@@ -62,6 +65,12 @@ export class ExportJob {
   private stderrTail = "";
   private finished = false;
   private cancelRequested = false;
+  private settled = false;
+  private temporaryOutput: string | null = null;
+  private processError: Error | null = null;
+  private cleanupError: Error | null = null;
+  private resolveStopped!: () => void;
+  private readonly stopped = new Promise<void>((resolve) => { this.resolveStopped = resolve; });
   private encodeSpan: ExportPerformanceSpan | null = null;
   private finalizeSpan: ExportPerformanceSpan | null = null;
 
@@ -73,10 +82,24 @@ export class ExportJob {
     private readonly performanceSink?: ExportPerformanceSink,
   ) {}
 
-  start(): void {
+  start(): boolean {
     this.encodeSpan = beginExportPerformanceSpan(this.performanceSink, "encode");
     markExportPerformance(this.performanceSink, "audio", { included: this.args.audioWavPath.length > 0 });
-    this.proc = spawn(resolveFfmpegPath(), buildFfmpegArgs(this.args));
+    try {
+      // Reserve only our own file, beside the destination for a same-volume
+      // rename. Keep the extension so FFmpeg selects the original muxer.
+      const temporaryOutput = path.join(
+        path.dirname(this.args.outputPath),
+        `.reelterminal-export-${randomUUID()}${path.extname(this.args.outputPath)}`,
+      );
+      const descriptor = openSync(temporaryOutput, "wx");
+      this.temporaryOutput = temporaryOutput;
+      closeSync(descriptor);
+      this.proc = spawn(resolveFfmpegPath(), buildFfmpegArgs({ ...this.args, outputPath: temporaryOutput }));
+    } catch (error) {
+      this.finish(error instanceof Error ? error.message : String(error));
+      return false;
+    }
     this.proc.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       this.progressBuf += text;
@@ -99,25 +122,51 @@ export class ExportJob {
     });
     this.proc.on("error", (e) => {
       this.finished = true;
-      endExportPerformanceSpan(this.performanceSink, this.encodeSpan, "error");
-      endExportPerformanceSpan(this.performanceSink, this.finalizeSpan, "error");
-      this.onError(e.message);
+      this.processError = e;
     });
     this.proc.on("close", (code) => {
-      this.finished = true;
-      if (code === 0) {
-        endExportPerformanceSpan(this.performanceSink, this.encodeSpan, "ok");
-        endExportPerformanceSpan(this.performanceSink, this.finalizeSpan, "ok");
-        this.onDone();
-      } else {
-        endExportPerformanceSpan(this.performanceSink, this.encodeSpan, "error");
-        endExportPerformanceSpan(this.performanceSink, this.finalizeSpan, "error");
-        const detail = this.stderrTail.trim();
-        this.onError(
-          `ffmpeg exited with code ${code}${detail ? `: ${detail}` : ""}`,
-        );
-      }
+      const detail = this.stderrTail.trim();
+      this.finish(this.processError?.message ?? (code === 0 ? undefined :
+        `ffmpeg exited with code ${code}${detail ? `: ${detail}` : ""}`));
     });
+    return true;
+  }
+
+  private finish(message?: string): void {
+    if (this.settled) return;
+    this.finished = true;
+    if (this.cancelRequested) message = "Native export cancelled";
+    if (this.temporaryOutput) {
+      try {
+        // This synchronous commit is the cancellation boundary: cancellation
+        // observed before close wins; cancellation after commit is a no-op.
+        // Never remove the old destination before trying to replace it.
+        if (!message) {
+          renameSync(this.temporaryOutput, this.args.outputPath);
+          this.temporaryOutput = null;
+        }
+      } catch (error) {
+        message = `Could not commit native export: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      try {
+        if (this.temporaryOutput) rmSync(this.temporaryOutput, { force: true });
+      } catch (error) {
+        const cleanupError = `Could not clean native export temporary file: ${error instanceof Error ? error.message : String(error)}`;
+        this.cleanupError = new Error(cleanupError);
+        message = message ? `${message}; ${cleanupError}` : cleanupError;
+      }
+      this.temporaryOutput = null;
+    }
+    this.settled = true;
+    const outcome = this.cancelRequested ? "cancelled" : message ? "error" : "ok";
+    endExportPerformanceSpan(this.performanceSink, this.encodeSpan, outcome);
+    endExportPerformanceSpan(this.performanceSink, this.finalizeSpan, outcome);
+    try {
+      if (message) this.onError(message);
+      else this.onDone();
+    } finally {
+      this.resolveStopped();
+    }
   }
 
   async writeFrame(frame: Uint8Array): Promise<void> {
@@ -163,12 +212,15 @@ export class ExportJob {
     }
   }
 
-  cancel(): void {
-    this.finished = true;
-    this.cancelRequested = true;
-    markExportPerformance(this.performanceSink, "cancel");
-    endExportPerformanceSpan(this.performanceSink, this.encodeSpan, "cancelled");
-    endExportPerformanceSpan(this.performanceSink, this.finalizeSpan, "cancelled");
-    this.proc?.kill("SIGKILL");
+  async cancel(): Promise<void> {
+    if (!this.settled) {
+      this.finished = true;
+      this.cancelRequested = true;
+      markExportPerformance(this.performanceSink, "cancel");
+      this.proc?.kill("SIGKILL");
+      if (!this.proc) this.finish("Native export cancelled");
+    }
+    await this.stopped;
+    if (this.cleanupError) throw this.cleanupError;
   }
 }

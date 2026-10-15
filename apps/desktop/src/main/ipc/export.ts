@@ -47,6 +47,8 @@ interface JobEntry {
   exportArgs: ExportArgs;
   audioWavPath: string;
   started: boolean;
+  cancelled: boolean;
+  cleanup: Promise<void> | null;
   audioQueue: Promise<void>;
   audioSpan: ExportPerformanceSpan | null;
   queueSpan: ExportPerformanceSpan | null;
@@ -116,6 +118,8 @@ export async function startExport(
     exportArgs,
     audioWavPath,
     started: false,
+    cancelled: false,
+    cleanup: null,
     audioQueue: Promise.resolve(),
     audioSpan: null,
     queueSpan: beginExportPerformanceSpan(performanceSink, "queue"),
@@ -135,6 +139,7 @@ export async function startExport(
       | { type?: string; ts?: number; buffer?: ArrayBuffer }
       | null;
     if (!msg || typeof msg.type !== "string") return;
+    if (entry.cancelled) return;
     if (msg.type === "frame" && msg.buffer) {
       const buffer = msg.buffer;
       const ts = msg.ts ?? 0;
@@ -143,7 +148,7 @@ export async function startExport(
       entry.queue = entry.queue
         .then(async () => {
           endExportPerformanceSpan(performanceSink, queueSpan, "ok");
-          if (!entry.cfr) return;
+          if (!entry.cfr || entry.cancelled) return;
           await entry.cfr.push(new Uint8Array(buffer), ts);
           port1.postMessage({ type: "credit", credits: 1 });
         })
@@ -170,7 +175,7 @@ export async function startExport(
 export async function writeAudioWav(args: { jobId: string; wav: ArrayBuffer }): Promise<void> {
   const entry = jobs.get(args.jobId);
   if (!entry) throw new Error(`unknown export job ${args.jobId}`);
-  if (entry.started) return;
+  if (entry.started || entry.cancelled) return;
   entry.audioQueue = entry.audioQueue.then(() =>
     withExportPerformanceSpan(entry.performanceSink, "audio", () =>
       fs.writeFile(entry.audioWavPath, Buffer.from(args.wav)),
@@ -187,6 +192,7 @@ export async function writeAudioChunk(args: {
 }): Promise<void> {
   const entry = jobs.get(args.jobId);
   if (!entry) throw new Error(`unknown export job ${args.jobId}`);
+  if (entry.cancelled) return;
   if (entry.started) throw new Error(`audio already finalized for export job ${args.jobId}`);
 
   entry.audioSpan ??= beginExportPerformanceSpan(entry.performanceSink, "audio");
@@ -201,6 +207,7 @@ export async function writeAudioChunk(args: {
 export async function finishAudio(args: { jobId: string }): Promise<void> {
   const entry = jobs.get(args.jobId);
   if (!entry) throw new Error(`unknown export job ${args.jobId}`);
+  if (entry.cancelled) return;
   try {
     await entry.audioQueue;
     endExportPerformanceSpan(entry.performanceSink, entry.audioSpan, "ok");
@@ -233,7 +240,7 @@ async function writeFileChunk(
 }
 
 function startNativeExportJob(jobId: string, entry: JobEntry): void {
-  if (entry.started) return;
+  if (entry.started || entry.cancelled) return;
   endExportPerformanceSpan(entry.performanceSink, entry.queueSpan, "ok");
   entry.queueSpan = null;
   withExportPerformance(entry.performanceSink, "prepare", () => {
@@ -241,59 +248,60 @@ function startNativeExportJob(jobId: string, entry: JobEntry): void {
       entry.exportArgs,
       (frame) => entry.port.postMessage({ type: "progress", frame }),
       () => {
-        entry.port.postMessage({ type: "done" });
-        cleanupJob(jobId, "ok");
+        void cleanupJob(jobId, "ok").then(
+          () => entry.port.postMessage({ type: "done" }),
+          (error: Error) => entry.port.postMessage({ type: "error", message: error.message }),
+        );
       },
       (msg) => {
-        entry.port.postMessage({ type: "error", message: msg });
-        cleanupJob(jobId, "error");
+        if (entry.cancelled) return; // cancelExport owns cleanup after close.
+        void cleanupJob(jobId, "error").then(
+          () => entry.port.postMessage({ type: "error", message: msg }),
+          (error: Error) => entry.port.postMessage({ type: "error", message: `${msg}; ${error.message}` }),
+        );
       },
       entry.performanceSink,
     );
     entry.cfr = new CfrWriter(entry.exportArgs.frameRate, async (f) => {
       await entry.job!.writeFrame(f);
     });
-    entry.job.start();
+    if (!entry.job.start()) return;
     entry.started = true;
     entry.port.postMessage({ type: "credit", credits: initialFrameCredits(entry.exportArgs) });
   });
 }
 
-export function cancelAllExports(): void {
-  for (const [, entry] of jobs) {
-    markExportPerformance(entry.performanceSink, "cancel");
-    endExportPerformanceSpan(entry.performanceSink, entry.audioSpan, "cancelled");
-    endExportPerformanceSpan(entry.performanceSink, entry.queueSpan, "cancelled");
-    try {
-      entry.job?.cancel();
-    } catch {
-      /* best-effort kill on quit */
-    }
-    void fs.rm(entry.audioWavPath, { force: true }).catch(() => {});
-  }
-  jobs.clear();
+export async function cancelAllExports(): Promise<void> {
+  const results = await Promise.allSettled([...jobs.keys()].map((jobId) => cancelExport({ jobId })));
+  const errors = results.filter((result) => result.status === "rejected").map((result) => result.reason);
+  if (errors.length > 0) throw new AggregateError(errors, "Could not cancel native exports");
 }
 
-function cleanupJob(jobId: string, outcome: "ok" | "error"): void {
+function cleanupJob(jobId: string, outcome: "ok" | "error" | "cancelled"): Promise<void> {
   const entry = jobs.get(jobId);
-  if (!entry) return;
+  if (!entry) return Promise.resolve();
+  if (entry.cleanup) return entry.cleanup;
   endExportPerformanceSpan(entry.performanceSink, entry.audioSpan, outcome);
   endExportPerformanceSpan(entry.performanceSink, entry.queueSpan, outcome);
-  void fs.rm(entry.audioWavPath, { force: true }).catch(() => {});
-  jobs.delete(jobId);
+  entry.cleanup = fs.rm(entry.audioWavPath, { force: true }).finally(() => {
+    jobs.delete(jobId);
+  });
+  return entry.cleanup;
 }
 
 export async function cancelExport(args: { jobId: string }): Promise<void> {
   const entry = jobs.get(args.jobId);
   if (!entry) return;
+  if (entry.cleanup) return entry.cleanup;
+  entry.cancelled = true;
   markExportPerformance(entry.performanceSink, "cancel");
   endExportPerformanceSpan(entry.performanceSink, entry.audioSpan, "cancelled");
   endExportPerformanceSpan(entry.performanceSink, entry.queueSpan, "cancelled");
-  entry.job?.cancel();
+  const stopped = entry.job?.cancel();
   try {
-    await fs.rm(entry.audioWavPath, { force: true });
-  } catch {
-    /* best-effort temp cleanup */
+    await entry.audioQueue;
+  } finally {
+    await stopped;
+    await cleanupJob(args.jobId, "cancelled");
   }
-  jobs.delete(args.jobId);
 }

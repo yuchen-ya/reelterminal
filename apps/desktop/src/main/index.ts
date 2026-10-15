@@ -445,11 +445,14 @@ let liveSessionHostDisposed = false;
 app.on("will-quit", (event) => {
   performanceSessionManager?.uninstall();
   disposeAuroraClient();
-  cancelAllExports();
   if (liveSessionHostDisposed) return;
   event.preventDefault();
-  void disposeLiveSessionHost()
-    .catch(() => undefined)
+  void Promise.allSettled([cancelAllExports(), disposeLiveSessionHost()])
+    .then((results) => {
+      for (const result of results) {
+        if (result.status === "rejected") console.error("Shutdown cleanup failed", result.reason);
+      }
+    })
     .then(() => {
       liveSessionHostDisposed = true;
       app.quit();
