@@ -1,0 +1,521 @@
+{
+  "schema": "reelterminal.macos-validation-summary/v1",
+  "reporting_period_local_dates": [
+    "2026-10-14",
+    "2026-10-15"
+  ],
+  "timezone": "Asia/Shanghai",
+  "original_requested_base": "84005f5d7f83317c11474f6eefa38dd2f76b79da",
+  "tested_head": "92f8f75335f5281334797c15541e59b493358db4",
+  "original_base_is_ancestor": true,
+  "app_version": "1.1.2",
+  "production_runtime_fix_head": "2672c2d7420077ee4522ac387478977c8b8489b6",
+  "documentation_commit_is_not_tested_build": true,
+  "release_recommendation": "do_not_release_current_mac_candidate",
+  "environment": {
+    "model": "MacBook Air Mac14,2",
+    "chip": "Apple M2",
+    "cpu_cores": 8,
+    "memory_GiB": 8,
+    "arch": "arm64",
+    "macOS": "27.0.1 (26A434)",
+    "host_Node": "23.11.0",
+    "pnpm": "11.7.0",
+    "FFmpeg": "9.0.1",
+    "Electron": "44.5.1",
+    "Chromium": "152.0.7977.130",
+    "embedded_Node": "24.21.0"
+  },
+  "build": {
+    "asar_sha256": "99f967e68bbe6f3144bf3c9722d82a1c87a636cd7d8d4843545b9ef6a8f070ec",
+    "stamp": {
+      "schema": "reelterminal.performance-build/v1",
+      "build_type": "production",
+      "source_head": "92f8f75335f5281334797c15541e59b493358db4",
+      "dirty": false,
+      "source_digest": "48fa0118adf02ca659500393af90093cdd7e80b3a6594b3753b886c68d5915d0",
+      "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+      "main_bundle_sha256": "e255cc18b8cc7790524bbd10df063b625254e8053f12e4e7777538db65e96981",
+      "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+      "renderer_manifest_sha256": "0e7b3b00700bba15ec0e6d7746166327ea3deb6118c71738b998140d07979762",
+      "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+      "executable_sha256": "ca7e3290800255f5018160cff99cf6ecc58eae299c66148de1374a70e2715c83",
+      "app_version": "1.1.2"
+    },
+    "runtime_equivalence_to_2672": {
+      "main_bundle_sha256": true,
+      "preload_bundle_sha256": true,
+      "renderer_manifest_sha256": true,
+      "worker_manifest_sha256": true,
+      "executable_sha256": true
+    },
+    "packaged_app": "apps/desktop/release/macos-1.1.2-stress-export-observer/mac-arm64/ReelTerminal.app",
+    "execution_modes": {
+      "A01_E01_R02_T03": "checkout_production_bundles_and_arm64_Electron",
+      "GUI_N01_N04_audio_real_media": "specified_native_arm64_package"
+    },
+    "signed": false,
+    "notarized": false,
+    "released": false
+  },
+  "T03": {
+    "independent_runs": [
+      {
+        "run_id": "t03-1792012448088-0-0",
+        "source_head": "92f8f75335f5281334797c15541e59b493358db4",
+        "functional_status": "complete",
+        "artifact_window_seconds": 711.7676129341125,
+        "artifact_window_method": "run_id Date.now to result file write; includes launch/warmup, excludes subsequent profile removal; additional derived wall window, not input metric",
+        "clips": 2000,
+        "tracks": 50,
+        "completed_operations": 600,
+        "completed_per_operation": {
+          "timeline_media_drag_verified_ms": 100,
+          "timeline_media_trim_verified_ms": 100,
+          "timeline_multiselect_drag_verified_ms": 100,
+          "timeline_scroll_verified_ms": 100,
+          "timeline_seek_content_verified_ms": 100,
+          "timeline_zoom_verified_ms": 100
+        },
+        "failed_operations": 0,
+        "censored_operations": 0,
+        "events_dropped": 0,
+        "critical_endpoints_dropped": 0,
+        "interference_free_performance_qualified": false,
+        "raw_probe_calibrated": false,
+        "not_applicable_correctness": [
+          "durable_final_revision_verified"
+        ],
+        "raw_result": "apps/desktop/e2e/.artifacts/performance/t03-1792012448088-0-0.result.json"
+      },
+      {
+        "run_id": "t03-1792013159892-1-0",
+        "source_head": "92f8f75335f5281334797c15541e59b493358db4",
+        "functional_status": "complete",
+        "artifact_window_seconds": 713.0027017593384,
+        "artifact_window_method": "run_id Date.now to result file write; includes launch/warmup, excludes subsequent profile removal; additional derived wall window, not input metric",
+        "clips": 2000,
+        "tracks": 50,
+        "completed_operations": 600,
+        "completed_per_operation": {
+          "timeline_media_drag_verified_ms": 100,
+          "timeline_media_trim_verified_ms": 100,
+          "timeline_multiselect_drag_verified_ms": 100,
+          "timeline_scroll_verified_ms": 100,
+          "timeline_seek_content_verified_ms": 100,
+          "timeline_zoom_verified_ms": 100
+        },
+        "failed_operations": 0,
+        "censored_operations": 0,
+        "events_dropped": 0,
+        "critical_endpoints_dropped": 0,
+        "interference_free_performance_qualified": false,
+        "raw_probe_calibrated": false,
+        "not_applicable_correctness": [
+          "durable_final_revision_verified"
+        ],
+        "raw_result": "apps/desktop/e2e/.artifacts/performance/t03-1792013159892-1-0.result.json"
+      },
+      {
+        "run_id": "t03-1792013872939-2-0",
+        "source_head": "92f8f75335f5281334797c15541e59b493358db4",
+        "functional_status": "complete",
+        "artifact_window_seconds": 719.1753923892975,
+        "artifact_window_method": "run_id Date.now to result file write; includes launch/warmup, excludes subsequent profile removal; additional derived wall window, not input metric",
+        "clips": 2000,
+        "tracks": 50,
+        "completed_operations": 600,
+        "completed_per_operation": {
+          "timeline_media_drag_verified_ms": 100,
+          "timeline_media_trim_verified_ms": 100,
+          "timeline_multiselect_drag_verified_ms": 100,
+          "timeline_scroll_verified_ms": 100,
+          "timeline_seek_content_verified_ms": 100,
+          "timeline_zoom_verified_ms": 100
+        },
+        "failed_operations": 0,
+        "censored_operations": 0,
+        "events_dropped": 0,
+        "critical_endpoints_dropped": 0,
+        "interference_free_performance_qualified": false,
+        "raw_probe_calibrated": false,
+        "not_applicable_correctness": [
+          "durable_final_revision_verified"
+        ],
+        "raw_result": "apps/desktop/e2e/.artifacts/performance/t03-1792013872939-2-0.result.json"
+      }
+    ],
+    "total_completed_verified_operations": 1800,
+    "command_wall_seconds": 2146.70622587204,
+    "functional_and_count_assertions_passed": true,
+    "interference_free_performance_qualified": false,
+    "fixture_limitation": "1999 image clips + 1 text clip; one reused image; not independent video decode"
+  },
+  "R02": {
+    "run_id": "r02-1792008582414-0",
+    "source_head": "92f8f75335f5281334797c15541e59b493358db4",
+    "raw_status": "complete",
+    "requested_observation_seconds": 3600,
+    "actual_observation_seconds": 3601.48465875,
+    "command_wall_seconds": 3790.428195953369,
+    "completed_cycles": 3553,
+    "idle_samples": 116,
+    "history_saturation": {
+      "capacity": 1000,
+      "edits": 1010,
+      "plateauCounts": [
+        1000,
+        1000,
+        1000,
+        1000,
+        1000,
+        1000,
+        1000,
+        1000,
+        1000,
+        1000
+      ],
+      "elapsed_ms": 181504.624458,
+      "interval_ms": 150
+    },
+    "correctness": {
+      "final_state_verified": true,
+      "target_frame_verified": true,
+      "resources_returned_verified": true,
+      "save_queue_drained_verified": true
+    },
+    "raw_validity": {
+      "complete": true,
+      "reason_codes": [],
+      "events_dropped": 0,
+      "critical_endpoints_dropped": 0,
+      "probe_calibrated": false
+    },
+    "interference_free_performance_qualified": false,
+    "forced_gc": false,
+    "same_process_after_saturation": true,
+    "fixture": "fixed image project, 1 clip / 10 nodes",
+    "raw_result": "apps/desktop/e2e/.artifacts/performance/r02-1792008582414-0.result.json"
+  },
+  "real_media": [
+    {
+      "run_id": "real-media-1792004834144",
+      "source_head": "c22fa7cafa64776d41bb91f125633b6a90910d93",
+      "functional_status": "passed",
+      "completed_real_exports": 10,
+      "completed_edit_seek_rounds": 20,
+      "test_case_seconds": 1297.39,
+      "command_wall_seconds": 1298.8382830619812,
+      "same_process_post_export_idle_seconds": 0.0,
+      "memory_status": "unresolved_native_shared_retention_risk",
+      "actual_hardware_encoder": "not_exposed",
+      "raw_result": "apps/desktop/e2e/.artifacts/performance/real-media-1792004834144/result.json"
+    },
+    {
+      "run_id": "real-media-1792006839220",
+      "source_head": "92f8f75335f5281334797c15541e59b493358db4",
+      "functional_status": "passed",
+      "completed_real_exports": 10,
+      "completed_edit_seek_rounds": 20,
+      "test_case_seconds": 1633.202,
+      "command_wall_seconds": 1634.6649720668793,
+      "same_process_post_export_idle_seconds": 300.3736917079999,
+      "memory_status": "unresolved_native_shared_retention_risk",
+      "actual_hardware_encoder": "not_exposed",
+      "raw_result": "apps/desktop/e2e/.artifacts/performance/real-media-1792006839220/result.json"
+    }
+  ],
+  "auxiliary_cases": {
+    "A01": {
+      "source_head": "c22fa7cafa64776d41bb91f125633b6a90910d93",
+      "completed_frame_observations": 150,
+      "modes": 6,
+      "observations_per_mode": 25,
+      "PCM_marker_pairs": 113,
+      "actual_audible_sync": "unsupported"
+    },
+    "E01": {
+      "source_head": "c22fa7cafa64776d41bb91f125633b6a90910d93",
+      "completed_simulated_exports": 25,
+      "backend": "fake_not_real_encoding"
+    },
+    "A01_E01_test_file_seconds": 7.214,
+    "A01_E01_command_wall_seconds": 10.212045192718506,
+    "N01": {
+      "source_head": "2672c2d7420077ee4522ac387478977c8b8489b6",
+      "run_id": "feature-assets-1791996313235",
+      "functional_status": "passed",
+      "actual_seconds": 120.699,
+      "scale": {
+        "mediaCount": 1000,
+        "nodeCount": 1000,
+        "samples_per_kind": 100,
+        "cues_per_format": 1000,
+        "image_content_reused": true,
+        "video_decode_stress": false
+      }
+    },
+    "N04": {
+      "source_head": "2672c2d7420077ee4522ac387478977c8b8489b6",
+      "run_id": "feature-recording-1791996436031",
+      "functional_status": "passed",
+      "actual_seconds": 163.471,
+      "scale": {
+        "count": 10,
+        "active_seconds_each": 10,
+        "width": 1920,
+        "height": 1080,
+        "fps": 30,
+        "acquisition": "synthetic_canvas_only",
+        "encoder": "real_MediaRecorder",
+        "native_permission_verified": false
+      }
+    }
+  },
+  "memory_findings": {
+    "R02_renderer_heap_OLS_MiB_per_minute": 0.0368539892,
+    "R02_renderer_heap_last30_OLS_MiB_per_minute": 0.0992624286,
+    "R02_main_heap_OLS_MiB_per_minute": 0.0683024199,
+    "R02_main_heap_last30_OLS_MiB_per_minute": 0.0637641234,
+    "R02_judgment": "small positive trends remain after history saturation; GC and intentional session retention present; leak neither confirmed nor excluded; background CPU bursts limit causal interpretation",
+    "export_worker_top_MEM_MiB_after_first": 3580,
+    "export_worker_top_MEM_MiB_after_tenth": 7201,
+    "export_worker_top_MEM_MiB_after_300s_idle": 7014,
+    "export_worker_native_retention_root_cause": "unresolved",
+    "accounting_caveat": "macOS top MEM, ps RSS and Electron workingSetSize are distinct; do not sum shared memory; GPU working set is not VRAM"
+  },
+  "failures_and_exclusions": [
+    {
+      "case": "1000-caption import",
+      "run_id": "feature-assets-1791995594100",
+      "status": "failed_then_fixed_and_retested",
+      "fix": "2672c2d7420077ee4522ac387478977c8b8489b6",
+      "failed_run_seconds": 239.27
+    },
+    {
+      "case": "repeated real export native memory",
+      "status": "unresolved_release_risk",
+      "run_ids": [
+        "real-media-1792004834144",
+        "real-media-1792006839220"
+      ]
+    },
+    {
+      "case": "calibration startup",
+      "status": "unresolved_primary_timeout; error preservation tooling fixed",
+      "evidence_ids": [
+        "probe-calibration-1792000750762",
+        "probe-calibration-1792001322156",
+        "probe-calibration-1792004384624",
+        "probe-calibration-1792006452492"
+      ],
+      "tool_fix": "95137eb69566b6970761393cd23b34e868ae6640"
+    },
+    {
+      "case": "native macOS picker/cancel",
+      "status": "incomplete_not_passed",
+      "evidence_ids": [
+        "feature-native-recording-1791998796526",
+        "feature-native-recording-1791999209054",
+        "feature-native-recording-1792000285818"
+      ]
+    },
+    {
+      "case": "audio interrupted observation",
+      "status": "incomplete_environment_interference",
+      "run_id": "feature-audio-1791999803856",
+      "completed_reads_before_abort": 33
+    },
+    {
+      "case": "audio two completed observations",
+      "status": "functional_pass_performance_excluded_HID_reset",
+      "run_ids": [
+        "feature-audio-1791996601919",
+        "feature-audio-1792002221327"
+      ],
+      "observation_seconds": [
+        1800.002327709,
+        1800.002662083
+      ],
+      "reads_each": 200
+    },
+    {
+      "case": "R02/T03 non-test CPU bursts",
+      "status": "latencies_not_certified_interference_free",
+      "no_HID_reset_during_these_runs": true,
+      "all_sampled_AC": true
+    },
+    {
+      "case": "GUI tool launched default blank instance after test exit",
+      "status": "owned_extra_instance_closed_no_project_entered; default profile not deleted or claimed untouched"
+    }
+  ],
+  "fixes_pushed": [
+    {
+      "commit": "06834200275927d6705a86df62ff1b9cfde49624",
+      "subject": "fix: preserve clip order when moving within a track",
+      "ancestor_of_tested_head": true
+    },
+    {
+      "commit": "b17270dd71dd6e08caf85dc9f423b242057a8fec",
+      "subject": "fix: keep active paused video decoders independent and resident",
+      "ancestor_of_tested_head": true
+    },
+    {
+      "commit": "b235077199590ab602b4ec2ea6fa3dbffb1901f7",
+      "subject": "fix: isolate WebGPU layer uniforms until frame submission",
+      "ancestor_of_tested_head": true
+    },
+    {
+      "commit": "e3713bb5bcf3af043e9680ebe3fbbd5ec616b97c",
+      "subject": "fix: align WebGPU vertical position with editor pixel coordinates",
+      "ancestor_of_tested_head": true
+    },
+    {
+      "commit": "3529dc57bfde2b62a2f8566178717ac9e0df98c8",
+      "subject": "fix: preserve extra video layers during preview transitions",
+      "ancestor_of_tested_head": true
+    },
+    {
+      "commit": "2672c2d7420077ee4522ac387478977c8b8489b6",
+      "subject": "fix(subtitles): import large caption files as bounded atomic text chunks",
+      "ancestor_of_tested_head": true
+    },
+    {
+      "commit": "95137eb69566b6970761393cd23b34e868ae6640",
+      "subject": "test(perf): retain primary calibration failures before screenshot diagnostics",
+      "ancestor_of_tested_head": true
+    },
+    {
+      "commit": "c22fa7cafa64776d41bb91f125633b6a90910d93",
+      "subject": "test: retain redacted resource-soak process logs",
+      "ancestor_of_tested_head": true
+    },
+    {
+      "commit": "92f8f75335f5281334797c15541e59b493358db4",
+      "subject": "test: observe real export process memory and post-export idle retention",
+      "ancestor_of_tested_head": true
+    }
+  ],
+  "limitations": [
+    "No approved baseline or P6 certification; report-only",
+    "Native picker, microphone/camera/screen audio paths incomplete",
+    "No physical audible/display loopback",
+    "Actual hardware encoder not exposed; no forced hardware/software matrix",
+    "No hours-long real multi-video decode soak",
+    "Not Windows or Intel Mac acceptance",
+    "Raw performance probe_calibrated field remains false; separate qualified calibration evidence retained"
+  ],
+  "evidence": {
+    "availability": "local_only; paths are relative to checkout, not GitHub download links",
+    "full_report": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/REPORT.zh-CN.md",
+    "manifest": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/EVIDENCE-MANIFEST.json",
+    "manifest_file_count": 1066,
+    "manifest_total_bytes": 2607878318,
+    "raw_failures_preserved": true,
+    "selected_file_digests": [
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/REPORT.zh-CN.md",
+        "bytes": 32674,
+        "sha256": "e38e3f2a8f59bd5cdd01c8c427bb0a0ddfd802518265545878c7123ddda0ac5d"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/EVIDENCE-MANIFEST.json",
+        "bytes": 276845,
+        "sha256": "885fb6f3206f08c02a3087eb2495084258301237af1ff0240ec902e176c5d7f8"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/source-provenance.json",
+        "bytes": 2341,
+        "sha256": "64d9afa791abce9c801538521352b4cb0f950fe2dc945fb3a0aadb57f7b63fa1"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/native-package-identity-export-observer.json",
+        "bytes": 2277,
+        "sha256": "415822b44274ce7d4b5153d9d6497e04e74e8026d56732d65db16b435248253f"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/remaining-formal-results-r4.json",
+        "bytes": 1497,
+        "sha256": "0b15e05aaf3a5a6409a1b477da8155fc9925020b2a25d5d549f1d9f2edda5717"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/final-t03-analysis.json",
+        "bytes": 10808,
+        "sha256": "cf9fb97108befdb27c776e4163709572834d1da2c37ad9c331b3d86a827a81de"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/final-r02-memory-analysis.json",
+        "bytes": 74163,
+        "sha256": "8e5b937717ebcbed5a32cfe684b68021f244471fd474d3535af026a6f89ddab3"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/final-r02-external-memory-analysis.json",
+        "bytes": 6056,
+        "sha256": "227dab8488c876c3ac04be3c730fce6cc393915ef2b1b2f219ba18a6c784fcc3"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/observed-export-memory-analysis.json",
+        "bytes": 85400,
+        "sha256": "475943959cd8e5e8baf1a2736daef161e508f349572050eb4d458de97d9366d8"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/final-background-load-review.json",
+        "bytes": 9934,
+        "sha256": "f9bf0010930554078fb7d68e81ba35f01fa8a2451abe4249edaf7a4e73075084"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/final-host-validity.json",
+        "bytes": 2711,
+        "sha256": "d848c2e4bb7a4152d21d874a7cad2c9dc31e76e8312827d37ac9807b6ecfef11"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/OWNED-CLEANUP.json",
+        "bytes": 1003,
+        "sha256": "9b061c3f75a500082e1f7801aaa6acbaf517ce66fd26d27602171931de85c650"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/performance/t03-1792012448088-0-0.result.json",
+        "bytes": 3420862,
+        "sha256": "8f3b4f351394418bd35fe7a5a49baab2044b04f0df0d929c5c61dc2f2c2722f8"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/performance/t03-1792013159892-1-0.result.json",
+        "bytes": 3420610,
+        "sha256": "cc54da8d7b890311f55b2c97b21d08b4b8f28d95dc1bf393aa7a319901d718bc"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/performance/t03-1792013872939-2-0.result.json",
+        "bytes": 3418968,
+        "sha256": "0604c08e68d19c64bb274fc6bb353a729d7c85f5c7f623b426b2383d220339bf"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/performance/r02-1792008582414-0.result.json",
+        "bytes": 1107695,
+        "sha256": "0f928bc3b2f6b9d96a109eaef03e48c999a781fa0139eeca8652c6a851833692"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/performance/r02-1792008582414-0.idle.jsonl",
+        "bytes": 183113,
+        "sha256": "348c6cff77e07c15bde11b7129805cb11e128e39fdec16c238170afc280cc444"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/performance/real-media-1792004834144/result.json",
+        "bytes": 355466,
+        "sha256": "5a06fed42f1122d8ff4a189eacce60de57087d6f6a00e29589d82434c93e5eb4"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/performance/real-media-1792006839220/result.json",
+        "bytes": 355757,
+        "sha256": "81b3647e9e1196737688f799f4913bae7df4f600b1a24fcbc9e4b36e25b5b2aa"
+      }
+    ]
+  },
+  "completion": {
+    "test_processes_stopped": true,
+    "host_monitor_stopped": true,
+    "caffeinate_stopped": true,
+    "no_tag_or_release": true
+  }
+}

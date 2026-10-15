@@ -24,6 +24,11 @@ CI 触发、baseline proposal 与现场排查见 [P6 CI 与基线](p6-ci-baselin
 [P3 instrumentation](p3-instrumentation.md)，规模与资产见 [scenarios](scenarios.md)。
 [P4 产品修复](p4-product-fixes.md) 记录行为与兼容边界。
 
+本机实际压力验收另见 [2026-10-15 macOS 测试结果](macos-2026-10-15-results.md)
+及其 [机器可读摘要](macos-2026-10-15-results.json)：包含被测提交、实际完成
+轮数和时长、失败与干扰记录，以及未解决的导出内存风险；结论为暂不放行，
+不是已批准的性能基线。
+
 ## 模式与预算
 
 模式（`CaptureMode`）：
