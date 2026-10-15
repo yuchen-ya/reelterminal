@@ -144,3 +144,58 @@ be prepared while CI runs; that preparation does not accept the unknown risk or
 publish anything. In the CPU-throttled probe, capture-stop cleanup closed a
 pending performance span as cancelled after the successful canonical commit;
 that collector cleanup is not evidence of a physical window blur/cancel.
+
+## Latest independent 1.2.0 candidate: 29524f05
+
+Latest build source: **29524f053c0789227e31cd58f925985d6742baab**.
+Directory: `apps/desktop/release/windows-1.2.0-29524f05/`. It was built clean
+with the normal scripts into its own directory; older candidates are preserved.
+Compared with hosted diagnostic source 85bdde07, only documentation changed.
+
+- Packaged app/installer version 1.2.0, exact source stamp and dirty=false verified.
+- Installer/application NotSigned, no installer wizard or installation replacement.
+- Packaged core **27/27 / 12 files / 92.40s / retry 0**, including the stronger
+  immediate-pre-drag revision check; no timeouts or thresholds raised.
+- ZIP all CRCs valid; all 302 files match the tested unpacked candidate.
+- Application payload hashes match the previous ee1062ec package for all 213
+  compared files, excluding the intentionally different build identity. Dependency
+  inputs unchanged. This is not full installer byte equivalence and does not erase
+  a prior failed interaction.
+
+Identity, checksums and scope: [candidate JSON](windows-1.2.0-29524f05-2026-10-15.json).
+[Runtime hash proof](windows-runtime-payload-equivalence-29524f05-2026-10-15.json)
+and its per-file companion are retained as inspectable source-backed evidence.
+
+The one automatic [diagnostic Electron run 38743806319](https://github.com/yuchen-ya/reelterminal/actions/runs/38743806319)
+completed on Windows with **123 passed / 13 skipped**, 356.19s. Its real drag
+hit the text clip, remained focused/visible, previewed 100px and committed
+revision 4 -> 5 at 1.235ms after mouse-up. Canonical start changed 0 ->
+0.6631299735s before the unchanged 400ms observation. The existing product
+trace records a successful final gesture commit. These details validate that
+round; they cannot recover the missing input/commit trace of the old failure.
+
+No reproducible product defect was established by the bounded investigation.
+No test-environment-only root cause was established either. The proven test
+improvements are the stricter revision baseline and retaining evidence before
+assertions, **not** a claimed fix of the failed startTime observation.
+
+No further automatic/manual test rounds are planned solely to obtain green.
+Remaining automatic CI terminals are tracked in the candidate JSON. The residual
+choice is whether to publish the verified Windows scope while explicitly
+retaining this one unattributed failure as a known risk, or keep publication
+blocked pending an actual instrumented reproduction. A later passing run alone
+must not silently decide that risk question. No tag or Release exists at the
+time of this update; Mac 1.2.0 package acceptance is still absent.
+
+
+Terminal follow-up: all four 85bdde07 automatic workflows passed:
+[CI](https://github.com/yuchen-ya/reelterminal/actions/runs/38743806400),
+[Electron E2E](https://github.com/yuchen-ya/reelterminal/actions/runs/38743806319),
+[Chromium E2E](https://github.com/yuchen-ya/reelterminal/actions/runs/38743806316),
+[performance contracts](https://github.com/yuchen-ya/reelterminal/actions/runs/38743806298).
+Mac source Electron also completed with 123 passed / 13 skipped, 550.32s; this
+is not a Mac package acceptance. No retries/manual duplicates were requested.
+The documentation freeze 29524f05 shares exactly these product/test sources.
+The explicit risk choice has been requested after completing the concrete
+candidate, evidence and release-note draft. No answer is inferred from a green
+run, elapsed time or the existing general release authorization.

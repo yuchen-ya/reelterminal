@@ -192,6 +192,61 @@
     "testChanges": "Capture bounded DOM input/focus/preview plus existing product trace; retain canonical snapshots before assertions and compare immediate pre-drag revision. Preserve one gesture, 400ms driver wait and startTime > 0 business assertion. Diagnostic failures do not mask primary error.",
     "temporaryFaultControlsCommitted": false,
     "targetedTypecheck": "passed with browser DOM/DOM.Iterable libs",
-    "hostedNextStep": "One normal automatic CI round for the strengthened diagnostic test; no rerun-to-green or manual duplicate."
+    "hostedNextStep": "One normal automatic CI round for the strengthened diagnostic test; no rerun-to-green or manual duplicate.",
+    "hostedDiagnosticRound": {
+      "sourceSha": "85bdde07f98b881d6980b461774e3e1e4c06469d",
+      "run": 38743806319,
+      "windowsPassed": 123,
+      "windowsFailed": 0,
+      "windowsSkipped": 13,
+      "revisionBefore": 4,
+      "revisionAfter": 5,
+      "startAfter": 0.663129973474801,
+      "canonicalCommitAfterMouseupMs": 1.235,
+      "oldFailureAttribution": "still unknown; passing instrumented round is not a fix",
+      "macosPassed": 123,
+      "macosFailed": 0,
+      "macosSkipped": 13,
+      "ciTerminal": [
+        {
+          "conclusion": "success",
+          "databaseId": 38743806298,
+          "headSha": "85bdde07f98b881d6980b461774e3e1e4c06469d",
+          "name": "Performance contracts @ 85bdde07f98b881d6980b461774e3e1e4c06469d",
+          "status": "completed",
+          "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38743806298"
+        },
+        {
+          "conclusion": "success",
+          "databaseId": 38743806316,
+          "headSha": "85bdde07f98b881d6980b461774e3e1e4c06469d",
+          "name": "Chromium E2E",
+          "status": "completed",
+          "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38743806316"
+        },
+        {
+          "conclusion": "success",
+          "databaseId": 38743806319,
+          "headSha": "85bdde07f98b881d6980b461774e3e1e4c06469d",
+          "name": "Electron E2E",
+          "status": "completed",
+          "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38743806319"
+        },
+        {
+          "conclusion": "success",
+          "databaseId": 38743806400,
+          "headSha": "85bdde07f98b881d6980b461774e3e1e4c06469d",
+          "name": "CI",
+          "status": "completed",
+          "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38743806400"
+        }
+      ]
+    }
+  },
+  "latestCandidate": {
+    "sourceSha": "29524f053c0789227e31cd58f925985d6742baab",
+    "report": "windows-1.2.0-29524f05-2026-10-15.json",
+    "packagedCorePassed": 27,
+    "publicationStatus": "awaiting explicit risk choice; all four hosted diagnostic-source workflows terminal success"
   }
 }

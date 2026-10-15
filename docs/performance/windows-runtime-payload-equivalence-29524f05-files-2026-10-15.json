@@ -1,0 +1,1493 @@
+[
+  {
+    "group": "dist",
+    "file": "dist/aurora-host/index.js",
+    "packagedSha256": "ba3c10febe922ca1618887764e3c26bd5907c3fcfe3af7367a600e7b18c9f7da",
+    "currentSha256": "ba3c10febe922ca1618887764e3c26bd5907c3fcfe3af7367a600e7b18c9f7da",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/browser-entry.mjs",
+    "packagedSha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b",
+    "currentSha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/browser/entry.ts",
+    "packagedSha256": "7a7f09bed3fec41d8c5b286fd715760fd2f2b05a0de86daa59081843d9d95e67",
+    "currentSha256": "7a7f09bed3fec41d8c5b286fd715760fd2f2b05a0de86daa59081843d9d95e67",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/browser/extract-audio-shim.ts",
+    "packagedSha256": "4696ef564ecc09888e418c4279cbab1ed40a6fad390a2654e4ef2f2dae8305a1",
+    "currentSha256": "4696ef564ecc09888e418c4279cbab1ed40a6fad390a2654e4ef2f2dae8305a1",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/live-mcp/index.js",
+    "packagedSha256": "72c056918dc7380ac235a0b325cf676f6ab0e3f1a95e2f246446324ccb1e27aa",
+    "currentSha256": "72c056918dc7380ac235a0b325cf676f6ab0e3f1a95e2f246446324ccb1e27aa",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/live-mcp/legacy.js",
+    "packagedSha256": "c295ff4c098b86065d57945b4bf7e8e7742540fa5e0175c5b276f55c0c1cfc48",
+    "currentSha256": "c295ff4c098b86065d57945b4bf7e8e7742540fa5e0175c5b276f55c0c1cfc48",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/main/index.js",
+    "packagedSha256": "01683893d4b45be8ead47a0daea22b3c1d81f0e4fb80292b326e2c79a888cc7a",
+    "currentSha256": "01683893d4b45be8ead47a0daea22b3c1d81f0e4fb80292b326e2c79a888cc7a",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/preload/index.js",
+    "packagedSha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+    "currentSha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/python/align.py",
+    "packagedSha256": "4de75f5ff5a620acaf374b9de85664aea559756471c6d47ce0778ecc9d9f327d",
+    "currentSha256": "4de75f5ff5a620acaf374b9de85664aea559756471c6d47ce0778ecc9d9f327d",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/python/mask_refine.py",
+    "packagedSha256": "fe26ce869f26e7d4b9a89ea53313614d2c6229bfcd07177d0f60cadfb2becf73",
+    "currentSha256": "fe26ce869f26e7d4b9a89ea53313614d2c6229bfcd07177d0f60cadfb2becf73",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/python/propagate.py",
+    "packagedSha256": "8972f2772cfe33252894aa6ca1c01ba72748eff49eef6d63ed17981df9edf0b8",
+    "currentSha256": "8972f2772cfe33252894aa6ca1c01ba72748eff49eef6d63ed17981df9edf0b8",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/python/track.py",
+    "packagedSha256": "05d35cc084d28b93c9ec0e23effa93e67505a31c6a9454cfb2c6a5cb269bb562",
+    "currentSha256": "05d35cc084d28b93c9ec0e23effa93e67505a31c6a9454cfb2c6a5cb269bb562",
+    "equal": true
+  },
+  {
+    "group": "dist",
+    "file": "dist/reelctl/index.js",
+    "packagedSha256": "66c6f55c52c9e920cc6cf05d6d44cfccd75603def4295eee59540755cb244a81",
+    "currentSha256": "66c6f55c52c9e920cc6cf05d6d44cfccd75603def4295eee59540755cb244a81",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "_headers",
+    "packagedSha256": "5d93ce2db948c5e364890c337cd414cfc235c2306075849766a6e8402a8f00b8",
+    "currentSha256": "5d93ce2db948c5e364890c337cd414cfc235c2306075849766a6e8402a8f00b8",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "_redirects",
+    "packagedSha256": "94f76bf42ffc51f446f54963735cab3da50e9db2eb45d4934da61e45c717d599",
+    "currentSha256": "94f76bf42ffc51f446f54963735cab3da50e9db2eb45d4934da61e45c717d599",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/DesktopApp-BITAk4MX.css",
+    "packagedSha256": "53b20514344aa722e7388cc10a4d959b8abdb5119531934c6d24cfd610b16a59",
+    "currentSha256": "53b20514344aa722e7388cc10a4d959b8abdb5119531934c6d24cfd610b16a59",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/DesktopApp-Debq6Ha9.js",
+    "packagedSha256": "d3f354908c26786efc0ab5a99fcd331df0c171a82c057ead79a1ce25124e9407",
+    "currentSha256": "d3f354908c26786efc0ab5a99fcd331df0c171a82c057ead79a1ce25124e9407",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/EditPage-CYYzcNnC.js",
+    "packagedSha256": "5a31a026f97e1d4700e5922b25e485b949cddd0b7a9af66a43594297695ab2d0",
+    "currentSha256": "5a31a026f97e1d4700e5922b25e485b949cddd0b7a9af66a43594297695ab2d0",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/EditorInterface-CuOlXnrH.js",
+    "packagedSha256": "32e7c298c737289c5c68be2e7ff694509fd993cc02071d2f936d16b94edb2c00",
+    "currentSha256": "32e7c298c737289c5c68be2e7ff694509fd993cc02071d2f936d16b94edb2c00",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/ErrorBoundary-BaDAji47.js",
+    "packagedSha256": "19811f42f9a0b741b4a44e0bdca56d6adbb61b34f751b70f1e8045f2b2456105",
+    "currentSha256": "19811f42f9a0b741b4a44e0bdca56d6adbb61b34f751b70f1e8045f2b2456105",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/Icon-G5a5i56G.js",
+    "packagedSha256": "ede34dd691b9cd80f88f067d01da5a8f591670bdf8ea7809267b7cc36d3e260c",
+    "currentSha256": "ede34dd691b9cd80f88f067d01da5a8f591670bdf8ea7809267b7cc36d3e260c",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/MotionCreatorApp-_3F9Oq2-.js",
+    "packagedSha256": "31237ffe02c4f715cbc468007861856605d4d258f39d0661cda6745144754071",
+    "currentSha256": "31237ffe02c4f715cbc468007861856605d4d258f39d0661cda6745144754071",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/MotionPage-CR2N0Eu1.js",
+    "packagedSha256": "a93207f35b0d3a7a99610bc136cc78512a10b44c67cb8c3012537082add94d86",
+    "currentSha256": "a93207f35b0d3a7a99610bc136cc78512a10b44c67cb8c3012537082add94d86",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/Preview-CBZLHIZy.js",
+    "packagedSha256": "dae070ee684dd07fbf33a9ee39c20a6736a642ff815d190c37c08c69f43abc9f",
+    "currentSha256": "dae070ee684dd07fbf33a9ee39c20a6736a642ff815d190c37c08c69f43abc9f",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/ScriptViewDialog-8O1SfL6a.js",
+    "packagedSha256": "e0103c940e5c61ae722080c907011f155fdd64d940dabfc0db7890e7f31dacd9",
+    "currentSha256": "e0103c940e5c61ae722080c907011f155fdd64d940dabfc0db7890e7f31dacd9",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/ShaderPreviewBrowser-BxSuck2Z.js",
+    "packagedSha256": "fd8277e06ba62a71790f84befe46241086438864c05c9c70c0c024282dabfb19",
+    "currentSha256": "fd8277e06ba62a71790f84befe46241086438864c05c9c70c0c024282dabfb19",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/Timeline-VRDX3Jk6.js",
+    "packagedSha256": "0a59718526483b92951f5fb1de5b2d04dfb2682e6dea693afa389c83545167ef",
+    "currentSha256": "0a59718526483b92951f5fb1de5b2d04dfb2682e6dea693afa389c83545167ef",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/animation-vendor-aD-UjUmA.js",
+    "packagedSha256": "d9f7732924c070c1dc336c5880ce03e6958aa8bfe697e3cd55e365c509913865",
+    "currentSha256": "d9f7732924c070c1dc336c5880ce03e6958aa8bfe697e3cd55e365c509913865",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/canvas2d-fallback-renderer-CWNvWcVM.js",
+    "packagedSha256": "cc695f8fb26166600ddeed80287180e614ed607236dfe67c75126579b39a8d22",
+    "currentSha256": "cc695f8fb26166600ddeed80287180e614ed607236dfe67c75126579b39a8d22",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/copy-D9eSVFAJ.js",
+    "packagedSha256": "fc814a76103ec984503954f4474fc44a04daf21dc6a58e154d7c9b6adcf705bc",
+    "currentSha256": "fc814a76103ec984503954f4474fc44a04daf21dc6a58e154d7c9b6adcf705bc",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/decode-worker-B8RbuLJu.js",
+    "packagedSha256": "49b9b1a3187e995ad4ff025e7ddeba2ddd22ca98aa226fb45542c2fa7fab23d6",
+    "currentSha256": "49b9b1a3187e995ad4ff025e7ddeba2ddd22ca98aa226fb45542c2fa7fab23d6",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/extract-audio-CuKFhWxp.js",
+    "packagedSha256": "a08f7c1e3293f1d065877cffd80c46994f47018c0315ed9e2f71dee154669444",
+    "currentSha256": "a08f7c1e3293f1d065877cffd80c46994f47018c0315ed9e2f71dee154669444",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/fft-_Y3kmDnt.wasm",
+    "packagedSha256": "54f0756518dc228f9c150bf4073bfcf80c75fde7a6e74843fd8c962cb54a896d",
+    "currentSha256": "54f0756518dc228f9c150bf4073bfcf80c75fde7a6e74843fd8c962cb54a896d",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/file-code-5_J7C96E.js",
+    "packagedSha256": "e66ac8311c1bfb233a35a7dc832567cbd7b00e58f791092f51dcaa3237256701",
+    "currentSha256": "e66ac8311c1bfb233a35a7dc832567cbd7b00e58f791092f51dcaa3237256701",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/grid-2x2-CqaZwcPb.js",
+    "packagedSha256": "ba3b232c940e8da6145f2c147f1f5e35434640a2b9636e732bfde758bec0bb9e",
+    "currentSha256": "ba3b232c940e8da6145f2c147f1f5e35434640a2b9636e732bfde758bec0bb9e",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/index-607UPNXL.js",
+    "packagedSha256": "5d6a0951d9284a67ddd56ef53c443a820abf29ce444116dba873d55cf9408a5e",
+    "currentSha256": "5d6a0951d9284a67ddd56ef53c443a820abf29ce444116dba873d55cf9408a5e",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/index-BMYcquW_.css",
+    "packagedSha256": "1b99c638bac8adf3becbc246a297f7e72bf31e44061f60322b22c1a00d7aa119",
+    "currentSha256": "1b99c638bac8adf3becbc246a297f7e72bf31e44061f60322b22c1a00d7aa119",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/index-C8ivSO9x.js",
+    "packagedSha256": "d0365788098ba70d74ad95ab4c5381c6076271539d94b58cef8a0d49333730a9",
+    "currentSha256": "d0365788098ba70d74ad95ab4c5381c6076271539d94b58cef8a0d49333730a9",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/index-CUnz4PRt.js",
+    "packagedSha256": "e7032e220f7af25d7c64fff4c8eaa4306491e5694c770afbad38be55d9dddba9",
+    "currentSha256": "e7032e220f7af25d7c64fff4c8eaa4306491e5694c770afbad38be55d9dddba9",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/index-lVJYrPy7.js",
+    "packagedSha256": "cc1c1f37b5b79a5b0619d52d707522d6b732da29744dacd1d3bd7caa28b73feb",
+    "currentSha256": "cc1c1f37b5b79a5b0619d52d707522d6b732da29744dacd1d3bd7caa28b73feb",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/lightbulb-DlBntdzt.js",
+    "packagedSha256": "b883ccfcc8f7b1862c4f61e37afe9e7ef006c1d799c2d17507ae178925075f9d",
+    "currentSha256": "b883ccfcc8f7b1862c4f61e37afe9e7ef006c1d799c2d17507ae178925075f9d",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/lock-HNsVkFl2.js",
+    "packagedSha256": "b6fe2e0e13634707c68eeeecce4453e58319dc3de8788a642564370c778a8a4f",
+    "currentSha256": "b6fe2e0e13634707c68eeeecce4453e58319dc3de8788a642564370c778a8a4f",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/magnet-u1LGEWMT.js",
+    "packagedSha256": "b6f5a4f3d5ebdf9b079a090a2721e7533f754ecdb4e2750784058f8d3edb263e",
+    "currentSha256": "b6f5a4f3d5ebdf9b079a090a2721e7533f754ecdb4e2750784058f8d3edb263e",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/media-vendor-DOFPr5e4.js",
+    "packagedSha256": "e5f733f9b5fc342276bde36d4db3b45f73e091ffc2468006c4deef9830ecac8d",
+    "currentSha256": "e5f733f9b5fc342276bde36d4db3b45f73e091ffc2468006c4deef9830ecac8d",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/motion-asset-resolver-DvcH4n1D.js",
+    "packagedSha256": "b09cae0dc77077cddae416b4402f08ead4343692056c3030f620c9c829be7733",
+    "currentSha256": "b09cae0dc77077cddae416b4402f08ead4343692056c3030f620c9c829be7733",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/native-profile-OmSacI16.js",
+    "packagedSha256": "5aa7959bebfdc333cdb8225c51390377e5637655331327faa06e15e3444853a1",
+    "currentSha256": "5aa7959bebfdc333cdb8225c51390377e5637655331327faa06e15e3444853a1",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/ort-wasm-simd-threaded.jsep-B0T3yYHD.wasm",
+    "packagedSha256": "c46655e8a94afc45338d4cb2b840475f88e5012d524509916e505079c00bfa39",
+    "currentSha256": "c46655e8a94afc45338d4cb2b840475f88e5012d524509916e505079c00bfa39",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/person-segmentation-worker-D1jG2GZ2.js",
+    "packagedSha256": "16f585efb010b4d8bff2a3af4caa1dcf8254b161361f6de5eb232af89fe81566",
+    "currentSha256": "16f585efb010b4d8bff2a3af4caa1dcf8254b161361f6de5eb232af89fe81566",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/radix-DtmpwRJM.js",
+    "packagedSha256": "62b6a3ba61dd4e292a27784fca395a10595974dc3d46b2d5fcf454c4a63e7892",
+    "currentSha256": "62b6a3ba61dd4e292a27784fca395a10595974dc3d46b2d5fcf454c4a63e7892",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/react-DDdkU4zp.js",
+    "packagedSha256": "b23a6ddace0ca9cc80618a91edeb7eb5144fb7d22502ab29c390f0385280a73f",
+    "currentSha256": "b23a6ddace0ca9cc80618a91edeb7eb5144fb7d22502ab29c390f0385280a73f",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/resource-snapshot-D-RcaW8t.js",
+    "packagedSha256": "680c5edd1b5846b765a9164cd79f0276f8f0b7e2167dc77bf2b899086271f888",
+    "currentSha256": "680c5edd1b5846b765a9164cd79f0276f8f0b7e2167dc77bf2b899086271f888",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/shader-vendor-CmunTFwj.js",
+    "packagedSha256": "10cbe22a4ef85eda54de66d4fad4fdc60e52c6b4e10894e05c83d7efdcc9fe78",
+    "currentSha256": "10cbe22a4ef85eda54de66d4fad4fdc60e52c6b4e10894e05c83d7efdcc9fe78",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/skip-forward-IAjSgp_8.js",
+    "packagedSha256": "25b0f3e0d8731d7401cdb6e422fc38f46c33535fb1bf0b1a607b5c5558c575c2",
+    "currentSha256": "25b0f3e0d8731d7401cdb6e422fc38f46c33535fb1bf0b1a607b5c5558c575c2",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/syntax-highlighting-Cin_8gRV.js",
+    "packagedSha256": "bdb0753d937fecbc152639b73c53b51b3ef50df7a50ad7fb76e8ffb9c85fa0ee",
+    "currentSha256": "bdb0753d937fecbc152639b73c53b51b3ef50df7a50ad7fb76e8ffb9c85fa0ee",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/three-Dpi4cY68.js",
+    "packagedSha256": "525ffceca65e33b7569c1fe4f7ae4760a68e9359d21afdb942766e30ed9660a5",
+    "currentSha256": "525ffceca65e33b7569c1fe4f7ae4760a68e9359d21afdb942766e30ed9660a5",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/upload-CtanVtFM.js",
+    "packagedSha256": "f3a071d2a5c55cce983874c7503f365765d94eec32f67d0d6519dfa03874c791",
+    "currentSha256": "f3a071d2a5c55cce983874c7503f365765d94eec32f67d0d6519dfa03874c791",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/useKeyboardShortcuts-B0I2fksl.js",
+    "packagedSha256": "fb8834b3ca6599ea6442c875ff64186ac0b1d6699095644ceb1fd49955a6bc7f",
+    "currentSha256": "fb8834b3ca6599ea6442c875ff64186ac0b1d6699095644ceb1fd49955a6bc7f",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/useKeyboardShortcuts-D6FUfixx.css",
+    "packagedSha256": "7c7858570a6791253411cfb34ccc5aa5f7d53280f985afaa90baa52afea5e7ba",
+    "currentSha256": "7c7858570a6791253411cfb34ccc5aa5f7d53280f985afaa90baa52afea5e7ba",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/webgpu-renderer-impl-ft7iPpJ7.js",
+    "packagedSha256": "a653fcd2d84864c8822635dd4e8be193174a642edc3c5d5fd8077e48c03986b2",
+    "currentSha256": "a653fcd2d84864c8822635dd4e8be193174a642edc3c5d5fd8077e48c03986b2",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/whisper-worker-DFyN3x6z.js",
+    "packagedSha256": "4ac5901d8ab96faacaa70b56086fc0f3d74ce70ae081ac167acfb43c91e4c24c",
+    "currentSha256": "4ac5901d8ab96faacaa70b56086fc0f3d74ce70ae081ac167acfb43c91e4c24c",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/worker-DYSz7Krg.js",
+    "packagedSha256": "e0a67260df485c224837991e3ea12d721a43c2511a594946fe7d176b8884c429",
+    "currentSha256": "e0a67260df485c224837991e3ea12d721a43c2511a594946fe7d176b8884c429",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "assets/zustand-XPt9OZdV.js",
+    "packagedSha256": "e91320d44d0cf9062d718d8979f8f95691bc1c307f04f5c246ece9841922ef2e",
+    "currentSha256": "e91320d44d0cf9062d718d8979f8f95691bc1c307f04f5c246ece9841922ef2e",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "favicon.svg",
+    "packagedSha256": "29841054957360cdf586203e26d25a68ed06d58f14c1e9d2194210f1cd791bc5",
+    "currentSha256": "29841054957360cdf586203e26d25a68ed06d58f14c1e9d2194210f1cd791bc5",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/JTUSjIg1_i6t8kCHKm459W1hyyTh89ZNpQ.woff2",
+    "packagedSha256": "0b00fbd6edcc84cd5f77364bbeb06b75ed263c740061eba34511f1e2ac1a82d3",
+    "currentSha256": "0b00fbd6edcc84cd5f77364bbeb06b75ed263c740061eba34511f1e2ac1a82d3",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/JTUSjIg1_i6t8kCHKm459WRhyyTh89ZNpQ.woff2",
+    "packagedSha256": "744830a0e77dd14dd543a4230d6e3ce67ca961634074b5d536ebafc66c732301",
+    "currentSha256": "744830a0e77dd14dd543a4230d6e3ce67ca961634074b5d536ebafc66c732301",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/JTUSjIg1_i6t8kCHKm459WZhyyTh89ZNpQ.woff2",
+    "packagedSha256": "9e2672d100bc36a37073fb250abfaa7394f5151bf5dda3f4d5fc281345eb391b",
+    "currentSha256": "9e2672d100bc36a37073fb250abfaa7394f5151bf5dda3f4d5fc281345eb391b",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/JTUSjIg1_i6t8kCHKm459WdhyyTh89ZNpQ.woff2",
+    "packagedSha256": "920711de9ae96c18970fa4faca73cd302b93ac5ed57ebeb6bfec2ddeff930082",
+    "currentSha256": "920711de9ae96c18970fa4faca73cd302b93ac5ed57ebeb6bfec2ddeff930082",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/JTUSjIg1_i6t8kCHKm459WlhyyTh89Y.woff2",
+    "packagedSha256": "6438d7b8ea9c7c3992d5e2fd2afdb1ff948570a3ef0bedae76247b51632960ba",
+    "currentSha256": "6438d7b8ea9c7c3992d5e2fd2afdb1ff948570a3ef0bedae76247b51632960ba",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3-UBHMdazTgWw.woff2",
+    "packagedSha256": "4813e3dfbbb23708c817ef7fd3fd9c82cd0d33c778def0897f0447f1c364ce64",
+    "currentSha256": "4813e3dfbbb23708c817ef7fd3fd9c82cd0d33c778def0897f0447f1c364ce64",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3CUBHMdazTgWw.woff2",
+    "packagedSha256": "5fdfeaf926cac990770dfa66011bdb87d6b69f43c42aa759dcdcf0a7a197c19a",
+    "currentSha256": "5fdfeaf926cac990770dfa66011bdb87d6b69f43c42aa759dcdcf0a7a197c19a",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3GUBHMdazTgWw.woff2",
+    "packagedSha256": "e44224eb71a96cb33bd046ded16a4e22bb441b170bdfbcba0268a754141b97c8",
+    "currentSha256": "e44224eb71a96cb33bd046ded16a4e22bb441b170bdfbcba0268a754141b97c8",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3KUBHMdazTgWw.woff2",
+    "packagedSha256": "cdd53dc5576a79f35cf280dfbd9c1cb2a5dd2f0ede30afba9b9ccdc7fe12e7d0",
+    "currentSha256": "cdd53dc5576a79f35cf280dfbd9c1cb2a5dd2f0ede30afba9b9ccdc7fe12e7d0",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3OUBHMdazTgWw.woff2",
+    "packagedSha256": "2071148c26bd0430cad316373c26db399e0cf8f6275b9e1a2c1b831f05ee7dc3",
+    "currentSha256": "2071148c26bd0430cad316373c26db399e0cf8f6275b9e1a2c1b831f05ee7dc3",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3iUBHMdazTgWw.woff2",
+    "packagedSha256": "32886c5ec61a0d06e5677a98c5ed78a5f1c788c18c5e8d7dcd931c4b6dc19830",
+    "currentSha256": "32886c5ec61a0d06e5677a98c5ed78a5f1c788c18c5e8d7dcd931c4b6dc19830",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBHMdazQ.woff2",
+    "packagedSha256": "0a44e0bb6ba5c8537e8814c148ef7755f1bce12112361231f595ecc584a18d7a",
+    "currentSha256": "0a44e0bb6ba5c8537e8814c148ef7755f1bce12112361231f595ecc584a18d7a",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMawCUBHMdazTgWw.woff2",
+    "packagedSha256": "297193369eea600161f4b5219bd7b08850180fcfe0752f1a2eaa436575cd03b7",
+    "currentSha256": "297193369eea600161f4b5219bd7b08850180fcfe0752f1a2eaa436575cd03b7",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMaxKUBHMdazTgWw.woff2",
+    "packagedSha256": "fab8a0056d92fdd8d64fed4b049744144e1d24d08762c513bff78265299ed7a3",
+    "currentSha256": "fab8a0056d92fdd8d64fed4b049744144e1d24d08762c513bff78265299ed7a3",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/QGYvz_MVcBeNP4NJtEtqUYLknw.woff2",
+    "packagedSha256": "92684e4acde79ef07758cd09380b7e01e9824d8b061eddeda046f78c166d7b12",
+    "currentSha256": "92684e4acde79ef07758cd09380b7e01e9824d8b061eddeda046f78c166d7b12",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/QGYvz_MVcBeNP4NJuktqUYLkn8BJ.woff2",
+    "packagedSha256": "9e38b3f1575daba3435ef09d33a202585ed5bd204bd0a8c744955c750c2b9091",
+    "currentSha256": "9e38b3f1575daba3435ef09d33a202585ed5bd204bd0a8c744955c750c2b9091",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/S6u9w4BMUTPHh50XSwaPGQ3q5d0N7w.woff2",
+    "packagedSha256": "5aaafef33d89a4e866f1837d27e8cf465479efd9ef2ef53ac9bedd7c8103dc03",
+    "currentSha256": "5aaafef33d89a4e866f1837d27e8cf465479efd9ef2ef53ac9bedd7c8103dc03",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/S6u9w4BMUTPHh50XSwiPGQ3q5d0.woff2",
+    "packagedSha256": "bd9a6192274f8f2f3ce31cd3d2cae5ebe32e2fa86fc7c4f60a3c28556e496d56",
+    "currentSha256": "bd9a6192274f8f2f3ce31cd3d2cae5ebe32e2fa86fc7c4f60a3c28556e496d56",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/S6u9w4BMUTPHh6UVSwaPGQ3q5d0N7w.woff2",
+    "packagedSha256": "78e850d569834892d3f4bdfd2084c7a7c0dc64ae4226f3231af30dae706400e2",
+    "currentSha256": "78e850d569834892d3f4bdfd2084c7a7c0dc64ae4226f3231af30dae706400e2",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/S6u9w4BMUTPHh6UVSwiPGQ3q5d0.woff2",
+    "packagedSha256": "7a7ce1a34f3e9944fe88fc61abbc93b6db383afa2b90815fd7ccea456fbce4e5",
+    "currentSha256": "7a7ce1a34f3e9944fe88fc61abbc93b6db383afa2b90815fd7ccea456fbce4e5",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/S6u9w4BMUTPHh7USSwaPGQ3q5d0N7w.woff2",
+    "packagedSha256": "f74c0a0ebbe359255553a5445ccf2a75973d9c70807452ca12820b7bcfc9bbb9",
+    "currentSha256": "f74c0a0ebbe359255553a5445ccf2a75973d9c70807452ca12820b7bcfc9bbb9",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/S6u9w4BMUTPHh7USSwiPGQ3q5d0.woff2",
+    "packagedSha256": "7bb29c58eadc0f0c7b704f5fce2490d10cb62efa55797a09c9b8f91b3b54cb34",
+    "currentSha256": "7bb29c58eadc0f0c7b704f5fce2490d10cb62efa55797a09c9b8f91b3b54cb34",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/S6uyw4BMUTPHjx4wXiWtFCc.woff2",
+    "packagedSha256": "d4ae5188a65370ecfe28f42293bbee8297cfd5712c6aadfdb270d48f2bcd88b0",
+    "currentSha256": "d4ae5188a65370ecfe28f42293bbee8297cfd5712c6aadfdb270d48f2bcd88b0",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/S6uyw4BMUTPHjxAwXiWtFCfQ7A.woff2",
+    "packagedSha256": "b85c84c655bcbba3bd628b2c1fea0fbdb5b158a9022281a2f910e82fd6da5098",
+    "currentSha256": "b85c84c655bcbba3bd628b2c1fea0fbdb5b158a9022281a2f910e82fd6da5098",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7W0Q5n-wU.woff2",
+    "packagedSha256": "aebf2ab4a4ce6810d73c1ac7be7cafb4e5ec4cee2d6db5fb3e09691747ec4bd6",
+    "currentSha256": "aebf2ab4a4ce6810d73c1ac7be7cafb4e5ec4cee2d6db5fb3e09691747ec4bd6",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2",
+    "packagedSha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
+    "currentSha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1pL7W0Q5n-wU.woff2",
+    "packagedSha256": "46dd4cdca58c26ae87cc6927657bf83b2e8abfc39ffd0ab176e301a8d28d22bf",
+    "currentSha256": "46dd4cdca58c26ae87cc6927657bf83b2e8abfc39ffd0ab176e301a8d28d22bf",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7W0Q5n-wU.woff2",
+    "packagedSha256": "a28eb6d3ccb534ae0c94ca999371df024aab60b08c3c8a5720ee9e32fa0faaa2",
+    "currentSha256": "a28eb6d3ccb534ae0c94ca999371df024aab60b08c3c8a5720ee9e32fa0faaa2",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2JL7W0Q5n-wU.woff2",
+    "packagedSha256": "fccca918fea40089dacadc7045861314d1a6bc91f1f323cc1eeb22ebcdb321b5",
+    "currentSha256": "fccca918fea40089dacadc7045861314d1a6bc91f1f323cc1eeb22ebcdb321b5",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2ZL7W0Q5n-wU.woff2",
+    "packagedSha256": "a2e2c783ca6f9c20486e81e72a279203e86730bbf8f01ff6a5ee9dbd09e1c271",
+    "currentSha256": "a2e2c783ca6f9c20486e81e72a279203e86730bbf8f01ff6a5ee9dbd09e1c271",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2pL7W0Q5n-wU.woff2",
+    "packagedSha256": "8db00ff46c67b22cda8bed865acf7077651cac8d2841d5b40980556b48961931",
+    "currentSha256": "8db00ff46c67b22cda8bed865acf7077651cac8d2841d5b40980556b48961931",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/google-fonts.css",
+    "packagedSha256": "0ac8abce4e7fd4087f6cc168d65f5471cb337aa580f856bdf1fd4ddf8ee1cb39",
+    "currentSha256": "0ac8abce4e7fd4087f6cc168d65f5471cb337aa580f856bdf1fd4ddf8ee1cb39",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/gyByhwUxId8gMEwRGFWNOITddY4.woff2",
+    "packagedSha256": "b7a545bbb08256bd809f11cfe66d88da3e22d169ea4407737b1ef0ec1ed3d791",
+    "currentSha256": "b7a545bbb08256bd809f11cfe66d88da3e22d169ea4407737b1ef0ec1ed3d791",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/gyByhwUxId8gMEwSGFWNOITddY4.woff2",
+    "packagedSha256": "58a6b173d5ca1dec92166ea3c6cb1a84a4144556d10928ac14e8e6b40e4787bd",
+    "currentSha256": "58a6b173d5ca1dec92166ea3c6cb1a84a4144556d10928ac14e8e6b40e4787bd",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/gyByhwUxId8gMEwTGFWNOITddY4.woff2",
+    "packagedSha256": "f689f638f29fff460a2d5749edb5d5c38d7bef0389f32032d871f23fc6ebb008",
+    "currentSha256": "f689f638f29fff460a2d5749edb5d5c38d7bef0389f32032d871f23fc6ebb008",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/gyByhwUxId8gMEwYGFWNOITddY4.woff2",
+    "packagedSha256": "6129fc8571c3e0cb0a4c41f5160c974a843b055009dc4ad8858bd808e18a2d86",
+    "currentSha256": "6129fc8571c3e0cb0a4c41f5160c974a843b055009dc4ad8858bd808e18a2d86",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/gyByhwUxId8gMEwcGFWNOITd.woff2",
+    "packagedSha256": "9b6f5ff45b278c744b5f379a2c4ecbaf858a842b8eaf82ac8d21b699ca16c608",
+    "currentSha256": "9b6f5ff45b278c744b5f379a2c4ecbaf858a842b8eaf82ac8d21b699ca16c608",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/helvetiker_bold.typeface.json",
+    "packagedSha256": "bd68159ee0b8d10fe24b9daa2e32f19686f9d8269a79dc8d44203a66298bfa2f",
+    "currentSha256": "bd68159ee0b8d10fe24b9daa2e32f19686f9d8269a79dc8d44203a66298bfa2f",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/helvetiker_regular.typeface.json",
+    "packagedSha256": "d5c5467690f74061179a292af83bd85c4c551e0f106b2af99714f11184c96981",
+    "currentSha256": "d5c5467690f74061179a292af83bd85c4c551e0f106b2af99714f11184c96981",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/README.md",
+    "packagedSha256": "20bff930cf843753ee7b514245666c396e43baab40e61b1471c7eb7762532478",
+    "currentSha256": "20bff930cf843753ee7b514245666c396e43baab40e61b1471c7eb7762532478",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/abrilfatface/OFL.txt",
+    "packagedSha256": "aba8997e16b1e3888c6e855ba883c70d96bd4375bff8cb9c7ce0f097200f74b8",
+    "currentSha256": "aba8997e16b1e3888c6e855ba883c70d96bd4375bff8cb9c7ce0f097200f74b8",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/alfaslabone/OFL.txt",
+    "packagedSha256": "e315abc82a78710c7242e2f2e6529651fd631d4d50e6ad98ea194f9b54c3d701",
+    "currentSha256": "e315abc82a78710c7242e2f2e6529651fd631d4d50e6ad98ea194f9b54c3d701",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/anton/OFL.txt",
+    "packagedSha256": "ee67e6ee22790b7929f1a3769ca2801d565c64b5a9096942c1adf5596de9c9e4",
+    "currentSha256": "ee67e6ee22790b7929f1a3769ca2801d565c64b5a9096942c1adf5596de9c9e4",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/archivoblack/OFL.txt",
+    "packagedSha256": "3173acd82f8c6159b5b1037b539fcbd4edff68e65c2ea8b9412b5a5ca97b08ff",
+    "currentSha256": "3173acd82f8c6159b5b1037b539fcbd4edff68e65c2ea8b9412b5a5ca97b08ff",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/bangers/OFL.txt",
+    "packagedSha256": "630dd5a307c0657b094d324e069b390edf90182fe5003639e06c02a0e5769af7",
+    "currentSha256": "630dd5a307c0657b094d324e069b390edf90182fe5003639e06c02a0e5769af7",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/bebasneue/OFL.txt",
+    "packagedSha256": "72082f6cb4d04be2ecf7cc7d9e1e7d73787f0af8a5a278a47cade70c16b78341",
+    "currentSha256": "72082f6cb4d04be2ecf7cc7d9e1e7d73787f0af8a5a278a47cade70c16b78341",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/blackopsone/OFL.txt",
+    "packagedSha256": "f67ca4a200424868ee8fcd5464d7b35ac1cbf7723f6bfdbd19a8524689fab9a8",
+    "currentSha256": "f67ca4a200424868ee8fcd5464d7b35ac1cbf7723f6bfdbd19a8524689fab9a8",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/bungee/OFL.txt",
+    "packagedSha256": "d5787a50dde5be6c6daecab9ed459939b1bc37cff0d0e00257eaf1ec2cf4c16c",
+    "currentSha256": "d5787a50dde5be6c6daecab9ed459939b1bc37cff0d0e00257eaf1ec2cf4c16c",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/caveat/OFL.txt",
+    "packagedSha256": "1f9d81d094273d82f3898a1ee8b598a717d050ecbf5ff7bede105b704880157b",
+    "currentSha256": "1f9d81d094273d82f3898a1ee8b598a717d050ecbf5ff7bede105b704880157b",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/cinzel/OFL.txt",
+    "packagedSha256": "f2b3029aba64c378bf0963b62945eee15e564fe4330b934c8f2eb058282b5e83",
+    "currentSha256": "f2b3029aba64c378bf0963b62945eee15e564fe4330b934c8f2eb058282b5e83",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/comfortaa/OFL.txt",
+    "packagedSha256": "bc85bae0b512b799bbfb2b916e4d0a34cfd963d09778cd783e248b479e67760a",
+    "currentSha256": "bc85bae0b512b799bbfb2b916e4d0a34cfd963d09778cd783e248b479e67760a",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/concertone/OFL.txt",
+    "packagedSha256": "162a3b5c72cba845280a6f887c11d02984540b924510138c8b1eb473bcdafb6a",
+    "currentSha256": "162a3b5c72cba845280a6f887c11d02984540b924510138c8b1eb473bcdafb6a",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/creepster/OFL.txt",
+    "packagedSha256": "c09e3b81d9cfeec46bc29a3374000e8ad013d694bdf24a288088491dd4cd5c69",
+    "currentSha256": "c09e3b81d9cfeec46bc29a3374000e8ad013d694bdf24a288088491dd4cd5c69",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/dancingscript/OFL.txt",
+    "packagedSha256": "6f090277c00af96651ce6dbcc38ff1591047a3bffef486e80b6a32e8276a8201",
+    "currentSha256": "6f090277c00af96651ce6dbcc38ff1591047a3bffef486e80b6a32e8276a8201",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/dmsans/OFL.txt",
+    "packagedSha256": "9af36190332437f5ecd09974de43c1f7c77a310a996cdd8ceb25628b458840e1",
+    "currentSha256": "9af36190332437f5ecd09974de43c1f7c77a310a996cdd8ceb25628b458840e1",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/dmserifdisplay/OFL.txt",
+    "packagedSha256": "a3e5cdd67d4571dd0a24fcc968de0efde7ae97ef752daf0906e4767619dd7231",
+    "currentSha256": "a3e5cdd67d4571dd0a24fcc968de0efde7ae97ef752daf0906e4767619dd7231",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/fredokaone/OFL.txt",
+    "packagedSha256": "43186c592361336474683e302dcc988831a53857bef188c4466f6b45dc238f84",
+    "currentSha256": "43186c592361336474683e302dcc988831a53857bef188c4466f6b45dc238f84",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/geist/OFL.txt",
+    "packagedSha256": "1781d2806a07d91c4edf4740b88449fab7d0eadad53f7c351b94cd4d4eb8c00f",
+    "currentSha256": "1781d2806a07d91c4edf4740b88449fab7d0eadad53f7c351b94cd4d4eb8c00f",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/geistmono/OFL.txt",
+    "packagedSha256": "1781d2806a07d91c4edf4740b88449fab7d0eadad53f7c351b94cd4d4eb8c00f",
+    "currentSha256": "1781d2806a07d91c4edf4740b88449fab7d0eadad53f7c351b94cd4d4eb8c00f",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/greatvibes/OFL.txt",
+    "packagedSha256": "61093a21f5e63dedf54222b3c09997e54c0fe43e3851d21386e02ddcbc246d49",
+    "currentSha256": "61093a21f5e63dedf54222b3c09997e54c0fe43e3851d21386e02ddcbc246d49",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/helvetiker/LICENSE.txt",
+    "packagedSha256": "7cfdd25fcb62d68abce04396850f1e88beddd9c556b926385bcfbbb410b707b2",
+    "currentSha256": "7cfdd25fcb62d68abce04396850f1e88beddd9c556b926385bcfbbb410b707b2",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/inter/OFL.txt",
+    "packagedSha256": "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57",
+    "currentSha256": "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/lato/OFL.txt",
+    "packagedSha256": "74ba064d03f1f1c4a952da936c3eb71866c34404916734de3cae73b34357e59e",
+    "currentSha256": "74ba064d03f1f1c4a952da936c3eb71866c34404916734de3cae73b34357e59e",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/lexend/OFL.txt",
+    "packagedSha256": "5da8505887d0fa7fe963445fd58852707fda34adfeb65af25c99d152bab285bd",
+    "currentSha256": "5da8505887d0fa7fe963445fd58852707fda34adfeb65af25c99d152bab285bd",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/lobster/OFL.txt",
+    "packagedSha256": "88aece7d90f2bb7049719f11619a560af22af3451af141f12aa4f46bb157a99b",
+    "currentSha256": "88aece7d90f2bb7049719f11619a560af22af3451af141f12aa4f46bb157a99b",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/lora/OFL.txt",
+    "packagedSha256": "1d9a970809ac804b582a6ce7f0ebc4e7fefcbfd7ff6299cad35ee656a21be716",
+    "currentSha256": "1d9a970809ac804b582a6ce7f0ebc4e7fefcbfd7ff6299cad35ee656a21be716",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/manifest.json",
+    "packagedSha256": "eb562ace3de4365a5eacf326c8a9277ba964f4e0790c33762195e263550a416f",
+    "currentSha256": "eb562ace3de4365a5eacf326c8a9277ba964f4e0790c33762195e263550a416f",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/merriweather/OFL.txt",
+    "packagedSha256": "715bd349bfa6116f99e351e1548321dcfa25b91df65502d22ca8d624557697d2",
+    "currentSha256": "715bd349bfa6116f99e351e1548321dcfa25b91df65502d22ca8d624557697d2",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/montserrat/OFL.txt",
+    "packagedSha256": "8b7141c03fa4f8d44e6345d5d4931709290f0f67875e452e95ac1fd3a027802e",
+    "currentSha256": "8b7141c03fa4f8d44e6345d5d4931709290f0f67875e452e95ac1fd3a027802e",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/nunito/OFL.txt",
+    "packagedSha256": "580df76c95a1ec5ab878ceb25bb3d85c6a076804e9c970c8c6972aea775fdf65",
+    "currentSha256": "580df76c95a1ec5ab878ceb25bb3d85c6a076804e9c970c8c6972aea775fdf65",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/opensans/OFL.txt",
+    "packagedSha256": "fbbbcfef55318de350562559b671360de6d597112ecc5c73881b05092db89602",
+    "currentSha256": "fbbbcfef55318de350562559b671360de6d597112ecc5c73881b05092db89602",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/oswald/OFL.txt",
+    "packagedSha256": "0fd731a904b729a4e02eaf5e8ebd06783edd9abe400e8882760160230675b652",
+    "currentSha256": "0fd731a904b729a4e02eaf5e8ebd06783edd9abe400e8882760160230675b652",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/outfit/OFL.txt",
+    "packagedSha256": "c676351bf8576b9aba743cd5eaa8c0e7ee0d51f805d720447b4df4ddb6a2e416",
+    "currentSha256": "c676351bf8576b9aba743cd5eaa8c0e7ee0d51f805d720447b4df4ddb6a2e416",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/pacifico/OFL.txt",
+    "packagedSha256": "a47e5daeda73568969395c656823102678f2eefb0d7d7ecb47aac4cc17e42204",
+    "currentSha256": "a47e5daeda73568969395c656823102678f2eefb0d7d7ecb47aac4cc17e42204",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/permanentmarker/LICENSE.txt",
+    "packagedSha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "currentSha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/playfairdisplay/OFL.txt",
+    "packagedSha256": "566be814f8e96e93dfa16101331557eb6b5467e9e03f627c0910fe93ca12300e",
+    "currentSha256": "566be814f8e96e93dfa16101331557eb6b5467e9e03f627c0910fe93ca12300e",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/poppins/OFL.txt",
+    "packagedSha256": "6be04893d770899a015649c7aa3b582f871b272f8747a92b78b17c3e5c8b2573",
+    "currentSha256": "6be04893d770899a015649c7aa3b582f871b272f8747a92b78b17c3e5c8b2573",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/pressstart2p/OFL.txt",
+    "packagedSha256": "705960c3281a5765ecc0b59bd4ed7ca59eed165748076bc2fc3e8fdbfeb944b0",
+    "currentSha256": "705960c3281a5765ecc0b59bd4ed7ca59eed165748076bc2fc3e8fdbfeb944b0",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/quicksand/OFL.txt",
+    "packagedSha256": "14d28541780d90f6577bb7abcc6f005bf6969614294e75c82abb8758a696ad46",
+    "currentSha256": "14d28541780d90f6577bb7abcc6f005bf6969614294e75c82abb8758a696ad46",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/raleway/OFL.txt",
+    "packagedSha256": "7e946cf1171784d1015279e7dc35f827957a6b5d1f1f659ae0c98e5f5e37ed9b",
+    "currentSha256": "7e946cf1171784d1015279e7dc35f827957a6b5d1f1f659ae0c98e5f5e37ed9b",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/righteous/OFL.txt",
+    "packagedSha256": "1c5bc055869d5e9151ec7774082727db720ec4293c65be67f91a4bdcaeb02998",
+    "currentSha256": "1c5bc055869d5e9151ec7774082727db720ec4293c65be67f91a4bdcaeb02998",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/roboto/OFL.txt",
+    "packagedSha256": "061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41",
+    "currentSha256": "061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/robotocondensed/OFL.txt",
+    "packagedSha256": "0e4cc6ece88573545be2ed25835363662a6182ba4a4c1b5c8feda52add30e8a6",
+    "currentSha256": "0e4cc6ece88573545be2ed25835363662a6182ba4a4c1b5c8feda52add30e8a6",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/robotomono/OFL.txt",
+    "packagedSha256": "50ab8dd54680d3473f649c9db86fece88434d097c7834475c1c72d2f8c429215",
+    "currentSha256": "50ab8dd54680d3473f649c9db86fece88434d097c7834475c1c72d2f8c429215",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/robotoslab/LICENSE.txt",
+    "packagedSha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "currentSha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/rocksalt/LICENSE.txt",
+    "packagedSha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "currentSha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/rubik/OFL.txt",
+    "packagedSha256": "472cbe7c25441df63e9c7864b43eb3c0f4b3df950c66a76224e6cfe1eae843fb",
+    "currentSha256": "472cbe7c25441df63e9c7864b43eb3c0f4b3df950c66a76224e6cfe1eae843fb",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/sacramento/OFL.txt",
+    "packagedSha256": "2e2cb5a98da665f2ab82a9fd01fb18c2337f845761b0c163f690ed65f3b94677",
+    "currentSha256": "2e2cb5a98da665f2ab82a9fd01fb18c2337f845761b0c163f690ed65f3b94677",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/satisfy/LICENSE.txt",
+    "packagedSha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "currentSha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/spacegrotesk/OFL.txt",
+    "packagedSha256": "564ce565c371c5e5bbf286006565a7c9aa55a9f56e7ca58d56e05d649dd61a72",
+    "currentSha256": "564ce565c371c5e5bbf286006565a7c9aa55a9f56e7ca58d56e05d649dd61a72",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/spacemono/OFL.txt",
+    "packagedSha256": "8e4ee42b2553e1e01504e61cb0d46d148cd8c9e5eacaa3622a7df2d4f2955b9f",
+    "currentSha256": "8e4ee42b2553e1e01504e61cb0d46d148cd8c9e5eacaa3622a7df2d4f2955b9f",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/staatliches/OFL.txt",
+    "packagedSha256": "72afba97d1ac9409a9fd3bb91a02a639427ca1988977909dad273e293a508d7e",
+    "currentSha256": "72afba97d1ac9409a9fd3bb91a02a639427ca1988977909dad273e293a508d7e",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/teko/OFL.txt",
+    "packagedSha256": "4a193c54e911c1e8194d4db657423f2527f54a1239f24cb67ecb09128dc9f065",
+    "currentSha256": "4a193c54e911c1e8194d4db657423f2527f54a1239f24cb67ecb09128dc9f065",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/titanone/OFL.txt",
+    "packagedSha256": "61be7c29f4835e2be7243db12213d75d53ff028f29f4b493212a1688b1d3a1ba",
+    "currentSha256": "61be7c29f4835e2be7243db12213d75d53ff028f29f4b493212a1688b1d3a1ba",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/ubuntu/UFL.txt",
+    "packagedSha256": "2f0015108d68627bd788d313f529c21ff4da2c2c42a5e1f3883acc83480f9002",
+    "currentSha256": "2f0015108d68627bd788d313f529c21ff4da2c2c42a5e1f3883acc83480f9002",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/worksans/OFL.txt",
+    "packagedSha256": "749aca05078664ce682dce1b1b10096ac397cb088c1a6df4e1bb56f0092a9272",
+    "currentSha256": "749aca05078664ce682dce1b1b10096ac397cb088c1a6df4e1bb56f0092a9272",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/yellowtail/LICENSE.txt",
+    "packagedSha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "currentSha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/licenses/zillaslab/OFL.txt",
+    "packagedSha256": "240b385d3ec8c8d5c1d4af2bbba6ac72bac0309a80c1a8ff112c168643cc6811",
+    "currentSha256": "240b385d3ec8c8d5c1d4af2bbba6ac72bac0309a80c1a8ff112c168643cc6811",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2",
+    "packagedSha256": "441af0def989ebfdbd6ad85ffaed85e967ab21a05f1dd342f16259464a206dd0",
+    "currentSha256": "441af0def989ebfdbd6ad85ffaed85e967ab21a05f1dd342f16259464a206dd0",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS2mu0SC55K5gw.woff2",
+    "packagedSha256": "3e8f4b311fef0dc52856f9bee03af7ef4f8bdaa26e4bfb8a0a766b79e5351bc4",
+    "currentSha256": "3e8f4b311fef0dc52856f9bee03af7ef4f8bdaa26e4bfb8a0a766b79e5351bc4",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSCmu0SC55K5gw.woff2",
+    "packagedSha256": "f49cd0972b92df6ad4d34589333df653d9fcedcf3ecb71cf8191441b4e1a6081",
+    "currentSha256": "f49cd0972b92df6ad4d34589333df653d9fcedcf3ecb71cf8191441b4e1a6081",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSGmu0SC55K5gw.woff2",
+    "packagedSha256": "2d4c25a2a206d16537302b054f6a3b847ff79175207963a5fed6e12af26dd8e0",
+    "currentSha256": "2d4c25a2a206d16537302b054f6a3b847ff79175207963a5fed6e12af26dd8e0",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSKmu0SC55K5gw.woff2",
+    "packagedSha256": "d0edd1c6d7e0e0cd8b9146888db311e0472e09be88faf70bb01ad57e17316551",
+    "currentSha256": "d0edd1c6d7e0e0cd8b9146888db311e0472e09be88faf70bb01ad57e17316551",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSOmu0SC55K5gw.woff2",
+    "packagedSha256": "d68a324be8ffcb8b21734398f8419885b526a3cc8443786dcdacff5fb0560727",
+    "currentSha256": "d68a324be8ffcb8b21734398f8419885b526a3cc8443786dcdacff5fb0560727",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSumu0SC55K5gw.woff2",
+    "packagedSha256": "01978402fabbdca7d046ebda60da8bae6ea9b5420e58af6350bcbeffc74af097",
+    "currentSha256": "01978402fabbdca7d046ebda60da8bae6ea9b5420e58af6350bcbeffc74af097",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSymu0SC55K5gw.woff2",
+    "packagedSha256": "206b8987ebc5510c1f3add37d9dd1f308559224fa9b45805d024eebf7425e90c",
+    "currentSha256": "206b8987ebc5510c1f3add37d9dd1f308559224fa9b45805d024eebf7425e90c",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTUGmu0SC55K5gw.woff2",
+    "packagedSha256": "c9d43888d70004923f98079bd0e68cabec6275d22829ef4fe9c12a71b4c336a4",
+    "currentSha256": "c9d43888d70004923f98079bd0e68cabec6275d22829ef4fe9c12a71b4c336a4",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTVOmu0SC55K5gw.woff2",
+    "packagedSha256": "4f0cad5800eed7600b524be7d5b99a5510a792ba8f83427a4a2c553fc49164ec",
+    "currentSha256": "4f0cad5800eed7600b524be7d5b99a5510a792ba8f83427a4a2c553fc49164ec",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLBT5Z11lFd2JQEl8qw.woff2",
+    "packagedSha256": "62f6f3cfa32e55fc0ccbd1f30892067b02ba519612896df98e0c6b1d8f1a677a",
+    "currentSha256": "62f6f3cfa32e55fc0ccbd1f30892067b02ba519612896df98e0c6b1d8f1a677a",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLBT5Z1JlFd2JQEl8qw.woff2",
+    "packagedSha256": "48a1a4d15417c8643a6ffae2b90fd1b857bc46226a39ceed8437f23ea336c01c",
+    "currentSha256": "48a1a4d15417c8643a6ffae2b90fd1b857bc46226a39ceed8437f23ea336c01c",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLBT5Z1xlFd2JQEk.woff2",
+    "packagedSha256": "d1ebe21db0d30b4c6eff465086295804e94f0ae5ec05c47c45b0d602bf180f0f",
+    "currentSha256": "d1ebe21db0d30b4c6eff465086295804e94f0ae5ec05c47c45b0d602bf180f0f",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLCz7Z11lFd2JQEl8qw.woff2",
+    "packagedSha256": "6eb8802d7319fcd48850eb38e41ed6ea12d917faafdfac7dae5614a517dc2b54",
+    "currentSha256": "6eb8802d7319fcd48850eb38e41ed6ea12d917faafdfac7dae5614a517dc2b54",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLCz7Z1JlFd2JQEl8qw.woff2",
+    "packagedSha256": "2477683a4b1200680780a759cc1b93b816410362dc5f4c74ebfeafa212bcb74d",
+    "currentSha256": "2477683a4b1200680780a759cc1b93b816410362dc5f4c74ebfeafa212bcb74d",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLCz7Z1xlFd2JQEk.woff2",
+    "packagedSha256": "197a3cbd7290c242c5c765268cdd69a9a39867fdc80cd13071f243a81c56fb76",
+    "currentSha256": "197a3cbd7290c242c5c765268cdd69a9a39867fdc80cd13071f243a81c56fb76",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLDD4Z11lFd2JQEl8qw.woff2",
+    "packagedSha256": "a8ad4aa5049a5198b7013b83880fa162539757fbc00310197c83fcaf054fed56",
+    "currentSha256": "a8ad4aa5049a5198b7013b83880fa162539757fbc00310197c83fcaf054fed56",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLDD4Z1JlFd2JQEl8qw.woff2",
+    "packagedSha256": "db859b9cbc7a91707aeb8829f8e9df1d21b6354dac9481b89c4186bb23c842df",
+    "currentSha256": "db859b9cbc7a91707aeb8829f8e9df1d21b6354dac9481b89c4186bb23c842df",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLDD4Z1xlFd2JQEk.woff2",
+    "packagedSha256": "4ef5511d8e7b39ae3f98ffed14d6071d7914e0c145fee5a79bb43aa962ff0fc4",
+    "currentSha256": "4ef5511d8e7b39ae3f98ffed14d6071d7914e0c145fee5a79bb43aa962ff0fc4",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLDz8Z11lFd2JQEl8qw.woff2",
+    "packagedSha256": "f019bf8fa642981b9f12647688e825ccad3522d51f2f2859b1af372d5dc1ac31",
+    "currentSha256": "f019bf8fa642981b9f12647688e825ccad3522d51f2f2859b1af372d5dc1ac31",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLDz8Z1JlFd2JQEl8qw.woff2",
+    "packagedSha256": "c2857fb5c3f971df45e8c2764709acbcc5c6d60b9e47d945ae2e7bc51415afeb",
+    "currentSha256": "c2857fb5c3f971df45e8c2764709acbcc5c6d60b9e47d945ae2e7bc51415afeb",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLDz8Z1xlFd2JQEk.woff2",
+    "packagedSha256": "643e38d8c288a1da34a14a68a5012441929108d50054414ce8cc33fad36a2354",
+    "currentSha256": "643e38d8c288a1da34a14a68a5012441929108d50054414ce8cc33fad36a2354",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLEj6Z11lFd2JQEl8qw.woff2",
+    "packagedSha256": "6d8ef422be4d827037f6f2d5766a0808018876fa5e9aa9a92787fad9d1f17938",
+    "currentSha256": "6d8ef422be4d827037f6f2d5766a0808018876fa5e9aa9a92787fad9d1f17938",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLEj6Z1JlFd2JQEl8qw.woff2",
+    "packagedSha256": "72efc6a32cfd37c557108628cffa01153c480c3d4cde556744406e50b9d8e9f7",
+    "currentSha256": "72efc6a32cfd37c557108628cffa01153c480c3d4cde556744406e50b9d8e9f7",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLEj6Z1xlFd2JQEk.woff2",
+    "packagedSha256": "872e862918591a9e824dc03ed92f05729435ffbb8ebbb10eff7eda26592b1798",
+    "currentSha256": "872e862918591a9e824dc03ed92f05729435ffbb8ebbb10eff7eda26592b1798",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLGT9Z11lFd2JQEl8qw.woff2",
+    "packagedSha256": "9c8c47ee0aeaa2d378f4e5d5719ecbf05a601a35c285d0d48b888106bb15cf49",
+    "currentSha256": "9c8c47ee0aeaa2d378f4e5d5719ecbf05a601a35c285d0d48b888106bb15cf49",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLGT9Z1JlFd2JQEl8qw.woff2",
+    "packagedSha256": "f8f0c28661c88edbcee022a4a80657619e8931af8c2a47c28e230307e2af30e5",
+    "currentSha256": "f8f0c28661c88edbcee022a4a80657619e8931af8c2a47c28e230307e2af30e5",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiByp8kv8JHgFVrLGT9Z1xlFd2JQEk.woff2",
+    "packagedSha256": "289e0afc8be731a86822349e54557296f145926496bd2138db1bac0db77f77a2",
+    "currentSha256": "289e0afc8be731a86822349e54557296f145926496bd2138db1bac0db77f77a2",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiEyp8kv8JHgFVrJJbecnFHGPezSQ.woff2",
+    "packagedSha256": "23617a1bf667dd6a29e2724ac6595e75924549d1c25e8672e2346ef38bc9984a",
+    "currentSha256": "23617a1bf667dd6a29e2724ac6595e75924549d1c25e8672e2346ef38bc9984a",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiEyp8kv8JHgFVrJJfecnFHGPc.woff2",
+    "packagedSha256": "3dc5d0c52428fe1696264907a1054ebbaac07f8cbe45832c105f819c2ae397c0",
+    "currentSha256": "3dc5d0c52428fe1696264907a1054ebbaac07f8cbe45832c105f819c2ae397c0",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/pxiEyp8kv8JHgFVrJJnecnFHGPezSQ.woff2",
+    "packagedSha256": "1fae5e73d2788ee1dea1d76eca3a9f157a0386de6be8c280d076a53a64c358a1",
+    "currentSha256": "1fae5e73d2788ee1dea1d76eca3a9f157a0386de6be8c280d076a53a64c358a1",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K6z9mXg.woff2",
+    "packagedSha256": "468d56b6b25b05b70190b6c233d773f6f1770e8579827ce022a57f03fa8002fb",
+    "currentSha256": "468d56b6b25b05b70190b6c233d773f6f1770e8579827ce022a57f03fa8002fb",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu6-K6z9mXgjU0.woff2",
+    "packagedSha256": "219b02c7d8884817d3d6ad4c8771f2c000ce4c5669a67ef4e2e5617ffa25c4cc",
+    "currentSha256": "219b02c7d8884817d3d6ad4c8771f2c000ce4c5669a67ef4e2e5617ffa25c4cc",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "icons/apple-touch-icon.png",
+    "packagedSha256": "73047e008530a3a5f52eaae18731f4a0a8d4dc0ff5e2f8a8b286fd8d3b310eaa",
+    "currentSha256": "73047e008530a3a5f52eaae18731f4a0a8d4dc0ff5e2f8a8b286fd8d3b310eaa",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "icons/favicon-16.png",
+    "packagedSha256": "d5b918ea322c229c616cc223bd8e189ddc489da60d712fe9d0b753cd68b29b67",
+    "currentSha256": "d5b918ea322c229c616cc223bd8e189ddc489da60d712fe9d0b753cd68b29b67",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "icons/favicon-32.png",
+    "packagedSha256": "825ab0c6991c5b3096db13f4bab501547a9ee992769cf99bd66d9bf54b10c85e",
+    "currentSha256": "825ab0c6991c5b3096db13f4bab501547a9ee992769cf99bd66d9bf54b10c85e",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "icons/icon-192.png",
+    "packagedSha256": "f4afd3514c5e7c3d4d859318c5e824792ebcd8a2c907ca3d4da21d2efd26ea18",
+    "currentSha256": "f4afd3514c5e7c3d4d859318c5e824792ebcd8a2c907ca3d4da21d2efd26ea18",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "icons/icon-512.png",
+    "packagedSha256": "33b98c999f315cacf1c6638f996a6978ff48216c19dbf90f729927b00ca46ac6",
+    "currentSha256": "33b98c999f315cacf1c6638f996a6978ff48216c19dbf90f729927b00ca46ac6",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "icons/icon-maskable-512.png",
+    "packagedSha256": "33b98c999f315cacf1c6638f996a6978ff48216c19dbf90f729927b00ca46ac6",
+    "currentSha256": "33b98c999f315cacf1c6638f996a6978ff48216c19dbf90f729927b00ca46ac6",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "index.html",
+    "packagedSha256": "b59bc254e8c54d2576d02fdc8e0eacedbdf45aa26cd44323e90b19acca2afda1",
+    "currentSha256": "b59bc254e8c54d2576d02fdc8e0eacedbdf45aa26cd44323e90b19acca2afda1",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "manifest.json",
+    "packagedSha256": "6509754f222fca64d28606c01206f430346bcdaa094444be66ae32fc20b63354",
+    "currentSha256": "6509754f222fca64d28606c01206f430346bcdaa094444be66ae32fc20b63354",
+    "equal": true
+  },
+  {
+    "group": "renderer",
+    "file": "sw.js",
+    "packagedSha256": "41c66aacea71176f97a70c684acf5d98ea13277a256b48928c1eab0053d310e9",
+    "currentSha256": "41c66aacea71176f97a70c684acf5d98ea13277a256b48928c1eab0053d310e9",
+    "equal": true
+  },
+  {
+    "group": "offlineHelp",
+    "file": "USER-GUIDE.en.html",
+    "packagedSha256": "69e3ffa75146e2a60a4dcd17be662f015973ff3061e5a2ba17f758b6cc74770c",
+    "currentSha256": "69e3ffa75146e2a60a4dcd17be662f015973ff3061e5a2ba17f758b6cc74770c",
+    "equal": true
+  },
+  {
+    "group": "offlineHelp",
+    "file": "USER-GUIDE.zh.html",
+    "packagedSha256": "25349445ed3be3c08cb846c11af02dacdd97b01ed5a36f84cb502495a67f6e47",
+    "currentSha256": "25349445ed3be3c08cb846c11af02dacdd97b01ed5a36f84cb502495a67f6e47",
+    "equal": true
+  },
+  {
+    "group": "binResources",
+    "file": "MANIFEST.json",
+    "packagedSha256": "f4c208c097e2a6cf2b64d7a2c3a0c59448d6e38ac6f30da5fc4ac30158e3ff97",
+    "currentSha256": "f4c208c097e2a6cf2b64d7a2c3a0c59448d6e38ac6f30da5fc4ac30158e3ff97",
+    "equal": true
+  },
+  {
+    "group": "binResources",
+    "file": "reelctl.cmd",
+    "packagedSha256": "195d3e85c9caa03f168b97865c56030451170aa51ad992bcffe066f48e906cc3",
+    "currentSha256": "195d3e85c9caa03f168b97865c56030451170aa51ad992bcffe066f48e906cc3",
+    "equal": true
+  },
+  {
+    "group": "binResources",
+    "file": "reelterminal-live-mcp.cmd",
+    "packagedSha256": "532e4def5e64f0c733c78ad399b500e4c037b82387a70ab3a5ac00f67287049d",
+    "currentSha256": "532e4def5e64f0c733c78ad399b500e4c037b82387a70ab3a5ac00f67287049d",
+    "equal": true
+  },
+  {
+    "group": "auroraResources",
+    "file": "creation_aurora_renderer",
+    "packagedSha256": "e0028083c6c4b579ed07bee3288bbeecfa6c908f1916e611b11e52566e1187d6",
+    "currentSha256": "e0028083c6c4b579ed07bee3288bbeecfa6c908f1916e611b11e52566e1187d6",
+    "equal": true
+  },
+  {
+    "group": "auroraResources",
+    "file": "libcreation_core.dylib",
+    "packagedSha256": "bf60f8defefb75812ca7aa2934d3c0adc2546f66d5e54a949f9e0a2c5b4c247b",
+    "currentSha256": "bf60f8defefb75812ca7aa2934d3c0adc2546f66d5e54a949f9e0a2c5b4c247b",
+    "equal": true
+  },
+  {
+    "group": "riggingResources",
+    "file": "README.md",
+    "packagedSha256": "f03be33986df29377745f308ecadcf9c40b9fc05f02c687ab7bd2c6654b4cb22",
+    "currentSha256": "f03be33986df29377745f308ecadcf9c40b9fc05f02c687ab7bd2c6654b4cb22",
+    "equal": true
+  },
+  {
+    "group": "rootLaunchers",
+    "file": "reelctl.cmd",
+    "packagedSha256": "195d3e85c9caa03f168b97865c56030451170aa51ad992bcffe066f48e906cc3",
+    "currentSha256": "195d3e85c9caa03f168b97865c56030451170aa51ad992bcffe066f48e906cc3",
+    "equal": true
+  },
+  {
+    "group": "rootLaunchers",
+    "file": "reelterminal-live-mcp.cmd",
+    "packagedSha256": "532e4def5e64f0c733c78ad399b500e4c037b82387a70ab3a5ac00f67287049d",
+    "currentSha256": "532e4def5e64f0c733c78ad399b500e4c037b82387a70ab3a5ac00f67287049d",
+    "equal": true
+  }
+]

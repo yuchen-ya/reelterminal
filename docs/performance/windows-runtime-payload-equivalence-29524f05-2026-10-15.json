@@ -1,0 +1,132 @@
+{
+  "schema": "reelterminal.runtime-payload-equivalence/v1",
+  "candidateSourceSha": "ee1062ecde20afd0cc0b5a91ab5ddb0996fee22a",
+  "comparedSourceSha": "29524f053c0789227e31cd58f925985d6742baab",
+  "candidateBuildStamp": {
+    "schema": "reelterminal.performance-build/v1",
+    "build_type": "production",
+    "source_head": "ee1062ecde20afd0cc0b5a91ab5ddb0996fee22a",
+    "dirty": false,
+    "source_digest": "8e399de37b0fb6b35e4a0a48fe876b1292e3408292ef5b65d8e0dab3b95ced26",
+    "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+    "main_bundle_sha256": "01683893d4b45be8ead47a0daea22b3c1d81f0e4fb80292b326e2c79a888cc7a",
+    "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+    "renderer_manifest_sha256": "dadd4dbcfde1413c368a5cc58a21ef7bf504773cfc0dd9c3ef98e6fde5b0e1e4",
+    "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+    "executable_sha256": "49b61a030a520fc36a4b8fa5cce53fb4e935a7bdbbe4b80e9222f598e49cc7fa",
+    "app_version": "1.2.0"
+  },
+  "comparedBuildStamp": {
+    "schema": "reelterminal.performance-build/v1",
+    "build_type": "production",
+    "source_head": "29524f053c0789227e31cd58f925985d6742baab",
+    "dirty": false,
+    "source_digest": "5978fde196c4c0fb9bf6e57180a71eaea2de7eddc2b51e4fcecfb3d5f5a35acc",
+    "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+    "main_bundle_sha256": "01683893d4b45be8ead47a0daea22b3c1d81f0e4fb80292b326e2c79a888cc7a",
+    "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+    "renderer_manifest_sha256": "dadd4dbcfde1413c368a5cc58a21ef7bf504773cfc0dd9c3ef98e6fde5b0e1e4",
+    "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+    "executable_sha256": "49b61a030a520fc36a4b8fa5cce53fb4e935a7bdbbe4b80e9222f598e49cc7fa",
+    "app_version": "1.2.0"
+  },
+  "groups": {
+    "dist": {
+      "fileCount": 13,
+      "mismatches": [],
+      "manifestSha256": "bf5aaf13d96c4931f15ab928b021a154626cdc02c18e0739d73176821533fe22"
+    },
+    "renderer": {
+      "fileCount": 190,
+      "mismatches": [],
+      "manifestSha256": "3f7af9112a3f9f9a541da5da7d92c8c80120250bb8fd9c24db57b84e7273a2bd"
+    },
+    "offlineHelp": {
+      "fileCount": 2,
+      "mismatches": [],
+      "manifestSha256": "3ce806331cfd7c9d25be54284c07e576022b63d2169bdcd60b3d3607f4bfa350"
+    },
+    "binResources": {
+      "fileCount": 3,
+      "mismatches": [],
+      "manifestSha256": "b1a233a072c0fb34ee0d4e1102834e0df37507958b399cceecfc1a84a18d135f"
+    },
+    "auroraResources": {
+      "fileCount": 2,
+      "mismatches": [],
+      "manifestSha256": "033e4367ad56738c24d0a5d315d6b83ae2f358d3da91166f3d91c578b0b8c6ca"
+    },
+    "riggingResources": {
+      "fileCount": 1,
+      "mismatches": [],
+      "manifestSha256": "b40d8188f3ea026957c8372fbbad5947eb9216e50e0b7dfc8e8af33f9262f0cd"
+    },
+    "rootLaunchers": {
+      "fileCount": 2,
+      "mismatches": [],
+      "manifestSha256": "3eb365951328f6b7a641281792fe54beee615296bffd25fdc00af47902ecdd01"
+    }
+  },
+  "excluded": [
+    {
+      "file": "dist/performance-build.json",
+      "reason": "truthful build identity differs; it is not relabeled"
+    }
+  ],
+  "dependencyInputsUnchanged": true,
+  "changedDependencyInputs": "",
+  "lockfileSha256": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+  "candidateArtifacts": [
+    {
+      "path": "ReelTerminal-1.2.0-x64.exe",
+      "bytes": 138861464,
+      "sha256": "77cdbfcd2b90b67f35e0aa64e27fb085b692e992c43aa1314f4994545cfafce6",
+      "currentSha256": "77cdbfcd2b90b67f35e0aa64e27fb085b692e992c43aa1314f4994545cfafce6",
+      "unchanged": true
+    },
+    {
+      "path": "ReelTerminal-1.2.0-x64.zip",
+      "bytes": 188922499,
+      "sha256": "9655d68d6b854a4a158a9539a51a21c2ebcf61f2fbf7df774bb8237df2d67cf9",
+      "currentSha256": "9655d68d6b854a4a158a9539a51a21c2ebcf61f2fbf7df774bb8237df2d67cf9",
+      "unchanged": true
+    },
+    {
+      "path": "ReelTerminal-1.2.0-x64.exe.blockmap",
+      "bytes": 146094,
+      "sha256": "fe8359a4664022529c9bb3c78d6194b9e158b3d31f80754ccac642886c39601e",
+      "currentSha256": "fe8359a4664022529c9bb3c78d6194b9e158b3d31f80754ccac642886c39601e",
+      "unchanged": true
+    },
+    {
+      "path": "latest.yml",
+      "bytes": 349,
+      "sha256": "dc664c3548670b26158556d031f8ed8c3745e8cb3544d76d4f9efc356ff1a518",
+      "currentSha256": "dc664c3548670b26158556d031f8ed8c3745e8cb3544d76d4f9efc356ff1a518",
+      "unchanged": true
+    },
+    {
+      "path": "win-unpacked/ReelTerminal.exe",
+      "bytes": 245726208,
+      "sha256": "351eed93ecaaec0b91a28a222df71d53774a55d5b6f2113dc146f9301a7699d9",
+      "currentSha256": "351eed93ecaaec0b91a28a222df71d53774a55d5b6f2113dc146f9301a7699d9",
+      "unchanged": true
+    },
+    {
+      "path": "win-unpacked/resources/app.asar",
+      "bytes": 93720200,
+      "sha256": "4604d18caf0f486c8509c502d777a286b203c4e16178ecad68b67a54e7c727a3",
+      "currentSha256": "4604d18caf0f486c8509c502d777a286b203c4e16178ecad68b67a54e7c727a3",
+      "unchanged": true
+    }
+  ],
+  "perFileEvidence": {
+    "path": "windows-runtime-payload-equivalence-29524f05-files-2026-10-15.json",
+    "sha256": "738396daab8b7bb953363197d4ac2f9714cad4cfbb160539c0add0d6a1a870d1"
+  },
+  "applicationPayloadEqual": true,
+  "fullInstallerEquivalenceClaimed": false,
+  "qualification": "Application payload comparison excludes build identity. The ee1062ec package and fresh 29524f05 build keep their true identities. No full installer byte equivalence is claimed; coverage is not expanded by this comparison."
+}

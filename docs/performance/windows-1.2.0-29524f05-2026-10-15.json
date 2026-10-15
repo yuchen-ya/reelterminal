@@ -1,0 +1,204 @@
+{
+  "schema": "reelterminal.windows-release-validation/v1",
+  "sourceSha": "29524f053c0789227e31cd58f925985d6742baab",
+  "version": "1.2.0",
+  "platform": "win32",
+  "arch": "x64",
+  "published": false,
+  "installed": false,
+  "buildStamp": {
+    "schema": "reelterminal.performance-build/v1",
+    "build_type": "production",
+    "source_head": "29524f053c0789227e31cd58f925985d6742baab",
+    "dirty": false,
+    "source_digest": "5978fde196c4c0fb9bf6e57180a71eaea2de7eddc2b51e4fcecfb3d5f5a35acc",
+    "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+    "main_bundle_sha256": "01683893d4b45be8ead47a0daea22b3c1d81f0e4fb80292b326e2c79a888cc7a",
+    "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+    "renderer_manifest_sha256": "dadd4dbcfde1413c368a5cc58a21ef7bf504773cfc0dd9c3ef98e6fde5b0e1e4",
+    "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+    "executable_sha256": "49b61a030a520fc36a4b8fa5cce53fb4e935a7bdbbe4b80e9222f598e49cc7fa",
+    "app_version": "1.2.0"
+  },
+  "files": [
+    {
+      "path": "ReelTerminal-1.2.0-x64.exe",
+      "bytes": 138861346,
+      "sha256": "0191f604c296c284a711194196393913dee9d2f06a10294b98c3f114f9904dd2"
+    },
+    {
+      "path": "ReelTerminal-1.2.0-x64.zip",
+      "bytes": 188922490,
+      "sha256": "a42fe82d8100a748828cbc3ca8ef4a18058e016f3e683603f6b4790dd8decd9f"
+    },
+    {
+      "path": "ReelTerminal-1.2.0-x64.exe.blockmap",
+      "bytes": 146004,
+      "sha256": "f73c27802c243b126fe64fea1844207adfe9d2de30add7dd7e0c7af753a5befc"
+    },
+    {
+      "path": "latest.yml",
+      "bytes": 349,
+      "sha256": "91278573a288c590366dcea0017b5fa3a5d9596d61686c0667371a106589c593"
+    },
+    {
+      "path": "win-unpacked/ReelTerminal.exe",
+      "bytes": 245726208,
+      "sha256": "153fbedb50890083f111ddd8f81fb33234f42c073b2490b3fecfb74fb8b4aa8b"
+    },
+    {
+      "path": "win-unpacked/resources/app.asar",
+      "bytes": 93720200,
+      "sha256": "4016cf701210872627ad7e3750db92ff821cda742949697d4beb2fa47a7bfdf8"
+    }
+  ],
+  "components": [
+    {
+      "path": "dist/main/index.js",
+      "sha256": "01683893d4b45be8ead47a0daea22b3c1d81f0e4fb80292b326e2c79a888cc7a",
+      "matchesBuiltSource": true
+    },
+    {
+      "path": "dist/preload/index.js",
+      "sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+      "matchesBuiltSource": true
+    },
+    {
+      "path": "dist/browser-entry.mjs",
+      "sha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b",
+      "matchesBuiltSource": true
+    },
+    {
+      "path": "dist/live-mcp/index.js",
+      "sha256": "72c056918dc7380ac235a0b325cf676f6ab0e3f1a95e2f246446324ccb1e27aa",
+      "matchesBuiltSource": true
+    },
+    {
+      "path": "dist/reelctl/index.js",
+      "sha256": "66c6f55c52c9e920cc6cf05d6d44cfccd75603def4295eee59540755cb244a81",
+      "matchesBuiltSource": true
+    }
+  ],
+  "renderer": {
+    "fileCount": 190,
+    "mismatches": []
+  },
+  "offlineHelpVersionVerified": true,
+  "updateMetadataVerified": true,
+  "status": "candidate-verified-awaiting-explicit-choice-on-retained-unattributed-failure",
+  "installerWizardTested": false,
+  "signatures": [
+    {
+      "path": "ReelTerminal-1.2.0-x64.exe",
+      "status": "NotSigned",
+      "fileVersion": "1.2.0",
+      "productVersion": "1.2.0"
+    },
+    {
+      "path": "win-unpacked/ReelTerminal.exe",
+      "status": "NotSigned",
+      "fileVersion": "1.2.0",
+      "productVersion": "1.2.0.0"
+    }
+  ],
+  "zipVerification": {
+    "allEntriesCrcValid": true,
+    "filesMatchingUnpacked": 302,
+    "elapsedSeconds": 3.094
+  },
+  "packagedCore": {
+    "passed": 27,
+    "failed": 0,
+    "skipped": 0,
+    "files": 12,
+    "durationSeconds": 92.4,
+    "retry": 0,
+    "smallStartupGuardExercised": false
+  },
+  "hostedProductTestSourceSha": "85bdde07f98b881d6980b461774e3e1e4c06469d",
+  "differenceFromHostedTestCommit": "documentation only",
+  "ciSnapshot": [
+    {
+      "conclusion": "success",
+      "databaseId": 38743806298,
+      "headSha": "85bdde07f98b881d6980b461774e3e1e4c06469d",
+      "name": "Performance contracts @ 85bdde07f98b881d6980b461774e3e1e4c06469d",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38743806298"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38743806316,
+      "headSha": "85bdde07f98b881d6980b461774e3e1e4c06469d",
+      "name": "Chromium E2E",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38743806316"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38743806319,
+      "headSha": "85bdde07f98b881d6980b461774e3e1e4c06469d",
+      "name": "Electron E2E",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38743806319"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38743806400,
+      "headSha": "85bdde07f98b881d6980b461774e3e1e4c06469d",
+      "name": "CI",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38743806400"
+    }
+  ],
+  "hostedWindowsElectron": {
+    "passed": 123,
+    "failed": 0,
+    "skipped": 13,
+    "durationSeconds": 356.19,
+    "flowA": {
+      "revisionBefore": 4,
+      "revisionAfter": 5,
+      "startBefore": 0,
+      "startAfter": 0.663129973474801,
+      "canonicalCommitAfterMouseupMs": 1.235,
+      "actualPreviewPixels": 100,
+      "focusedAndVisible": true,
+      "original400msWaitRetained": true
+    }
+  },
+  "oldFailure": {
+    "run": 38739785628,
+    "sourceSha": "ee1062ecde20afd0cc0b5a91ab5ddb0996fee22a",
+    "line": 168,
+    "actualStartTime": 0,
+    "rootCause": "unattributed",
+    "fixedClaimed": false,
+    "environmentOnlyClaimed": false
+  },
+  "runtimeEquivalence": {
+    "proof": "windows-runtime-payload-equivalence-29524f05-2026-10-15.json",
+    "applicationFilesEqual": 213,
+    "buildIdentityExcluded": true,
+    "dependencyInputsUnchanged": true,
+    "fullInstallerByteEquivalenceClaimed": false
+  },
+  "macPackage": null,
+  "releaseCreated": false,
+  "tagCreated": false,
+  "hostedMacElectron": {
+    "passed": 123,
+    "failed": 0,
+    "skipped": 13,
+    "durationSeconds": 550.32,
+    "macPackageQualificationClaimed": false
+  },
+  "riskChoice": {
+    "status": "pending",
+    "options": [
+      "Publish the verified Windows 1.2.0 scope with the old unattributed failure explicitly disclosed; do not claim it fixed.",
+      "Keep publication blocked pending an actual instrumented reproduction; no automatic reruns or long tests."
+    ]
+  }
+}
