@@ -141,3 +141,21 @@ Related documents: [initial recipe repair](template-redo-branch-2026-10-15.md),
 [original boundary investigation](history-boundary-verification-2026-10-15.md),
 [native export protection](native-export-file-protection-2026-10-15.md), and
 [desktop E2E harness](../apps/desktop/e2e/README.md).
+
+## CI focus follow-up
+
+The initial repair commit `66448bf6c57a90d5c050758f653a76dc1f5684f7` passed
+Windows Electron, Chromium and Performance workflows, but its new 3D GUI test
+failed on macOS at the assertion that recipe-update undo exposed redo. The whole
+project replacement test passed; the baseline screen-recording failure did not
+recur. This was treated as a new regression, not dismissed because the baseline
+workflow also failed.
+
+The test had clicked the timeline to blur a recipe input before using global
+keyboard input. Timeline pointer handlers prevent the default focus change, and
+macOS mouse-button focus conventions can leave an input active. Project shortcut
+handling intentionally ignores input targets. The follow-up sends real Undo/Redo
+keyboard events through the focusable timeline locators (`Locator.press`), records
+the prior DOM focus, and waits for both canonical history and text to establish
+that project undo actually happened. It makes no store or engine writes and does
+not change product shortcut behavior. Final-SHA CI results are reported separately.

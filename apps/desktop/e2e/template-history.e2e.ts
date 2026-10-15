@@ -309,10 +309,19 @@ describe("editing recipe branches away from an undone timeline action", () => {
       await inspector.getByRole("textbox", { name: "Name", exact: true }).fill(`Updated ${field}`);
       await inspector.getByRole("button", { name: "Update", exact: true }).click();
       await vi.waitFor(async () => expect((await readProject()).project.textClips?.some(c => c.text === `Updated ${field}`)).toBe(true));
-      // Blur the form before invoking editor undo.
-      await page.getByRole("button", { name: `Select clip ${VIDEO_FILE_NAME}`, exact: true }).click();
-      await pressUndoViaKeyboard(page);
-      expect((await readHistory()).canRedo).toBe(true);
+      // macOS mouse clicks need not move focus away from the recipe input.
+      // Route genuine keyboard input to the focusable timeline control instead
+      // of accidentally invoking the input's native text undo.
+      const sourceClip = page.getByRole("button", { name: `Select clip ${VIDEO_FILE_NAME}`, exact: true });
+      evidence.record(`3d-${field}-focus-before-undo`, await page.evaluate(() => ({
+        tagName: document.activeElement?.tagName,
+        label: document.activeElement?.getAttribute("aria-label"),
+      })));
+      await sourceClip.press(`${KEY_MODIFIER}+z`);
+      await vi.waitFor(async () => {
+        expect((await readHistory()).canRedo).toBe(true);
+        expect((await readProject()).project.textClips?.some(c => c.text === `Updated ${field}`)).toBe(false);
+      }, { timeout: 15_000, interval: 100 });
       const overlay = (await readProject()).project.textClips?.find(c => c.text === "Creator");
       expect(overlay).toBeDefined();
       await page.getByRole("button", { name: "Select text clip Creator", exact: true }).click();
@@ -334,7 +343,8 @@ describe("editing recipe branches away from an undone timeline action", () => {
       expect((await readHistory()).canRedo).toBe(false);
       const transform = beforeRedo.project.textClips?.find(c => c.id === overlay!.id)?.transform;
       expect(field === "rotate3d" ? transform?.rotate3d?.x : transform?.[field]).toBe(field === "rotate3d" ? 33 : field === "perspective" ? 840 : "preserve-3d");
-      await pressRedoViaKeyboard(page);
+      await page.getByRole("button", { name: "Select text clip Creator", exact: true }).press(`${KEY_MODIFIER}+Shift+z`);
+      await page.waitForTimeout(400);
       expect(await readProject()).toEqual(beforeRedo);
       await observe(`3d-${field}-blocks-old-recipe-redo`);
       await evidence.screenshot(`3d-${field}`);
