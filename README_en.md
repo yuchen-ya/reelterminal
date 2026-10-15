@@ -67,7 +67,7 @@ Current downloads include a **Windows x64 installer/portable ZIP** and **macOS A
 
 **Source and installed packages are maintained separately.** This page describes the current repository’s capabilities and usage. Check the corresponding Release for a download’s features, fixes, and limitations; updating source does not update an installed app.
 
-With published packages, export native video to a new filename and verify it before replacing an existing file. Keep a project copy before applying a whole-project template, and avoid replaying pre-replacement undo/redo afterward. 3D property changes are not recorded as separate undo steps; retain version nodes for important stages. Large projects and long editing sessions can use substantial memory.
+With published packages, export native video to a new filename and verify it before replacing an existing file. Keep a project copy before applying a whole-project template, and avoid replaying pre-replacement undo/redo afterward. Inspector 3D property changes are not recorded as separate undo steps; retain version nodes for important stages. Large projects and long editing sessions can use substantial memory.
 
 Some export, media-analysis, and frame tools need local FFmpeg/ffprobe. OpenCV tools also need Python with `cv2` and `numpy`. See [external dependencies](docs/EXTERNAL-DEPENDENCIES.md) for tool requirements and network behavior.
 
