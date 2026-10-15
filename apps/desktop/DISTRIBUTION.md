@@ -3,7 +3,8 @@
 ## Version 1.2.0
 
 The 1.2.0 candidate is an unsigned Windows x64 installer and portable ZIP.
-Publication is paused for an unresolved hosted Flow A drag failure; see the
+Publication status and available assets are shown on Releases. One hosted Flow A
+drag failure remains unattributed; see the
 [validation record](../../docs/performance/windows-1.2.0-release-validation-2026-10-15.md).
 No macOS 1.2.0 package is attached to this release. Historical macOS 1.1.2
 results do not qualify a new Mac package. See [release notes](../../docs/RELEASE-1.2.0.md)

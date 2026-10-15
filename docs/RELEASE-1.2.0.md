@@ -1,6 +1,6 @@
 # ReelTerminal 1.2.0
 
-**当前状态：发布暂停，尚未创建 v1.2.0 标签或 Release。** 新 hosted Windows Flow A 拖动回归失败尚未归因；新包验证与阻塞见[验证记录](performance/windows-1.2.0-release-validation-2026-10-15.md)。以下说明为待发布版本说明。
+**发布状态与正式附件以 GitHub Releases 为准。** 单次 hosted Windows Flow A 拖动失败尚未归因；包验证、保留的失败与后续调查见[验证记录](performance/windows-1.2.0-release-validation-2026-10-15.md)。通过其他测试不能覆盖这次失败。
 
 本次发布提供 **Windows x64 未签名安装包及便携 ZIP**。这是正式版本号，
 不代表全平台、所有设备或长期内存稳定性已经验收。macOS 1.2.0 安装包暂缺；

@@ -65,7 +65,7 @@ flowchart LR
 
 Desktop distribution formats include a **Windows x64 installer and portable ZIP**, plus **macOS (Apple Silicon / Intel) DMG installers**. Check each version's [release assets and notes](https://github.com/yuchen-ya/reelterminal/releases) for available platforms, architectures, and signing status. Extract the entire Windows ZIP before running `ReelTerminal.exe`. Unsigned Windows builds may show an unknown-publisher warning during installation. Some media-processing features require a separate FFmpeg/ffprobe installation; see [desktop distribution](apps/desktop/DISTRIBUTION.md).
 
-The **v1.2.0 release is in preparation**, with unsigned Windows x64 candidate packages. A new regression failure is still under investigation; published assets are listed on Releases. A macOS 1.2.0 package is not included. See [1.2.0 release notes](docs/RELEASE-1.2.0.md) for validation scope and known limitations; older 1.1.2 test reports describe their original builds.
+**v1.2.0 targets Windows x64 with unsigned installer and ZIP packages**. Check Releases for publication status and available assets. One hosted text-drag failure remains unattributed; see the release notes. A macOS 1.2.0 package is not included. See [1.2.0 release notes](docs/RELEASE-1.2.0.md) for validation scope and known limitations; older 1.1.2 test reports describe their original builds.
 
 ---
 

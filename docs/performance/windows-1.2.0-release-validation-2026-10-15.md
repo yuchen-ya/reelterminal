@@ -131,3 +131,16 @@ hosted environment. No manual duplicate, retries or historical long stress
 runs are requested. If the original failure remains unattributed, publication
 requires an explicit choice to accept that bounded risk or continue a focused
 investigation; it must not silently become a green-only release claim.
+
+
+The diagnostic test commit is `85bdde07f98b881d6980b461774e3e1e4c06469d`.
+Its one automatic [Electron run](https://github.com/yuchen-ya/reelterminal/actions/runs/38743806319)
+is the bounded hosted follow-up, not a manual rerun. Publication remains pending
+at the time of this note. Current user-facing documentation now points readers
+to the actual Release status rather than embedding a temporary publication state;
+the unattributed failure and platform/unsigned limitations remain explicit.
+A fresh independent package from the following clean documentation freeze may
+be prepared while CI runs; that preparation does not accept the unknown risk or
+publish anything. In the CPU-throttled probe, capture-stop cleanup closed a
+pending performance span as cancelled after the successful canonical commit;
+that collector cleanup is not evidence of a physical window blur/cancel.
