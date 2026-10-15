@@ -18,7 +18,8 @@
  *  - RECHECK: re-running with the stored configuration links the new record
  *    to the previous one (recheckOf), so before/after evidence is one query.
  */
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { rmSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -188,7 +189,10 @@ export async function removeAnalysisRecord(artifactRoot: string, recordId: strin
   if (!/^analysis-[0-9a-f-]{8,}$/i.test(recordId)) {
     throw new FacadeError("INVALID_PARAMS", "Invalid analysis record id");
   }
-  await rm(resolvePath(recordsDir(artifactRoot), `${recordId}.json`), { force: true });
+  // A failed completion checkpoint has already made the job terminal. Finish
+  // its small-file rollback in this turn so status/list callers cannot observe
+  // that failure alongside a record whose completion was never committed.
+  rmSync(resolvePath(recordsDir(artifactRoot), `${recordId}.json`), { force: true });
 }
 
 const AUDIO_SERIES = {

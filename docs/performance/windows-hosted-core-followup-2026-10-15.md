@@ -70,3 +70,55 @@ Mac geometry screenshot/JSON came from the hosted artifact for run
 38716429519 (artifact 11963870785), copied into the harness artifact root.
 These are accessible hosted-runner evidence, not the unavailable original Mac
 ten-export/native-picker logs. No user Mac task or permission change was made.
+
+## Terminal hosted results for 5aece717 and follow-up
+
+All four ordinary push runs were reused and reached terminal state:
+
+- [CI 38722251472](https://github.com/yuchen-ya/reelterminal/actions/runs/38722251472): success, including typecheck, lint, unit tests and build.
+- [Performance contracts 38722251612](https://github.com/yuchen-ya/reelterminal/actions/runs/38722251612): success.
+- [Chromium 38722251509](https://github.com/yuchen-ya/reelterminal/actions/runs/38722251509): failed in the Ubuntu runtime/transport job's facade phase. The separate Ubuntu and Mac facade jobs passed. First failure was `live-session.test.ts` / `removes a saved record when the completion checkpoint fails`: terminal error was visible while `analysis.list` still contained the uncommitted record. This is a product race, not the earlier Mac five-second audio test.
+- [Electron 38722251512](https://github.com/yuchen-ya/reelterminal/actions/runs/38722251512): Windows 120 passed / 3 failed / 13 skipped; Mac 114 passed / 9 failed / 13 skipped. Both passed M3, decode-worker first-frame checks and minimum-window comparison layout. Windows first failure was target-point geometry `(0.3,0.7)` versus observed `(0.293876,0.666683)`, followed by two dependent tests. Mac failures were close/relaunch lifecycle (five), unavailable Windows font (one), and comparison opacity plus two dependent undo checks (three). These are not all attributed to test tooling.
+
+Analysis rollback now removes its small record synchronously before yielding
+after a completion checkpoint rejects success. A controlled regression holds
+asynchronous deletion: the original implementation fails immediately; the fix
+passes. The original failing integration plus live-session and batch suites
+pass (83 tests, 3.94 s), and facade typecheck passes. Evidence:
+`rollback-regression-before.log`, `rollback-regression.log`,
+`5aece717-chromium-failed.log`, `5aece717-electron-failed.log`.
+
+The clean 5aece717 local candidate was built under
+`apps/desktop/release/windows-rc-1.1.2-5aece717/`, unsigned and unpublished.
+Its affected/core smoke **failed: 34 passed / 6 failed**, and is not a release
+qualification. Failures were two clipboard checks, M3 checkpoint replacement,
+and comparison opacity with two dependent undo checks. Native Electron
+clipboard write/read independently returned false, as did renderer-to-native
+clipboard write/read, in an active console session. This establishes a failure
+below the product copy action; its OS/runtime cause is unresolved. No clipboard
+policy, permission or user process was changed. Raw evidence is
+`../clipboard-diagnostic-5aece717.json` and `windows-rc-5aece717-smoke.log`.
+
+The retained M3 profile is `reelterminal-e2e-BrqHc4` under the host Temp.
+The resumed job durably reports `BATCH_PERSISTENCE_FAILED`: Windows refused
+renaming a new temporary checkpoint over `production-batches/m3-live.json`
+with `EPERM`. Batch and task ledger agree on failure; this is not recurrence
+of the repaired observer-overwrite bug. The holder/cause is unproved. No
+whole-test retries or extra timeout were used to manufacture success.
+
+The isolated opacity diagnostic passed with DOM value, video opacity and
+canonical config all `0.3`; it does not explain the earlier failure. The
+follow-up driver uses ordinary range arrow keys and waits for each controlled
+update. It also closes Advanced before the independent replacement test, so
+a failed range test cannot leave its input consuming undo. With that and
+rendered-frame geometry stabilization, all eight comparison/replacement/
+library/CAS/pixel/save-reopen checks passed against the retained candidate
+(17.03 s). Mac still requires the next hosted result. Existing tolerances,
+real connector calls and undo assertions remain intact.
+
+Mac close coverage now proves zero real BrowserWindows before normally
+quitting the owned test app, within the original forty-second total budget:
+the product intentionally stays in the Dock after closing its last window.
+The local-font fixture selects Arial on Mac and Microsoft YaHei on Windows;
+missing-dependency assertions are unchanged. These changes await hosted Mac
+validation, not a task on the user's Mac.
