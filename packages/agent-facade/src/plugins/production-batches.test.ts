@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -9,6 +9,19 @@ import { JobRegistry, jobStatusView } from "../jobs";
 import { ok, fail, FacadeError } from "../errors";
 import type { MediaItem } from "@reelterminal/core/types/project";
 import type { JobStatusView } from "../types";
+import { readdirSync } from "node:fs";
+import { Worker } from "node:worker_threads";
+
+const renameFault = vi.hoisted(() => ({ codes: [] as string[], attempts: 0 }));
+vi.mock("node:fs", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, renameSync: (...args: Parameters<typeof actual.renameSync>) => {
+    renameFault.attempts += 1;
+    const code = renameFault.codes.shift();
+    if (code) throw Object.assign(new Error(`injected rename ${code}`), { code });
+    return actual.renameSync(...args);
+  } };
+});
 
 describe("durable local analysis batches", () => {
   let root: string;
@@ -16,6 +29,8 @@ describe("durable local analysis batches", () => {
   let context: ToolContext;
   let starts: string[];
   beforeEach(async () => {
+    renameFault.codes = [];
+    renameFault.attempts = 0;
     root = await mkdtemp(join(tmpdir(), "production-batch-"));
     registry = new JobRegistry();
     starts = [];
@@ -66,6 +81,61 @@ describe("durable local analysis batches", () => {
     analysisTypes: ["technicalQuality" as const],
     expectedRevision: 3,
   };
+
+  it.runIf(process.platform === "win32")("commits a terminal checkpoint after transient Windows sharing errors", async () => {
+    const tools = bindTools(productionBatchesPlugin.tools, context);
+    await tools["batch.start"](input);
+    renameFault.codes = ["EPERM", "EBUSY"];
+    const before = renameFault.attempts;
+    registry.markAnalysisDone("job-1", { analysisTypes: ["technicalQuality"], summary: {}, artifacts: [] });
+    expect(renameFault.attempts - before).toBe(3);
+    expect(registry.get("job-1")?.state).toBe("done");
+    const saved = JSON.parse(await readFile(join(root, "production-batches", "review-1.json"), "utf8"));
+    expect(saved.items[0].status.state).toBe("done");
+    expect(readdirSync(join(root, "production-batches")).filter(file => file.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it.runIf(process.platform === "win32")("preserves completed results while another thread reads real checkpoint files", async () => {
+    const tools = bindTools(productionBatchesPlugin.tools, context);
+    await tools["batch.start"](input);
+    registry.markAnalysisDone("job-1", { analysisTypes: ["technicalQuality"], summary: { measured: true }, artifacts: [] });
+    const file = join(root, "production-batches", "review-1.json");
+    const stop = new SharedArrayBuffer(4);
+    const reader = new Worker(`
+      const { workerData, parentPort } = require('node:worker_threads');
+      const { readFileSync } = require('node:fs');
+      const stop = new Int32Array(workerData.stop);
+      parentPort.postMessage('ready');
+      while (!Atomics.load(stop, 0)) JSON.parse(readFileSync(workerData.file, 'utf8'));
+    `, { eval: true, workerData: { stop, file } });
+    const finished = new Promise<void>((resolve, reject) => { reader.once("exit", () => resolve()); reader.once("error", reject); });
+    try {
+      await new Promise<void>(resolve => reader.once("message", () => resolve()));
+      for (let count = 0; count < 200; count += 1) {
+        const current = await tools["batch.get"]({ batchId: input.batchId });
+        expect(current.ok, JSON.stringify(current)).toBe(true);
+      }
+    } finally {
+      Atomics.store(new Int32Array(stop), 0, 1);
+      await finished;
+    }
+    expect(JSON.parse(await readFile(file, "utf8")).items[0].status.result.summary).toEqual({ measured: true });
+  });
+
+  it.each(["EPERM", "EIO"])("keeps the last good checkpoint and reports persistent %s", async code => {
+    const tools = bindTools(productionBatchesPlugin.tools, context);
+    await tools["batch.start"](input);
+    const file = join(root, "production-batches", "review-1.json");
+    const before = await readFile(file, "utf8");
+    renameFault.codes = Array(10).fill(code);
+    const attempts = renameFault.attempts;
+    registry.markAnalysisDone("job-1", { analysisTypes: ["technicalQuality"], summary: {}, artifacts: [] });
+    expect(registry.get("job-1")).toMatchObject({ state: "error", result: null, error: { code: "BATCH_PERSISTENCE_FAILED" } });
+    // The registry also attempts to checkpoint its resulting error status.
+    expect(renameFault.attempts - attempts).toBe(code === "EPERM" && process.platform === "win32" ? 10 : 2);
+    expect(await readFile(file, "utf8")).toBe(before);
+    expect(readdirSync(join(root, "production-batches")).filter(file => file.endsWith(".tmp"))).toEqual([]);
+  });
 
   it("automatically checkpoints cancellation and exposes storage failures without false completion", async () => {
     const tools = bindTools(productionBatchesPlugin.tools, context);

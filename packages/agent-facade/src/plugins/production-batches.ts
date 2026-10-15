@@ -8,6 +8,7 @@ import {
   renameSync,
   readFileSync,
   lstatSync,
+  rmSync,
 } from "node:fs";
 import { join } from "node:path";
 import { definePlugin, defineTool, type ToolContext } from "../plugin-api";
@@ -112,6 +113,7 @@ const output = {
   properties: {},
 };
 const active = new Set<string>();
+const renameWait = new Int32Array(new SharedArrayBuffer(4));
 
 async function location(context: ToolContext, id: string): Promise<string> {
   const root = requireArtifactRoot(context.artifactRoot, "batch");
@@ -135,14 +137,33 @@ function save(file: string, batch: BatchRecord): void {
   if (!lstatSync(file).isFile())
     throw new Error("Batch manifest must remain a regular file");
   const temp = `${file}.${randomUUID()}.tmp`;
-  const fd = openSync(temp, "wx");
   try {
-    writeFileSync(fd, JSON.stringify(batch));
-    fsyncSync(fd);
+    const fd = openSync(temp, "wx");
+    try {
+      writeFileSync(fd, JSON.stringify(batch));
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        renameSync(temp, file);
+        break;
+      } catch (error) {
+        // Windows can briefly refuse replacing a checkpoint while another
+        // process reads it. Keep the old record intact and retry only sharing
+        // errors, at most 100 ms total; permanent failures still reach the job.
+        const code = (error as NodeJS.ErrnoException).code;
+        if (process.platform !== "win32" || attempt >= 4 ||
+          !["EPERM", "EACCES", "EBUSY"].includes(code ?? "")) throw error;
+        Atomics.wait(renameWait, 0, 0, (attempt + 1) * 10);
+      }
+    }
   } finally {
-    closeSync(fd);
+    // A failed replace must neither delete the last good record nor strand
+    // an ever-growing set of temporary checkpoint files.
+    try { rmSync(temp, { force: true }); } catch { /* Preserve the primary storage error. */ }
   }
-  renameSync(temp, file);
 }
 
 function observeItem(file: string, jobId: string, context: ToolContext): void {

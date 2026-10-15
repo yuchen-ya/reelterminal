@@ -122,3 +122,26 @@ the product intentionally stays in the Dock after closing its last window.
 The local-font fixture selects Arial on Mac and Microsoft YaHei on Windows;
 missing-dependency assertions are unchanged. These changes await hosted Mac
 validation, not a task on the user's Mac.
+
+## Windows checkpoint sharing reproduction and repair
+
+A controlled independent-reader reproduction in an owned Temp directory
+performed 10,000 plain JSON-read/atomic-rename operations on Node 22.22.0:
+2,120 renames returned EPERM. This establishes ordinary concurrent reads as
+a sufficient trigger for the same Windows syscall failure; the original
+profile's exact reader is still unknown. Evidence: `batch-rename-repro.json`.
+
+Batch checkpoint replacement now retries only Windows EPERM/EACCES/EBUSY,
+five attempts with at most 100 ms of wait per replacement. It preserves the
+old checkpoint, reports persistent failure, and cleans its own temporary file.
+It never reruns the analysis or changes the 120-second M3 acceptance timeout.
+Fault-injection verifies eventual commit, bounded permanent sharing failure,
+nonretryable EIO, unchanged last-good bytes, explicit job error and no stranded
+temporary files. A real Windows reader-thread integration also passes 200
+checkpoint replacements with the completed result intact. All nine batch
+tests pass (1.62 s); the preceding combined rollback/live/batch run passed
+86 tests before adding the real-reader case. Facade typecheck passes.
+Evidence: `checkpoint-sharing-regression.log`, `checkpoint-real-reader.log`.
+
+This runtime change requires a new clean candidate. The failed 5aece717
+candidate and its original evidence remain retained and unqualified.
