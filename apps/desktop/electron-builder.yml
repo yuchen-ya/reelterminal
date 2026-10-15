@@ -19,6 +19,13 @@ publish:
 files:
   - dist/**/*
   - "!**/*.map"
+  # Workspace dependencies are copied too: Git ignores do not prevent local
+  # evidence or test fixtures from entering the distributable node_modules.
+  - "!**/.artifacts{,/**}"
+  - "!**/{test,tests,__tests__,e2e}{,/**}"
+  - "!**/*.{test,spec}.{ts,tsx,js,cjs,mjs}"
+  - "!**/{.env,.env.*,.npmrc,.pypirc,.git-credentials}"
+  - "!**/{.git,.aws,.ssh}{,/**}"
   - package.json
 extraResources:
   - from: ../web/dist
@@ -35,10 +42,6 @@ extraResources:
     filter:
       - "**/*"
       - "!blender{,/**}"
-  - from: resources/aurora
-    to: aurora
-    filter:
-      - "**/*"
   - from: LICENSES
     to: LICENSES
     filter:
@@ -60,6 +63,12 @@ extraFiles:
   - from: resources/bin/reelterminal-live-mcp.cmd
     to: reelterminal-live-mcp.cmd
 mac:
+  extraResources:
+    - from: resources/aurora
+      to: aurora
+      filter:
+        - "creation_aurora_renderer"
+        - "libcreation_core.dylib"
   category: public.app-category.video
   icon: build/icon.png
   target:
@@ -73,6 +82,12 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
   notarize: true
 win:
+  extraResources:
+    - from: resources/aurora
+      to: aurora
+      filter:
+        - "creation_aurora_renderer.exe"
+        - "creation_core.dll"
   icon: build/icon.png
   target:
     # NSIS wizard installer (choose install dir) + zip for portable use.
@@ -88,6 +103,12 @@ nsis:
   # app. Default remains "keep everything user-owned".
   include: build/installer.nsh
 linux:
+  extraResources:
+    - from: resources/aurora
+      to: aurora
+      filter:
+        - "creation_aurora_renderer"
+        - "libcreation_core.so"
   icon: build/icon.png
   target:
     - target: AppImage
