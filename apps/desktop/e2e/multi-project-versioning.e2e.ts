@@ -19,7 +19,7 @@
  *     skip), restart recovery and replayed node saves.
  */
 import { execFileSync, spawn } from "node:child_process";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { launchApp, type LaunchedApp } from "./harness/launch";
@@ -42,20 +42,20 @@ type Target = { projectId: string; workspaceId: string };
 const L = {
   newProject: "New Project",
   openProjectPicker: "Open Project",
-  retain: "Save a version",
+  retain: "Create save point",
   recoverMenu: "Recover previous edits",
   copyAgentPrompt: "Copy Agent prompt",
   tryAnotherCut: "Try another cut",
-  retainSuccess: /^Version ".*" saved/,
+  retainSuccess: /Save point .* created|Current content already has a save point/,
   switchToast: /Switched to /,
   previewReadOnly: "Preview is read-only; changes are not allowed",
-  previewSavedToast: "This version is already saved",
-  savedToast: "Saved",
-  deletedToast: "Version moved to the recycle bin",
-  deleteUndo: "Undo delete",
+  previewSavedToast: "Previewing a saved point; current edits are unchanged.",
+  savedToast: "Current edits saved",
+  deletedToast: "Save point moved to recycle bin",
+  deleteUndo: "Undo",
   adoptUndo: "Undo this switch",
   nextTimeClosing: "Next time when closing:",
-  closeRetentionLabel: "Save a version on close",
+  closeRetentionLabel: "Create a save point on close",
   settingsTab: "Projects & Saving",
 };
 
@@ -163,6 +163,15 @@ describe("multi-project version nodes UX on the real desktop", () => {
   const page = () => launched.page;
   const toastRegion = () => page().getByRole("region", { name: "Notifications" });
   const versionNode = (nodeId: string) => page().getByTestId(`version-node-${nodeId}`);
+  const archive = () => page().locator('[data-testid="version-track"]:visible');
+  async function openArchive() {
+    if (!(await archive().count())) await page().getByTestId("current-archive-entry").click();
+    await archive().waitFor();
+  }
+  async function previewNode(nodeId: string) {
+    await openArchive();
+    await versionNode(nodeId).dblclick();
+  }
 
   async function waitForToast(text: string | RegExp, timeoutMs = 10_000): Promise<void> {
     // vitest's expect has no Playwright matchers (playwright-core only), so
@@ -174,17 +183,20 @@ describe("multi-project version nodes UX on the real desktop", () => {
   }
   /** Click the action card of a toast (the card carries the label as title). */
   async function clickToastAction(actionLabel: string): Promise<void> {
-    await page().locator(`[title="${actionLabel}"]`).first().click();
+    await toastRegion().locator(`[title="${actionLabel}"]`).first().click();
   }
   async function openProjectMenu(projectName: string): Promise<void> {
-    await page().getByRole("button", { name: projectName, exact: true }).click();
+    if (!(await page().getByTestId("project-switch-menu").isVisible()))
+      await page().getByRole("button", { name: projectName, exact: true }).click();
     await page().getByRole("button", { name: L.newProject, exact: true }).waitFor({ timeout: 10_000 });
   }
   /** 留存当前版本 from the left-top project menu. */
   async function retainViaMenu(projectName: string): Promise<void> {
     await openProjectMenu(projectName);
-    await page().getByRole("button", { name: L.retain, exact: true }).click();
+    await page().getByTestId("project-switch-menu").getByRole("button", { name: L.retain, exact: true }).click();
+    await page().getByRole("button", { name: L.newProject, exact: true }).waitFor({ state: "detached" });
     await waitForToast(L.retainSuccess);
+    await openArchive();
   }
   /** Project switch through the left-top menu (recent projects list). */
   async function switchToProjectViaMenu(projectName: string, projectId: string): Promise<void> {
@@ -207,6 +219,7 @@ describe("multi-project version nodes UX on the real desktop", () => {
     activeProjectName = formatProjectName;
   }
   async function renameNodeViaMenu(nodeId: string, nextName: string): Promise<void> {
+    await openArchive();
     await versionNode(nodeId).click({ button: "right" });
     await page().getByTestId("version-node-menu").waitFor({ timeout: 5_000 });
     await page().getByTestId("version-menu-rename").click();
@@ -268,6 +281,11 @@ describe("multi-project version nodes UX on the real desktop", () => {
     await enableAgentSessionViaUI(page(), launched.endpointFile);
     activeProjectName = projectName;
     await displayedProjectIs(projectId);
+    const hints = page().getByTestId("notification-toast").filter({ hasText: /Copy Agent startup prompt|Switched to / });
+    for (const hint of await hints.all()) {
+      await hint.getByRole("button", { name: "Dismiss notification", exact: true }).click();
+      await hint.waitFor({ state: "detached" });
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -289,6 +307,11 @@ describe("multi-project version nodes UX on the real desktop", () => {
       "# Version nodes UX acceptance\nDrive the new version track UX (retain, preview, adopt, rename, delete, close preferences, project switch) and keep the CLI guarantees (immutable media, fixed export input, restart recovery).\n",
     );
     writeFileSync(path.join(evidence, "capabilities.json"), JSON.stringify(capabilities, null, 2));
+    const startupHint = page().getByTestId("notification-toast").filter({ hasText: "Copy Agent startup prompt" });
+    if (await startupHint.count()) {
+      await startupHint.getByRole("button", { name: "Dismiss notification", exact: true }).click();
+      await startupHint.waitFor({ state: "detached" });
+    }
     a = await currentIdentity();
     expect(a.projectId).toBeTruthy();
     expect(a.workspaceId).toBeTruthy();
@@ -307,14 +330,14 @@ describe("multi-project version nodes UX on the real desktop", () => {
   /* (a) 交互验收 1/2 — empty project: no track, no node from Ctrl+S      */
   /* ------------------------------------------------------------------ */
   test("empty project: the version track stays hidden and Ctrl+S creates no node", async () => {
-    expect(await page().getByTestId("version-track").count()).toBe(0);
+    expect(await archive().count()).toBe(0);
 
     await createTextClipViaUI(page());
     await page().keyboard.press("Control+s");
     await waitForToast(L.savedToast);
     await page().waitForTimeout(1_500);
 
-    expect(await page().getByTestId("version-track").count()).toBe(0);
+    expect(await archive().count()).toBe(0);
     expect(await liveNodes(a.projectId)).toHaveLength(0);
     record("A-empty-project", { trackRendered: false, nodesAfterCtrlS: 0 });
   });
@@ -327,10 +350,10 @@ describe("multi-project version nodes UX on the real desktop", () => {
 
     const nodes = await liveNodes(a.projectId);
     expect(nodes).toHaveLength(1);
-    expect(nodes[0]!.name).toBe("First version");
-    const track = page().getByTestId("version-track");
+    expect(nodes[0]!.name).toBe("First save point");
+    const track = archive();
     await track.waitFor({ timeout: 10_000 });
-    expect(await track.getAttribute("data-project-id")).toBe(a.projectId);
+    expect(await currentIdentity()).toEqual(a);
 
     const dot = versionNode(nodes[0]!.id);
     await dot.waitFor({ timeout: 10_000 });
@@ -357,7 +380,7 @@ describe("multi-project version nodes UX on the real desktop", () => {
     expect(nodes).toHaveLength(2);
     const firstNodeId = nodes[0]!.id;
     const secondNodeId = nodes[1]!.id;
-    expect(nodes[1]!.name).not.toBe("First version"); // timestamped auto name
+    expect(nodes[1]!.name).not.toBe("First save point"); // timestamped auto name
 
     await vi.waitFor(async () => {
       expect(await versionNode(secondNodeId).getAttribute("data-base")).toBe("true");
@@ -365,12 +388,12 @@ describe("multi-project version nodes UX on the real desktop", () => {
 
     const revisionBeforePreview = (await state(a)).revision;
     await selectTextClipViaUI(page(), "New Title");
-    await versionNode(firstNodeId).dblclick();
+    await previewNode(firstNodeId);
 
     const banner = page().getByTestId("version-preview-banner");
     await banner.waitFor({ timeout: 20_000 });
     await vi.waitFor(async () => {
-      expect(await banner.innerText()).toContain('Previewing "First version"');
+      expect(await banner.innerText()).toContain("Previewing save point “First save point”");
     }, { timeout: 10_000, interval: 250 });
 
     // History content: the second clip does not exist in the first version.
@@ -413,12 +436,12 @@ describe("multi-project version nodes UX on the real desktop", () => {
     const firstNodeId = nodes[0]!.id;
     const secondNodeId = nodes[1]!.id;
 
-    await versionNode(firstNodeId).dblclick();
+    await previewNode(firstNodeId);
     await page().getByTestId("version-preview-banner").waitFor({ timeout: 20_000 });
     await page().getByTestId("version-preview-adopt").click();
 
     // Adoption success toast carries the undo action and stays until used.
-    await waitForToast(/Now editing "First version"/);
+    await waitForToast(/Now editing "First save point"/);
     await vi.waitFor(async () => {
       expect(await timelineTextClip(page(), "Unsaved work").count()).toBe(0);
       expect(await timelineTextClip(page(), "Second Title").count()).toBe(0);
@@ -498,13 +521,17 @@ describe("multi-project version nodes UX on the real desktop", () => {
   /* (h) 交互验收 11 — project switch notification + Agent prompt copy    */
   /* ------------------------------------------------------------------ */
   test("project switch notifies once; the copied prompt carries ids and no token", async () => {
+    const notificationsBeforeCreation = await toastRegion().getByText(L.switchToast).allTextContents();
     await createProjectViaSwitcher("Vertical", "Vertical");
     b = await currentIdentity();
     expect(b.projectId).not.toBe(a.projectId);
-    // Creation is not a switch: no notification, and the empty project has
-    // no track at all.
-    expect(await toastRegion().getByText(L.switchToast).count()).toBe(0);
-    expect(await page().getByTestId("version-track").count()).toBe(0);
+    // Creation must not add a switch notification. A previous switch's
+    // eight-second hint may still exist, so compare the actual messages.
+    const notificationsAfterCreation = await toastRegion().getByText(L.switchToast).allTextContents();
+    record("H-creation-notifications", { before: notificationsBeforeCreation, after: notificationsAfterCreation });
+    expect(notificationsAfterCreation.every(message => notificationsBeforeCreation.includes(message))).toBe(true);
+    expect(await liveNodes(b.projectId)).toHaveLength(0);
+    expect(await page().locator('[data-testid^="version-node-"]:visible').count()).toBe(0);
 
     // Switch back to A: exactly one clickable notification.
     await switchToProjectViaMenu("Horizontal", a.projectId);
@@ -518,8 +545,8 @@ describe("multi-project version nodes UX on the real desktop", () => {
     expect(prompt).toContain(a.projectId);
     expect(prompt).toContain(a.workspaceId);
     expect(prompt).toContain("workspaceId:");
-    const endpoint = JSON.parse(readFileSync(launched.endpointFile, "utf8")) as { token?: string };
-    expect(typeof endpoint.token === "string" && prompt.includes(endpoint.token)).toBe(false);
+    // Check for credential-shaped content without reading the endpoint secret.
+    expect(/\b[a-f0-9]{64}\b/i.test(prompt)).toBe(false);
 
     // The prompt is recoverable from the project menu after the toast fades.
     await openProjectMenu(activeProjectName);
@@ -537,12 +564,12 @@ describe("multi-project version nodes UX on the real desktop", () => {
     // then switching to B drops the preview without leaking A's nodes.
     await switchToProjectViaMenu("Horizontal", a.projectId);
     const nodes = await liveNodes(a.projectId);
-    await versionNode(nodes[0]!.id).dblclick();
+    await previewNode(nodes[0]!.id);
     await page().getByTestId("version-preview-banner").waitFor({ timeout: 20_000 });
     await switchToProjectViaMenu("Vertical", b.projectId);
     await vi.waitFor(async () => {
       expect(await page().getByTestId("version-preview-banner").count()).toBe(0);
-      expect(await versionNode(nodes[0]!.id).count()).toBe(0);
+      expect(await versionNode(nodes[0]!.id).isVisible()).toBe(false);
     }, { timeout: 15_000, interval: 250 });
     await switchToProjectViaMenu("Horizontal", a.projectId);
     expect(await page().getByTestId("version-preview-banner").count()).toBe(0);
@@ -639,7 +666,7 @@ describe("multi-project version nodes UX on the real desktop", () => {
     }, { timeout: 240_000, interval: 1_000 });
     expect(completed.state, JSON.stringify(completed.error)).toBe("done");
     expect(completed.sourceRevision).toBe(fixed.revision);
-    expect(completed.deliveredTo).toBe(destination);
+    expect(realpathSync.native(completed.deliveredTo)).toBe(realpathSync.native(destination));
     expect(existsSync(destination)).toBe(true);
     expect((await currentIdentity()).projectId).toBe(a.projectId);
     const verified = await call("verify.artifact", {

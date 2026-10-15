@@ -10,16 +10,21 @@ interface State { revision: number; project: { referenceComparison?: { layout: s
 describe("combined delivery: live replacement + GUI comparison", () => {
   let launched: LaunchedApp;
   let agent: ExternalAgent;
+  let target: { projectId: string; workspaceId: string };
+  const targeted = new Set(["project_get_state", "project_save", "media_import", "media_analyze_start", "edit_apply", "edit_validate", "timeline_get", "material_attach", "analysis_list", "analysis_get"]);
+  const callTool = <T = unknown>(name: string, args: Record<string, unknown> = {}) =>
+    agent.callTool<T>(name, targeted.has(name) ? { ...target, ...args } : args);
+
   let original: string;
   let shorter: string;
   let mediaId: string;
   const state = async () => {
-    const result = await agent.callTool<State>("project_get_state");
+    const result = await callTool<State>("project_get_state");
     expect(result.ok, JSON.stringify(result.error)).toBe(true);
     return result.value!;
   };
   const apply = async (ops: unknown[]) => {
-    const result = await agent.callTool("edit_apply", { ops, expectedRevision: (await state()).revision });
+    const result = await callTool("edit_apply", { ops, expectedRevision: (await state()).revision });
     expect(result.ok, JSON.stringify(result.error)).toBe(true);
     return result;
   };
@@ -29,14 +34,22 @@ describe("combined delivery: live replacement + GUI comparison", () => {
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     await launched.waitForEndpointFile();
     agent = await connectExternalAgent(launched.endpointFile);
-    const caps = await agent.callTool("capabilities_get");
+    const context = await agent.callTool<{ identity: { projectId: string; workspaceId: string } }>("editor_get_context");
+    expect(context.ok).toBe(true);
+    target = { projectId: context.value!.identity.projectId, workspaceId: context.value!.identity.workspaceId };
+    const caps = await callTool("capabilities_get");
     expect(caps.ok).toBe(true);
+    const startupHint = launched.page.getByTestId("notification-toast").filter({ hasText: "Copy Agent startup prompt" });
+    if (await startupHint.count()) {
+      await startupHint.getByRole("button", { name: "Dismiss notification", exact: true }).click();
+      await startupHint.waitFor({ state: "detached" });
+    }
     original = path.join(launched.runDir, "reference.mp4");
     shorter = path.join(launched.runDir, "shorter.mp4");
     for (const [file, seconds] of [[original, 4], [shorter, 2]] as const) {
       execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", `testsrc2=size=320x180:rate=30:duration=${seconds}`, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-y", file]);
     }
-    const imported = await agent.callTool<{ mediaId: string }>("media_import", { path: original });
+    const imported = await callTool<{ mediaId: string }>("media_import", { path: original });
     expect(imported.ok, JSON.stringify(imported.error)).toBe(true);
     mediaId = imported.value!.mediaId;
     await apply([{ op: "track.add", trackType: "video" }]);
@@ -83,15 +96,15 @@ describe("combined delivery: live replacement + GUI comparison", () => {
   test("live replacement predicts shortening, rejects stale CAS and is one undo/redo", async () => {
     const before = await state();
     const ops = [{ op: "media.replace", mediaId, filePath: shorter, scope: "project" }];
-    const preview = await agent.callTool<{ warnings: Array<{ code: string }> }>("edit_validate", { ops, expectedRevision: before.revision });
+    const preview = await callTool<{ warnings: Array<{ code: string }> }>("edit_validate", { ops, expectedRevision: before.revision });
     expect(preview.ok, JSON.stringify(preview.error)).toBe(true);
     expect(preview.value!.warnings.some((w) => w.code === "REPLACEMENT_SHORTENS_CLIPS")).toBe(true);
     expect((await state()).revision).toBe(before.revision);
-    const stale = await agent.callTool("edit_apply", { ops, expectedRevision: before.revision - 1 });
+    const stale = await callTool("edit_apply", { ops, expectedRevision: before.revision - 1 });
     expect(stale.error?.code).toBe("CONFLICT");
-    const replaced = await agent.callTool<{ revision: number }>("edit_apply", { ops, expectedRevision: before.revision, idempotencyKey: "live-replace-once" });
+    const replaced = await callTool<{ revision: number }>("edit_apply", { ops, expectedRevision: before.revision, idempotencyKey: "live-replace-once" });
     expect(replaced.ok, JSON.stringify(replaced.error)).toBe(true);
-    const replay = await agent.callTool<{ replayed: boolean }>("edit_apply", { ops, expectedRevision: before.revision, idempotencyKey: "live-replace-once" });
+    const replay = await callTool<{ replayed: boolean }>("edit_apply", { ops, expectedRevision: before.revision, idempotencyKey: "live-replace-once" });
     expect(replay.ok, JSON.stringify(replay.error)).toBe(true);
     expect(replay.value?.replayed).toBe(true);
     const changed = await state();
@@ -107,12 +120,12 @@ describe("combined delivery: live replacement + GUI comparison", () => {
   test("library segment attach is atomic and versions follow replace, undo and redo", async () => {
     type Material = { id: string; usages: Array<{ mediaIdInProject: string; status: string }> };
     const create = async (params: Record<string, unknown>) => {
-      const result = await agent.callTool<{ material: Material }>("material_create", params);
+      const result = await callTool<{ material: Material }>("material_create", params);
       expect(result.ok, JSON.stringify(result.error)).toBe(true);
       return result.value!.material;
     };
     const get = async (id: string) => {
-      const result = await agent.callTool<{ material: Material }>("material_get", { id });
+      const result = await callTool<{ material: Material }>("material_get", { id });
       expect(result.ok, JSON.stringify(result.error)).toBe(true);
       return result.value!.material;
     };
@@ -121,13 +134,13 @@ describe("combined delivery: live replacement + GUI comparison", () => {
     const segment = await create({ kind: "segment", parentMaterialId: parent.id, startSec: 0.5, endSec: 1.5, title: "Library segment" });
     const before = await state();
     const params = { materialId: segment.id, expectedRevision: before.revision, idempotencyKey: "segment-once" };
-    const attached = await agent.callTool<{ mediaIdInProject: string; clipId: string }>("material_attach", params);
+    const attached = await callTool<{ mediaIdInProject: string; clipId: string }>("material_attach", params);
     expect(attached.ok, JSON.stringify(attached.error)).toBe(true);
     const attachedId = attached.value!.mediaIdInProject;
     const after = await state();
     expect(after.project.mediaLibrary.items.length).toBe(before.project.mediaLibrary.items.length + 1);
     expect(after.project.timeline.tracks.flatMap((t) => t.clips).some((c) => c.id === attached.value!.clipId)).toBe(true);
-    const retry = await agent.callTool<{ replayed: boolean }>("material_attach", params);
+    const retry = await callTool<{ replayed: boolean }>("material_attach", params);
     expect(retry.ok, JSON.stringify(retry.error)).toBe(true);
     expect(retry.value!.replayed).toBe(true);
     await pressUndo(launched.page);
@@ -145,34 +158,34 @@ describe("combined delivery: live replacement + GUI comparison", () => {
     await pressRedo(launched.page);
   });
   test("local analysis records can be read and rechecked with their saved config", async () => {
-    const start = await agent.callTool<{ jobId: string }>("media_analyze_start", { mediaId, analysisTypes: ["technicalQuality"], startSec: 0, endSec: 2 });
+    const start = await callTool<{ jobId: string }>("media_analyze_start", { mediaId, analysisTypes: ["technicalQuality"], startSec: 0, endSec: 2 });
     expect(start.ok, JSON.stringify(start.error)).toBe(true);
     await vi.waitFor(async () => {
-      const job = await agent.callTool<{ state: string; error: unknown }>("job_status", { jobId: start.value!.jobId });
+      const job = await callTool<{ state: string; error: unknown }>("job_status", { jobId: start.value!.jobId });
       expect(job.value?.state, JSON.stringify(job.value?.error)).toBe("done");
     }, { timeout: 60000, interval: 500 });
-    const records = await agent.callTool<Array<{ id: string }>>("analysis_list", { mediaId });
+    const records = await callTool<Array<{ id: string }>>("analysis_list", { mediaId });
     expect(records.ok, JSON.stringify(records.error)).toBe(true);
     expect(records.value?.length).toBeGreaterThan(0);
     const recordId = records.value![0]!.id;
-    const record = await agent.callTool<{ config: { analysisTypes: string[]; startSec: number; endSec: number }; observations: unknown[]; inferences: unknown[] }>("analysis_get", { recordId });
+    const record = await callTool<{ config: { analysisTypes: string[]; startSec: number; endSec: number }; observations: unknown[]; inferences: unknown[] }>("analysis_get", { recordId });
     expect(record.ok).toBe(true);
     expect(Array.isArray(record.value!.observations)).toBe(true);
     expect(Array.isArray(record.value!.inferences)).toBe(true);
     const { analysisTypes, startSec, endSec } = record.value!.config;
-    const recheck = await agent.callTool<{ jobId: string }>("media_analyze_start", { mediaId, analysisTypes, startSec, endSec, recheckOfRecordId: recordId });
+    const recheck = await callTool<{ jobId: string }>("media_analyze_start", { mediaId, analysisTypes, startSec, endSec, recheckOfRecordId: recordId });
     expect(recheck.ok, JSON.stringify(recheck.error)).toBe(true);
     await vi.waitFor(async () => {
-      const job = await agent.callTool<{ state: string; error: unknown }>("job_status", { jobId: recheck.value!.jobId });
+      const job = await callTool<{ state: string; error: unknown }>("job_status", { jobId: recheck.value!.jobId });
       expect(job.value?.state, JSON.stringify(job.value?.error)).toBe("done");
     }, { timeout: 60000, interval: 500 });
-    const updated = await agent.callTool<Array<{ id: string; recheckOf: string | null }>>("analysis_list", { mediaId });
+    const updated = await callTool<Array<{ id: string; recheckOf: string | null }>>("analysis_list", { mediaId });
     expect(updated.value?.some((item) => item.recheckOf === recordId && item.id !== recordId)).toBe(true);
   });
   test("replacement media bytes and comparison config survive a full desktop restart", async () => {
     const replacementId = (await state()).project.timeline.tracks.flatMap((t) => t.clips)[0].mediaId;
     await apply([{ op: "reference.setComparison", config: { referenceMediaId: replacementId, refStartSec: 0, refEndSec: 2, timelineStartSec: 0, rate: 1, audioSide: "timeline", layout: "overlay", overlayOpacity: 0.4 } }]);
-    const saved = await agent.callTool("project_save");
+    const saved = await callTool("project_save", { expectedRevision: (await state()).revision, idempotencyKey: "repair-save-before-relaunch" });
     expect(saved.ok, JSON.stringify(saved.error)).toBe(true);
     await agent.close();
     launched = await launched.relaunch();

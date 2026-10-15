@@ -134,7 +134,10 @@ export function EditPage(): JSX.Element {
   const lowerPanelHeight = timelineH.value + 72;
   const gridStyle: React.CSSProperties = {
     gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px`,
-    gridTemplateRows: `1fr ${lowerPanelHeight}px`,
+    // Keep transport/comparison controls from squeezing the picture away at
+    // the supported minimum window height. Clamp only the rendered split;
+    // the user's stored timeline preference still returns in a taller window.
+    gridTemplateRows: `minmax(240px, 1fr) min(${lowerPanelHeight}px, max(232px, calc(100% - 240px)))`,
     gridTemplateAreas:
       "'media stage inspector' 'lower lower lower'",
   };

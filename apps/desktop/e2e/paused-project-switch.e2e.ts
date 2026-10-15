@@ -6,7 +6,8 @@ import { launchApp } from "./harness/launch";
 import { DESKTOP_DIR } from "./harness/paths";
 import { createProjectViaUI, enableAgentSessionViaUI } from "./harness/ui";
 
-test("a paused original HEVC frame returns at the same playhead after switching through an empty project", async () => {
+// Preserve the original-source acceptance when supplied; CI uses synthetic fixtures.
+test.skipIf(!process.env.REELTERMINAL_TEST_HEVC_SOURCE)("a paused original HEVC frame returns at the same playhead after switching through an empty project", async () => {
   const job = process.env.REELTERMINAL_FIXES_JOB_ROOT;
   const source = process.env.REELTERMINAL_TEST_HEVC_SOURCE;
   if (!job || !source) throw new Error("Set the external job root and original HEVC source for this regression");

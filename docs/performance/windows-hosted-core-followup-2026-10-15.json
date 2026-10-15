@@ -1,0 +1,169 @@
+{
+  "schema": "reelterminal.hosted-core-followup/v1",
+  "date": "2026-10-15",
+  "existingSourceSha": "7e841bf914ad71ad700b4e441fe3240fe04ff07f",
+  "existingRuns": [
+    {
+      "conclusion": "success",
+      "databaseId": 38719480846,
+      "headSha": "7e841bf914ad71ad700b4e441fe3240fe04ff07f",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38719480846",
+      "workflowName": "Performance regression"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38719480777,
+      "headSha": "7e841bf914ad71ad700b4e441fe3240fe04ff07f",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38719480777",
+      "workflowName": "Chromium E2E"
+    },
+    {
+      "conclusion": "failure",
+      "databaseId": 38719480730,
+      "headSha": "7e841bf914ad71ad700b4e441fe3240fe04ff07f",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38719480730",
+      "workflowName": "Electron E2E"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38719480961,
+      "headSha": "7e841bf914ad71ad700b4e441fe3240fe04ff07f",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38719480961",
+      "workflowName": "CI"
+    }
+  ],
+  "hostedM3": {
+    "windows": "passed",
+    "macos": "passed",
+    "originalRecoveryTimeoutMs": 120000
+  },
+  "localValidation": {
+    "repair": {
+      "tests": 5,
+      "totalSeconds": 11.23
+    },
+    "mediaImport": {
+      "tests": 1,
+      "fileSeconds": 7.175
+    },
+    "archive": {
+      "tests": 13,
+      "totalSeconds": 45.03,
+      "scope": [
+        "preview_read_only",
+        "protected_draft",
+        "adopt_undo",
+        "recycle_undo",
+        "cross_project",
+        "immutable_media",
+        "fixed_export",
+        "ask_auto_skip_close",
+        "reopen",
+        "durable_idempotency"
+      ]
+    },
+    "portal": {
+      "tests": 1,
+      "fileSeconds": 3.898
+    },
+    "nodeUX": {
+      "tests": 1,
+      "fileSeconds": 40.633,
+      "externalHEVC": false
+    },
+    "externalAcceptance": {
+      "testsSkipped": 3,
+      "functionallyPassed": false
+    },
+    "canvas": {
+      "tests": 3,
+      "totalSeconds": 5.68,
+      "tolerance": 0.03,
+      "singleCanvasClick": true
+    }
+  },
+  "layout": {
+    "classification": "reproduced_product_defect",
+    "beforePictureHeight": 39.65625,
+    "afterPictureHeight": 50.65625,
+    "unchangedRequiredHeightGreaterThan": 40,
+    "requestedWindowHeights": [
+      720,
+      700
+    ],
+    "runtimeChanged": true,
+    "storedTimelinePreferencePreserved": true
+  },
+  "evidence": [
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/7e841bf9-ci-terminal.json",
+      "sha256": "8ceca2ed389bf110152155a111b5126c1235ac071e6f7492eb5837b0e28796c4"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/7e841bf9-electron-failed.log",
+      "sha256": "e4867b3a1c4cca2174130557bd5c39c49ded29c75dc0750dcc73141cd4c328ab"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/remaining-explicit-targets.log",
+      "sha256": "f180a7d887b93ae31add27bc4e6e5a55960e8ae590d5ab2955aa398a98e05d49"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/repair-explicit-targets-final.log",
+      "sha256": "ad3da3be5860e0a1c92727ba599ea4b6bca1a2ff771a409c3085dd981922ea30"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/archive-current-ui-target.log",
+      "sha256": "09a42b2e0c33a2e1ca655ce2b4e3341222a4cb01a5dd2cde8fd91668d55b0268"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/archive-current-ui-scoped.log",
+      "sha256": "448e05659b3f0faae0290df2250170bc40ac7e74b039f2f52c49fc71fba5f715"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/archive-current-ui-final.log",
+      "sha256": "ba3b170de8a5f2eb058eb9ffe4d64dcd2360469cc7cc7c1a8a56b020ae966552"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/portal-node-ux-contracts.log",
+      "sha256": "9387b1d5c3ebb48048933c2c1491d939d44bf80dc103255b610917a756cd4801"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/external-opt-in-contract.log",
+      "sha256": "b62ae12327d99b4dda03e2aebec6372822803677f54c9d979a13a9fe50f93701"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/comparison-minimum-window-before.log",
+      "sha256": "8272d9920c025a50bcc51ddcae4120a5f417941e695b2bf73425f1661a78c951"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/comparison-minimum-window-after.log",
+      "sha256": "ab64008dddbb85adbf5b32d205bea235e9b4e7749bfc4897ce53fce740f57009"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/canvas-stable-geometry-target.log",
+      "sha256": "02dcc00209c4d35ae39b2298a4024422ec9a8276be788c59955054b4d433f263"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/minimum-layout-renderer-build.log",
+      "sha256": "5124f945a6d940a3a9aab65709d49d29f705f6ab3b0932c37108467518e3c733"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/remaining-harness-typecheck.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "noActions": [
+    "release",
+    "tag",
+    "installer_upload",
+    "installation",
+    "signing_credentials",
+    "mac_local_task",
+    "manual_hosted_rerun"
+  ],
+  "report": "windows-hosted-core-followup-2026-10-15.md"
+}

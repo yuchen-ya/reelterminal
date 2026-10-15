@@ -6,7 +6,8 @@ import { launchApp } from "./harness/launch";
 import { DESKTOP_DIR } from "./harness/paths";
 import { enableAgentSessionViaUI } from "./harness/ui";
 
-test("copied acceptance project keeps paused pixels through inspector actions and renders real history", async () => {
+// An owned copied acceptance profile is an explicit opt-in; ordinary CI has none.
+test.skipIf(!process.env.REELTERMINAL_RECHECK_CLONE_DIR && !process.env.REELTERMINAL_RECHECK_PROJECT_ID)("copied acceptance project keeps paused pixels through inspector actions and renders real history", async () => {
   const job = process.env.REELTERMINAL_FIXES_JOB_ROOT;
   const runDir = process.env.REELTERMINAL_RECHECK_CLONE_DIR;
   const projectId = process.env.REELTERMINAL_RECHECK_PROJECT_ID;

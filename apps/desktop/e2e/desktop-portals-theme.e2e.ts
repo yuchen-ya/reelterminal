@@ -6,10 +6,9 @@ import { createProjectViaUI } from "./harness/ui";
 
 test("desktop body portals share dark tokens and project name/detail rows have spacing", async () => {
   const job = process.env.REELTERMINAL_FIXES_JOB_ROOT;
-  if (!job) throw new Error("Set an external test job");
-  const evidence = path.join(job, "evidence", "desktop-portals");
+  const launched = await launchApp({ runDir: job ? path.join(job, "work", `portals-${crypto.randomUUID()}`) : undefined, keepRunDir: true });
+  const evidence = path.join(job ?? launched.runDir, "evidence", "desktop-portals");
   mkdirSync(evidence, { recursive: true });
-  const launched = await launchApp({ runDir: path.join(job, "work", `portals-${crypto.randomUUID()}`), keepRunDir: true });
   const observations: Record<string, unknown> = {};
   const darkBackground = async (selector: string) => {
     const result = await launched.page.locator(selector).evaluate(element => {

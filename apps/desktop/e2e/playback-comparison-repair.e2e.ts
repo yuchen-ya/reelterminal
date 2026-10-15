@@ -67,34 +67,40 @@ test("decimal-adjacent clips use native playback and comparison settings leave b
     await page.getByRole("button", { name: "Advanced", exact: true }).click();
     const viewport = page.getByTestId("reference-comparison-viewport");
     const settings = page.getByTestId("comparison-settings");
-    await settings.waitFor();
-    await page.waitForFunction(() => {
-      const pictureElement = document.querySelector('[data-testid="reference-comparison-viewport"]');
-      const picture = pictureElement?.getBoundingClientRect();
-      const frame = pictureElement?.parentElement;
-      const controls = document.querySelector('[data-testid="comparison-controls"]')?.getBoundingClientRect();
-      // Resizing the window and opening the sidebar both change the observed
-      // video area. Wait for the frame's existing CSS size transition before
-      // reading its final bounds; toolbar placement alone can settle earlier.
-      const settling = [frame, frame?.parentElement].some(element =>
-        element?.getAnimations().some(animation => animation.playState === "running"));
-      return picture && controls && frame && !settling &&
-        Math.abs(picture.width - parseFloat(frame.style.width)) < 1 &&
-        Math.abs(picture.height - parseFloat(frame.style.height)) < 1 &&
-        controls.bottom <= picture.top + 1;
-    }, undefined, { timeout: 5_000 });
-    const settingsBounds = (await settings.boundingBox())!;
-    const pictureBounds = (await viewport.boundingBox())!;
-    const controlsBounds = (await page.getByTestId("comparison-controls").boundingBox())!;
-    evidence.record("smallWindow", { settingsBounds, pictureBounds, controlsBounds });
-    evidence.flush();
-    await evidence.screenshot("advanced-small");
-    expect(pictureBounds.width).toBeGreaterThan(0);
-    expect(pictureBounds.height).toBeGreaterThan(40);
-    expect(settingsBounds.x).toBeGreaterThanOrEqual(pictureBounds.x + pictureBounds.width - 1);
-    expect(controlsBounds.y + controlsBounds.height).toBeLessThanOrEqual(pictureBounds.y + 1);
-    expect(await viewport.locator("button, input, select").count()).toBe(0);
-    expect(await page.getByRole("button", { name: "Mute all", exact: true }).isVisible()).toBe(true);
+    for (const height of [720, 700]) {
+      await launched.app.evaluate(({ BrowserWindow }, height) => BrowserWindow.getAllWindows()[0]!.setContentSize(1280, height), height);
+      await settings.waitFor();
+      await page.waitForFunction(() => {
+        const pictureElement = document.querySelector('[data-testid="reference-comparison-viewport"]');
+        const picture = pictureElement?.getBoundingClientRect();
+        const frame = pictureElement?.parentElement;
+        const controls = document.querySelector('[data-testid="comparison-controls"]')?.getBoundingClientRect();
+        // Resizing the window and opening the sidebar both change the observed
+        // video area. Wait for the frame's existing CSS size transition before
+        // reading its final bounds; toolbar placement alone can settle earlier.
+        const settling = [frame, frame?.parentElement].some(element =>
+          element?.getAnimations().some(animation => animation.playState === "running"));
+        return picture && controls && frame && !settling &&
+          Math.abs(picture.width - parseFloat(frame.style.width)) < 1 &&
+          Math.abs(picture.height - parseFloat(frame.style.height)) < 1 &&
+          controls.bottom <= picture.top + 1;
+      }, undefined, { timeout: 5_000 });
+      const settingsBounds = (await settings.boundingBox())!;
+      const pictureBounds = (await viewport.boundingBox())!;
+      const controlsBounds = (await page.getByTestId("comparison-controls").boundingBox())!;
+      evidence.record(height === 720 ? "smallWindow" : "minimumWindow", { requestedHeight: height, viewport: await page.evaluate(() => ({ width: innerWidth, height: innerHeight })), settingsBounds, pictureBounds, controlsBounds });
+      evidence.flush();
+      await evidence.screenshot(`advanced-small-${height}`);
+      expect(pictureBounds.width).toBeGreaterThan(0);
+      expect(pictureBounds.height).toBeGreaterThan(40);
+      expect(settingsBounds.x).toBeGreaterThanOrEqual(pictureBounds.x + pictureBounds.width - 1);
+      expect(controlsBounds.y + controlsBounds.height).toBeLessThanOrEqual(pictureBounds.y + 1);
+      expect(await viewport.locator("button, input, select").count()).toBe(0);
+      expect(await page.getByRole("button", { name: "Mute all", exact: true }).isVisible()).toBe(true);
+      const timelineBounds = (await page.getByTestId("timeline-tracks-scroll").boundingBox())!;
+      expect(timelineBounds.height).toBeGreaterThan(0);
+      expect(timelineBounds.y + timelineBounds.height).toBeLessThanOrEqual(await page.evaluate(() => innerHeight) + 1);
+    }
     if (jobRoot) {
       const evidenceDir = path.join(jobRoot, "evidence");
       await mkdir(evidenceDir, { recursive: true });

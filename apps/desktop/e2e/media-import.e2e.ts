@@ -68,6 +68,11 @@ interface TimelineResult {
 describe("live media import: external Agent → visible GUI project", () => {
   let launched: LaunchedApp;
   let agent: ExternalAgent;
+  let target: { projectId: string; workspaceId: string };
+  const targeted = new Set(["project_get_state", "project_save", "media_import", "media_analyze_start", "edit_apply", "edit_validate", "timeline_get", "material_attach"]);
+  const callTool = <T = unknown>(name: string, args: Record<string, unknown> = {}) =>
+    agent.callTool<T>(name, targeted.has(name) ? { ...target, ...args } : args);
+
 
   beforeAll(async () => {
     launched = await launchApp();
@@ -78,6 +83,9 @@ describe("live media import: external Agent → visible GUI project", () => {
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     await launched.waitForEndpointFile();
     agent = await connectExternalAgent(launched.endpointFile);
+    const context = await agent.callTool<{ identity: { projectId: string; workspaceId: string } }>("editor_get_context");
+    expect(context.ok).toBe(true);
+    target = { projectId: context.value!.identity.projectId, workspaceId: context.value!.identity.workspaceId };
   }, 300_000);
 
   afterAll(async () => {
@@ -94,7 +102,7 @@ describe("live media import: external Agent → visible GUI project", () => {
     await launched.page
       .locator('input[type="file"][aria-label="Import media"]')
       .setInputFiles(guiSourcePath);
-    let guiImportState = await agent.callTool<{
+    let guiImportState = await callTool<{
       revision: number;
       project: {
         mediaLibrary: {
@@ -103,7 +111,7 @@ describe("live media import: external Agent → visible GUI project", () => {
       };
     }>("project_get_state");
     await vi.waitFor(async () => {
-      guiImportState = await agent.callTool<{
+      guiImportState = await callTool<{
         revision: number;
         project: {
           mediaLibrary: {
@@ -121,20 +129,20 @@ describe("live media import: external Agent → visible GUI project", () => {
     );
     expect(guiItem?.originalUrl).toBe(guiSourcePath);
     await launched.page.locator(`[data-live-media-id="${guiItem!.id}"]`).waitFor({ timeout: 30_000 });
-    const removedGuiImport = await agent.callTool("edit_apply", {
+    const removedGuiImport = await callTool("edit_apply", {
       ops: [{ op: "media.remove", mediaId: guiItem!.id }],
       expectedRevision: guiImportState.value!.revision,
     });
     expect(removedGuiImport.ok).toBe(true);
 
-    const caps = await agent.callTool<{
+    const caps = await callTool<{
       mediaImport: { available: boolean; mediaRoots: string[] };
     }>("capabilities_get");
     expect(caps.ok).toBe(true);
     expect(caps.value?.mediaImport.available).toBe(true);
     expect(caps.value?.mediaImport.mediaRoots).toContain(launched.runDir);
 
-    const first = await agent.callTool<ImportResult>("media_import", {
+    const first = await callTool<ImportResult>("media_import", {
       path: sourcePath,
       idempotencyKey: "e2e-import-first",
     });
@@ -150,7 +158,7 @@ describe("live media import: external Agent → visible GUI project", () => {
     // undo returns the project to the pre-import state for the fresh import.
     await pressRedo(launched.page);
     await firstImportedCard.waitFor({ timeout: 15_000 });
-    const afterRedo = await agent.callTool<{
+    const afterRedo = await callTool<{
       project: { mediaLibrary: { items: Array<{ id: string }> } };
     }>(
       "project_get_state",
@@ -164,11 +172,11 @@ describe("live media import: external Agent → visible GUI project", () => {
     await pressUndo(launched.page);
     await firstImportedCard.waitFor({ state: "detached", timeout: 15_000 });
 
-    const context = await agent.callTool<{ projectRevision: number }>(
+    const context = await callTool<{ projectRevision: number }>(
       "editor_get_context",
     );
     expect(context.ok).toBe(true);
-    const imported = await agent.callTool<ImportResult>("media_import", {
+    const imported = await callTool<ImportResult>("media_import", {
       path: sourcePath,
       expectedRevision: context.value!.projectRevision,
       idempotencyKey: "e2e-import-second",
@@ -176,26 +184,26 @@ describe("live media import: external Agent → visible GUI project", () => {
     expect(imported.ok).toBe(true);
     const importedCard = launched.page.locator(`[data-live-media-id="${imported.value!.mediaId}"]`);
     await importedCard.waitFor({ timeout: 30_000 });
-    const importedState = await agent.callTool<{
+    const importedState = await callTool<{
       project: { mediaLibrary: { items: Array<{ id: string; name: string; originalUrl?: string }> } };
     }>("project_get_state");
     expect(importedState.value?.project.mediaLibrary.items.find(
       (item) => item.id === imported.value!.mediaId,
     )).toMatchObject({ name: FILE_NAME, originalUrl: sourcePath });
 
-    const trackAdded = await agent.callTool<{ revision: number }>("edit_apply", {
+    const trackAdded = await callTool<{ revision: number }>("edit_apply", {
       ops: [{ op: "track.add", trackType: "audio" }],
       expectedRevision: imported.value!.revision,
     });
     expect(trackAdded.ok).toBe(true);
-    const timeline = await agent.callTool<TimelineResult>("timeline_get");
+    const timeline = await callTool<TimelineResult>("timeline_get");
     expect(timeline.ok).toBe(true);
     const audioTrack = [...timeline.value!.tracks]
       .reverse()
       .find((track) => track.type === "audio");
     expect(audioTrack).toBeDefined();
 
-    const clipAdded = await agent.callTool<{ revision: number }>("edit_apply", {
+    const clipAdded = await callTool<{ revision: number }>("edit_apply", {
       ops: [
         {
           op: "clip.add",
@@ -209,7 +217,7 @@ describe("live media import: external Agent → visible GUI project", () => {
       expectedRevision: timeline.value!.revision,
     });
     expect(clipAdded.ok).toBe(true);
-    const rangedTimeline = await agent.callTool<TimelineResult>("timeline_get");
+    const rangedTimeline = await callTool<TimelineResult>("timeline_get");
     const rangedClip = rangedTimeline.value!.tracks
       .find((track) => track.id === audioTrack!.id)?.clips[0];
     expect(rangedClip).toMatchObject({ inPoint: 0.2, outPoint: 0.6 });
@@ -219,7 +227,7 @@ describe("live media import: external Agent → visible GUI project", () => {
       .getByRole("button", { name: `Select clip ${FILE_NAME}`, exact: true })
       .waitFor({ timeout: 30_000 });
 
-    const saved = await agent.callTool("project_save");
+    const saved = await callTool("project_save", { expectedRevision: rangedTimeline.value!.revision, idempotencyKey: "media-import-save-before-relaunch" });
     expect(saved.ok).toBe(true);
     await agent.close();
     launched = await launched.relaunch();

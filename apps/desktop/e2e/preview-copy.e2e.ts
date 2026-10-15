@@ -6,7 +6,8 @@ import { launchApp } from "./harness/launch";
 import { DESKTOP_DIR } from "./harness/paths";
 import { createProjectViaUI, enableAgentSessionViaUI } from "./harness/ui";
 
-test("historical mixed clips copy to current editing with fixed media, relative times and one undo", async () => {
+// This manual acceptance requires the user's explicitly supplied original source.
+test.skipIf(!process.env.REELTERMINAL_TEST_HEVC_SOURCE)("historical mixed clips copy to current editing with fixed media, relative times and one undo", async () => {
   const job = process.env.REELTERMINAL_FIXES_JOB_ROOT;
   const original = process.env.REELTERMINAL_TEST_HEVC_SOURCE;
   if (!job || !original) throw new Error("Set the external job and original HEVC source");

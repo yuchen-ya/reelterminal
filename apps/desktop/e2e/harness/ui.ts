@@ -228,44 +228,34 @@ export async function setCanvasPointViaUI(
   await armButton.waitFor({ timeout: 30_000 });
   const canvas = page.getByTestId("preview-canvas");
   await canvas.waitFor({ timeout: 30_000 });
+  // Clearing an existing target and arming the crosshair are real UI actions.
+  for (let index = 0; index < 2; index += 1) {
+    if ((await armButton.getAttribute("aria-pressed")) === "true") break;
+    await armButton.click();
+  }
+  await waitFor(async () => (await armButton.getAttribute("aria-pressed")) === "true", 5_000, "target-point crosshair to arm");
+  // Selection/inspector changes can still resize the player. Read geometry
+  // after arming and after its actual transitions, never reuse the old box.
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector('[data-testid="preview-canvas"]');
+    if (!canvas) return false;
+    for (let element: Element | null = canvas; element; element = element.parentElement) {
+      if (element.getAnimations().some(animation => animation.playState === "running")) return false;
+    }
+    const rect = canvas.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }, undefined, { timeout: 5_000 });
   const box = await canvas.boundingBox();
   if (!box) throw new Error("preview canvas has no box");
-
-  const attempt = async (ax: number, ay: number): Promise<{ x: number; y: number } | null> => {
-    // (Re-)arm unless already armed. When a point already exists, the first
-    // click CLEARS it (Preview's toggle semantics) and a second click arms —
-    // exactly the user's gesture sequence.
-    for (let i = 0; i < 2; i += 1) {
-      if ((await armButton.getAttribute("aria-pressed")) === "true") break;
-      await armButton.click();
-      try {
-        await waitFor(
-          async () => (await armButton.getAttribute("aria-pressed")) === "true",
-          5_000,
-          "target-point crosshair to arm",
-        );
-      } catch {
-        if (i === 1) throw new Error("target-point crosshair failed to arm after clear+rearm");
-      }
-    }
-    await page.mouse.click(box.x + box.width * ax, box.y + box.height * ay);
-    await page.waitForTimeout(250);
-    return readCanvasPoint();
-  };
-
-  let point = await attempt(fx, fy);
-  if (
-    point !== null &&
-    (Math.abs(point.x - fx) > tolerance || Math.abs(point.y - fy) > tolerance)
-  ) {
-    // Correct by the observed delta (letterbox/offset compensation).
-    point = await attempt(fx + (fx - point.x), fy + (fy - point.y));
-  }
-  if (
-    point === null ||
-    Math.abs(point.x - fx) > tolerance ||
-    Math.abs(point.y - fy) > tolerance
-  ) {
+  const bitmap = await canvas.evaluate(element => ({ width: (element as HTMLCanvasElement).width, height: (element as HTMLCanvasElement).height }));
+  if (bitmap.width <= 0 || bitmap.height <= 0) throw new Error("preview canvas has no bitmap");
+  const scale = Math.min(box.width / bitmap.width, box.height / bitmap.height);
+  const width = bitmap.width * scale;
+  const height = bitmap.height * scale;
+  await page.mouse.click(box.x + (box.width - width) / 2 + width * fx, box.y + (box.height - height) / 2 + height * fy);
+  await waitFor(async () => (await readCanvasPoint()) !== null, 5_000, "target point from the real canvas click");
+  const point = await readCanvasPoint();
+  if (point === null || Math.abs(point.x - fx) > tolerance || Math.abs(point.y - fy) > tolerance) {
     throw new Error(`canvas point missed: wanted (${fx}, ${fy}), got ${JSON.stringify(point)}`);
   }
   return point;
