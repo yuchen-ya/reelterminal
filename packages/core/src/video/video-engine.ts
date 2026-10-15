@@ -698,6 +698,22 @@ export class VideoEngine {
     targetHeight?: number,
     options: FrameRenderOptions = {},
   ): Promise<RenderedFrame> {
+    const mediaEngine = this.exportMode ? getMediaEngine() : null;
+    mediaEngine?.beginExportFrame();
+    try {
+      return await this.renderFrameContents(project, time, targetWidth, targetHeight, options);
+    } finally {
+      mediaEngine?.endExportFrame();
+    }
+  }
+
+  private async renderFrameContents(
+    project: Project,
+    time: number,
+    targetWidth?: number,
+    targetHeight?: number,
+    options: FrameRenderOptions = {},
+  ): Promise<RenderedFrame> {
     this.ensureInitialized();
 
     const { timeline, mediaLibrary, settings } = project;

@@ -86,6 +86,7 @@ export class ExportFrameDecoder {
   private decodeTail: Promise<void> = Promise.resolve();
   private primaryStreamId: string | undefined;
   private streamDecoders = new Map<string, ExportFrameDecoder>();
+  private requestedStreams = new Set<string>();
 
   constructor(mediabunny: typeof import("mediabunny"), file: File | Blob, width?: number) {
     this.mediabunny = mediabunny;
@@ -131,6 +132,7 @@ export class ExportFrameDecoder {
   async getFrame(timestamp: number, streamId?: string): Promise<OffscreenCanvas | null> {
     const framePromise = this.decodeTail.then(async () => {
       if (streamId !== undefined) {
+        this.requestedStreams.add(streamId);
         this.primaryStreamId ??= streamId;
         if (streamId !== this.primaryStreamId) {
           // Two timeline clips may read the same file at different offsets.
@@ -139,7 +141,12 @@ export class ExportFrameDecoder {
           let decoder = this.streamDecoders.get(streamId);
           if (!decoder) {
             decoder = new ExportFrameDecoder(this.mediabunny, this.file, this.width);
-            if (!await decoder.initialize()) return null;
+            try {
+              if (!await decoder.initialize()) return null;
+            } catch (error) {
+              decoder.dispose();
+              throw error;
+            }
             this.streamDecoders.set(streamId, decoder);
           }
           return decoder.getFrame(timestamp);
@@ -152,6 +159,19 @@ export class ExportFrameDecoder {
       () => undefined,
     );
     return framePromise;
+  }
+
+  beginFrame(): void {
+    this.requestedStreams.clear();
+  }
+
+  endFrame(): void {
+    for (const [streamId, decoder] of this.streamDecoders) {
+      if (!this.requestedStreams.has(streamId)) {
+        decoder.dispose();
+        this.streamDecoders.delete(streamId);
+      }
+    }
   }
 
   private async getSequentialFrame(timestamp: number): Promise<OffscreenCanvas | null> {
@@ -221,6 +241,7 @@ export class ExportFrameDecoder {
   dispose(): void {
     for (const decoder of this.streamDecoders.values()) decoder.dispose();
     this.streamDecoders.clear();
+    this.requestedStreams.clear();
     this.primaryStreamId = undefined;
     void this.canvasIterator?.return?.();
     if (this.input) {
@@ -245,6 +266,7 @@ export class MediaBunnyEngine {
   private frameCache: Map<string, FrameCacheEntry> = new Map();
   private readonly MAX_CACHE_SIZE = 5;
   private exportDecoders: Map<string, ExportFrameDecoder> = new Map();
+  private exportFrameDepth = 0;
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -308,10 +330,23 @@ export class MediaBunnyEngine {
   }
 
   disposeAllExportDecoders(): void {
+    this.exportFrameDepth = 0;
     for (const decoder of this.exportDecoders.values()) {
       decoder.dispose();
     }
     this.exportDecoders.clear();
+  }
+
+  beginExportFrame(): void {
+    if (this.exportFrameDepth++ === 0) {
+      for (const decoder of this.exportDecoders.values()) decoder.beginFrame();
+    }
+  }
+
+  endExportFrame(): void {
+    if (this.exportFrameDepth > 0 && --this.exportFrameDepth === 0) {
+      for (const decoder of this.exportDecoders.values()) decoder.endFrame();
+    }
   }
 
   private ensureInitialized(): void {

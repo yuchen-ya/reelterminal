@@ -166,6 +166,7 @@ describe("ExportFrameDecoder", () => {
       Input, ALL_FORMATS: [], BlobSource: class {}, CanvasSink: class { canvases = canvases; },
     } as unknown as typeof import("mediabunny"), new Blob(["same source"]));
     await decoder.initialize();
+    decoder.beginFrame();
     await decoder.getFrame(6, "upper");
     await decoder.getFrame(0, "background");
     await decoder.getFrame(6.5, "upper");
@@ -174,6 +175,14 @@ describe("ExportFrameDecoder", () => {
     expect(drawImage.mock.calls.map(call => call[0])).toEqual([
       frames[2].canvas, frames[0].canvas, frames[2].canvas, frames[0].canvas,
     ]);
+    decoder.endFrame();
+    expect(disposed).not.toHaveBeenCalled();
+    decoder.beginFrame();
+    await decoder.getFrame(6.75, "upper");
+    decoder.endFrame();
+    await Promise.resolve();
+    expect(disposed).toHaveBeenCalledTimes(1);
+    expect(returned).toHaveBeenCalledTimes(1);
     decoder.dispose();
     await Promise.resolve();
     expect(disposed).toHaveBeenCalledTimes(2);
