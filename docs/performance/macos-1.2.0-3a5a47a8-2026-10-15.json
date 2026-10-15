@@ -1,0 +1,190 @@
+{
+  "schema": "reelterminal.macos-release-validation/v1",
+  "version": "1.2.0",
+  "architecture": "arm64",
+  "sourceSha": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+  "sourceFreezeExplicitlyConfirmed": true,
+  "sourceCleanAtBuild": true,
+  "outputDirectory": "apps/desktop/release/macos-1.2.0-3a5a47a8-2026-10-15",
+  "artifactStatus": "validated unsigned/unnotarized developer packages; awaiting main-session publication",
+  "files": [
+    {
+      "file": "ReelTerminal-1.2.0-arm64.dmg",
+      "bytes": 163893512,
+      "sha256": "9097d906d73bd364bfe71af7e58e42a6b8e4ce78648d73fd8c1734a180cdd90f"
+    },
+    {
+      "file": "ReelTerminal-1.2.0-arm64.zip",
+      "bytes": 164107809,
+      "sha256": "07552412110420bd606f12120a458b36dcf2ac66a5b6e818b1e4e00e5cfa982a"
+    }
+  ],
+  "buildStamp": {
+    "schema": "reelterminal.performance-build/v1",
+    "build_type": "production",
+    "source_head": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+    "dirty": false,
+    "source_digest": "4c0a8cf59c8a396bf7ed8d3a0d6cf7a4dc9310e31922554bc3b697b2347c3bfb",
+    "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+    "main_bundle_sha256": "3d9a3ae6bd3ed696584e7947b993e2b384942b426aa873955e6baff2c45e7fb9",
+    "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+    "renderer_manifest_sha256": "ccf9fb7402e4dc16af308cc77a0bcf43fd797cea320d96cff94011fa6eb2cac0",
+    "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+    "executable_sha256": "ca7e3290800255f5018160cff99cf6ecc58eae299c66148de1374a70e2715c83",
+    "app_version": "1.2.0"
+  },
+  "appAsar": {
+    "size": 90050706,
+    "sha256": "faa733469ccad7829a9fd04f6268cc586e8dc21ed26280f2c954b8044f87d7f8",
+    "headerSha256": "19197e98a2304fcc341ef59fef21cb73a0ed68af3e9377b9aa79c225f3e882fd"
+  },
+  "componentHashes": [
+    {
+      "path": "dist/main/index.js",
+      "sha256": "3d9a3ae6bd3ed696584e7947b993e2b384942b426aa873955e6baff2c45e7fb9"
+    },
+    {
+      "path": "dist/preload/index.js",
+      "sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9"
+    },
+    {
+      "path": "dist/live-mcp/index.js",
+      "sha256": "72c056918dc7380ac235a0b325cf676f6ab0e3f1a95e2f246446324ccb1e27aa"
+    },
+    {
+      "path": "dist/live-mcp/legacy.js",
+      "sha256": "c295ff4c098b86065d57945b4bf7e8e7742540fa5e0175c5b276f55c0c1cfc48"
+    },
+    {
+      "path": "dist/reelctl/index.js",
+      "sha256": "c8b008175733cdbc65a22d3c125132e43c4e9fe66ddeaad164f1ae713ad6c025"
+    },
+    {
+      "path": "dist/browser-entry.mjs",
+      "sha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b"
+    },
+    {
+      "path": "dist/aurora-host/index.js",
+      "sha256": "ba3c10febe922ca1618887764e3c26bd5907c3fcfe3af7367a600e7b18c9f7da"
+    }
+  ],
+  "aurora": {
+    "path": "Contents/Resources/aurora/creation_aurora_renderer",
+    "sha256": "6df7a37a1139924b792917295776c3f8f6790c5fb1aa6b1391a65e3644f4d096",
+    "expectedSha256": "6df7a37a1139924b792917295776c3f8f6790c5fb1aa6b1391a65e3644f4d096",
+    "matches": true
+  },
+  "identity": {
+    "distFilesMatching": 14,
+    "rendererFilesMatching": 190,
+    "rendererManifestSha256": "ccf9fb7402e4dc16af308cc77a0bcf43fd797cea320d96cff94011fa6eb2cac0",
+    "workerFilesMatching": 4,
+    "workerManifestSha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+    "dependenciesChecked": 38,
+    "machOFilesThinArm64": 16,
+    "electron": "44.5.1",
+    "appEntriesMatchingZipAndDmg": 886,
+    "zipCrcPassed": true,
+    "dmgMountedReadOnlyAndDetached": true
+  },
+  "signature": {
+    "developerIdSigned": false,
+    "notarized": false,
+    "appInheritedLinkerAdhoc": true,
+    "wholeAppStrictVerificationExit": 1,
+    "stapledTicketValidationExit": 65,
+    "nativeStrictVerificationExit": 0
+  },
+  "acceptance": {
+    "testFiles": 12,
+    "passed": 30,
+    "failed": 0,
+    "skipped": 0,
+    "retry": 0,
+    "durationSeconds": 122.86,
+    "connector": "real build-output CLI/MCP processes, verified byte-identical to packaged components",
+    "actualApp": "new packaged .app with isolated synthetic profiles/projects",
+    "packagedNativeSelfTestPassed": true,
+    "packagedNativePreviewAndGoldenPassed": 2,
+    "export": {
+      "file": "first-export.mp4",
+      "bytes": 44373,
+      "sha256": "f9efb2c5f28f8070fb310619744025af58b0cf7d7e90432be7c016706ad23366",
+      "fullDecode": "passed by unchanged onboarding test",
+      "streams": [
+        {
+          "codec_name": "h264",
+          "codec_type": "video",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1",
+          "duration": "5.000000",
+          "nb_frames": "150"
+        }
+      ]
+    }
+  },
+  "privacy": {
+    "passed": true,
+    "requiresReview": 0,
+    "rawDebugArtifactsExcluded": true,
+    "privateAuroraRpathAbsent": true,
+    "recognizedCredentialOrTokenPatternsFound": false,
+    "userProfilesAndRawTestEvidenceAbsent": true,
+    "publicDependencyInformationRetained": true,
+    "historicalPrivatePathRemainsInRemoteGit": true,
+    "historyRewritten": false,
+    "wholeRepositoryHistoryClaimedClean": false
+  },
+  "recording": {
+    "codeAndDependencyComparisonBase": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
+    "threeCaptureImplementationFilesAndLockfileUnchanged": true,
+    "specialtyRetestPerformed": false
+  },
+  "notCovered": [
+    "Intel/x64",
+    "Developer ID signing and notarization",
+    "clean-machine Gatekeeper/installation qualification",
+    "native source picker specialty rerun",
+    "full long stress/ten exports/five-minute idle rerun",
+    "all environments and long-term memory bounds"
+  ],
+  "retainedRisks": [
+    "unattributed old hosted Flow A drag failure despite later diagnostic passes",
+    "historical startup/audio timeouts",
+    "local clipboard anomaly",
+    "long-term browser/shared memory retention",
+    "small post-saturation history heap trend remains unattributed"
+  ],
+  "rawEvidence": {
+    "keptLocal": true,
+    "uploaded": false,
+    "coreLogSha256": "53fd633ee21b54540522021167de7bf3e5a1da6282cd063194cc091ea1308001",
+    "coreResultSha256": "40cc29abf693dbb8b362afd7aeeac37fc266bceb0400664077869704787bcabf",
+    "nativeResultSha256": "88cf24b794d084fd0d3ed0016acfe769f62f39174e5563515fa9b627f1aa7f3d"
+  },
+  "publication": {
+    "tagCreatedByThisSession": false,
+    "releaseCreatedOrPublishedByThisSession": false,
+    "attachmentsUploaded": false,
+    "remoteAssetsOverwritten": false
+  },
+  "sourceRegressions": {
+    "passed": 29,
+    "failed": 0,
+    "skipped": 2,
+    "testFiles": 4,
+    "scope": "failed-analysis rollback, job completion, batch checkpoints and task ledger; source unit checks",
+    "skips": "Windows-only checkpoint sharing and real concurrent-reader cases; not asserted as Mac coverage"
+  },
+  "remoteReleaseReadOnlyCheck": {
+    "tag": "v1.2.0",
+    "tagObjectSha": "51687aab666e5b8a1d8395920e07552fe3381656",
+    "peeledCommitSha": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+    "matchesFrozenSource": true,
+    "releaseDraftObserved": true,
+    "approvedUserDescriptionObserved": true,
+    "modifiedByThisSession": false
+  }
+}
