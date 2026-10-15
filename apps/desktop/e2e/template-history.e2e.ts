@@ -329,9 +329,9 @@ describe("editing recipe branches away from an undone timeline action", () => {
       if (await expand3d.getAttribute("aria-expanded") !== "true") await expand3d.click();
       if (field === "transformStyle") {
         const selector = inspector.getByRole("combobox", { name: "Transform Style", exact: true });
-        await selector.click();
-        await selector.press("ArrowDown");
-        await selector.press("Enter");
+        // Use the same native-select interaction as the existing asset and
+        // project-browser GUI specs, independent of OS popup keyboard rules.
+        await selector.selectOption("preserve-3d");
       } else {
         const label = field === "rotate3d" ? "Rotation X" : "Perspective";
         await inspector.getByRole("button", { name: `Edit ${label} value`, exact: true }).click();
@@ -339,10 +339,14 @@ describe("editing recipe branches away from an undone timeline action", () => {
         await inspector.getByRole("textbox", { name: `${label} value`, exact: true }).press("Enter");
       }
       await page.getByRole("button", { name: "Select text clip Creator", exact: true }).click();
-      const beforeRedo = await readProject();
-      expect((await readHistory()).canRedo).toBe(false);
-      const transform = beforeRedo.project.textClips?.find(c => c.id === overlay!.id)?.transform;
-      expect(field === "rotate3d" ? transform?.rotate3d?.x : transform?.[field]).toBe(field === "rotate3d" ? 33 : field === "perspective" ? 840 : "preserve-3d");
+      const expectedValue = field === "rotate3d" ? 33 : field === "perspective" ? 840 : "preserve-3d";
+      const beforeRedo = await vi.waitFor(async () => {
+        const state = await readProject();
+        const transform = state.project.textClips?.find(c => c.id === overlay!.id)?.transform;
+        expect(field === "rotate3d" ? transform?.rotate3d?.x : transform?.[field], `committed ${field}`).toBe(expectedValue);
+        return state;
+      }, { timeout: 15_000, interval: 100 });
+      expect((await readHistory()).canRedo, `new ${field} branch`).toBe(false);
       await page.getByRole("button", { name: "Select text clip Creator", exact: true }).press(`${KEY_MODIFIER}+Shift+z`);
       await page.waitForTimeout(400);
       expect(await readProject()).toEqual(beforeRedo);

@@ -151,11 +151,27 @@ project replacement test passed; the baseline screen-recording failure did not
 recur. This was treated as a new regression, not dismissed because the baseline
 workflow also failed.
 
-The test had clicked the timeline to blur a recipe input before using global
-keyboard input. Timeline pointer handlers prevent the default focus change, and
-macOS mouse-button focus conventions can leave an input active. Project shortcut
-handling intentionally ignores input targets. The follow-up sends real Undo/Redo
-keyboard events through the focusable timeline locators (`Locator.press`), records
-the prior DOM focus, and waits for both canonical history and text to establish
-that project undo actually happened. It makes no store or engine writes and does
-not change product shortcut behavior. Final-SHA CI results are reported separately.
+The initial test clicked the timeline and used a global shortcut, then assumed
+undo had completed after 400 ms. The follow-up sends real Undo/Redo keys through
+focusable timeline locators (`Locator.press`), records prior DOM focus and waits
+for canonical history/text to establish that project undo actually happened. This
+prevents ambiguous input routing and completion timing. Subsequent macOS focus
+evidence showed the Update button active, so input focus was not established as
+the unique cause of the original failure. No product shortcut behavior changed.
+
+The next macOS run (`fcfd64c7`) confirmed rotation and perspective GUI branches
+passed. Its third-field failure occurred before a Transform Style change had
+been established: the keyboard gesture did not commit the native picker. A
+candidate using two Down keys also failed the positive property assertion on
+Windows and was rejected before commit. The final test uses Playwright's native
+`selectOption` against the actual HTML select/React control, as existing asset and
+project-browser E2E specs do. It asserts the committed property before redo
+invalidation, with no store/engine injection or change to application code.
+
+That run also timed out at the existing inspector return-to-project assertion
+(`inspector-archives-board.e2e.ts:134`), whose default wait was one second despite
+hydrating the retained project's workspaces/save points. The same product source
+passed that case in the preceding macOS run and on Windows; this alone is not
+proof of harmlessness. The test now waits for the exact intended identity within
+the existing 30-second UI action budget and records duration/context/notifications
+on failure. Final remote results, rather than a baseline label, determine acceptance.

@@ -130,8 +130,27 @@ test("inspector archives and board preserve preview, target, forms and main layo
     await launched.page.getByRole("button", { name: "New requirement", exact: true }).click();
     expect(await formTitle.inputValue()).toBe("");
     await launched.page.getByRole("button", { name: "Vertical", exact: true }).click();
-    await launched.page.getByRole("button", { name: "Open Horizontal", exact: true }).click();
-    await vi.waitFor(async () => expect((await call("editor.get_context")).identity.projectId).toBe(target.projectId));
+    // Opening the retained project hydrates multiple workspaces and save
+    // points. Await its actual identity within the existing UI action budget,
+    // rather than assuming that work completes in Vitest's default one second.
+    const reopenStarted = Date.now();
+    const reopenDeadline = reopenStarted + 30_000;
+    try {
+      await launched.page.getByRole("button", { name: "Open Horizontal", exact: true }).click({ timeout: Math.max(1, reopenDeadline - Date.now()) });
+      await vi.waitFor(async () => expect((await call("editor.get_context")).identity.projectId).toBe(target.projectId), {
+        timeout: Math.max(1, reopenDeadline - Date.now()), interval: 100,
+      });
+      observations.projectReopenCompletedMs = Date.now() - reopenStarted;
+    } catch (error) {
+      observations.projectReopenFailure = {
+        elapsedMs: Date.now() - reopenStarted,
+        expectedTarget: target,
+        context: await call("editor.get_context"),
+        notifications: await launched.page.getByTestId("notification-toast").allTextContents(),
+      };
+      await launched.page.screenshot({ path: path.join(evidence, "project-reopen-failure.png") }).catch(() => undefined);
+      throw error;
+    }
     await launched.page.getByTestId("requirement-board-entry").click();
     expect(await formTitle.inputValue()).toBe("Unsubmitted project A form");
     observations.projectFormsIsolated = true;
