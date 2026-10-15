@@ -36,8 +36,16 @@ test("inspector archives and board preserve preview, target, forms and main layo
     const timelineHeight = (await launched.page.getByTestId("timeline-tracks-scroll").boundingBox())!.height;
     expect((await call("node.list", { projectId: target.projectId })).nodes).toHaveLength(0);
     const saveStarted = Date.now();
-    await launched.page.getByTestId("create-save-point").click();
+    // Click and its real completion receipt share the existing 30-second UI
+    // action budget. The original one-second durable-node assertion follows
+    // that receipt, rather than racing an explicitly busy asynchronous save.
+    const saveDeadline = saveStarted + 30_000;
     try {
+      await launched.page.getByTestId("create-save-point").click({ timeout: Math.max(1, saveDeadline - Date.now()) });
+      const receipt = launched.page.getByTestId("notification-toast").filter({ hasText: /Save point .+ created|Save point operation failed|Current content already has a save point/ }).last();
+      await receipt.waitFor({ state: "visible", timeout: Math.max(1, saveDeadline - Date.now()) });
+      expect(await receipt.innerText()).toMatch(/Save point .+ created/);
+      observations.initialSaveReceiptMs = Date.now() - saveStarted;
       await vi.waitFor(async () => expect((await call("node.list", { projectId: target.projectId })).nodes).toHaveLength(1));
     } catch (error) {
       // Keep the original one-second assertion. Capture enough state to tell

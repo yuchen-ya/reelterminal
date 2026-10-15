@@ -5,6 +5,23 @@ This continues the [Windows candidate report](windows-rc-1.1.2-2026-10-15.md).
 No installer was installed; no tag, release, signing or installer upload occurred.
 Only the existing checkout and isolated test profiles were used, serially.
 
+## Current handoff
+
+Runtime candidate: `b62ef59eb61f57c42f250b80ae2e66544cabefac`, unsigned and
+unpublished, with 27/27 packaged core checks passing. Frozen-source Windows
+Electron passes all 123 active tests. Mac Electron's one remaining failure
+captures an explicitly busy save at 1071 ms, before a completion receipt.
+The test-only completion synchronization preserves the original shared
+30-second GUI action budget and one-second post-completion node assertion;
+its hosted Mac validation is pending. No runtime repackaging is needed for it.
+
+Mac pure-Node audio normalization still has an unattributed five-second
+test timeout. Existing Mac a8c6925c native recording manual specialty
+acceptance is passed (5f447ab7). Historical startup/source timeouts, native
+memory retention/bound, latest-source Mac package qualification and the
+local clipboard boundary retain their documented evidence gaps. Full run
+links and first-condition evidence are in the final section below.
+
 ## Existing hosted round: 7e841bf9
 
 The already-triggered runs were reused, with no manual rerun:
@@ -296,3 +313,61 @@ all latest source is not yet qualified. Existing native/export shared-memory
 retention and history heap trend remain without an established cause or
 long-term bound. No original Mac raw logs were read on Windows, no export/idle
 round was repeated, and this agent did not start a personal Mac task.
+
+## b62ef59e final runtime results and test-only save synchronization
+
+The fresh candidate is clean, unsigned and unpublished. Five packaged runtime
+components and 190 renderer files match the build. All 27 selected packaged
+core checks / twelve files pass in 92.95 s, including minimum-height M3
+(16.02 s) and inspector/archive/board (8.87 s, first node 199 ms). The natural
+review-popover wheel gesture changes a nonreceiving pointer target into a
+receiving target before the real click. Source geometry records DPR 2; native
+content width rounding is observed, without attributing it to a particular
+fractional display setting. Subsequent wording corrections and the save-test
+synchronization do not change product runtime, so this candidate is retained.
+
+Frozen-source terminal results:
+
+| Run | Result and first condition |
+| --- | --- |
+| [CI 38731711849](https://github.com/yuchen-ya/reelterminal/actions/runs/38731711849) | Passed, including typecheck, lint, unit tests and build. |
+| [Performance 38731711839](https://github.com/yuchen-ya/reelterminal/actions/runs/38731711839) | Passed contracts; no claim that historical long stresses qualify the new source. |
+| [Electron 38731711875](https://github.com/yuchen-ya/reelterminal/actions/runs/38731711875) | Windows 123 passed / 13 skipped. Mac 122 passed / 1 failed / 13 skipped. M3, archive close/reopen, point/pixel/CAS, fast opacity input, minimum layout and first frame pass on both. |
+| [Chromium 38731712015](https://github.com/yuchen-ya/reelterminal/actions/runs/38731712015) | Runtime/transport and Ubuntu facade passed. Mac facade: 2073 passed / 1 failed / 15 skipped; `audio-normalize.test.ts:93` exceeds the unchanged 5000 ms test deadline. |
+
+The Mac inspector failure is now captured in the uploaded artifact. At
+1071 ms: save button disabled/busy, no error notifications, no nodes yet,
+project/workspace and revision unchanged. That sample establishes an in-flight
+save, not its eventual outcome. Windows on the same source passes that test
+with the first node after 561 ms. The earlier Windows incident remains without
+its original busy-state sample; no data loss is established by either count.
+
+The save test now requires its real success/error receipt before checking
+durable nodes. Click plus receipt share the original 30-second action budget;
+the original one-second node-count assertion remains unchanged afterward.
+An error receipt fails immediately. A real local run passes in 9.16 s:
+success receipt 226 ms, durable node 232 ms. Harness typecheck passes.
+This is test synchronization only, not a change to save implementation or
+a raised timeout. Its updated hosted result must be read before claiming the
+Mac test correction qualified. Evidence: `inspector-save-receipt-sync.log`,
+`hosted-b62ef59e-macos/inspector-layout-*/layout.json`, and the failure PNG.
+
+The Mac audio test's five-second deadline covers normalization and subsequent
+verification/decoding; the log does not identify the slow phase. Fixture
+preparation is in beforeAll. Earlier passing rounds do not attribute this
+repeat failure. No limit was raised, assertion removed or direct rerun started.
+Minimum further evidence is stage timestamps around normalization return,
+FFmpeg probe/measurement/render/verification children and final decode, with
+owned-child exit/stderr. This can be a narrowly scoped standard hosted-runner
+probe; it does not require rerunning the personal Mac ten-export round.
+
+User-impact limits: this host's native clipboard roundtrip remains unresolved
+at the OS/packaged-runtime boundary, so local copy-prompt acceptance is not
+counted as passed. Do not change system settings or clear the user's clipboard.
+If further localization is requested, obtain explicit permission for one
+controlled old-versus-new package clipboard roundtrip in the same interactive
+session. The native memory regions and post-saturation history trend still
+have no attributed cause or proven long-term bound. Existing Mac recording
+specialty acceptance remains passed; old timeouts and latest full-source Mac
+package qualification remain separate open items. Release readiness is not
+asserted by these results.

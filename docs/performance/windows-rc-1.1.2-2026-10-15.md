@@ -1,6 +1,52 @@
 # Windows local release candidate, 2026-10-15
 
-## Latest candidate: 81c1ea4e
+## Latest runtime candidate: b62ef59e
+
+Frozen runtime source: **b62ef59eb61f57c42f250b80ae2e66544cabefac**, version
+1.1.2, Windows x64. Local directory:
+`apps/desktop/release/windows-rc-1.1.2-b62ef59e/`.
+The source stamp is clean; five runtime components and 190 renderer files
+match the frozen build. Application and installer are `NotSigned`; neither
+installation nor publication was performed.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Installer | 138861336 | `aeb5c4edf48502c6c0dc3e4c61fd5c7d61e83cb0163c98b3b10e5829fa62f37b` |
+| ZIP | 188922720 | `3ca4e8d64d44699b63efe5aa94dfeaf538b71bbc70315dbf8df2b8f95674f974` |
+
+**Packaged core: 27/27 passed, twelve files, 92.95 s.** M3 passes in 16.02 s,
+including a real wheel gesture that makes the review submit button receive
+pointer input at the supported minimum height. The inspector/archive/board
+case passes too; its first save point appeared after 199 ms. Actual connector,
+CAS, strict frame rejection, adoption/undo, saved-project reopen, MP4 export,
+comparison layout and eight-second first-frame assertions remain active.
+
+Frozen-source hosted Windows Electron passes 123 tests / 13 opt-in skips.
+Mac Electron passes 122 with one premature initial-save assertion: at 1071 ms
+the UI was explicitly busy, with no error and an unchanged target. The
+test-only follow-up waits for the real completion receipt within the **same
+shared 30-second click/action budget**, then retains the original one-second
+durable-node assertion. A local real-desktop run passes in 9.16 s (receipt
+226 ms, durable node 232 ms). It does not change product runtime or require
+another package. Updated hosted validation is recorded in the continuation.
+
+The frozen-source Mac pure-Node job also repeats the historical
+`audio-normalize.test.ts:93` five-second timeout. Which normalization or
+post-decode phase consumed the budget remains unknown. The five-second test
+limit and all sample/loudness/durability assertions are preserved; a later
+passing round is not a root-cause attribution.
+
+Full identity and evidence:
+[candidate JSON](windows-rc-1.1.2-b62ef59e-2026-10-15.json) and
+[continuation report](windows-hosted-core-followup-2026-10-15.md).
+The native clipboard failure remains an unresolved local OS/packaged-runtime
+boundary; it was not counted as passed or worked around by system changes.
+The historical startup incidents, native-memory retention/long-term bound and
+latest-source Mac package qualification remain open. Existing a8c6925c Mac
+native recording manual specialty acceptance is **passed** in 5f447ab7; the old
+ten-second timeout remains unattributed. No Release is approved by this report.
+
+## Historical 81c1ea4e candidate
 
 The final retained candidate is **81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b**,
 version 1.1.2, Windows x64, under

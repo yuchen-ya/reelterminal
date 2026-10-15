@@ -68,7 +68,7 @@ test("decimal-adjacent clips use native playback and comparison settings leave b
     const viewport = page.getByTestId("reference-comparison-viewport");
     const settings = page.getByTestId("comparison-settings");
     for (const [width, height, label] of [[1280, 720, "smallWindow"], [1280, 700, "minimumWindow"], [1279, 700, "roundedWidth"]] as const) {
-      // Windows fractional display scaling can round a 1280 DIP request down
+      // Windows native content-size rounding can reduce a 1280 DIP request
       // to 1279, where transport controls wrap to an extra row.
       await launched.app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]!.setContentSize(size.width, size.height), { width, height });
       await settings.waitFor();

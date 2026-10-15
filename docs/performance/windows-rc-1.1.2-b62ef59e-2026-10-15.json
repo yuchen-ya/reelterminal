@@ -1,0 +1,264 @@
+{
+  "macNativeRecording": {
+    "latestSourceMacPackageAccepted": false,
+    "testedSource": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
+    "reportCommit": "5f447ab77989df3089a0b35b4144e40045718fa1",
+    "featureAccepted": true,
+    "oldTimeoutCause": "unattributed"
+  },
+  "audioNormalizeMac": {
+    "test": "audio-normalize.test.ts:93",
+    "timeoutMs": 5000,
+    "phase": "unattributed; normalization or subsequent verification/decode",
+    "limitChanged": false,
+    "directRerunStarted": false
+  },
+  "releaseReady": false,
+  "frozenSourceCI": [
+    {
+      "conclusion": "success",
+      "databaseId": 38731711839,
+      "headSha": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+      "name": "Performance contracts @ b62ef59eb61f57c42f250b80ae2e66544cabefac",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38731711839"
+    },
+    {
+      "conclusion": "failure",
+      "databaseId": 38731712015,
+      "headSha": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+      "name": "Chromium E2E",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38731712015"
+    },
+    {
+      "conclusion": "failure",
+      "databaseId": 38731711875,
+      "headSha": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+      "name": "Electron E2E",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38731711875"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38731711849,
+      "headSha": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+      "name": "CI",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38731711849"
+    }
+  ],
+  "reportDate": "2026-10-15",
+  "testOnlySaveSynchronization": {
+    "runtimeChanged": false,
+    "localDurableNodeMs": 232,
+    "unchangedPostReceiptNodeAssertionMs": 1000,
+    "hostedValidation": "pending",
+    "localTestSeconds": 9.16,
+    "localReceiptMs": 226,
+    "sharedClickAndReceiptBudgetMs": 30000,
+    "repackaged": false
+  },
+  "identity": {
+    "schema": "reelterminal.windows-local-rc/v1",
+    "sourceSha": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+    "version": "1.1.2",
+    "platform": "win32",
+    "arch": "x64",
+    "published": false,
+    "installed": false,
+    "buildStamp": {
+      "schema": "reelterminal.performance-build/v1",
+      "build_type": "production",
+      "source_head": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+      "dirty": false,
+      "source_digest": "62dfc928e562db05c863e424db1092b39e7e028ca247fe8ee0ec8fe92b4208f1",
+      "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+      "main_bundle_sha256": "6330a595f8506730bd03265c29cf8518f5cf13e6366df11340e923a6da8404bd",
+      "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+      "renderer_manifest_sha256": "0a8492d8f939d3fa71a521df8128e0457452670a09042627b360a6bcbbcf55b6",
+      "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+      "executable_sha256": "49b61a030a520fc36a4b8fa5cce53fb4e935a7bdbbe4b80e9222f598e49cc7fa",
+      "app_version": "1.1.2"
+    },
+    "files": [
+      {
+        "path": "ReelTerminal-1.1.2-x64.exe",
+        "bytes": 138861336,
+        "sha256": "aeb5c4edf48502c6c0dc3e4c61fd5c7d61e83cb0163c98b3b10e5829fa62f37b"
+      },
+      {
+        "path": "ReelTerminal-1.1.2-x64.zip",
+        "bytes": 188922720,
+        "sha256": "3ca4e8d64d44699b63efe5aa94dfeaf538b71bbc70315dbf8df2b8f95674f974"
+      },
+      {
+        "path": "ReelTerminal-1.1.2-x64.exe.blockmap",
+        "bytes": 146363,
+        "sha256": "041c74d061183cff4aa6be0ce754f9120c45b71777113b5a256f362fc308c1c6"
+      },
+      {
+        "path": "win-unpacked/ReelTerminal.exe",
+        "bytes": 245726208,
+        "sha256": "d505914dc0487c2a6a34ffa12eeaa136547e2b3f0c55e6e8cbb7c9d5b54dee45"
+      },
+      {
+        "path": "win-unpacked/resources/app.asar",
+        "bytes": 93721291,
+        "sha256": "321f72ecc8e2682bc8ac9737479c00470532662f950690af718052c61184b68c"
+      }
+    ],
+    "components": [
+      {
+        "path": "dist/main/index.js",
+        "sha256": "6330a595f8506730bd03265c29cf8518f5cf13e6366df11340e923a6da8404bd",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/preload/index.js",
+        "sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/browser-entry.mjs",
+        "sha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/live-mcp/index.js",
+        "sha256": "72c056918dc7380ac235a0b325cf676f6ab0e3f1a95e2f246446324ccb1e27aa",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/reelctl/index.js",
+        "sha256": "66c6f55c52c9e920cc6cf05d6d44cfccd75603def4295eee59540755cb244a81",
+        "matchesBuiltSource": true
+      }
+    ],
+    "renderer": {
+      "fileCount": 190,
+      "mismatches": []
+    },
+    "signatures": {
+      "installer": "NotSigned",
+      "application": "NotSigned"
+    }
+  },
+  "report": "windows-rc-1.1.2-2026-10-15.md",
+  "schema": "reelterminal.windows-rc-gate/v1",
+  "candidateDirectory": "apps/desktop/release/windows-rc-1.1.2-b62ef59e",
+  "remaining": [
+    "Mac audio-normalize five-second timeout phase unattributed",
+    "test-only save completion receipt synchronization requires hosted Mac validation",
+    "historical startup/source timeouts unattributed; first old startup primary error lost",
+    "native/export shared-memory and post-saturation history heap trend lack cause and long-term bound",
+    "latest all-source Mac package not qualified; old a8c6925c recording specialty passed",
+    "local native clipboard and content-size setup boundary unresolved; no system settings or clipboard changed in this follow-up"
+  ],
+  "evidence": [
+    {
+      "sha256": "75333bd9f5c5a77cb080134042fbb74d699d1a24bfa95868314dded350521e31",
+      "bytes": 13482,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-b62ef59e-build.log"
+    },
+    {
+      "sha256": "00dd57013eaa4d0bb3bd5e0d6c4da72bbfc45394e8f64c292c15061fbb8fb650",
+      "bytes": 819,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-b62ef59e-identity.log"
+    },
+    {
+      "sha256": "0218b49bcdd5243c77b47fa5946127d99d0c8c9b71ecd2ad4e23353eaf4ee5fe",
+      "bytes": 4468,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-b62ef59e-core.log"
+    },
+    {
+      "sha256": "7946033a0b85a80bb4d94ac7982b5862a52d78643d73ca42d182cbcf26e0c55c",
+      "bytes": 928,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/b62ef59e-ci-terminal.json"
+    },
+    {
+      "sha256": "f89d39ef83ff6fec362bb559187da7b0ac60f675c42204ccee6359531c6c663f",
+      "bytes": 70313,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/b62ef59e-electron-windows.log"
+    },
+    {
+      "sha256": "3215d578870c9ac27bf452ff0bd429b4c5d825376eed309d5ac93150540322a3",
+      "bytes": 40669,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/b62ef59e-electron-failed.log"
+    },
+    {
+      "sha256": "292300b93da57d7a95e61ae484f0a926a6aafead951bb846e8ca95bbd7903e6a",
+      "bytes": 52738,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/b62ef59e-chromium-failed.log"
+    },
+    {
+      "sha256": "3d40613971d2cfca7a0a6619aa8a1a3f4523f0e471809355db601322536ab84f",
+      "bytes": 481,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/inspector-save-receipt-sync.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/save-receipt-harness-typecheck.log"
+    },
+    {
+      "sha256": "5f15adef9f4d0e9f03baa571f47973d4c8b14dceab07449401bd1681e82afbc5",
+      "bytes": 1872,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-review-natural-scroll-before.log"
+    },
+    {
+      "sha256": "73db6f52b0b953c99d24608eb45fb55519c8f3091bb5315e9e53ec0cbe3ff089",
+      "bytes": 1426,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-review-natural-scroll-after.log"
+    },
+    {
+      "sha256": "b0ded47c15d644a63675bf5ac87bc5df2d43f3cb8b14cb11129606e2e8ba17d5",
+      "bytes": 298,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/checkpoint-real-reader.log"
+    },
+    {
+      "sha256": "193a7e31d483e4f11fa81f10c85ff7039d5671f155e45db733eb4b9f81efdcf8",
+      "bytes": 1369,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/rollback-regression-before.log"
+    },
+    {
+      "sha256": "82b2679cd7ffb6008442afdbf5b605dfafb2318db8df1eef23477cb8807cf005",
+      "bytes": 368,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/rollback-regression.log"
+    }
+  ],
+  "packagedCore": {
+    "failed": 0,
+    "m3Seconds": 16.024,
+    "startup": "normal isolated window; M3 explicitly requests 1024x700; comparison requests 1280x720,1280x700,1279x700",
+    "passed": 27,
+    "reviewPointerAfter": true,
+    "reviewPointerBefore": false,
+    "inspectorFirstNodeMs": 199,
+    "seconds": 92.95,
+    "files": 12
+  },
+  "runtimeSourceSha": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+  "hostedElectron": {
+    "macos": {
+      "passed": 122,
+      "failed": 1,
+      "skipped": 13,
+      "firstSaveSample": {
+        "elapsedMs": 1071,
+        "notifications": 0,
+        "targetChanged": false,
+        "nodes": 0,
+        "busy": true
+      },
+      "classification": "sampled before save completion; eventual outcome not captured"
+    },
+    "windows": {
+      "passed": 123,
+      "failed": 0,
+      "skipped": 13,
+      "firstSaveMs": 561
+    }
+  }
+}

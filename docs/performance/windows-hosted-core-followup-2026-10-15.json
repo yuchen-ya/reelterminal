@@ -256,6 +256,103 @@
   },
   "latestContinuation": {
     "packagedCore": {
+      "failed": 0,
+      "m3Seconds": 16.024,
+      "startup": "normal isolated window; M3 explicitly requests 1024x700; comparison requests 1280x720,1280x700,1279x700",
+      "passed": 27,
+      "reviewPointerAfter": true,
+      "reviewPointerBefore": false,
+      "inspectorFirstNodeMs": 199,
+      "seconds": 92.95,
+      "files": 12
+    },
+    "frozenSourceCI": [
+      {
+        "conclusion": "success",
+        "databaseId": 38731711839,
+        "headSha": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+        "name": "Performance contracts @ b62ef59eb61f57c42f250b80ae2e66544cabefac",
+        "status": "completed",
+        "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38731711839"
+      },
+      {
+        "conclusion": "failure",
+        "databaseId": 38731712015,
+        "headSha": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+        "name": "Chromium E2E",
+        "status": "completed",
+        "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38731712015"
+      },
+      {
+        "conclusion": "failure",
+        "databaseId": 38731711875,
+        "headSha": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+        "name": "Electron E2E",
+        "status": "completed",
+        "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38731711875"
+      },
+      {
+        "conclusion": "success",
+        "databaseId": 38731711849,
+        "headSha": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+        "name": "CI",
+        "status": "completed",
+        "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38731711849"
+      }
+    ],
+    "hostedElectron": {
+      "macos": {
+        "passed": 122,
+        "failed": 1,
+        "skipped": 13,
+        "firstSaveSample": {
+          "elapsedMs": 1071,
+          "notifications": 0,
+          "targetChanged": false,
+          "nodes": 0,
+          "busy": true
+        },
+        "classification": "sampled before save completion; eventual outcome not captured"
+      },
+      "windows": {
+        "passed": 123,
+        "failed": 0,
+        "skipped": 13,
+        "firstSaveMs": 561
+      }
+    },
+    "runtimeSourceSha": "b62ef59eb61f57c42f250b80ae2e66544cabefac",
+    "candidateDirectory": "apps/desktop/release/windows-rc-1.1.2-b62ef59e",
+    "releaseReady": false,
+    "report": "windows-rc-1.1.2-b62ef59e-2026-10-15.json",
+    "saveSynchronization": {
+      "runtimeChanged": false,
+      "localDurableNodeMs": 232,
+      "unchangedPostReceiptNodeAssertionMs": 1000,
+      "hostedValidation": "pending",
+      "localTestSeconds": 9.16,
+      "localReceiptMs": 226,
+      "sharedClickAndReceiptBudgetMs": 30000,
+      "repackaged": false
+    },
+    "remaining": [
+      "Mac audio-normalize five-second timeout phase unattributed",
+      "test-only save completion receipt synchronization requires hosted Mac validation",
+      "historical startup/source timeouts unattributed; first old startup primary error lost",
+      "native/export shared-memory and post-saturation history heap trend lack cause and long-term bound",
+      "latest all-source Mac package not qualified; old a8c6925c recording specialty passed",
+      "local native clipboard and content-size setup boundary unresolved; no system settings or clipboard changed in this follow-up"
+    ],
+    "macNativeRecording": {
+      "latestSourceMacPackageAccepted": false,
+      "testedSource": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
+      "reportCommit": "5f447ab77989df3089a0b35b4144e40045718fa1",
+      "featureAccepted": true,
+      "oldTimeoutCause": "unattributed"
+    }
+  },
+  "previousContinuation81c1ea4e": {
+    "packagedCore": {
       "m3Seconds": 15.768,
       "files": 11,
       "comparisonSizes": [
