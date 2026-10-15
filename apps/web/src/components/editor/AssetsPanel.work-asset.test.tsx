@@ -54,6 +54,14 @@ function menuOption(items: ContextMenuOption[], label: string): MenuActionOption
 
 describe("media context menu work-asset capture", () => {
   beforeEach(() => {
+    // JSDOM has no fullscreen/modal presentation. nwsapi 2.2.27 falls back
+    // through Element.matches for these states and recursively re-enters
+    // itself. Model this fixture's browser state without mocking capture/save.
+    const matches = Element.prototype.matches;
+    vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, selector) {
+      if (selector === ":fullscreen" || selector === ":modal") return false;
+      return matches.call(this, selector);
+    });
     useUIStore.getState().clearSelection();
     useNotificationStore.getState().clearAll();
   });

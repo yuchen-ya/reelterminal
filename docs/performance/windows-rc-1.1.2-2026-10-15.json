@@ -1,12 +1,12 @@
 {
   "schema": "reelterminal.windows-rc-gate/v1",
   "reportDate": "2026-10-15",
-  "releaseDecision": "withheld_pending_parent_scope",
+  "releaseDecision": "withheld_full_suite_failures_and_remaining_platform_coverage",
   "overallStabilityQualification": "incomplete",
-  "candidateDirectory": "apps/desktop/release/windows-rc-1.1.2-ca8126cf",
+  "candidateDirectory": "apps/desktop/release/windows-rc-1.1.2-e04622a3",
   "identity": {
     "schema": "reelterminal.windows-local-rc/v1",
-    "sourceSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+    "sourceSha": "e04622a372797a50fc056f4614baeb04ee73b009",
     "version": "1.1.2",
     "platform": "win32",
     "arch": "x64",
@@ -19,12 +19,12 @@
     "buildStamp": {
       "schema": "reelterminal.performance-build/v1",
       "build_type": "production",
-      "source_head": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+      "source_head": "e04622a372797a50fc056f4614baeb04ee73b009",
       "dirty": false,
-      "source_digest": "d0c4882622f02698c7d11bc553bbd2f47a73b98db60ab4e2792aee7263b15519",
+      "source_digest": "38b3bf0ba486ebb25173c7b6212bed217bd4647044ca308e4d102924fc36fa25",
       "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
-      "main_bundle_sha256": "d4df6232fee898c56162d0ada33392c9e89d4e25e42d12a19458c35ed598e889",
+      "main_bundle_sha256": "07519f7aac9b5840aafc50a1578fcbad1d345b4036d3631b3396a8e604a99368",
       "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
       "renderer_manifest_sha256": "0995c2ccb9411a2b7b48799d3a94d2853c236a54a027e444111b04056ff99068",
       "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
@@ -34,34 +34,34 @@
     "files": [
       {
         "path": "ReelTerminal-1.1.2-x64.exe",
-        "bytes": 138859577,
-        "sha256": "0f10b16f1e665405ce9ac43e69e9fa4ff723f0236c422e5b40e3ad0d1a4ab702"
+        "bytes": 138859736,
+        "sha256": "d1b85fb482c88db0fdf0d8cca93fadf08d47a0375338bb35feaf4f5b1bca25b7"
       },
       {
         "path": "ReelTerminal-1.1.2-x64.zip",
-        "bytes": 188917860,
-        "sha256": "cae6c8cf6df988f65c702a2658b14bcd7c699408820fcf6879cc080fe25d62c5"
+        "bytes": 188919397,
+        "sha256": "7d82ec8860b090020316f5b093f2ee07f16e5ea6218c2c5bc6cb4864c254b791"
       },
       {
         "path": "ReelTerminal-1.1.2-x64.exe.blockmap",
-        "bytes": 146093,
-        "sha256": "2d5dbab23b8b04d4a816dcd60ba6a678ec0188f42db5b77b3a674a89e2c27ff3"
+        "bytes": 146357,
+        "sha256": "2c8b7b5dbd72cb61ff2aa10fba6a050246f573d09e8148e7a04db09f527eb8b3"
       },
       {
         "path": "win-unpacked/ReelTerminal.exe",
         "bytes": 245726208,
-        "sha256": "a7f70dfca4a0c4d142fe49e4cc93c3dbc92d6eca243aa1733b0e7b223ccabd3d"
+        "sha256": "8994ef6130b4fae3e9e020a0a4e362a0f337f001ddfb6c662969fd4a1c075aa2"
       },
       {
         "path": "win-unpacked/resources/app.asar",
-        "bytes": 93710935,
-        "sha256": "a8f70a779156e634ca84b13dd83e0357e86212bb60b70c7b264a61643f67e444"
+        "bytes": 93713782,
+        "sha256": "21864d0fb3370275d5dfbb6ddb4d7dd347f34470dd84f4159019c887caaf7c7b"
       }
     ],
     "components": [
       {
         "path": "dist/main/index.js",
-        "sha256": "d4df6232fee898c56162d0ada33392c9e89d4e25e42d12a19458c35ed598e889",
+        "sha256": "07519f7aac9b5840aafc50a1578fcbad1d345b4036d3631b3396a8e604a99368",
         "matchesBuiltSource": true
       },
       {
@@ -94,61 +94,33 @@
     },
     "smoke": {
       "status": "passed",
-      "files": 5,
-      "tests": 14,
-      "duration_seconds": 34.5,
+      "files": 6,
+      "tests": 15,
+      "duration_seconds": 50.65,
       "application": {
         "version": "1.1.2",
         "packaged": true
       },
-      "evidence": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-smoke.log",
-      "sha256": "f74000a5313252b07cb12dbcb1754b994b2a77a6d83e9a52b5c5c2dd52d2ae09"
+      "evidence": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-e04622a3-smoke.log",
+      "sha256": "c8fa995ef6739bcf62ddcf2409b866049f5d4a085a6f46f9084b7e4916bb599b",
+      "m3": {
+        "status": "passed",
+        "duration_seconds": 17.493,
+        "originalCompletionTimeoutMs": 120000,
+        "durableAgreementAssertions": true
+      }
     }
   },
   "gates": {
-    "packagedWindowsCore": "passed_14_tests_34.50_seconds",
+    "packagedWindowsCore": "passed_15_tests_50.65_seconds",
     "reviewTargetRouting": "targeted_fix_verified",
-    "batchProcessRecovery": "blocked_120_second_all_done_assertion_failed",
+    "batchProcessRecovery": "product_defect_fixed_and_local_packaged_M3_passed_hosted_M3_blocked_before_recovery_by_startup_notification",
     "macNativeRecording": "blocked_not_validated_on_windows",
     "oldMacStartup": "unattributed",
     "nativeAndHistoryMemory": "unattributed_no_long_term_bound",
     "installer": "unsigned_not_installed",
-    "fullSuite": "not_qualified_in_progress_at_snapshot"
+    "fullSuite": "blocked_CI_Chromium_and_Electron_failed_performance_passed"
   },
-  "frozenSourceCI": [
-    {
-      "conclusion": "",
-      "databaseId": 38714368748,
-      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
-      "status": "in_progress",
-      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368748",
-      "workflowName": "CI"
-    },
-    {
-      "conclusion": "",
-      "databaseId": 38714368814,
-      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
-      "status": "in_progress",
-      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368814",
-      "workflowName": "Chromium E2E"
-    },
-    {
-      "conclusion": "success",
-      "databaseId": 38714368764,
-      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
-      "status": "completed",
-      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368764",
-      "workflowName": "Performance regression"
-    },
-    {
-      "conclusion": "",
-      "databaseId": 38714368785,
-      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
-      "status": "in_progress",
-      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368785",
-      "workflowName": "Electron E2E"
-    }
-  ],
   "evidence": [
     {
       "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-smoke.log",
@@ -161,12 +133,97 @@
     {
       "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-recovery-failure-summary.json",
       "sha256": "4f4eee0e6c31ed034f0ea0d0dc07fdb1f45c8d76abee8a2cc433a5ee77bbd457"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-observers-before.log",
+      "sha256": "9997bb853a06bab2bbcad1ac51dfbfce65cc852b41df79523399d65bc8997589"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-observers-after.log",
+      "sha256": "033a9032f68223ddfff0a3007c4afd56ea652a34440438d2046753bda0f97c66"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-ledger-after.log",
+      "sha256": "685f145796c21c357b18b55006a8a1e7185bc366523aa53db031fbd562a94b9e"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-live-session-after.log",
+      "sha256": "17c92d108677735fa5a220f7c7dc878c36a7b9e3ce1500b667efb98e206e546b"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-recovery-durable-assertions.log",
+      "sha256": "b31b9be87bb0d5dda1806ec6b3cfe6df2a57553f91060d143f98ed61e676716f"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-recovery-success-summary.json",
+      "sha256": "330f51c8ac9b56be1c1454610cf56c31a38252bbc08edc06da6968c11009249d"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-e04622a3-package.log",
+      "sha256": "fbe1796fb68f7c97e270af2983bad365cecd96bc720c5f80ff2b8beb64ab8012"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-e04622a3-smoke.log",
+      "sha256": "c8fa995ef6739bcf62ddcf2409b866049f5d4a085a6f46f9084b7e4916bb599b"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-packaged-recovery-success-summary.json",
+      "sha256": "685e2540432f502e5a524631176d81d9c497afff3f53695f4fe124819510ed4e"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/e04622a3-ci-terminal.json",
+      "sha256": "ca4c8ab0f0725165100acd6338bb6888ddc182b5ba7923fee3d887e92cef0826"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/e04622a3-ci-failed.log",
+      "sha256": "7ff531d392a8aeec106c59a79595ff34888c76b01c7ee2537f53f60967b62f4a"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/e04622a3-chromium-failed.log",
+      "sha256": "f257ed6bebdb5114090b488e8993bf3698b66a1f2437eff46d3e97e1aa15c016"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/e04622a3-electron-failed.log",
+      "sha256": "124db380c4bd2846a4aa09b7d158f455893fd8b672bedfc83e679afc26477eed"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/e04622a3-electron-failure-inventory.json",
+      "sha256": "e506e87e1516a0ad10a249becab58e75a7a760490bd884a5dcf1fa58b8c40ab9"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/m3-startup-dismiss-target.log",
+      "sha256": "3da374eafb17d24d13edc6540ba3b3efcda356d64d8546284ce4a6443f391b32"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/assets-work-capture-target.log",
+      "sha256": "d9f55c9b8599b3ab081b48eae696d45c93af17ce2edf12aa98a82c2b398e4541"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/assets-work-capture-phases-detail.json",
+      "sha256": "079ef2a967c3faab88ec4483ae90e3cb97bf59159b75fd2f7900f5fb9993a14a"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/assets-work-capture.cpuprofile",
+      "sha256": "1b76f16dd149aaaf2be85bcc538a11fe31ea210e2d015646af5d918286f22296"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/assets-work-capture-profile-summary.json",
+      "sha256": "90e0fcb13a16f849e6a4f11b86be0628a4714f8fc5d64f68ba98c46e93126177"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/assets-work-capture-jsdom-fix.log",
+      "sha256": "9f73d569d8221c830d7b1c8fca18005725b0728e363165f8eedacd7d8309d895"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/ci-compat-web-typecheck.log",
+      "sha256": "5a3973f79ed9becd5f23c4feff467513814de7ea381d75a4d2e339aa8b8edca9"
     }
   ],
   "productCommits": [
     "255503c4ec2fd3d60660cfe8f4261da30798a269",
     "f0dd64d19b71eb82a8048855c46499f50ecdb46b",
-    "ca8126cfe297aadb47c2dcc9d6e9163e73add609"
+    "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+    "e04622a372797a50fc056f4614baeb04ee73b009"
   ],
   "macEvidenceAccess": "committed_reports_and_json_only_no_raw_mac_files",
   "noActions": [
@@ -178,5 +235,434 @@
     "mac_task",
     "repeat_mac_ten_export_round"
   ],
-  "report": "windows-rc-1.1.2-2026-10-15.md"
+  "report": "windows-rc-1.1.2-2026-10-15.md",
+  "supersededCandidate": {
+    "sourceSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+    "candidateDirectory": "apps/desktop/release/windows-rc-1.1.2-ca8126cf",
+    "status": "retained_on_disk_superseded_by_recovery_fix"
+  },
+  "supersededCI": [
+    {
+      "conclusion": "cancelled",
+      "databaseId": 38714368748,
+      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368748",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "cancelled",
+      "databaseId": 38714368814,
+      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368814",
+      "workflowName": "Chromium E2E"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38714368764,
+      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368764",
+      "workflowName": "Performance regression"
+    },
+    {
+      "conclusion": "cancelled",
+      "databaseId": 38714368785,
+      "headSha": "ca8126cfe297aadb47c2dcc9d6e9163e73add609",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38714368785",
+      "workflowName": "Electron E2E"
+    }
+  ],
+  "recoveryDiagnosis": {
+    "cause": "batch_observer_overwrote_task_lifecycle_observer_leaving_durable_status_queued",
+    "fix": "owner_scoped_checkpoint_observers_with_failure_correction",
+    "sourceCommit": "e04622a372797a50fc056f4614baeb04ee73b009",
+    "beforeRegression": "failed_durable_observer_received_only_queued",
+    "unitTests": {
+      "registryAndBatch": 18,
+      "durableLedger": 8,
+      "liveSession": 77
+    },
+    "typechecks": [
+      "agent-facade",
+      "desktop"
+    ],
+    "sourceM3Seconds": 18.22
+  },
+  "frozenSourceCI": [
+    {
+      "conclusion": "failure",
+      "databaseId": 38716429124,
+      "headSha": "e04622a372797a50fc056f4614baeb04ee73b009",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38716429124",
+      "workflowName": "Chromium E2E"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38716429450,
+      "headSha": "e04622a372797a50fc056f4614baeb04ee73b009",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38716429450",
+      "workflowName": "Performance regression"
+    },
+    {
+      "conclusion": "failure",
+      "databaseId": 38716429519,
+      "headSha": "e04622a372797a50fc056f4614baeb04ee73b009",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38716429519",
+      "workflowName": "Electron E2E"
+    },
+    {
+      "conclusion": "failure",
+      "databaseId": 38716429407,
+      "headSha": "e04622a372797a50fc056f4614baeb04ee73b009",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38716429407",
+      "workflowName": "CI"
+    }
+  ],
+  "hostedFailures": {
+    "ci": {
+      "file": "apps/web/src/components/editor/AssetsPanel.work-asset.test.tsx",
+      "line": 110,
+      "symptom": "named timeline selection save exceeded unchanged 20000ms",
+      "attribution": "unattributed",
+      "passed": 1847,
+      "failed": 1,
+      "skipped": 7
+    },
+    "chromium": {
+      "job": "Facade and transport suites (macos-latest)",
+      "file": "packages/agent-facade/src/audio-normalize.test.ts",
+      "line": 93,
+      "symptom": "right-channel-only resample exceeded unchanged 5000ms",
+      "attribution": "unattributed",
+      "passed": 2070,
+      "failed": 1,
+      "skipped": 13,
+      "otherJobs": "ubuntu_facade_and_real_runtime_transport_passed"
+    },
+    "electron": {
+      "windows": {
+        "passed": 104,
+        "failed": 17,
+        "skipped": 15
+      },
+      "macos": {
+        "passed": 100,
+        "failed": 21,
+        "skipped": 15
+      },
+      "M3": "both fail before recovery on notification interception at Back to list",
+      "inventory": [
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/repair-integration.e2e.ts > combined delivery: live replacement + GUI comparison",
+          "symptom": "AssertionError: {\"code\":\"INVALID_PARAMS\",\"message\":\"media.import requires projectId\"}: expected false to be true // Object.is equality",
+          "location": "e2e/repair-integration.e2e.ts:40:57",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/desktop-portals-theme.e2e.ts > desktop body portals share dark tokens and project name/detail rows have spacing",
+          "symptom": "Error: Set an external test job",
+          "location": "e2e/desktop-portals-theme.e2e.ts:9:19",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/flow-b-canvas-caption.e2e.ts > flow B: caption at the user's canvas point + stale-context conflict > stale context: replaying the edit after the user moved the point 鈫?CONFLICT, no duplicate",
+          "symptom": "Error: canvas point missed: wanted (0.6, 0.35), got {\"x\":0.6130167106420404,\"y\":0.39993159386299226}",
+          "location": "e2e/harness/ui.ts:269:11",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/media-import.e2e.ts > live media import: external Agent 鈫?visible GUI project > import is visible, undoable, editable and persistent",
+          "symptom": "AssertionError: expected false to be true // Object.is equality",
+          "location": "e2e/media-import.e2e.ts:114:33",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > empty project: the version track stays hidden and Ctrl+S creates no node",
+          "symptom": "AssertionError: expected 1 to be +0 // Object.is equality",
+          "location": "e2e/multi-project-versioning.e2e.ts:310:63",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > retaining a version from the project menu creates the auto-named base node",
+          "symptom": "TimeoutError: locator.click: Timeout 30000ms exceeded.",
+          "location": "e2e/multi-project-versioning.e2e.ts:186:71",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > read-only preview never modifies history or the current edit",
+          "symptom": "TimeoutError: locator.waitFor: Timeout 10000ms exceeded.",
+          "location": "e2e/multi-project-versioning.e2e.ts:181:75",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > continue editing from a version protects the dirty draft and the toast undo restores it",
+          "symptom": "TypeError: Cannot read properties of undefined (reading 'id')",
+          "location": "e2e/multi-project-versioning.e2e.ts:413:35",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > rename edits display metadata only and keeps the node identity",
+          "symptom": "TypeError: Cannot read properties of undefined (reading 'id')",
+          "location": "e2e/multi-project-versioning.e2e.ts:458:36",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > delete moves the node to the recycle bin with undo; deleting the base shows the edit endpoint",
+          "symptom": "TypeError: Cannot read properties of undefined (reading 'id')",
+          "location": "e2e/multi-project-versioning.e2e.ts:474:35",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > project switch notifies once; the copied prompt carries ids and no token",
+          "symptom": "AssertionError: expected 2 to be +0 // Object.is equality",
+          "location": "e2e/multi-project-versioning.e2e.ts:507:63",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > close preference ask: dialog cancels, direct close saves without a node",
+          "symptom": "Error: Electron process did not exit within 40000ms",
+          "location": "e2e/harness/teardown.ts:31:20",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > close preference auto: dialog retention commits the preference; nodes and drafts survive restart",
+          "symptom": "Error: electron.launch: Target page, context or browser has been closed",
+          "location": "e2e/harness/launch.ts:103:15",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > close preference auto: the next close retains silently with no dialog",
+          "symptom": "Error: electron.launch: Target page, context or browser has been closed",
+          "location": "e2e/harness/launch.ts:103:15",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > close preference skip: settings pick, silent close, no node",
+          "symptom": "Error: electron.launch: Target page, context or browser has been closed",
+          "location": "e2e/harness/launch.ts:103:15",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > close preference skip: nothing was retained and the preference persisted",
+          "symptom": "Error: electron.launch: Target page, context or browser has been closed",
+          "location": "e2e/harness/launch.ts:103:15",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/node-ux-fixes.e2e.ts > visible isolated desktop: title close waits, rename is shared, local fonts and original HEVC remain reviewable",
+          "symptom": "AssertionError: expected '1.7.3' to be '1.6.0' // Object.is equality",
+          "location": "e2e/node-ux-fixes.e2e.ts:38:48",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/paused-inspector-history.e2e.ts > copied acceptance project keeps paused pixels through inspector actions and renders real history",
+          "symptom": "Error: Set an external job, copied acceptance profile and project id",
+          "location": "e2e/paused-inspector-history.e2e.ts:13:44",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/paused-project-switch.e2e.ts > a paused original HEVC frame returns at the same playhead after switching through an empty project",
+          "symptom": "Error: Set the external job root and original HEVC source for this regression",
+          "location": "e2e/paused-project-switch.e2e.ts:12:30",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/playback-comparison-repair.e2e.ts > decimal-adjacent clips use native playback and comparison settings leave both pictures clear",
+          "symptom": "AssertionError: expected 37 to be greater than 40",
+          "location": "e2e/playback-comparison-repair.e2e.ts:93:34",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/preview-copy.e2e.ts > historical mixed clips copy to current editing with fixed media, relative times and one undo",
+          "symptom": "Error: Set the external job and original HEVC source",
+          "location": "e2e/preview-copy.e2e.ts:12:32",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (macos-latest)",
+          "test": "FAIL   desktop-e2e  e2e/production-management.e2e.ts > M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints and process recovery",
+          "symptom": "TimeoutError: locator.click: Timeout 30000ms exceeded.",
+          "location": "e2e/production-management.e2e.ts:273:106",
+          "notificationInterceptsPointer": true
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/repair-integration.e2e.ts > combined delivery: live replacement + GUI comparison",
+          "symptom": "AssertionError: {\"code\":\"INVALID_PARAMS\",\"message\":\"media.import requires projectId\"}: expected false to be true // Object.is equality",
+          "location": "e2e/repair-integration.e2e.ts:40:57",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/desktop-portals-theme.e2e.ts > desktop body portals share dark tokens and project name/detail rows have spacing",
+          "symptom": "Error: Set an external test job",
+          "location": "e2e/desktop-portals-theme.e2e.ts:9:19",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/media-import.e2e.ts > live media import: external Agent 鈫?visible GUI project > import is visible, undoable, editable and persistent",
+          "symptom": "AssertionError: expected false to be true // Object.is equality",
+          "location": "e2e/media-import.e2e.ts:114:33",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > empty project: the version track stays hidden and Ctrl+S creates no node",
+          "symptom": "AssertionError: expected 1 to be +0 // Object.is equality",
+          "location": "e2e/multi-project-versioning.e2e.ts:310:63",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > retaining a version from the project menu creates the auto-named base node",
+          "symptom": "TimeoutError: locator.click: Timeout 30000ms exceeded.",
+          "location": "e2e/multi-project-versioning.e2e.ts:186:71",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > read-only preview never modifies history or the current edit",
+          "symptom": "TimeoutError: locator.waitFor: Timeout 10000ms exceeded.",
+          "location": "e2e/multi-project-versioning.e2e.ts:181:75",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > continue editing from a version protects the dirty draft and the toast undo restores it",
+          "symptom": "TypeError: Cannot read properties of undefined (reading 'id')",
+          "location": "e2e/multi-project-versioning.e2e.ts:413:35",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > rename edits display metadata only and keeps the node identity",
+          "symptom": "TypeError: Cannot read properties of undefined (reading 'id')",
+          "location": "e2e/multi-project-versioning.e2e.ts:458:36",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > delete moves the node to the recycle bin with undo; deleting the base shows the edit endpoint",
+          "symptom": "TypeError: Cannot read properties of undefined (reading 'id')",
+          "location": "e2e/multi-project-versioning.e2e.ts:474:35",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > project switch notifies once; the copied prompt carries ids and no token",
+          "symptom": "AssertionError: expected 2 to be +0 // Object.is equality",
+          "location": "e2e/multi-project-versioning.e2e.ts:507:63",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > task media stays protected: immutable node media and a fixed-input export",
+          "symptom": "AssertionError: expected 'C:\\Users\\runneradmin\\AppData\\Local\\Te鈥? to be 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\鈥? // Object.is equality",
+          "location": "e2e/multi-project-versioning.e2e.ts:642:35",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > close preference skip: settings pick, silent close, no node",
+          "symptom": "TimeoutError: locator.click: Timeout 30000ms exceeded.",
+          "location": "e2e/multi-project-versioning.e2e.ts:762:73",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > close preference skip: nothing was retained and the preference persisted",
+          "symptom": "Error: electron.launch: WebSocket error: read ECONNRESET",
+          "location": "e2e/harness/launch.ts:103:15",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/node-ux-fixes.e2e.ts > visible isolated desktop: title close waits, rename is shared, local fonts and original HEVC remain reviewable",
+          "symptom": "AssertionError: expected '1.7.3' to be '1.6.0' // Object.is equality",
+          "location": "e2e/node-ux-fixes.e2e.ts:38:48",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/paused-inspector-history.e2e.ts > copied acceptance project keeps paused pixels through inspector actions and renders real history",
+          "symptom": "Error: Set an external job, copied acceptance profile and project id",
+          "location": "e2e/paused-inspector-history.e2e.ts:13:44",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/paused-project-switch.e2e.ts > a paused original HEVC frame returns at the same playhead after switching through an empty project",
+          "symptom": "Error: Set the external job root and original HEVC source for this regression",
+          "location": "e2e/paused-project-switch.e2e.ts:12:30",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/preview-copy.e2e.ts > historical mixed clips copy to current editing with fixed media, relative times and one undo",
+          "symptom": "Error: Set the external job and original HEVC source",
+          "location": "e2e/preview-copy.e2e.ts:12:32",
+          "notificationInterceptsPointer": false
+        },
+        {
+          "job": "Live-collaboration E2E (windows-latest)",
+          "test": "FAIL   desktop-e2e  e2e/production-management.e2e.ts > M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints and process recovery",
+          "symptom": "TimeoutError: locator.click: Timeout 30000ms exceeded.",
+          "location": "e2e/production-management.e2e.ts:273:106",
+          "notificationInterceptsPointer": true
+        }
+      ]
+    }
+  },
+  "testCompatibilityFollowup": {
+    "runtimeSourceUnchanged": true,
+    "packagedSource": "e04622a372797a50fc056f4614baeb04ee73b009",
+    "notification": {
+      "fix": "normal UI dismiss of persistent startup hint, no force click",
+      "packagedM3Seconds": 16.35,
+      "originalRecoveryTimeoutMs": 120000
+    },
+    "workAssetUnit": {
+      "localCause": "JSDOM nwsapi fullscreen matcher recursion",
+      "cpuProfileMs": 17648,
+      "phaseSaveClickMs": 177,
+      "phaseStoreWaitCompletedMs": 17007,
+      "fix": "fixture-only false fullscreen/modal states; all other selectors delegated and restored",
+      "testLimitMs": 20000,
+      "tests": 2,
+      "testExecutionMs": 223,
+      "totalSeconds": 3.98,
+      "hostedVerification": "not_yet_verified_new_test_commit"
+    },
+    "temporaryProfilingCodeRemoved": true,
+    "webTypecheck": "passed"
+  }
 }

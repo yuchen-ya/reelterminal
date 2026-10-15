@@ -70,8 +70,15 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
     await vi.waitFor(async () => expect(await toggle.isEnabled()).toBe(true), {
       timeout: 30_000,
     });
-    if ((await toggle.getAttribute("aria-pressed")) !== "true")
+    if ((await toggle.getAttribute("aria-pressed")) !== "true") {
       await toggle.click();
+      // Granting access deliberately leaves a persistent, dismissible hint.
+      // Follow its visible close action before using controls underneath it.
+      const startupHint = launched.page.getByTestId("notification-toast")
+        .filter({ hasText: "Copy Agent startup prompt" });
+      await startupHint.getByRole("button", { name: "Dismiss notification", exact: true }).click();
+      await startupHint.waitFor({ state: "detached" });
+    }
     await launched.waitForEndpointFile();
   };
   try {

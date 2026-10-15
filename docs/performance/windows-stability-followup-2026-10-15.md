@@ -263,13 +263,25 @@ The first frozen SHA's remaining CI, Chromium and Electron workflows ended
 cancelled after the subsequent documentation push; performance succeeded.
 Cancelled workflows do not establish qualification.
 
+The replacement candidate's complete CI round has now ended: performance
+passed; CI, Chromium and both Electron platform jobs failed. The candidate
+report records their unchanged failure evidence and classifications. Follow-up
+test-only corrections use the real startup-notification dismiss action (M3
+passed in 16.35 s against the candidate) and model JSDOM's absent fullscreen/
+modal states to prevent the profiled nwsapi recursion (work-asset tests 223 ms).
+No product runtime source changed after the candidate was frozen. Full hosted
+qualification remains failed/pending new ordinary CI, not retroactively green.
+
 ## Retained local evidence
 
-The later authorized local Windows 1.1.2 candidate is frozen at `ca8126cf`.
-Its actual packaged application passed 14 targeted E2E tests in 34.50 seconds.
+The first authorized local Windows 1.1.2 candidate at `ca8126cf` remains on disk.
+The replacement after the recovery fix is frozen at `e04622a3`: its actual
+packaged application passed 15 targeted E2E tests in 50.65 seconds, including
+M3 recovery with durable-store agreement assertions (17.49 seconds).
 Package identity, hashes, CI links and remaining release gates are recorded in
 [the candidate report](windows-rc-1.1.2-2026-10-15.md) and its JSON companion.
-No release was published; M3 recovery and Mac recording remain blocked.
+No release was published. The reproduced M3 defect is fixed and verified;
+Mac recording, installer coverage and broader qualification remain separate gates.
 
 Under `apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/`:
 
