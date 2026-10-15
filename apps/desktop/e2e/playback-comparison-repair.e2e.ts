@@ -67,8 +67,10 @@ test("decimal-adjacent clips use native playback and comparison settings leave b
     await page.getByRole("button", { name: "Advanced", exact: true }).click();
     const viewport = page.getByTestId("reference-comparison-viewport");
     const settings = page.getByTestId("comparison-settings");
-    for (const height of [720, 700]) {
-      await launched.app.evaluate(({ BrowserWindow }, height) => BrowserWindow.getAllWindows()[0]!.setContentSize(1280, height), height);
+    for (const [width, height, label] of [[1280, 720, "smallWindow"], [1280, 700, "minimumWindow"], [1279, 700, "roundedWidth"]] as const) {
+      // Windows fractional display scaling can round a 1280 DIP request down
+      // to 1279, where transport controls wrap to an extra row.
+      await launched.app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]!.setContentSize(size.width, size.height), { width, height });
       await settings.waitFor();
       await page.waitForFunction(() => {
         const pictureElement = document.querySelector('[data-testid="reference-comparison-viewport"]');
@@ -88,9 +90,9 @@ test("decimal-adjacent clips use native playback and comparison settings leave b
       const settingsBounds = (await settings.boundingBox())!;
       const pictureBounds = (await viewport.boundingBox())!;
       const controlsBounds = (await page.getByTestId("comparison-controls").boundingBox())!;
-      evidence.record(height === 720 ? "smallWindow" : "minimumWindow", { requestedHeight: height, viewport: await page.evaluate(() => ({ width: innerWidth, height: innerHeight })), settingsBounds, pictureBounds, controlsBounds });
+      evidence.record(label, { requestedWidth: width, requestedHeight: height, viewport: await page.evaluate(() => ({ width: innerWidth, height: innerHeight })), settingsBounds, pictureBounds, controlsBounds });
       evidence.flush();
-      await evidence.screenshot(`advanced-small-${height}`);
+      await evidence.screenshot(`advanced-small-${width}-${height}`);
       expect(pictureBounds.width).toBeGreaterThan(0);
       expect(pictureBounds.height).toBeGreaterThan(40);
       expect(settingsBounds.x).toBeGreaterThanOrEqual(pictureBounds.x + pictureBounds.width - 1);

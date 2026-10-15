@@ -1,0 +1,103 @@
+{
+  "supersededBy": "next clean candidate with wrapped transport stage reservation",
+  "candidateDirectory": "apps/desktop/release/windows-rc-1.1.2-3e9f853c",
+  "packagedCore": {
+    "passed": 25,
+    "m3Seconds": 15.889,
+    "failure": "comparison-layout: picture 17 px at actual 1279x720, threshold >40 unchanged",
+    "seconds": 81.69,
+    "total": 26,
+    "failed": 1
+  },
+  "report": "windows-hosted-core-followup-2026-10-15.md",
+  "reportDate": "2026-10-15",
+  "identity": {
+    "schema": "reelterminal.windows-local-rc/v1",
+    "sourceSha": "3e9f853c034967aa7b39a5c884436b366c797ecd",
+    "version": "1.1.2",
+    "platform": "win32",
+    "arch": "x64",
+    "published": false,
+    "installed": false,
+    "buildStamp": {
+      "schema": "reelterminal.performance-build/v1",
+      "build_type": "production",
+      "source_head": "3e9f853c034967aa7b39a5c884436b366c797ecd",
+      "dirty": false,
+      "source_digest": "6e36462d142976cc20020f6ea6736657d985e280edfd36063832e6013c98a2cc",
+      "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+      "main_bundle_sha256": "6330a595f8506730bd03265c29cf8518f5cf13e6366df11340e923a6da8404bd",
+      "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+      "renderer_manifest_sha256": "ca21ecc7fc28408f7b37a0aa264ae3a1bfecd7f980396bce67c1c17fadcea916",
+      "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+      "executable_sha256": "49b61a030a520fc36a4b8fa5cce53fb4e935a7bdbbe4b80e9222f598e49cc7fa",
+      "app_version": "1.1.2"
+    },
+    "files": [
+      {
+        "path": "ReelTerminal-1.1.2-x64.exe",
+        "bytes": 138861449,
+        "sha256": "219bf34f7678fc2877a0e2e7a31c00b23de25e4752520b2ee24a75bf94014ef2"
+      },
+      {
+        "path": "ReelTerminal-1.1.2-x64.zip",
+        "bytes": 188922586,
+        "sha256": "83632bc1de8d76c7a1ae5ce5c9a3aa9c9dfbbf4aaae9ede859031dc07bcb59f9"
+      },
+      {
+        "path": "ReelTerminal-1.1.2-x64.exe.blockmap",
+        "bytes": 146214,
+        "sha256": "6b54a33000cc1651b21349f5241b195d9a417a2c1d14c7440cf6354919eaef1f"
+      },
+      {
+        "path": "win-unpacked/ReelTerminal.exe",
+        "bytes": 245726208,
+        "sha256": "0428a1409ebc3f64a781ff9d619526a8d4cc1c7592f9eeab746f3c735e87a659"
+      },
+      {
+        "path": "win-unpacked/resources/app.asar",
+        "bytes": 93721291,
+        "sha256": "5198bbb91f599aec918e46c120e15b23d15cb24a9543f99c3ac91b0b91360527"
+      }
+    ],
+    "components": [
+      {
+        "path": "dist/main/index.js",
+        "sha256": "6330a595f8506730bd03265c29cf8518f5cf13e6366df11340e923a6da8404bd",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/preload/index.js",
+        "sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/browser-entry.mjs",
+        "sha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/live-mcp/index.js",
+        "sha256": "72c056918dc7380ac235a0b325cf676f6ab0e3f1a95e2f246446324ccb1e27aa",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/reelctl/index.js",
+        "sha256": "66c6f55c52c9e920cc6cf05d6d44cfccd75603def4295eee59540755cb244a81",
+        "matchesBuiltSource": true
+      }
+    ],
+    "renderer": {
+      "fileCount": 190,
+      "mismatches": []
+    },
+    "signatures": {
+      "application": "NotSigned",
+      "installer": "NotSigned"
+    }
+  },
+  "sourceSha": "3e9f853c034967aa7b39a5c884436b366c797ecd",
+  "releaseQualified": false,
+  "schema": "reelterminal.windows-rc-gate/v1"
+}

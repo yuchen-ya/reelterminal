@@ -206,3 +206,32 @@ primary error/command timing and PID-correlated native memory-region samples
 from the existing export/idle round. Do not repeat the ten-export run merely
 to obtain another RSS number. No recorder code, permissions or user Mac task
 was changed here.
+
+## Fractional-width transport wrapping
+
+The clean 3e9f853c package passed 25 of 26 selected core checks (81.69 s),
+including the fast opacity input, M3 (15.89 s), first frame, real connector
+CAS/pixels, undo and save/reopen. It remains unqualified: its comparison
+layout test measured only 17 px picture height at actual 1279x720 after a
+1280x720 request. The screenshot shows the transport's final control wrapped
+onto another row. A 240 px stage reservation was insufficient for that row.
+This is a supported layout defect, not a reason to change the >40 assertion.
+
+The rendered split now reserves 288 px for the stage, retaining the existing
+timeline preference and its minimum. The existing test additionally requests
+1279x700 to cover native fractional-width rounding. Normal source build and
+the full original playback/comparison test pass in 6.95 s: picture height is
+58 px at actual 1279x720, 1279x701 and 1278x701, with settings outside the
+pictures, controls above them and timeline inside the viewport. Evidence:
+`windows-rc-3e9f853c-core.log`, `wrapped-transport-layout-after.log`,
+`comparison-layout-1792063844525.json` (before), and
+`comparison-layout-1792063975675.json` (after), under the harness artifacts.
+A fresh candidate is required for this final runtime layout repair.
+
+Remote Mac documentation commit 633b7f63 was read and fast-forwarded without
+changing local implementation files. It now verifies actual native system
+cancel and one current-application-window recording/import/full decode, while
+the designated synthetic-window selection still times out. Overall recording
+acceptance remains blocked. Its docs-only push automatically cancelled the
+3e9f853c Electron run; that run is not reported as a pass. No manual rerun,
+reset, force push or shared-file conflict occurred.

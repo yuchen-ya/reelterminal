@@ -135,9 +135,10 @@ export function EditPage(): JSX.Element {
   const gridStyle: React.CSSProperties = {
     gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px`,
     // Keep transport/comparison controls from squeezing the picture away at
-    // the supported minimum window height. Clamp only the rendered split;
+    // the supported minimum window height, including a wrapped transport row
+    // at fractional Windows display scaling. Clamp only the rendered split;
     // the user's stored timeline preference still returns in a taller window.
-    gridTemplateRows: `minmax(240px, 1fr) min(${lowerPanelHeight}px, max(232px, calc(100% - 240px)))`,
+    gridTemplateRows: `minmax(288px, 1fr) min(${lowerPanelHeight}px, max(232px, calc(100% - 288px)))`,
     gridTemplateAreas:
       "'media stage inspector' 'lower lower lower'",
   };
