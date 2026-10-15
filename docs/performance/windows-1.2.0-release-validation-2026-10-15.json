@@ -155,5 +155,43 @@
     "Local native clipboard roundtrip anomaly remains unattributed.",
     "Historical Mac startup/audio timeouts and retained memory/history trends remain unattributed; long-term bound not proven.",
     "No macOS 1.2.0 package qualified or attached; older 1.1.2 results retain original scope."
-  ]
+  ],
+  "flowAInvestigation": {
+    "sourceDiffFrom9db42277": "Only workspace/root package versions, GUI manual app version constant and documentation changed; Flow A and all product gesture/persistence code identical.",
+    "productFixClaimed": false,
+    "normalSingleGesture": {
+      "passed": 5,
+      "failed": 0,
+      "revisionBefore": 4,
+      "revisionAfter": 5,
+      "startBefore": 0,
+      "startAfter": 0.42771599657827203,
+      "original400msObservationRetained": true
+    },
+    "narrowCpu8SingleGesture": {
+      "passed": 5,
+      "failed": 0,
+      "requestedContentSize": [
+        1024,
+        720
+      ],
+      "actualContentSize": [
+        1023,
+        720
+      ],
+      "cpuThrottleRate": 8,
+      "revisionBefore": 4,
+      "revisionAfter": 5,
+      "startBefore": 0,
+      "startAfter": 0.6640106241699868,
+      "canonicalCommitAfterReleaseMs": 8.83,
+      "original400msObservationRetained": true,
+      "smallStartupGuardPassedClaimed": false
+    },
+    "conclusion": "Neither probe reproduces the hosted failure. Correct hit/focus and canonical commit observed; no sufficient root-cause attribution. Passing instrumented probes are not a fix.",
+    "testChanges": "Capture bounded DOM input/focus/preview plus existing product trace; retain canonical snapshots before assertions and compare immediate pre-drag revision. Preserve one gesture, 400ms driver wait and startTime > 0 business assertion. Diagnostic failures do not mask primary error.",
+    "temporaryFaultControlsCommitted": false,
+    "targetedTypecheck": "passed with browser DOM/DOM.Iterable libs",
+    "hostedNextStep": "One normal automatic CI round for the strengthened diagnostic test; no rerun-to-green or manual duplicate."
+  }
 }

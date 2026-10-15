@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { launchApp, type LaunchedApp } from "./harness/launch";
-import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
+import { connectExternalAgent, type ExternalAgent, type FacadeCallResult } from "./harness/mcp-client";
 import { createEvidence, type EvidenceRecord } from "./harness/evidence";
 import {
   createProjectViaUI,
@@ -154,25 +154,90 @@ describe("flow A: select text, external agent rewrites it", () => {
   });
 
   test("handoff legibility: the agent observes a real human edit as a new revision", async () => {
-    // Human: drag the rewritten caption on the timeline (real mouse drag) —
-    // a genuine project mutation on the human side.
-    await dragTextClipViaUI(launched.page, AGENT_TEXT, 100);
+    const beforeContext = await agent.callTool<EditorContext>("editor_get_context");
+    const beforeTimeline = await agent.callTool<TimelineView>("timeline_get", target);
+    evidence.record("before_human_drag", { context: beforeContext, timeline: beforeTimeline });
+    expect(beforeContext.ok).toBe(true);
+    expect(beforeTimeline.ok).toBe(true);
 
-    // Agent: the human's edit is visible as an advanced revision, and the
-    // agent's own text is intact under the human's timing change.
-    const ctx = (await agent.callTool<EditorContext>("editor_get_context")).value!;
-    expect(ctx.projectRevision).toBeGreaterThan(revisionAfterAgentEdit);
-    const timeline = await agent.callTool<TimelineView>("timeline_get", target);
-    const overlay = timeline.value!.textOverlays.find((o) => o.text === AGENT_TEXT);
+    // Observe one unchanged real gesture. Keep evidence before assertions so a
+    // missed input, cancellation and pending/failed canonical commit differ.
+    await launched.page.evaluate((id) => {
+      const host = globalThis as typeof globalThis & {
+        __flowADragProbe?: () => unknown;
+        __reelterminalPerformanceCapture?: {
+          start(request: unknown): unknown;
+          stop(): unknown;
+        };
+      };
+      const clip = document.querySelector<HTMLElement>(`[data-live-editor-target-id="${id}"]`);
+      const samples: unknown[] = [];
+      const started = performance.now();
+      const describe = (element: Element | null) => element && ({
+        tag: element.tagName,
+        targetId: element.closest("[data-live-editor-target-id]")?.getAttribute("data-live-editor-target-id"),
+        role: element.getAttribute("role"),
+      });
+      const sample = (event?: Event) => {
+        if (samples.length >= 80) return;
+        const mouse = event instanceof MouseEvent ? event : null;
+        const box = clip?.getBoundingClientRect();
+        samples.push({
+          elapsedMs: performance.now() - started, event: event?.type ?? "snapshot",
+          trusted: event?.isTrusted, focused: document.hasFocus(), visibility: document.visibilityState,
+          x: mouse?.clientX, y: mouse?.clientY, buttons: mouse?.buttons,
+          hit: mouse ? describe(document.elementFromPoint(mouse.clientX, mouse.clientY)) : null,
+          target: event?.target instanceof Element ? describe(event.target) : null,
+          box: box && { x: box.x, y: box.y, width: box.width, height: box.height },
+          transform: clip?.style.transform, className: clip?.className,
+          notifications: [...document.querySelectorAll('[data-testid="notification-toast"]')].map(node => node.textContent),
+        });
+      };
+      const events = ["mousedown", "mousemove", "mouseup", "blur", "focus", "visibilitychange"];
+      for (const event of events) window.addEventListener(event, sample, true);
+      const capture = host.__reelterminalPerformanceCapture;
+      capture?.start({ mode: "trace", runId: "flow-a-human-drag", budgets: { captureSeconds: 10, eventsCapacity: 4096, criticalEventsCapacity: 1024, memorySampleIntervalSeconds: 0 } });
+      sample();
+      host.__flowADragProbe = () => {
+        for (const event of events) window.removeEventListener(event, sample, true);
+        sample();
+        delete host.__flowADragProbe;
+        return { samples, performance: capture?.stop() };
+      };
+    }, overlayId);
+
+    let context: FacadeCallResult<EditorContext> | undefined;
+    let timeline: FacadeCallResult<TimelineView> | undefined;
+    try {
+      await dragTextClipViaUI(launched.page, AGENT_TEXT, 100);
+      context = await agent.callTool<EditorContext>("editor_get_context");
+      timeline = await agent.callTool<TimelineView>("timeline_get", target);
+      evidence.record("after_human_drag", { context, timeline });
+    } finally {
+      evidence.record("human_drag_probe", await launched.page.evaluate(() =>
+        (globalThis as typeof globalThis & { __flowADragProbe?: () => unknown }).__flowADragProbe?.(),
+      ).catch(error => ({ unavailable: String(error) })));
+      await evidence.screenshot("after-human-drag").catch(error =>
+        evidence.record("human_drag_screenshot_error", String(error)),
+      );
+      evidence.flush();
+    }
+    expect(context?.ok).toBe(true);
+    expect(timeline?.ok).toBe(true);
+    const ctx = context!.value!;
+    // Undo/redo already advanced the revision; compare with the immediate
+    // pre-gesture revision so only this human edit can satisfy the handoff.
+    expect(ctx.projectRevision).toBeGreaterThan(beforeContext.value!.projectRevision);
+    const overlay = timeline!.value!.textOverlays.find((o) => o.text === AGENT_TEXT);
     expect(overlay).toBeDefined();
     expect(overlay!.startTime).toBeGreaterThan(0);
 
     evidence.record("handoff", {
       revisionAfterAgentEdit,
+      revisionBeforeHumanDrag: beforeContext.value!.projectRevision,
       revisionAfterHumanDrag: ctx.projectRevision,
       draggedStartTime: overlay!.startTime,
     });
-    await evidence.screenshot("after-human-drag");
   });
 
   test("evidence: endpoint file + run dir were per-test isolated", async () => {

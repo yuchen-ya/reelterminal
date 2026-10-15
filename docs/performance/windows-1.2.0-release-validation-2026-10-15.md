@@ -92,3 +92,42 @@ timeouts, shared/browser memory retention and small post-saturation history heap
 trend remain unattributed. Long-term memory bounds are unproven. Metrics are not
 summed and RSS reduction is not asserted as proof of deallocation. See the original reports
 and [release notes](../RELEASE-1.2.0.md) for their limited scopes.
+
+## Bounded Flow A investigation after the initial block
+
+`git diff 9db42277 ee1062ec -- apps packages` confirms that, apart from
+package versions and distribution documentation, the only product source
+change is `GUI_MANUAL_APP_VERSION: 1.1.2 -> 1.2.0`. Flow A and all timeline,
+gesture and persistence product code are unchanged. This is evidence against
+a newly introduced gesture implementation regression, not proof that the
+failure is environmental or test-only.
+
+The existing Flow A test now records immediately pre/post gesture context and
+canonical timeline **before assertions**, bounded real input/focus/hit/preview
+DOM samples, and the existing product capture trace. No product monitoring
+module was added. One gesture, its original 400ms wait and `startTime > 0`
+remain. Revision is now compared against the immediate pre-drag revision,
+strengthening the former assertion. Diagnostic/screenshot failures cannot
+replace the primary action error.
+
+Two single-gesture probes ran against the retained ee1062ec 1.2.0 package:
+
+| Probe | Result | Canonical observation |
+| --- | --- | --- |
+| Normal native window | 5/5 Flow A tests, 4.69s total | Revision 4 -> 5, start 0 -> 0.4277159966s; correct hit, focused and visible |
+| Narrow window, controlled CPU throttle 8 | 5/5, 5.88s total | Requested 1024x720; actual 1023x720. Revision 4 -> 5, start 0 -> 0.6640106242s; canonical commit 8.83ms after release, before the original read point |
+
+The second probe matches the narrow-layout intent, not the hosted machine's
+exact native geometry/DPR; it does not claim the strict small-startup guard
+passed. Temporary size/CPU controls were removed from the source. Both probes
+retained the original observation point. They **did not reproduce** the
+hosted failure and do not justify calling the problem fixed or increasing a
+timeout. Capture can perturb timing; a later instrumented pass alone also
+cannot attribute the original failed run. The targeted test typecheck passes
+with DOM/DOM.Iterable browser libraries.
+
+One normal automatic CI round will carry the stronger diagnostic test to the
+hosted environment. No manual duplicate, retries or historical long stress
+runs are requested. If the original failure remains unattributed, publication
+requires an explicit choice to accept that bounded risk or continue a focused
+investigation; it must not silently become a green-only release claim.
