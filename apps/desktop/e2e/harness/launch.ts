@@ -41,6 +41,7 @@ export interface LaunchedApp {
     readonly mainStdout: string[];
     readonly mainStderr: string[];
     readonly rendererConsole: string[];
+    readonly lifecycle: string[];
   };
   /** Poll (250 ms) until the live endpoint file exists. */
   waitForEndpointFile(timeoutMs?: number): Promise<void>;
@@ -91,6 +92,13 @@ async function launch(
   const mainStdout: string[] = [];
   const mainStderr: string[] = [];
   const rendererConsole: string[] = [];
+  const lifecycle: string[] = [];
+  const recordLifecycle = (event: string, detail?: unknown) =>
+    lifecycle.push(JSON.stringify({ at: new Date().toISOString(), event, detail }));
+  const safeUrl = (value: string): string => {
+    try { const url = new URL(value); return `${url.origin}${url.pathname}`; }
+    catch { return "unavailable"; }
+  };
 
   const app = await electron.launch({
     ...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? { executablePath: process.env.REELTERMINAL_E2E_APP_EXECUTABLE } : {}),
@@ -119,8 +127,37 @@ async function launch(
     seenPages.add(page);
     page.on("console", (msg) => rendererConsole.push(`[${msg.type()}] ${msg.text()}`));
     page.on("pageerror", (error) => rendererConsole.push(`[pageerror] ${String(error)}`));
+    page.on("framenavigated", frame => {
+      if (frame === page.mainFrame()) recordLifecycle("navigation", { url: safeUrl(frame.url()) });
+    });
+    page.on("domcontentloaded", () => recordLifecycle("domcontentloaded"));
+    page.on("load", () => recordLifecycle("load"));
+    page.on("crash", () => recordLifecycle("renderer-crash"));
+    page.on("close", () => recordLifecycle("window-close"));
+    recordLifecycle("window-attached", { url: safeUrl(page.url()) });
   };
   app.on("window", capturePage);
+  for (const existing of app.windows()) capturePage(existing);
+  // Observation must not become a new startup gate if main is unresponsive.
+  void app.evaluate(({ app, BrowserWindow }) => {
+    const seen = new WeakSet();
+    const observe = (contents: Electron.WebContents) => {
+      if (seen.has(contents)) return;
+      seen.add(contents);
+      const record = (event: string, detail?: unknown) =>
+        console.info("E2E_LIFECYCLE", JSON.stringify({ at: new Date().toISOString(), event, detail }));
+      contents.on("did-fail-load", (_event, errorCode, _description, url, isMainFrame) => {
+        let safeUrl = "unavailable";
+        try { const parsed = new URL(url); safeUrl = `${parsed.origin}${parsed.pathname}`; } catch { /* no raw URL */ }
+        record("did-fail-load", { errorCode, isMainFrame, url: safeUrl });
+      });
+      contents.on("render-process-gone", (_event, details) => record("render-process-gone", { reason: details.reason, exitCode: details.exitCode }));
+      contents.on("unresponsive", () => record("unresponsive"));
+      contents.on("responsive", () => record("responsive"));
+    };
+    app.on("web-contents-created", (_event, contents) => observe(contents));
+    for (const window of BrowserWindow.getAllWindows()) observe(window.webContents);
+  }).catch(() => recordLifecycle("main-observer-unavailable"));
 
   let page: Page;
   let firstWindowTimer: ReturnType<typeof setTimeout> | undefined;
@@ -138,6 +175,7 @@ async function launch(
     const diagnostics = [
       `Electron startup failed: ${error instanceof Error ? error.message : String(error)}`,
       `processId=${app.process().pid ?? "unknown"}`,
+      `lifecycle tail: ${lifecycle.slice(-20).join("\n").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
       `main stdout tail: ${mainStdout.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
       `main stderr tail: ${mainStderr.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
     ].join("\n");
@@ -193,6 +231,7 @@ async function launch(
     const diagnostics = [
       `Electron window setup failed: ${error instanceof Error ? error.message : String(error)}`,
       `page=${safePageState}`,
+      `lifecycle tail: ${lifecycle.slice(-20).join("\n").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
       `main stdout tail: ${mainStdout.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
       `main stderr tail: ${mainStderr.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
     ].join("\n");
@@ -217,7 +256,7 @@ async function launch(
     runDir: paths.runDir,
     userDataDir: paths.userDataDir,
     endpointFile: paths.endpointFile,
-    output: { mainStdout, mainStderr, rendererConsole },
+    output: { mainStdout, mainStderr, rendererConsole, lifecycle },
 
     async waitForEndpointFile(timeoutMs = 30_000) {
       const deadline = Date.now() + timeoutMs;

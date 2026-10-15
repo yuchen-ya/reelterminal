@@ -10,7 +10,7 @@ import { enableAgentSessionViaUI } from "../harness/ui";
 import { acquirePerformanceLock, captureComplete, prepareProfile, installProbe, dragTo, waitForMarker, type RendererWindowEvidence, type DragTiming } from "../harness/performance/driver";
 import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/performance/identity";
 import { createPerformanceFixture } from "./fixtures";
-import { writeCalibrationFailure } from "../harness/performance/calibration-failure";
+import { captureCalibrationStartup, writeCalibrationFailure } from "../harness/performance/calibration-failure";
 
 interface CalibrationGlobal {
   __reelterminalPerfDriver: {
@@ -53,6 +53,7 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
     let build: Awaited<ReturnType<typeof captureBuildIdentity>> | undefined;
     let environment: Awaited<ReturnType<typeof readEnvironmentIdentity>> | undefined;
     let retainedProfile: string | undefined;
+    let fixtureOpenLabel: string | undefined;
     const runs: CalibrationRun[] = [];
     const controls: Record<string, unknown> = {};
     const directory = path.join(ARTIFACTS_DIR, "performance");
@@ -78,7 +79,9 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
       expect(environment.focused).toBe(true);
       expect(environment.devtools_open).toBe(false);
       stage = "open_fixture";
-      await page.getByRole("button", { name: `Open ${fixture.project!.name}`, exact: true }).click();
+      fixtureOpenLabel = `Open ${fixture.project!.name}`;
+      controls.startupBeforeClick = await captureCalibrationStartup(page, fixtureOpenLabel);
+      await page.getByRole("button", { name: fixtureOpenLabel, exact: true }).click();
       stage = "await_editor";
       await page.getByTestId("agent-access-status").waitFor();
       stage = "enable_agent_session";
@@ -274,6 +277,9 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
             artifact: artifactWritten ? artifact.replace(/\.json$/, ".failure.json") : artifact,
             error: originalFailure, stage, controls, runs, build, environment,
             retainedProfile, output: launched?.output,
+            startupDiagnostics: launched && fixtureOpenLabel
+              ? () => captureCalibrationStartup(launched!.page, fixtureOpenLabel!)
+              : undefined,
             screenshot: launched && !launched.page.isClosed()
               ? () => launched!.page.screenshot({ path: artifact.replace(/\.json$/, ".png"), timeout: 5_000 })
               : undefined,

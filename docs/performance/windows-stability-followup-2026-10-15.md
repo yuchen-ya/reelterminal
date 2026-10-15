@@ -30,8 +30,13 @@ ten-export/300.442-second Mac round.
   `video-engine-export-effects` and `video-engine-mask-compositing` passed
   serially on Windows (1.71 seconds). These validate the synced cursor fixes;
   they do not establish a bound on native/shared memory.
-- Old Mac startup attribution needs only the four retained original test logs,
-  failure JSON and corresponding main/renderer logs. Native memory attribution
+- The later Mac handoff `54a12cd9`, preserved through `7440fbe8`, supplies
+  redacted original error/log excerpts and matching-build controls. It confirms
+  three failures in the exact Open-button locator/click wait, before any
+  logged click was dispatched; the first primary error was lost. It still
+  cannot distinguish missing React/library DOM from a stalled injected-script
+  poll. No existing evidence supplies that missing DOM retrospectively.
+  Native memory attribution
   still needs the existing phase/idle vmmap stdout **and stderr**, process-role
   samples and comparable retained-object/allocator evidence. History/GUI heap
   attribution needs the retained R02 idle samples and matching object-retainer
@@ -127,8 +132,6 @@ Task evidence: `library-dialog-before.log`,
 `library-browser-fixed.log`. Intermediate fixture failures remain in the
 `library-portal-unit*` logs; they are not counted as passing runs.
 
-## Retained local evidence
-
 ## Current connector, CLI and archive contracts
 
 The real CLI and generated-tool-registry tests now pass explicit project and
@@ -155,6 +158,33 @@ qualification.
 Evidence: `cli-registry-guards.log`, `archive-paused-current-ui.log` (intermediate
 failures), `current-contract-e2e.log`, `naming-before.log`, `naming-after.log`,
 and `audio-checkpoint-fixture.log` in the task artifact directory.
+
+## Bounded startup evidence after the Mac handoff
+
+The three agreed common harness files now collect structural startup evidence,
+without changing product loading, increasing the click timeout, or treating an
+about:blank document as React-ready. The launcher attaches timestamped page
+navigation/load/crash/close observations early, plus main-process load-failure,
+renderer-gone and unresponsive/responsive events. Main observation is asynchronous
+and does not become a startup gate. URLs exclude query/fragment fields.
+
+Calibration records readyState, root/library/editor presence, root child count,
+locale, visibility/focus and the exact Open-button locator count before clicking
+and again on failure. Document and locator probes each have an independent
+two-second diagnostic deadline. Primary error/build/control/log files are
+written before the optional failure snapshot (4.5-second outer deadline) and
+screenshot. A hung diagnostic cannot replace the actual failure.
+
+This observation can affect startup timing and is **diagnostic tooling, not a
+root-cause fix**. The old timeout attribution and the Mac picker/native-memory
+blocks remain. The Mac report was read here; original Mac profiles/log files
+were not accessed. No Mac task, full calibration/stress rerun or native-picker
+permission change was initiated from Windows.
+
+Verification: performance-harness typecheck passed; **7 tests passed** (five
+privacy/deadline/primary-error checks plus the two real decoder-worker tests,
+4.29 seconds). The first-frame timeout remains eight seconds. Evidence:
+`startup-diagnostics-typecheck.log`, `startup-diagnostics-tests.log`.
 
 ## Retained local evidence
 
