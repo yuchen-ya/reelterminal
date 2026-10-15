@@ -10,9 +10,9 @@
 **Generate anywhere; finish here.**
 
 <p align="center">
-  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.2.0-10B981?style=flat-square" alt="Version" /></a>
-  <a href="docs/EXTERNAL-DEPENDENCIES.md"><img src="https://img.shields.io/badge/Privacy-100%25%20Local--First-059669?style=flat-square" alt="Local First" /></a>
-  <a href="apps/desktop/DISTRIBUTION.md"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-64748B?style=flat-square" alt="Platform" /></a>
+  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/github/v/release/yuchen-ya/reelterminal?style=flat-square&amp;color=10B981" alt="Version" /></a>
+  <a href="docs/EXTERNAL-DEPENDENCIES.md"><img src="https://img.shields.io/badge/Privacy-Local--First-059669?style=flat-square" alt="Local First" /></a>
+  <a href="apps/desktop/DISTRIBUTION.md#build"><img src="https://img.shields.io/badge/Source%20platforms-Windows%20%7C%20macOS%20%7C%20Linux-64748B?style=flat-square" alt="Source platforms" /></a>
   <a href="https://github.com/yuchen-ya/reelterminal/issues"><img src="https://img.shields.io/badge/Feedback-Issues%20Welcome-3B82F6?style=flat-square" alt="Feedback" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-475569?style=flat-square" alt="License" /></a>
 </p>
@@ -31,7 +31,7 @@ AI video models make it easier to create footage, but turning **a collection of 
 * **Bad frames and artifacts:** flicker, distorted shapes, and other defects often affect only a small part of a clip. Repairing that section can be more practical than generating the whole shot again.
 * **Awkward AI collaboration:** traditional editors are difficult for an AI assistant to operate, while batch scripts offer little visual feedback, interaction, or undo.
 
-**ReelTerminal brings a visual editor and an assistant-friendly timeline together.** Drag and adjust clips in the desktop app, or let your AI assistant—Cursor, Claude, Antigravity, and others—operate the same project. **You make the creative decisions; the assistant handles repetitive and structured edits, backed by immutable version nodes, player comparison, and full undo.**
+**ReelTerminal brings a visual editor and an assistant-friendly timeline together.** Drag and adjust clips in the desktop app, or let your AI assistant—Cursor, Claude, Antigravity, and others—operate the same project. **You lead the creative decisions; the assistant handles repetitive and structured edits. Both work with shared project state, editing history, version archives, and player comparison.**
 
 ![ReelTerminal Chinese interface showing a promotional-video project, R clip reference markers, media library, multitrack timeline, and archive tree](docs/assets/desktop-screenshot.png)
 
@@ -41,11 +41,11 @@ AI video models make it easier to create footage, but turning **a collection of 
 
 ## ✨ Core features
 
-| 🤖 **Designed for AI collaboration** | 🎯 **Frame-accurate review and repair** |
+| 🤖 **Designed for AI collaboration** | 🎯 **Frame review and local repair** |
 | :--- | :--- |
-| A structured timeline API supports atomic batches, revision checks, and duplicate-request protection, helping assistants apply edits without conflicting with ongoing work. A built-in bilingual manual answers UI how-to queries on demand, reducing guesswork about interface operations. | Uses **zero-based decoded frame indexes** and actual presentation timestamps rather than relying only on nominal frame rates. OpenCV sparse optical flow and mask tools support targeted repairs. |
-| 🌿 **Immutable version nodes & comparison** | 🔒 **100% Local-first & content-addressed** |
-| Decouples regular workspace draft saves from milestone retention (Save vs Retain). Inspect version trees, preview read-only versions, compare historical cuts in the player, and adopt safe branches anytime. | Core decoding, rendering, and export run locally through Chromium, WebCodecs, and FFmpeg. Content-addressed hashing and controlled storage protect media from dangling references and accidental loss. |
+| A structured timeline API supports atomic batches, revision checks, and duplicate-request protection, helping assistants apply edits without conflicting with ongoing work. A built-in bilingual manual answers UI how-to queries on demand, reducing guesswork about interface operations. | Uses **zero-based decoded frame indexes** and actual presentation timestamps to locate footage, with frame extraction, contact sheets, region patches, and comparison. A configured local OpenCV runtime enables optical-flow and mask tools. |
+| 🌿 **Immutable version nodes & comparison** | 🔒 **Local-first media storage** |
+| Save the current workspace or retain a version node for read-only preview, comparison, and adoption. Each workspace has independent state; the creator decides whether to adopt an assistant’s trial edit. | Projects, media caches, decoding, and rendering are processed locally. Hash references and controlled storage manage media. Model/font downloads and optional online services use the network as configured; external AI assistants are chosen by the user. |
 
 ---
 
@@ -55,23 +55,27 @@ AI video models make it easier to create footage, but turning **a collection of 
 
 ```mermaid
 flowchart LR
-    A["1. Download a desktop build<br>(Releases)"] --> B["2. Open the app<br>Copy the startup prompt"] --> C["3. Paste it into your AI assistant<br>(Cursor / Claude / others)"] --> D["4. Connect and edit together"]
+    A["1. Download a desktop build<br>(Releases)"] --> B["2. Open the app<br>Copy the startup prompt"] --> C["3. Paste it into your AI assistant<br>(Cursor / Claude / others)"] --> D["4. Confirm target and access<br>Edit together"]
 ```
 
-1. Visit **[Releases](https://github.com/yuchen-ya/reelterminal/releases)** and download an available desktop build for your system.
-2. Open a video project, then switch the collaboration toggle above the timeline to **`Editable`** (or click Allow editing).
-3. Click **“Copy startup prompt”** in the notification.
-4. **Paste the prompt into your AI assistant**, such as Cursor, Claude Code, Antigravity, or Windsurf. It includes the local paths and collaboration rules needed to connect to the open project and query the built-in manual on demand.
+1. Visit **[Releases](https://github.com/yuchen-ya/reelterminal/releases)** and choose a build for your operating system and architecture.
+2. Open a video project. When you want the assistant to modify it, switch collaboration above the timeline to **`Editable`**; you can return to read-only access at any time.
+3. Click **“Copy startup prompt”** in the notification and send it to an AI assistant with local CLI or MCP tool access.
+4. The prompt includes this installation’s command paths and collaboration rules. Have the assistant confirm the intended project, workspace, and permissions before editing. Continue reviewing, adjusting, and making creative decisions in the same UI.
 
-Desktop distribution formats include a **Windows x64 installer and portable ZIP**, plus **macOS (Apple Silicon / Intel) DMG installers**. Check each version's [release assets and notes](https://github.com/yuchen-ya/reelterminal/releases) for available platforms, architectures, and signing status. Extract the entire Windows ZIP before running `ReelTerminal.exe`. Unsigned Windows builds may show an unknown-publisher warning during installation. Some media-processing features require a separate FFmpeg/ffprobe installation; see [desktop distribution](apps/desktop/DISTRIBUTION.md).
+Current downloads include a **Windows x64 installer/portable ZIP** and **macOS Apple Silicon (arm64) DMG/ZIP**. Check [Releases](https://github.com/yuchen-ya/reelterminal/releases) for exact assets, architectures, signing, and checksums. Extract the entire Windows ZIP before running `ReelTerminal.exe`. Windows packages are not code-signed and may show an unknown-publisher warning. Mac packages lack Developer ID signing and notarization, so the system may prevent them from opening directly.
 
-**v1.2.0 targets Windows x64 with unsigned installer and ZIP packages**. Check Releases for publication status and available assets. One hosted text-drag failure remains unattributed; see the release notes. A macOS 1.2.0 package is not included. See [1.2.0 release notes](docs/RELEASE-1.2.0.md) for validation scope and known limitations; older 1.1.2 test reports describe their original builds.
+**Source and installed packages are maintained separately.** This page describes the current repository’s capabilities and usage. Check the corresponding Release for a download’s features, fixes, and limitations; updating source does not update an installed app.
+
+With published packages, export native video to a new filename and verify it before replacing an existing file. Keep a project copy before applying a whole-project template, and avoid replaying pre-replacement undo/redo afterward. 3D property changes are not recorded as separate undo steps; retain version nodes for important stages. Large projects and long editing sessions can use substantial memory.
+
+Some export, media-analysis, and frame tools need local FFmpeg/ffprobe. OpenCV tools also need Python with `cv2` and `numpy`. See [external dependencies](docs/EXTERNAL-DEPENDENCIES.md) for tool requirements and network behavior.
 
 ---
 
 ### Option 2: Build from source
 
-To contribute or debug the app, use Node.js 22.13.0 or newer and Corepack with the repository-pinned pnpm version:
+Use Node.js 22.13.0 or newer and the repository-pinned pnpm 11.7.0. The examples invoke pnpm through Corepack:
 
 ```bash
 # 1. Clone the repository
@@ -79,7 +83,7 @@ git clone https://github.com/yuchen-ya/reelterminal.git
 cd reelterminal
 
 # 2. Install dependencies and build the WASM modules
-corepack pnpm install
+corepack pnpm install --frozen-lockfile
 corepack pnpm build:wasm
 
 # 3. Build and start the desktop app
@@ -89,7 +93,7 @@ corepack pnpm --filter @reelterminal/desktop start
 # Alternatively, start the web editor with: corepack pnpm dev
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development checks and optional tool setup, and [desktop distribution](apps/desktop/DISTRIBUTION.md) for packaging instructions.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development checks and optional tool setup, and [desktop distribution](apps/desktop/DISTRIBUTION.md#build) for packaging instructions.
 
 ---
 
@@ -103,20 +107,20 @@ flowchart TD
     end
 
     subgraph Facade ["Control facade"]
-        Bridge["CLI bridge and local communication"]
+        Bridge["CLI / MCP and local Command API"]
         Guard["Revision checks and idempotent transactions"]
     end
 
     subgraph Core ["Core engine"]
-        Store["Canonical project store<br>(Shared timeline and undo history)"]
+        Store["Project store per workspace<br>Shared GUI / Agent state and editing history"]
     end
 
     subgraph Runtime ["Local runtime"]
         Render["Chromium and WebCodecs rendering"]
-        Tools["FFmpeg and OpenCV tools"]
+        Tools["Optional local tools<br>FFmpeg / OpenCV"]
     end
 
-    GUI <-->|"Local IPC"| Store
+    GUI <-->|"UI actions and state subscription"| Store
     Agent --> Bridge --> Guard --> Store
     Store --> Runtime
 ```
@@ -125,9 +129,9 @@ flowchart TD
 
 ## 💬 Feedback
 
-I'm building ReelTerminal as a personal project. While working with AI video, I kept running into scattered footage and frames that needed small repairs. This tool grew out of wanting a more convenient way to finish those videos.
+ReelTerminal is independently developed for creators organizing, repairing, and delivering AI video. Feedback from real editing workflows helps guide the project.
 
-The project is still evolving, and feedback from people using it matters to me:
+Use Issues to share:
 
 * Found a bug or an awkward interaction?
 * Have an editing workflow you would like supported?
@@ -149,7 +153,8 @@ Some guides are currently in Chinese; command names and code examples are shared
 * ⚙️ [**Command API specification**](docs/COMMAND-API.md) — commands, schema validation, and concurrency control.
 * 🎞️ [**Media review and repair workflows**](docs/MEDIA-REVIEW-WORKFLOWS.md) — frame extraction, contact sheets, and optical-flow tracking.
 * 🎨 [**SDR color management**](docs/COLOR.md) — BT.709 and BT.601 color conversion.
-* 🌐 [**External dependencies**](docs/EXTERNAL-DEPENDENCIES.md) — public resource downloads and optional network integrations.
+* 🌐 [**External dependencies**](docs/EXTERNAL-DEPENDENCIES.md) — local tools, resource downloads, and optional network integrations.
+* 📦 [**Release information**](https://github.com/yuchen-ya/reelterminal/releases) — packages, included fixes, signing, and checksums.
 
 ---
 

@@ -11,9 +11,9 @@
 *Generate anywhere; finish here.*
 
 <p align="center">
-  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.2.0-10B981?style=flat-square" alt="Version" /></a>
-  <a href="docs/EXTERNAL-DEPENDENCIES.md"><img src="https://img.shields.io/badge/Privacy-100%25%20Local--First-059669?style=flat-square" alt="Local First" /></a>
-  <a href="apps/desktop/DISTRIBUTION.md"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-64748B?style=flat-square" alt="Platform" /></a>
+  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/github/v/release/yuchen-ya/reelterminal?style=flat-square&amp;color=10B981" alt="Version" /></a>
+  <a href="docs/EXTERNAL-DEPENDENCIES.md"><img src="https://img.shields.io/badge/Privacy-Local--First-059669?style=flat-square" alt="Local First" /></a>
+  <a href="apps/desktop/DISTRIBUTION.md#build"><img src="https://img.shields.io/badge/Source%20platforms-Windows%20%7C%20macOS%20%7C%20Linux-64748B?style=flat-square" alt="Source platforms" /></a>
   <a href="https://github.com/yuchen-ya/reelterminal/issues"><img src="https://img.shields.io/badge/Feedback-Issues%20Welcome-3B82F6?style=flat-square" alt="Feedback" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-475569?style=flat-square" alt="License" /></a>
 </p>
@@ -33,7 +33,7 @@
 * **缺乏顺手的 AI 协同环境**：传统剪辑软件对大模型助手来说并不友好；而普通的脚本批处理又看不到画面、无法交互和撤销。
 
 **ReelTerminal 试图提供一个平滑的折中解法：**  
-保留现代剪辑器直观的画布和时间线，创作者可以在桌面端随手拖拽微调；同时让你的 AI 助手（Cursor、Claude、Antigravity 等）能直接操作工程时间线——**你负责直观审美，AI 负责批量与结构化处理，支持版本节点存档、双向对比与随时撤销。**
+保留现代剪辑器直观的画布和时间线，创作者可以在桌面端随手拖拽微调；同时让你的 AI 助手（Cursor、Claude、Antigravity 等）能直接操作工程时间线——**你主导创作和最终取舍，AI 负责批量与结构化处理；双方共享工程状态、编辑历史、版本存档和画面对比。**
 
 ![ReelTerminal 中文桌面界面：宣传片工程、R 片段引用标记、素材库、多轨时间线与存档树](docs/assets/desktop-screenshot.png)
 
@@ -43,11 +43,11 @@
 
 ## ✨ 核心特点 (Core Features)
 
-| 🤖 **面向 AI 助手协同设计** | 🎯 **真·帧精度与瑕疵修补** |
+| 🤖 **面向 AI 助手协同设计** | 🎯 **逐帧审查与局部修补** |
 | :--- | :--- |
-| 为 AI 辅助剪辑定制了严谨的时间线接口，支持原子批处理、CAS 乐观锁与防重复提交，帮助 AI 助手可靠地执行复杂剪辑并检测冲突。内置双语操作手册供 Agent 按需检索，减少对界面操作的猜测。 | 基于 **0-based 解码帧索引** 与真实 PTS 时间戳，避免标称帧率导致的音画漂移。内置 OpenCV 稀疏光流追踪与掩码修复，方便定点修补 AI 瑕疵帧。 |
-| 🌿 **不可变版本节点与画面对比** | 🔒 **100% 本地优先与内容寻址** |
-| 工作区草稿与里程碑留存（Save vs Retain）严格解耦。支持一键留存版本节点、只读预览与播放器画面对比，AI 可放手试剪，人类随时比对采用或一键回退。 | 核心编解码、渲染管线均直接运行在本机 Chromium (WebCodecs) 与 FFmpeg。素材基于哈希内容寻址与受控存储，降低丢失素材与无效引用的风险，工程保存在本地。 |
+| 为 AI 辅助剪辑定制了严谨的时间线接口，支持原子批处理、CAS 乐观锁与防重复提交，帮助 AI 助手可靠地执行复杂剪辑并检测冲突。内置双语操作手册供 Agent 按需检索，减少对界面操作的猜测。 | 使用 **0-based 解码帧索引** 与真实 PTS 时间戳定位画面，支持帧提取、接触表、区域补丁及对比。配置本地 OpenCV 后可使用光流跟踪与掩码工具。 |
+| 🌿 **不可变版本节点与画面对比** | 🔒 **本地优先与受控素材存储** |
+| 工作区保存与版本留存分开：保存当前编辑，或建立存档点用于只读预览、画面对比和后续采用。每个工作区保有独立状态，创作者决定是否采用 Agent 的试剪结果。 | 工程、素材缓存、编解码和渲染在本机处理，素材通过哈希引用与受控存储管理。模型、字体下载及可选在线服务按配置联网，外部 AI 助手由用户自行选择。 |
 
 ---
 
@@ -57,35 +57,42 @@
 
 ```mermaid
 flowchart LR
-    A["1. 下载安装包<br>(Releases)"] --> B["2. 打开应用<br>点击「复制启动提示词」"] --> C["3. 粘贴给 AI 助手<br>(Cursor / Claude / 等)"] --> D["🎉 AI 自动连上<br>开始协同剪辑"]
+    A["1. 下载安装包<br>(Releases)"] --> B["2. 打开应用<br>点击「复制启动提示词」"] --> C["3. 粘贴给 AI 助手<br>(Cursor / Claude / 等)"] --> D["4. 指定工程与权限<br>开始协同剪辑"]
 ```
 
-1. 前往 **[Releases 页面](https://github.com/yuchen-ya/reelterminal/releases)** 下载对应系统的桌面端安装包；
-2. 打开应用载入视频工程，在时间线上方协作工具栏将协作权限切换为 **`可编辑`**；
-3. 在弹出的通知中直接点击 **「复制启动提示词」**；
-4. 将复制好的内容**直接粘贴发给你的 AI 助手**（如 Cursor、Claude Code、Antigravity、Windsurf 等）——提示词中已自动准备好本地环境路径与协作规则，AI 可按需查询内置手册与参数契约，自动接入当前项目开始协同！
+1. 前往 **[Releases 页面](https://github.com/yuchen-ya/reelterminal/releases)**，选择适合自己系统和架构的安装包。
+2. 打开视频工程。需要助手修改工程时，在时间线上方将协作权限切换为 **`可编辑`**；可随时切回只读。
+3. 在通知中点击 **「复制启动提示词」**，把内容发给具有本机 CLI 或 MCP 工具能力的 AI 助手。
+4. 提示词包含本次安装的命令路径与协作规则。让助手确认目标工程、工作区和权限，再开始编辑；你继续在同一界面查看、调整和决定最终结果。
 
-桌面发行格式包括 **Windows x64 安装包和便携 ZIP**，以及 **macOS（Apple Silicon / Intel）DMG 安装包**；各版本实际提供的平台、架构与签名状态以 [Releases 附件和说明](https://github.com/yuchen-ya/reelterminal/releases)为准。Windows 便携版请完整解压后运行 `ReelTerminal.exe`。未签名的 Windows 构建可能提示未知发布者。部分媒体处理功能需要另外安装 FFmpeg/ffprobe，详见[桌面发行说明](apps/desktop/DISTRIBUTION.md)。
+当前下载提供 **Windows x64 安装器/便携 ZIP** 和 **macOS Apple Silicon（arm64）DMG/ZIP**。具体附件、架构、签名和校验信息以 [Releases](https://github.com/yuchen-ya/reelterminal/releases) 为准。Windows ZIP 需完整解压后运行 `ReelTerminal.exe`。Windows 包未代码签名，可能显示未知发布者；Mac 包未进行 Developer ID 签名或公证，系统可能阻止直接打开。
 
-**v1.2.0 面向 Windows x64，安装包和 ZIP 未签名**；发布状态与正式附件以 Releases 为准，本次不附 macOS 1.2.0 包。单次 hosted 文本拖动失败仍未归因，详见发布说明。验证范围与已知限制见 [1.2.0 发布说明](docs/RELEASE-1.2.0.md)；历史 1.1.2 报告仍对应原始构建。
+**源码与安装包分别维护。** 本页介绍当前仓库的功能与用法；下载包包含的功能、修复和使用限制以对应 Release 说明为准，源码更新不会自动更新已安装应用。
+
+使用发布包时，原生导出请先写入新文件名并验证结果后再替换已有文件；应用整工程模板前请保留工程副本，避免跨替换回放先前的撤销/重做。3D 属性修改不单独记录撤销步骤，重要阶段可保留存档点。大工程和长时间编辑可能占用较多内存。
+
+部分导出、媒体分析和逐帧工具需要本机可用的 FFmpeg/ffprobe；OpenCV 工具另需含 `cv2`、`numpy` 的 Python。依赖和联网行为见[外部依赖说明](docs/EXTERNAL-DEPENDENCIES.md)。
 
 ---
 
 ### 方式二：开发者源码构建与启动
 
-如果你想参与项目开发或调试源码：
+使用 Node.js 22.13.0 或更新版本，以及仓库固定的 pnpm 11.7.0。以下示例通过 Corepack 调用 pnpm：
 
 ```bash
-# 1. 克隆代码仓库
-git clone https://github.com/yuchen-ya/reelterminal.git; cd reelterminal
+git clone https://github.com/yuchen-ya/reelterminal.git
+cd reelterminal
 
-# 2. 安装依赖并构建 WASM 内核
-corepack pnpm install; pnpm build:wasm
+corepack pnpm install --frozen-lockfile
+corepack pnpm build:wasm
+corepack pnpm --filter @reelterminal/desktop build
+corepack pnpm --filter @reelterminal/desktop start
 
-# 3. 构建并运行桌面端（或运行 pnpm dev 启动 Web 轻量版）
-pnpm --filter @reelterminal/desktop build
-pnpm --filter @reelterminal/desktop start
+# 可选：启动浏览器开发服务器
+corepack pnpm dev
 ```
+
+开发检查和可选工具配置见 [CONTRIBUTING.md](CONTRIBUTING.md)，打包命令见[桌面构建说明](apps/desktop/DISTRIBUTION.md#build)。
 
 ---
 
@@ -99,20 +106,20 @@ flowchart TD
     end
 
     subgraph Facade [" 控制门面 (Control Facade) "]
-        Bridge["CLI 桥接与本地通讯"]
+        Bridge["CLI / MCP · 本机 Command API"]
         Guard["Revision 乐观锁 (CAS) & 幂等事务"]
     end
 
     subgraph Core [" 核心引擎 (Core Engine) "]
-        Store["Canonical Project Store<br>(单一工程源 · 共享时间线 · 共享撤销栈)"]
+        Store["每个工作区的 Project Store<br>GUI / Agent 共享状态与编辑历史"]
     end
 
     subgraph Runtime [" 本地运行时 (Local Runtime) "]
         Render["Chromium & WebCodecs 渲染"]
-        Tools["FFmpeg / OpenCV 图像管线"]
+        Tools["可选本地工具<br>FFmpeg / OpenCV"]
     end
 
-    GUI <-->|"本地 IPC"| Store
+    GUI <-->|"界面操作与状态订阅"| Store
     Agent --> Bridge --> Guard --> Store
     Store --> Runtime
 ```
@@ -121,20 +128,20 @@ flowchart TD
 
 ## 💬 交流与反馈 (Feedback)
 
-ReelTerminal 目前由我一个人独立设计和开发。在日常折腾 AI 视频的过程中，深感素材碎片化与坏帧修补之苦，因而写了这个小工具，希望能让同样做 AI 视频的朋友多一种省心的选择。
+ReelTerminal 面向需要整理、修补并交付 AI 视频的创作者，由独立开发者维护。欢迎反馈真实创作中的问题和需求。
 
-项目目前还在快速迭代和打磨阶段，非常渴望得到大家的真实使用反馈：
+可以通过 Issues 反馈：
 - 遇到了 bug 或奇怪的交互体验？
 - 有某个剪辑工作流特别希望得到支持？
 - 对时间线或 AI 协作交互有更好的想法？
 
-随时欢迎到 **[GitHub Issues](https://github.com/yuchen-ya/reelterminal/issues)** 提出你的想法和反馈，每一条我都会认真看！
+欢迎在 **[GitHub Issues](https://github.com/yuchen-ya/reelterminal/issues)** 附上操作步骤和必要的脱敏信息；安全问题请使用 [SECURITY.md](SECURITY.md) 中的私密报告渠道。
 
 ---
 
 ## 📚 详细文档 (Documentations)
 
-深入了解项目的具体实现与工程规范：
+使用指南、开发说明与发行信息：
 
 - 📖 [**桌面端用户手册**](docs/USER-GUIDE.md) — 桌面端安装、界面导览与常用操作。
 - 🌿 [**多项目与版本节点指南**](docs/MULTI-PROJECT-USAGE.md) — 紧凑版本轨道、保存与留存分离（Save vs Retain）、只读预览与画面对比。
@@ -144,6 +151,8 @@ ReelTerminal 目前由我一个人独立设计和开发。在日常折腾 AI 视
 - ⚙️ [**Command API 规范**](docs/COMMAND-API.md) — 命令目录、Schema 校验与并发控制。
 - 🎞️ [**媒体审查与修复流**](docs/MEDIA-REVIEW-WORKFLOWS.md) — 逐帧提取、接触表与光流运动追踪。
 - 🎨 [**色彩管理白皮书 (SDR)**](docs/COLOR.md) — BT.709 与 BT.601 颜色转换规范。
+- 🌐 [**外部依赖与联网行为**](docs/EXTERNAL-DEPENDENCIES.md) — 本地工具、资源下载及可选在线服务。
+- 📦 [**发行与更新说明**](https://github.com/yuchen-ya/reelterminal/releases) — 安装包、修复范围、签名与校验信息。
 
 ---
 
