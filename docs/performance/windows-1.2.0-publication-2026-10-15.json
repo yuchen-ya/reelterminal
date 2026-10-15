@@ -1,0 +1,273 @@
+{
+  "schema": "reelterminal.release-publication/v1",
+  "version": "1.2.0",
+  "sourceSha": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+  "publication": {
+    "releaseId": 413901735,
+    "url": "https://github.com/yuchen-ya/reelterminal/releases/tag/v1.2.0",
+    "tag": "v1.2.0",
+    "sourceSha": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+    "draft": false,
+    "prerelease": false,
+    "latest": true,
+    "publishedAt": "2026-10-15T14:28:47Z",
+    "approvedBodyMatches": true,
+    "exactAssetWhitelistMatches": true,
+    "macAssetsPresent": false,
+    "assets": [
+      {
+        "name": "latest.yml",
+        "bytes": 349,
+        "sha256": "edb8aea6dd349eec662bbf75bfda127b240159117abe296606713a739895b860",
+        "serverDigestMatches": true,
+        "url": "https://github.com/yuchen-ya/reelterminal/releases/download/v1.2.0/latest.yml"
+      },
+      {
+        "name": "ReelTerminal-1.2.0-x64.exe",
+        "bytes": 138367405,
+        "sha256": "954673bf9cb8f3f5c37a07d4c8f47d865cd943d3c0268858126b61e413989401",
+        "serverDigestMatches": true,
+        "url": "https://github.com/yuchen-ya/reelterminal/releases/download/v1.2.0/ReelTerminal-1.2.0-x64.exe"
+      },
+      {
+        "name": "ReelTerminal-1.2.0-x64.exe.blockmap",
+        "bytes": 146124,
+        "sha256": "c3ee9823a3b7bc608b46a7cf3f665f9225023331e84c072e72676ba013511842",
+        "serverDigestMatches": true,
+        "url": "https://github.com/yuchen-ya/reelterminal/releases/download/v1.2.0/ReelTerminal-1.2.0-x64.exe.blockmap"
+      },
+      {
+        "name": "ReelTerminal-1.2.0-x64.zip",
+        "bytes": 188223361,
+        "sha256": "f83072f3fab8b29a3f2e5a49eac8989c9f3f3b7c5f5c7b1d41310b889bc024f5",
+        "serverDigestMatches": true,
+        "url": "https://github.com/yuchen-ya/reelterminal/releases/download/v1.2.0/ReelTerminal-1.2.0-x64.zip"
+      },
+      {
+        "name": "SHA256SUMS.txt",
+        "bytes": 365,
+        "sha256": "205adef491ae93aa13d5d374f936fb8a447db9eb1dde1c283dd9f8b430a14355",
+        "serverDigestMatches": true,
+        "url": "https://github.com/yuchen-ya/reelterminal/releases/download/v1.2.0/SHA256SUMS.txt"
+      }
+    ]
+  },
+  "privacyReview": {
+    "schema": "reelterminal.release-privacy-review/v1",
+    "sourceSha": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+    "status": "checked-no-identified-private-first-party-data-or-valid-secret-in-reviewed-artifacts",
+    "uploadWhitelist": [
+      "ReelTerminal-1.2.0-x64.exe",
+      "ReelTerminal-1.2.0-x64.zip",
+      "ReelTerminal-1.2.0-x64.exe.blockmap",
+      "latest.yml",
+      "SHA256SUMS.txt"
+    ],
+    "releaseBodySha256": "9c1c2615b9d6d48fb2288b3f3535d81013f990f54c19a5d9b23e7fc1ffa34da0",
+    "releaseBodyUserApproved": true,
+    "coverage": {
+      "files": 2572,
+      "bytes": 670710862,
+      "utf8LikeFiles": 2402,
+      "binaryFiles": 170
+    },
+    "asarFiles": 2221,
+    "unpackedFiles": 301,
+    "developmentArtifactOrTestFiles": 0,
+    "sourceMapFiles": 0,
+    "inlineSourceMaps": 0,
+    "inlineImagesDecodedAndScanned": 9,
+    "credentialRuleMatches": 0,
+    "firstPartyPrivateWorkspacePathMatches": 0,
+    "homePathRuleCandidates": {
+      "count": 38,
+      "upstreamPreservedOccurrences": 35,
+      "emscriptenVirtualHome": 1,
+      "sourceReportGenericPrefixLiterals": 2,
+      "classification": "upstream bytes compared with installed exact dependency versions and original Electron; virtual home/prefix literals reviewed separately"
+    },
+    "emailReview": "Public upstream author/font/license metadata and incidental binary/compressed pattern matches; no user email identified in first-party source or approved notes. Email-address absence is not claimed.",
+    "removed": [
+      "runtime-chromium .artifacts development reports",
+      "test sources and test directories",
+      "Mac-only Aurora sidecars from Windows package"
+    ],
+    "manualVisualReview": "Three existing shipped GUI manual images inspected; generic UI, no visible personal paths or credentials; PNG text/Exif chunks absent. Deterministic remaining fixtures traced to their documented FFmpeg lavfi generators.",
+    "containerVerification": {
+      "installerNotExecuted": true,
+      "installerEmbeddedMainPayloadFilesMatchingAuditedUnpacked": 301,
+      "nsisOuterWrapperAsciiUtf16Scanned": true,
+      "zipAllEntriesCrcValid": true,
+      "zipFilesMatchingAuditedUnpacked": 300,
+      "foreignMacSidecarsPresent": false
+    },
+    "packagedCore": {
+      "files": 12,
+      "passed": 27,
+      "failed": 0,
+      "durationSeconds": 93.65,
+      "retry": 0
+    },
+    "gitBoundary": "Changed source/docs reviewed; existing public Git history/author metadata not rewritten or claimed anonymized. User informed by parent.",
+    "limitations": [
+      "Heuristic credential/path rules and selected visual checks are not an absolute guarantee against arbitrary encoded or unrecognized private data.",
+      "Opaque native/installer auxiliary code not exhaustively reverse-engineered; main installer payload extracted/hash-compared without installation and wrapper ASCII/UTF16 searched.",
+      "Does not qualify macOS DMG/ZIP privacy or claim a Mac 1.2.0 package passed."
+    ],
+    "publicAssetsUploadedAtReview": false
+  },
+  "identity": {
+    "schema": "reelterminal.windows-release-candidate/v1",
+    "sourceSha": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+    "version": "1.2.0",
+    "platform": "win32",
+    "arch": "x64",
+    "published": false,
+    "installed": false,
+    "buildStamp": {
+      "schema": "reelterminal.performance-build/v1",
+      "build_type": "production",
+      "source_head": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+      "dirty": false,
+      "source_digest": "4c0a8cf59c8a396bf7ed8d3a0d6cf7a4dc9310e31922554bc3b697b2347c3bfb",
+      "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+      "main_bundle_sha256": "01683893d4b45be8ead47a0daea22b3c1d81f0e4fb80292b326e2c79a888cc7a",
+      "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+      "renderer_manifest_sha256": "dadd4dbcfde1413c368a5cc58a21ef7bf504773cfc0dd9c3ef98e6fde5b0e1e4",
+      "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+      "executable_sha256": "49b61a030a520fc36a4b8fa5cce53fb4e935a7bdbbe4b80e9222f598e49cc7fa",
+      "app_version": "1.2.0"
+    },
+    "files": [
+      {
+        "path": "ReelTerminal-1.2.0-x64.exe",
+        "bytes": 138367405,
+        "sha256": "954673bf9cb8f3f5c37a07d4c8f47d865cd943d3c0268858126b61e413989401"
+      },
+      {
+        "path": "ReelTerminal-1.2.0-x64.zip",
+        "bytes": 188223361,
+        "sha256": "f83072f3fab8b29a3f2e5a49eac8989c9f3f3b7c5f5c7b1d41310b889bc024f5"
+      },
+      {
+        "path": "ReelTerminal-1.2.0-x64.exe.blockmap",
+        "bytes": 146124,
+        "sha256": "c3ee9823a3b7bc608b46a7cf3f665f9225023331e84c072e72676ba013511842"
+      },
+      {
+        "path": "latest.yml",
+        "bytes": 349,
+        "sha256": "edb8aea6dd349eec662bbf75bfda127b240159117abe296606713a739895b860"
+      },
+      {
+        "path": "win-unpacked/ReelTerminal.exe",
+        "bytes": 245726208,
+        "sha256": "e2e22f1efd91a06244e7d6e21f4b97185c9492e2694da9256a85da1db3d9dccd"
+      },
+      {
+        "path": "win-unpacked/resources/app.asar",
+        "bytes": 90183687,
+        "sha256": "72a52161812ef0a2551a420377a194b52edd06731d13e1364ed029c385995c8b"
+      }
+    ],
+    "components": [
+      {
+        "path": "dist/main/index.js",
+        "sha256": "01683893d4b45be8ead47a0daea22b3c1d81f0e4fb80292b326e2c79a888cc7a",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/preload/index.js",
+        "sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/browser-entry.mjs",
+        "sha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/live-mcp/index.js",
+        "sha256": "72c056918dc7380ac235a0b325cf676f6ab0e3f1a95e2f246446324ccb1e27aa",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/reelctl/index.js",
+        "sha256": "66c6f55c52c9e920cc6cf05d6d44cfccd75603def4295eee59540755cb244a81",
+        "matchesBuiltSource": true
+      }
+    ],
+    "renderer": {
+      "fileCount": 190,
+      "mismatches": []
+    },
+    "offlineHelpVersionVerified": true,
+    "updateMetadataVerified": true
+  },
+  "signatures": [
+    {
+      "file": "ReelTerminal-1.2.0-x64.exe",
+      "status": "NotSigned",
+      "productVersion": "1.2.0"
+    },
+    {
+      "file": "win-unpacked/ReelTerminal.exe",
+      "status": "NotSigned",
+      "productVersion": "1.2.0.0"
+    }
+  ],
+  "ci": [
+    {
+      "conclusion": "success",
+      "databaseId": 38749005294,
+      "headSha": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+      "name": "Performance contracts @ 3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38749005294"
+    },
+    {
+      "conclusion": "failure",
+      "databaseId": 38749005390,
+      "headSha": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+      "name": "Electron E2E",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38749005390"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38749004910,
+      "headSha": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+      "name": "Chromium E2E",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38749004910"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38749005297,
+      "headSha": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+      "name": "CI",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38749005297"
+    }
+  ],
+  "hostedElectron": {
+    "windows": {
+      "passed": 123,
+      "failed": 0,
+      "skipped": 13
+    },
+    "macos": {
+      "passed": 122,
+      "failed": 1,
+      "skipped": 13,
+      "failure": "decoder-worker.e2e.ts:125 optional-worker nonblocking first-frame marker exceeded unchanged 8000ms budget; unattributed; not a Mac package qualification"
+    }
+  },
+  "installerWizardTested": false,
+  "oldFlowAFailureFixedClaimed": false,
+  "userAcceptedResidualRisk": true,
+  "userApprovedPublicBody": true,
+  "macAssetsUploadedByThisTask": false,
+  "handoff": "Windows publisher has finished Release mutations. Parent may arrange the separate Mac writer sequentially; no old Mac package attached."
+}

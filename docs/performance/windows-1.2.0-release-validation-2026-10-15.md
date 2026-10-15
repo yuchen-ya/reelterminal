@@ -1,6 +1,8 @@
 # Windows 1.2.0 release validation — 2026-10-15
 
-Status: **publication paused for a new hosted Flow A failure**. No v1.2.0 tag or
+**Latest outcome:** Windows 1.2.0 was published from the later unified privacy-fixed `3a5a47a8` source. See [final publication/privacy report](windows-1.2.0-publication-2026-10-15.md). The earlier stages below retain their original identities and failures.
+
+Initial-stage status: **publication paused for a new hosted Flow A failure**. No v1.2.0 tag or
 GitHub Release has been created. This is an evidence block, not a lack of
 publication authorization. The user explicitly authorized a formal 1.2.0 release.
 

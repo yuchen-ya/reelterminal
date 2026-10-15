@@ -248,5 +248,14 @@
     "report": "windows-1.2.0-29524f05-2026-10-15.json",
     "packagedCorePassed": 27,
     "publicationStatus": "awaiting explicit risk choice; all four hosted diagnostic-source workflows terminal success"
+  },
+  "latestPublication": {
+    "sourceSha": "3a5a47a8245ba5cf2187b892b71e458e7bd7d250",
+    "url": "https://github.com/yuchen-ya/reelterminal/releases/tag/v1.2.0",
+    "publishedAt": "2026-10-15T14:28:47Z",
+    "report": "windows-1.2.0-publication-2026-10-15.json",
+    "draft": false,
+    "prerelease": false,
+    "assets": 5
   }
 }
