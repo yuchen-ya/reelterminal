@@ -1,0 +1,255 @@
+{
+  "report": "windows-rc-1.1.2-2026-10-15.md",
+  "evidence": [
+    {
+      "bytes": 13482,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-81c1ea4e-build.log",
+      "sha256": "2c46a2a8905e49e8c16dbd7c66ef574af4a78b325fb955cf08541e4cd80f0d60"
+    },
+    {
+      "bytes": 819,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-81c1ea4e-identity.log",
+      "sha256": "05b3cf5397f3ca9af24f207c2a9360b3564c81fb06851834d16ad5822d80bb96"
+    },
+    {
+      "bytes": 4265,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/windows-rc-81c1ea4e-core.log",
+      "sha256": "ca9c1df88dcd40109b561fd64390c42dcef20806dd4e6e7ec289743ccaa0915c"
+    },
+    {
+      "bytes": 1369,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/rollback-regression-before.log",
+      "sha256": "193a7e31d483e4f11fa81f10c85ff7039d5671f155e45db733eb4b9f81efdcf8"
+    },
+    {
+      "bytes": 368,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/rollback-regression.log",
+      "sha256": "82b2679cd7ffb6008442afdbf5b605dfafb2318db8df1eef23477cb8807cf005"
+    },
+    {
+      "bytes": 368,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/checkpoint-sharing-regression.log",
+      "sha256": "3b816153120cd87519c63af708d5390c10648bd2743f5121e7fa0c7ba4fb6284"
+    },
+    {
+      "bytes": 298,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/checkpoint-real-reader.log",
+      "sha256": "b0ded47c15d644a63675bf5ac87bc5df2d43f3cb8b14cb11129606e2e8ba17d5"
+    },
+    {
+      "bytes": 202,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/batch-rename-repro.json",
+      "sha256": "f892592436c0d9ff9ba60a169717cd44b8057c1d1d74eb99c524f5ad87e09100"
+    },
+    {
+      "bytes": 1636,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/comparison-pending-opacity-before.log",
+      "sha256": "71fc4ea6a4594fc804bddace19eefd468765325ff5dbbbdb1a53836e90512cfc"
+    },
+    {
+      "bytes": 317,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/comparison-pending-opacity-after.log",
+      "sha256": "ead2c3a2c85bf44f082b50763a1908ee45c2c0d73e807bef34d7fea2b1dd23f6"
+    },
+    {
+      "bytes": 501,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/wrapped-transport-layout-after.log",
+      "sha256": "3e56df9cff659903e3127f302c68d9d832b828fb0563ff2df0f84ab8f0c54758"
+    },
+    {
+      "bytes": 418,
+      "path": "apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/mouse-coordinate-primitive.json",
+      "sha256": "b41420175920eb06cc208d00b49233c015f07d3dbddb40485c269d413ff31110"
+    }
+  ],
+  "overallStabilityQualification": "incomplete",
+  "packagedCore": {
+    "total": 26,
+    "startupWindow": "normal isolated window",
+    "passed": 26,
+    "m3Seconds": 15.768,
+    "explicitComparisonSizeRequests": [
+      "1280x720",
+      "1280x700",
+      "1279x700"
+    ],
+    "unchangedPictureHeightThresholdPx": 40,
+    "earlierClipboardFailures": "retained unresolved, excluded from this affected/core selection and not counted as passes",
+    "failed": 0,
+    "seconds": 83.5,
+    "files": 11,
+    "m3TimeoutMs": 120000
+  },
+  "schema": "reelterminal.windows-rc-gate/v1",
+  "candidateDirectory": "apps/desktop/release/windows-rc-1.1.2-81c1ea4e",
+  "macEvidenceAccess": "committed reports and hosted artifacts only; original Mac raw logs not read",
+  "reportDate": "2026-10-15",
+  "releaseDecision": "withheld_remaining_native_memory_and_platform_evidence",
+  "identity": {
+    "schema": "reelterminal.windows-local-rc/v1",
+    "sourceSha": "81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b",
+    "version": "1.1.2",
+    "platform": "win32",
+    "arch": "x64",
+    "published": false,
+    "installed": false,
+    "buildStamp": {
+      "schema": "reelterminal.performance-build/v1",
+      "build_type": "production",
+      "source_head": "81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b",
+      "dirty": false,
+      "source_digest": "f4129e7ec431196222dc4d42eedfea5d58be30778f833b367385017ca6e9d0c3",
+      "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+      "main_bundle_sha256": "6330a595f8506730bd03265c29cf8518f5cf13e6366df11340e923a6da8404bd",
+      "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+      "renderer_manifest_sha256": "b9950be0d5d446b12bd452da9c2ee5feee58f2efa6e8c91e180e31445aec6fe3",
+      "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+      "executable_sha256": "49b61a030a520fc36a4b8fa5cce53fb4e935a7bdbbe4b80e9222f598e49cc7fa",
+      "app_version": "1.1.2"
+    },
+    "files": [
+      {
+        "path": "ReelTerminal-1.1.2-x64.exe",
+        "bytes": 138861226,
+        "sha256": "0d6ee07f4caaf1e036121722d76de29aab7c278e5e569000c820999e99350968"
+      },
+      {
+        "path": "ReelTerminal-1.1.2-x64.zip",
+        "bytes": 188922592,
+        "sha256": "b8d13a0f76651f4e75296eb2ca558d80098da1d5e134c5e2bbf107a7e43adae7"
+      },
+      {
+        "path": "ReelTerminal-1.1.2-x64.exe.blockmap",
+        "bytes": 146305,
+        "sha256": "1948cc86e7d0bfc602f7252933b82820d187921436875994282618a1990827ec"
+      },
+      {
+        "path": "win-unpacked/ReelTerminal.exe",
+        "bytes": 245726208,
+        "sha256": "4e0dc48dae8cf766783ac3a3a1c4c2e935825b357a82f0790726d408d5775e58"
+      },
+      {
+        "path": "win-unpacked/resources/app.asar",
+        "bytes": 93721291,
+        "sha256": "910e704607a538a2ea2898cba081b0afb51f3bdc39d1cd1732dcc24d59ee56e5"
+      }
+    ],
+    "components": [
+      {
+        "path": "dist/main/index.js",
+        "sha256": "6330a595f8506730bd03265c29cf8518f5cf13e6366df11340e923a6da8404bd",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/preload/index.js",
+        "sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/browser-entry.mjs",
+        "sha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/live-mcp/index.js",
+        "sha256": "72c056918dc7380ac235a0b325cf676f6ab0e3f1a95e2f246446324ccb1e27aa",
+        "matchesBuiltSource": true
+      },
+      {
+        "path": "dist/reelctl/index.js",
+        "sha256": "66c6f55c52c9e920cc6cf05d6d44cfccd75603def4295eee59540755cb244a81",
+        "matchesBuiltSource": true
+      }
+    ],
+    "renderer": {
+      "fileCount": 190,
+      "mismatches": []
+    },
+    "signatures": {
+      "installer": "NotSigned",
+      "application": "NotSigned"
+    }
+  },
+  "noActions": [
+    "publish",
+    "tag",
+    "upload installers",
+    "install",
+    "change account permissions",
+    "start user Mac task",
+    "reset",
+    "force push",
+    "terminate user applications"
+  ],
+  "remaining": [
+    "historical Mac startup and ten-second source timeout unattribued",
+    "latest complete-source Mac package not qualified; existing a8c6925c native recording specialty passed",
+    "native/export shared-memory and history heap retention have no attributed cause or proven bound",
+    "local native clipboard boundary and 1024-request/1023-return setup mismatch unresolved",
+    "hosted first-save-point incident unattribued; review form fix awaiting updated candidate and hosted validation"
+  ],
+  "clipboardFollowup": {
+    "userImpact": "copy Agent prompt may not populate the clipboard on this host",
+    "cause": "unproved OS/packaged-runtime boundary; not attributed to product copy action",
+    "minimumFurtherEvidence": "only if user explicitly permits test clipboard overwrite: one old-retained-package versus new-package native roundtrip in the same active interactive session",
+    "noCurrentActionRequired": "do not clear user clipboard or change system settings"
+  },
+  "frozenSourceCI": [
+    {
+      "conclusion": "success",
+      "databaseId": 38728511369,
+      "headSha": "81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b",
+      "name": "Performance contracts @ 81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38728511369"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38728511588,
+      "headSha": "81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b",
+      "name": "Chromium E2E",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38728511588"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 38728511446,
+      "headSha": "81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b",
+      "name": "CI",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38728511446"
+    },
+    {
+      "conclusion": "failure",
+      "databaseId": 38728511463,
+      "headSha": "81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b",
+      "name": "Electron E2E",
+      "status": "completed",
+      "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38728511463"
+    }
+  ],
+  "hostedElectron": {
+    "macos": {
+      "followup": "minimum-height offscreen form reproduced; bounded scroll fix requires new candidate and hosted validation",
+      "firstFailure": "M3 review-task submit HTML pointer interception before recovery",
+      "skipped": 13,
+      "passed": 122,
+      "failed": 1
+    },
+    "windows": {
+      "firstFailure": "inspector initial save-point node count 0 after existing one-second assertion",
+      "skipped": 13,
+      "attribution": "unknown; local 257 ms save and full test passed once, not a fix",
+      "passed": 122,
+      "failed": 1
+    }
+  },
+  "macNativeAcceptance": {
+    "featureAccepted": true,
+    "testedSource": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
+    "reportCommit": "5f447ab77989df3089a0b35b4144e40045718fa1",
+    "latestSourceMacPackageAccepted": false,
+    "oldTimeoutCause": "unattributed"
+  }
+}

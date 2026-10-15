@@ -4,6 +4,7 @@ import path from "node:path";
 import { launchApp } from "./harness/launch";
 import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
 import { createProjectViaUI, createTextClipViaUI, enableAgentSessionViaUI } from "./harness/ui";
+import { ARTIFACTS_DIR } from "./harness/paths";
 
 test("inspector archives and board preserve preview, target, forms and main layout", async () => {
   const job = process.env.REELTERMINAL_FIXES_JOB_ROOT;
@@ -21,7 +22,7 @@ test("inspector archives and board preserve preview, target, forms and main layo
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     agent = await connectExternalAgent(launched.endpointFile);
     const capabilities = await call("capabilities.get");
-    evidence = path.join(job ?? capabilities.mediaImport.recommendedRoot, "evidence", "inspector-layout");
+    evidence = job ? path.join(job, "evidence", "inspector-layout") : path.join(ARTIFACTS_DIR, `inspector-layout-${Date.now()}`);
     mkdirSync(evidence, { recursive: true });
     const dismiss = launched.page.getByRole("button", { name: "Dismiss notification", exact: true });
     if (await dismiss.count()) await dismiss.first().click();
@@ -34,8 +35,29 @@ test("inspector archives and board preserve preview, target, forms and main layo
     await launched.page.getByText("No save points yet. Current edits are still saved normally.").waitFor();
     const timelineHeight = (await launched.page.getByTestId("timeline-tracks-scroll").boundingBox())!.height;
     expect((await call("node.list", { projectId: target.projectId })).nodes).toHaveLength(0);
+    const saveStarted = Date.now();
     await launched.page.getByTestId("create-save-point").click();
-    await vi.waitFor(async () => expect((await call("node.list", { projectId: target.projectId })).nodes).toHaveLength(1));
+    try {
+      await vi.waitFor(async () => expect((await call("node.list", { projectId: target.projectId })).nodes).toHaveLength(1));
+    } catch (error) {
+      // Keep the original one-second assertion. Capture enough state to tell
+      // an in-flight operation from a failed save or a stale query next time.
+      try {
+        observations.initialSaveFailure = {
+          elapsedMs: Date.now() - saveStarted,
+          target,
+          busy: await launched.page.getByTestId("create-save-point").isDisabled(),
+          notifications: await launched.page.getByTestId("notification-toast").allTextContents(),
+          nodes: await call("node.list", { projectId: target.projectId }),
+          context: await call("editor.get_context"),
+        };
+        await launched.page.screenshot({ path: path.join(evidence, "initial-save-failure.png") }).catch(() => undefined);
+      } catch (diagnosticError) {
+        observations.initialSaveDiagnosticError = diagnosticError instanceof Error ? diagnosticError.message : String(diagnosticError);
+      }
+      throw error;
+    }
+    observations.initialSaveCompletedMs = Date.now() - saveStarted;
     const first = (await call("node.list", { projectId: target.projectId })).nodes[0];
     for (let index = 1; index <= 8; index++) {
       const before = await getState();

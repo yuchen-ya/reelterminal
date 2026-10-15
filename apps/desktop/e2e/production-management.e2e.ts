@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, readFileSync, copyFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test, vi } from "vitest";
 import { launchApp } from "./harness/launch";
-import { DESKTOP_DIR } from "./harness/paths";
+import { ARTIFACTS_DIR, DESKTOP_DIR } from "./harness/paths";
 
 /** Visible Electron + real reelctl; no direct store mutations or mocked native verification. */
 test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints and process recovery", async () => {
@@ -183,6 +183,9 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
     await call("editor.control", { action: "seek", timeSeconds: 1.5 });
 
     const page = launched.page;
+    // Exercise the same supported content height as the Mac runner, including
+    // the review popover's real pointer hit test before any capture starts.
+    await launched.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1024, 700));
     await page
       .getByRole("button", { name: "Create review task", exact: true })
       .click();
@@ -191,10 +194,39 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
       .fill("M3 selected frame review");
     await page.getByLabel("Start frame", { exact: true }).fill("15");
     await page.getByLabel("End frame", { exact: true }).fill("20");
-    await page
+    const reviewSubmit = page
       .getByRole("button", { name: "Create review task", exact: true })
-      .last()
-      .click();
+      .last();
+    await reviewSubmit.evaluate(async element => {
+      const pending: Promise<Animation>[] = [];
+      for (let node: Element | null = element; node; node = node.parentElement) {
+        pending.push(...node.getAnimations().map(animation => animation.finished));
+      }
+      await Promise.allSettled(pending);
+    });
+    const readReviewGeometry = () => reviewSubmit.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      return {
+        viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
+        rect: rect.toJSON(), hitTag: hit?.tagName ?? null, hitClass: hit?.getAttribute("class") ?? null,
+        receivesPointer: hit === element || !!hit && element.contains(hit),
+        bodyPointerEvents: getComputedStyle(document.body).pointerEvents,
+        ancestors: Array.from((function* () { for (let node: Element | null = element; node; node = node.parentElement) yield node; })()).map(node => ({ tag: node.tagName, pointerEvents: getComputedStyle(node).pointerEvents, overflow: getComputedStyle(node).overflow })),
+      };
+    });
+    const reviewGeometry = await readReviewGeometry();
+    mkdirSync(ARTIFACTS_DIR, { recursive: true });
+    const reviewGeometryPath = path.join(ARTIFACTS_DIR, `m3-review-geometry-${Date.now()}.json`);
+    writeFileSync(reviewGeometryPath, JSON.stringify({ before: reviewGeometry }, null, 2));
+    if (!reviewGeometry.receivesPointer) {
+      const popup = (await page.getByRole("dialog", { name: "Create review task", exact: true }).boundingBox())!;
+      await page.mouse.move(popup.x + popup.width - 6, Math.max(4, Math.min(reviewGeometry.viewport.height - 4, popup.y + 20)));
+      await page.mouse.wheel(0, 500);
+      await vi.waitFor(async () => expect((await readReviewGeometry()).receivesPointer).toBe(true));
+    }
+    writeFileSync(reviewGeometryPath, JSON.stringify({ before: reviewGeometry, after: await readReviewGeometry() }, null, 2));
+    await reviewSubmit.click();
     await vi.waitFor(
       async () =>
         expect((await state()).project.requirements?.items).toHaveLength(1),

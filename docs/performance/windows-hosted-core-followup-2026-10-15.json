@@ -166,7 +166,13 @@
     "manual_hosted_rerun"
   ],
   "report": "windows-hosted-core-followup-2026-10-15.md",
-  "latestContinuation": {
+  "opacityFollowup": {
+    "typecheck": "passed",
+    "before": "controlled input reverts 0.4 to 0.35 while command pending",
+    "newCandidateRequired": true,
+    "componentTestsPassed": 17
+  },
+  "previousContinuation79c5f780": {
     "analysisRollback": {
       "typecheck": "passed",
       "beforeControlledTest": "failed",
@@ -248,10 +254,23 @@
       }
     }
   },
-  "opacityFollowup": {
-    "typecheck": "passed",
-    "before": "controlled input reverts 0.4 to 0.35 while command pending",
-    "newCandidateRequired": true,
-    "componentTestsPassed": 17
+  "latestContinuation": {
+    "packagedCore": {
+      "m3Seconds": 15.768,
+      "files": 11,
+      "comparisonSizes": [
+        "1280x720",
+        "1280x700",
+        "1279x700"
+      ],
+      "startup": "normal isolated window",
+      "seconds": 83.5,
+      "failed": 0,
+      "passed": 26
+    },
+    "report": "windows-rc-1.1.2-81c1ea4e-2026-10-15.json",
+    "sourceSha": "81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b",
+    "releaseQualified": false,
+    "candidateDirectory": "apps/desktop/release/windows-rc-1.1.2-81c1ea4e"
   }
 }

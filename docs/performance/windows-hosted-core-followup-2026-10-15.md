@@ -235,3 +235,64 @@ the designated synthetic-window selection still times out. Overall recording
 acceptance remains blocked. Its docs-only push automatically cancelled the
 3e9f853c Electron run; that run is not reported as a pass. No manual rerun,
 reset, force push or shared-file conflict occurred.
+
+## 81c1ea4e terminal evidence and remaining first failures
+
+The clean Windows candidate passed all 26 selected core checks / eleven files
+in 83.50 s; M3 completed in 15.77 s. Its identity, hashes and scope are in
+`windows-rc-1.1.2-81c1ea4e-2026-10-15.json`. All frozen-source workflows
+reached terminal state:
+[CI passed](https://github.com/yuchen-ya/reelterminal/actions/runs/38728511446),
+[Chromium passed](https://github.com/yuchen-ya/reelterminal/actions/runs/38728511588),
+[performance contracts passed](https://github.com/yuchen-ya/reelterminal/actions/runs/38728511369),
+and [Electron failed](https://github.com/yuchen-ya/reelterminal/actions/runs/38728511463).
+Both Electron platforms had 122 passed / 1 failed / 13 skipped.
+
+Windows first failure: `inspector-archives-board.e2e.ts:38`, after the real
+create-save-point click, `node.list` stayed empty during the existing one-second
+assertion. The original run did not upload the profile's external evidence
+directory, so there is no busy/error/post-completion state to attribute it.
+A single instrumented local probe on that exact package passed the full test
+in 8.64 s, with the first node present after 257 ms. That is not a diagnosis or
+a repair of the hosted incident. The original assertion remains one second.
+The test now uploads its evidence and captures busy state, notifications,
+nodes and target context on failure, preserving the primary error. No test
+timeout, assertion or save/undo contract was changed. User impact if the
+incident recurs: save-point creation might be delayed or fail; data loss is
+not established. Evidence: `81c1ea4e-electron-windows.log`,
+`inspector-first-save-diagnostic.log`.
+
+Mac first failure: M3 review-task form submit, before any task or batch recovery,
+timed out at its original thirty-second click. The HTML element intercepted
+pointer events. A 1024x700 request on Windows reproduced a concrete usability
+defect: after the popover animation settled, the submit button spanned y699–731
+inside a 701 px viewport; body and popover overflow were hidden. A real wheel
+gesture could not reveal its center. A strengthened real-pointer regression
+fails on the old package without invoking a forced click or scripted scroll.
+
+The review popover now uses Radix's actual available-height bound and vertical
+overflow scrolling. It changes no capture request, project CAS or task state.
+With a real wheel gesture and positive pointer-hit assertion, full minimum-height
+M3 passes in 16.25 s, retaining strict frame rejection, adoption/undo and the
+120-second durable recovery assertion. Evidence:
+`m3-review-natural-scroll-before.log`, `m3-review-natural-scroll-after.log`,
+and `m3-review-geometry-*.json` in the harness artifact root. This fixes the
+reproduced offscreen-form condition; updated hosted Mac evidence is required
+to qualify that runner's path. A new candidate is needed for this runtime fix.
+
+## Updated Mac native feature acceptance
+
+Mac documentation 5f447ab7 was read and fast-forwarded safely. **The existing
+a8c6925c arm64 package passed the manual native recording specialty test**:
+real system cancel events with no media/revision change and no active tracks,
+then designated green-window selection, recording, stop, import and complete
+FFmpeg decode (about 43.889 s). Four nonfatal DTS warnings remain recorded.
+Only the Mac-local helper window placement changed; public recorder code did
+not. `feature_accepted=true`, `release_ready=false`.
+
+Remove native recording feature acceptance itself from the remaining blockers.
+The old ten-second timeout is still unattributed, and a Mac package containing
+all latest source is not yet qualified. Existing native/export shared-memory
+retention and history heap trend remain without an established cause or
+long-term bound. No original Mac raw logs were read on Windows, no export/idle
+round was repeated, and this agent did not start a personal Mac task.

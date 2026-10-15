@@ -84,6 +84,7 @@ export function ReviewRangeControl() {
     <ToolcraftPopover
       placement="above"
       alignment="end"
+      className="max-h-[var(--radix-popover-content-available-height)] !overflow-y-auto"
       label={t("production.review")}
       isOpen={open}
       onOpenChange={(value) => {

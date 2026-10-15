@@ -1,6 +1,45 @@
 # Windows local release candidate, 2026-10-15
 
-## Latest candidate: 79c5f780
+## Latest candidate: 81c1ea4e
+
+The final retained candidate is **81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b**,
+version 1.1.2, Windows x64, under
+`apps/desktop/release/windows-rc-1.1.2-81c1ea4e/`. It is unsigned,
+uninstalled and unpublished. Its embedded source stamp is clean; all five
+runtime components and 190 renderer files match the built source.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Installer | 138861226 | `0d6ee07f4caaf1e036121722d76de29aab7c278e5e569000c820999e99350968` |
+| ZIP | 188922592 | `b8d13a0f76651f4e75296eb2ca558d80098da1d5e134c5e2bbf107a7e43adae7` |
+
+Packaged validation: **26/26 core tests pass across eleven files in 83.50 s**.
+M3 passes in 15.77 s with the original 120-second condition and durable-state
+agreement. Fast opacity input, actual connector/CAS/pixel checks, GUI undo,
+save/reopen, native playback, offline first frame and MP4 export remain active.
+The startup window is the normal isolated window; the comparison test itself
+requests 1280x720, 1280x700 and 1279x700 and keeps the original >40 px limit.
+This does not reclassify the earlier 1024-request/1023-native-width setup
+failure as passed. No small-window setup guard was relaxed.
+
+The earlier 79c5f780 full local core round retains its two empty native
+clipboard failures. They were not repeated in this affected/core selection,
+and are not counted as passes. The native synthetic roundtrip failed as well;
+its OS/runtime cause remains unresolved. No system clipboard policy or user
+application was changed. Full hosted copy/archives verification is recorded
+separately against the frozen source SHA.
+
+Full final identity and evidence:
+[candidate JSON](windows-rc-1.1.2-81c1ea4e-2026-10-15.json) and
+[stability continuation](windows-hosted-core-followup-2026-10-15.md).
+Release qualification remains withheld for native-memory, historical-startup
+and latest-source Mac-package evidence gaps. Mac 5f447ab7 verifies the existing
+a8c6925c package's real system cancel and designated synthetic-window
+record/stop/import/full-decode chain. That feature-specific manual acceptance
+is passed. It does not attribute or fix the old ten-second timeout, and does
+not qualify a Mac package built from all latest source changes.
+
+## Historical 79c5f780 candidate
 
 The latest retained candidate is **79c5f7802ddbde0c1ded5a9b5b27b30a85703273**,
 version 1.1.2, Windows x64, under
