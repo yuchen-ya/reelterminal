@@ -426,6 +426,37 @@ describe("ExportEngine", () => {
       abort: vi.fn().mockResolvedValue(undefined),
     } as unknown as FileSystemWritableFileStream;
 
+    it("prepares sequential video decoders before the first frame in a cold media engine", async () => {
+      let mediaReady = false;
+      let decoderReady = false;
+      mockMediaEngine.isAvailable.mockReturnValue(false);
+      mockMediaEngine.initialize.mockImplementationOnce(async () => { mediaReady = true; });
+      mockMediaEngine.createExportDecoder.mockImplementationOnce(async () => {
+        if (!mediaReady) throw new Error("MediaBunny not initialized");
+        decoderReady = true;
+        return null;
+      });
+      mockRenderFrame.mockImplementationOnce(async () => {
+        expect(decoderReady).toBe(true);
+        return { image: { close: vi.fn() }, width: 640, height: 360 };
+      });
+      const project = createMockProject({
+        timeline: createMockTimeline({ tracks: [createMockTrack({
+          clips: [createMockClip({ duration: 1, outPoint: 1 })],
+        })], duration: 1 }),
+      });
+      project.mediaLibrary.items.push({
+        id: "media-1", type: "video", blob: new Blob(["synthetic video"]),
+      } as Project["mediaLibrary"]["items"][number]);
+      await exportEngine.initialize();
+      const generator = exportEngine.exportVideo(project, { frameRate: 1, width: 640, height: 360 }, writableStream);
+      let step = await generator.next();
+      while (!step.done) step = await generator.next();
+      expect(step.value.success).toBe(true);
+      expect(mockMediaEngine.initialize).toHaveBeenCalledOnce();
+      expect(decoderReady).toBe(true);
+    });
+
     async function drainVideoExport(
       settings = { ...DEFAULT_VIDEO_SETTINGS, frameRate: 1, width: 640, height: 360 },
     ): Promise<void> {

@@ -379,6 +379,7 @@ export class VideoEngine {
     width: number,
     _height: number,
     mediaId?: string,
+    exportStreamId?: string,
   ): Promise<ImageBitmap | null> {
     try {
       const mediaEngine = getMediaEngine();
@@ -389,7 +390,7 @@ export class VideoEngine {
       if (mediaId) {
         const exportDecoder = mediaEngine.getExportDecoder(mediaId);
         if (exportDecoder) {
-          const canvas = await exportDecoder.getFrame(time);
+          const canvas = await exportDecoder.getFrame(time, exportStreamId);
           if (canvas) {
             return createImageBitmap(canvas);
           }
@@ -473,6 +474,7 @@ export class VideoEngine {
           width,
           height,
           mediaItem.id,
+          clip.id,
         );
         if (frame1) {
           ownedFrames.push(frame1);
@@ -489,6 +491,7 @@ export class VideoEngine {
           width,
           height,
           mediaItem.id,
+          clip.id,
         );
         if (frame2) {
           ownedFrames.push(frame2);
@@ -936,6 +939,7 @@ export class VideoEngine {
                 settings.width,
                 settings.height,
                 useStabilizedBlob ? `stabilized:${clip.id}` : clipInfo.mediaId,
+                clip.id,
               );
             }
             if (!bitmap) {
@@ -2282,6 +2286,7 @@ export class VideoEngine {
       width,
       height,
       mediaItem.id,
+      clip.id,
     );
     if (!bitmap) {
       bitmap = await this.decodeFrameWithVideoElement(

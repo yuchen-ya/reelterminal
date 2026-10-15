@@ -138,4 +138,45 @@ describe("ExportFrameDecoder", () => {
     expect(canvases).toHaveBeenNthCalledWith(1, 1.5);
     expect(canvases).toHaveBeenNthCalledWith(2, 0.25);
   });
+
+  it("keeps independent cursors for overlapping clips that reuse one source", async () => {
+    const drawImage = vi.fn();
+    class Canvas {
+      constructor(public width: number, public height: number) {}
+      getContext() { return { clearRect: vi.fn(), drawImage }; }
+    }
+    vi.stubGlobal("OffscreenCanvas", Canvas);
+    const frames = [0, 1, 6, 7].map(timestamp => ({
+      canvas: new Canvas(320, 180), timestamp, duration: 1,
+    }));
+    const returned = vi.fn();
+    const disposed = vi.fn();
+    const canvases = vi.fn((start: number) => (async function* () {
+      try {
+        for (const frame of frames.slice(findFrameAtOrBefore(frames, start))) yield frame;
+      } finally { returned(); }
+    })());
+    class Input {
+      async getPrimaryVideoTrack() {
+        return { displayWidth: 320, displayHeight: 180, canDecode: async () => true };
+      }
+      [Symbol.dispose]() { disposed(); }
+    }
+    const decoder = new ExportFrameDecoder({
+      Input, ALL_FORMATS: [], BlobSource: class {}, CanvasSink: class { canvases = canvases; },
+    } as unknown as typeof import("mediabunny"), new Blob(["same source"]));
+    await decoder.initialize();
+    await decoder.getFrame(6, "upper");
+    await decoder.getFrame(0, "background");
+    await decoder.getFrame(6.5, "upper");
+    await decoder.getFrame(0.5, "background");
+    expect(canvases.mock.calls).toEqual([[6], [0]]);
+    expect(drawImage.mock.calls.map(call => call[0])).toEqual([
+      frames[2].canvas, frames[0].canvas, frames[2].canvas, frames[0].canvas,
+    ]);
+    decoder.dispose();
+    await Promise.resolve();
+    expect(disposed).toHaveBeenCalledTimes(2);
+    expect(returned).toHaveBeenCalledTimes(2);
+  });
 });

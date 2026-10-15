@@ -236,6 +236,9 @@ export class ExportEngine {
       }
 
       const mediaEngine = getMediaEngine();
+      if (!mediaEngine.isAvailable()) {
+        await mediaEngine.initialize();
+      }
       const videoMediaIds: string[] = [];
       for (const track of project.timeline.tracks) {
         if (track.type !== "video") continue;

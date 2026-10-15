@@ -84,6 +84,8 @@ export class ExportFrameDecoder {
   private nextFrame: WrappedCanvas | null = null;
   private iteratorDone = false;
   private decodeTail: Promise<void> = Promise.resolve();
+  private primaryStreamId: string | undefined;
+  private streamDecoders = new Map<string, ExportFrameDecoder>();
 
   constructor(mediabunny: typeof import("mediabunny"), file: File | Blob, width?: number) {
     this.mediabunny = mediabunny;
@@ -126,8 +128,25 @@ export class ExportFrameDecoder {
     return true;
   }
 
-  async getFrame(timestamp: number): Promise<OffscreenCanvas | null> {
-    const framePromise = this.decodeTail.then(() => this.getSequentialFrame(timestamp));
+  async getFrame(timestamp: number, streamId?: string): Promise<OffscreenCanvas | null> {
+    const framePromise = this.decodeTail.then(async () => {
+      if (streamId !== undefined) {
+        this.primaryStreamId ??= streamId;
+        if (streamId !== this.primaryStreamId) {
+          // Two timeline clips may read the same file at different offsets.
+          // Give each touched clip its own cursor instead of seeking the
+          // shared decoder backwards on every composited frame.
+          let decoder = this.streamDecoders.get(streamId);
+          if (!decoder) {
+            decoder = new ExportFrameDecoder(this.mediabunny, this.file, this.width);
+            if (!await decoder.initialize()) return null;
+            this.streamDecoders.set(streamId, decoder);
+          }
+          return decoder.getFrame(timestamp);
+        }
+      }
+      return this.getSequentialFrame(timestamp);
+    });
     this.decodeTail = framePromise.then(
       () => undefined,
       () => undefined,
@@ -200,6 +219,9 @@ export class ExportFrameDecoder {
   }
 
   dispose(): void {
+    for (const decoder of this.streamDecoders.values()) decoder.dispose();
+    this.streamDecoders.clear();
+    this.primaryStreamId = undefined;
     void this.canvasIterator?.return?.();
     if (this.input) {
       this.input[Symbol.dispose]?.();
