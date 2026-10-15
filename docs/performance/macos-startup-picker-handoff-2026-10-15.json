@@ -1,0 +1,1378 @@
+{
+  "schema": "reelterminal.macos-startup-picker-handoff/v1",
+  "date": "2026-10-15",
+  "timezone": "Asia/Shanghai",
+  "investigation_checkout_head": "7e467bacd1aefc8d4666d10d3e59ab2d9f7c4667",
+  "scope": "serial historical startup investigation plus bounded native-picker checks; no runtime source edits, build, packaging, release, memory soak or export rerun",
+  "classification": {
+    "proven": "last three failures stopped within locating/clicking the project-open button, before editor wait and Agent enablement",
+    "root_cause": "unresolved",
+    "first_failure": "primary error, stage and process logs not retained; original cause cannot be independently recovered",
+    "not_reproduced": "one old-package launch from copied failed synthetic profile; successful retry is not a fix",
+    "native": "source acquisition failed before returning tracks; system cancel and recording pipeline not covered"
+  },
+  "historical_runs": [
+    {
+      "artifact_id": "1792000750762",
+      "artifact_created_local": "2026-10-15T01:59:10.762+08:00",
+      "failure_json_bytes": 106,
+      "failure_json_has_primary_error": false,
+      "failure_stage": null,
+      "primary_message": null,
+      "primary_stack": null,
+      "build": null,
+      "environment": null,
+      "retained_profile_still_exists": null,
+      "process_log_inventory": {
+        "mainStdout": {
+          "present": false,
+          "bytes": null
+        },
+        "mainStderr": {
+          "present": false,
+          "bytes": null
+        },
+        "rendererConsole": {
+          "present": false,
+          "bytes": null
+        }
+      },
+      "process_log_excerpts": {},
+      "cli_failure_excerpt": "e2e/performance/probe-calibration.e2e.ts > P3 production probe controls and ABBA calibration > detects blocking, distinguishes async waiting, and measures five ABBA blocks\nTimeoutError: page.screenshot: Timeout 5000ms exceeded.\nCall log:\n  - taking page screenshot\n\n ❯ e2e/performance/probe-calibration.e2e.ts:256:33\n    254|           await writeFile(artifact, JSON.stringify({ schema: \"reelterm…\n    255|           if (launched && !launched.page.isClosed()) {\n    256|             await launched.page.screenshot({ path: artifact.replace(/\\…\n       |                                 ^\n    257|           }\n    258|         }\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯",
+      "host_samples_near_artifact": [
+        {
+          "time": "2026-10-15T01:59:06.525+08:00",
+          "offset_from_artifact_ms": -4237,
+          "load": [
+            2.578125,
+            2.30419921875,
+            2.767578125
+          ],
+          "AC": true,
+          "hid_idle_seconds": 352.656800958,
+          "top_cpu_processes": [
+            {
+              "pid": 321,
+              "ppid": 1,
+              "cpu_percent": 12.9,
+              "rss_kib": 17552,
+              "executable_basename": "coreaudiod"
+            },
+            {
+              "pid": 169,
+              "ppid": 1,
+              "cpu_percent": 11.0,
+              "rss_kib": 45024,
+              "executable_basename": "WindowServer"
+            },
+            {
+              "pid": 50711,
+              "ppid": 50570,
+              "cpu_percent": 9.9,
+              "rss_kib": 44112,
+              "executable_basename": "SkyComputerUseService"
+            }
+          ]
+        },
+        {
+          "time": "2026-10-15T01:59:36.618+08:00",
+          "offset_from_artifact_ms": 25856,
+          "load": [
+            2.24755859375,
+            2.255859375,
+            2.73291015625
+          ],
+          "AC": true,
+          "hid_idle_seconds": 382.75008675,
+          "top_cpu_processes": [
+            {
+              "pid": 321,
+              "ppid": 1,
+              "cpu_percent": 13.0,
+              "rss_kib": 15504,
+              "executable_basename": "coreaudiod"
+            },
+            {
+              "pid": 50711,
+              "ppid": 50570,
+              "cpu_percent": 10.2,
+              "rss_kib": 36512,
+              "executable_basename": "SkyComputerUseService"
+            },
+            {
+              "pid": 637,
+              "ppid": 1,
+              "cpu_percent": 1.5,
+              "rss_kib": 5776,
+              "executable_basename": "corespeechd"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "artifact_id": "1792001322156",
+      "artifact_created_local": "2026-10-15T02:08:42.156+08:00",
+      "failure_json_bytes": 3341,
+      "failure_json_has_primary_error": true,
+      "failure_stage": "open_fixture",
+      "primary_message": "TimeoutError: locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Open Synthetic performance fixture T01', exact: true })\n",
+      "primary_stack": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Open Synthetic performance fixture T01', exact: true })\n\n    at <REPO>/apps/desktop/e2e/performance/probe-calibration.e2e.ts:81:94\n    at <REPO>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20",
+      "build": {
+        "source_head": "95137eb69566b6970761393cd23b34e868ae6640",
+        "dirty": false,
+        "source_digest": "49ee3c6adb01821c2a08387025f3c37ae16be0b90a151e531013ff1dff28f5d7",
+        "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+        "main_bundle_sha256": "e255cc18b8cc7790524bbd10df063b625254e8053f12e4e7777538db65e96981",
+        "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+        "renderer_manifest_sha256": "0e7b3b00700bba15ec0e6d7746166327ea3deb6118c71738b998140d07979762",
+        "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+        "executable_sha256": "ca7e3290800255f5018160cff99cf6ecc58eae299c66148de1374a70e2715c83",
+        "app_version": "1.1.2",
+        "build_type": "production",
+        "build_verified": true,
+        "build_reason": "verified"
+      },
+      "environment": {
+        "electron": "44.5.1",
+        "chrome": "152.0.7977.130",
+        "os": {
+          "platform": "darwin",
+          "release": "27.0.1",
+          "arch": "arm64"
+        },
+        "runner_class": "local",
+        "cpu": {
+          "model": "Apple M2",
+          "logical_cores": 8
+        },
+        "memory": {
+          "total_bytes": 8589934592,
+          "free_bytes": 169754624
+        },
+        "gpu": {
+          "info_status": "available",
+          "devices": [
+            {
+              "vendor_id": 4203,
+              "device_id": 0,
+              "name": null,
+              "active": true
+            }
+          ],
+          "feature_status": {
+            "gpu_compositing": "enabled",
+            "rasterization": "enabled",
+            "webgl": "enabled",
+            "webgl2": null,
+            "webgpu": "enabled",
+            "video_decode": "enabled",
+            "video_encode": "enabled"
+          }
+        },
+        "visible": true,
+        "focused": true,
+        "window_css_px": {
+          "width": 1280,
+          "height": 800
+        },
+        "window_content_dip_px": {
+          "width": 1280,
+          "height": 800
+        },
+        "device_scale_factor": 2,
+        "refresh_hz_estimate": 60.00239944458008,
+        "devtools_open": false,
+        "decode_backend": null,
+        "parallel_decoder_available": null,
+        "capabilities": {
+          "webgpu": true,
+          "wasm": true,
+          "shared_array_buffer": true,
+          "hardware_concurrency": 8,
+          "device_memory_gb": 8
+        },
+        "power_state": "unknown",
+        "load_state": "unknown",
+        "occlusion_state": "unknown"
+      },
+      "retained_profile_still_exists": true,
+      "process_log_inventory": {
+        "mainStdout": {
+          "present": true,
+          "bytes": 113
+        },
+        "mainStderr": {
+          "present": true,
+          "bytes": 250
+        },
+        "rendererConsole": {
+          "present": true,
+          "bytes": 0
+        }
+      },
+      "process_log_excerpts": {
+        "mainStdout": "Checking for update\n\nUpdate for version 1.1.2 is not available (latest version: 1.0.2, downgrade is disallowed).\n",
+        "mainStderr": "sandbox_extension_issue_file failed for <REPO>/apps/desktop/release/macos-1.1.2-stress-diagnostics/mac-arm64/ReelTerminal.app/Contents/Frameworks/ReelTerminal Helper.app/Contents/Resources: 1 (Operation not permitted)\n",
+        "rendererConsole": ""
+      },
+      "cli_failure_excerpt": "e2e/performance/probe-calibration.e2e.ts > P3 production probe controls and ABBA calibration > detects blocking, distinguishes async waiting, and measures five ABBA blocks\nTimeoutError: locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Open Synthetic performance fixture T01', exact: true })\n\n ❯ e2e/performance/probe-calibration.e2e.ts:81:94\n     79|       expect(environment.devtools_open).toBe(false);\n     80|       stage = \"open_fixture\";\n     81|       await page.getByRole(\"button\", { name: `Open ${fixture.project!.…\n       |                                                                                              ^\n     82|       await page.getByTestId(\"agent-access-status\").waitFor();\n     83|       await enableAgentSessionViaUI(page, launched.endpointFile);\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯",
+      "host_samples_near_artifact": [
+        {
+          "time": "2026-10-15T02:08:38.249+08:00",
+          "offset_from_artifact_ms": -3907,
+          "load": [
+            5.44384765625,
+            3.15478515625,
+            2.76171875
+          ],
+          "AC": true,
+          "hid_idle_seconds": 924.378577333,
+          "top_cpu_processes": [
+            {
+              "pid": 73969,
+              "ppid": 73652,
+              "cpu_percent": 100.9,
+              "rss_kib": 117072,
+              "executable_basename": "node"
+            },
+            {
+              "pid": 321,
+              "ppid": 1,
+              "cpu_percent": 11.5,
+              "rss_kib": 18720,
+              "executable_basename": "coreaudiod"
+            },
+            {
+              "pid": 1,
+              "ppid": 0,
+              "cpu_percent": 2.9,
+              "rss_kib": 18144,
+              "executable_basename": "launchd"
+            }
+          ]
+        },
+        {
+          "time": "2026-10-15T02:09:08.359+08:00",
+          "offset_from_artifact_ms": 26203,
+          "load": [
+            4.30322265625,
+            3.11669921875,
+            2.76171875
+          ],
+          "AC": true,
+          "hid_idle_seconds": 954.488213375,
+          "top_cpu_processes": [
+            {
+              "pid": 1,
+              "ppid": 0,
+              "cpu_percent": 39.5,
+              "rss_kib": 15280,
+              "executable_basename": "launchd"
+            },
+            {
+              "pid": 321,
+              "ppid": 1,
+              "cpu_percent": 12.8,
+              "rss_kib": 15056,
+              "executable_basename": "coreaudiod"
+            },
+            {
+              "pid": 50711,
+              "ppid": 50570,
+              "cpu_percent": 10.8,
+              "rss_kib": 26192,
+              "executable_basename": "SkyComputerUseService"
+            }
+          ]
+        }
+      ],
+      "same_identity_success": {
+        "artifact_id": "1792002142999",
+        "artifact_created_local": "2026-10-15T02:22:22.999+08:00",
+        "status": "qualified",
+        "build_identity_equal": true,
+        "visible": true,
+        "focused": true,
+        "free_memory_bytes": 275136512,
+        "groups": 20
+      }
+    },
+    {
+      "artifact_id": "1792004384624",
+      "artifact_created_local": "2026-10-15T02:59:44.624+08:00",
+      "failure_json_bytes": 3341,
+      "failure_json_has_primary_error": true,
+      "failure_stage": "open_fixture",
+      "primary_message": "TimeoutError: locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Open Synthetic performance fixture T01', exact: true })\n",
+      "primary_stack": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Open Synthetic performance fixture T01', exact: true })\n\n    at <REPO>/apps/desktop/e2e/performance/probe-calibration.e2e.ts:81:94\n    at <REPO>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20",
+      "build": {
+        "source_head": "c22fa7cafa64776d41bb91f125633b6a90910d93",
+        "dirty": false,
+        "source_digest": "bcacb04705168ba8e8b3bb51925f442170be42bf313e5edcc9712f41ca0d10a2",
+        "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+        "main_bundle_sha256": "e255cc18b8cc7790524bbd10df063b625254e8053f12e4e7777538db65e96981",
+        "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+        "renderer_manifest_sha256": "0e7b3b00700bba15ec0e6d7746166327ea3deb6118c71738b998140d07979762",
+        "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+        "executable_sha256": "ca7e3290800255f5018160cff99cf6ecc58eae299c66148de1374a70e2715c83",
+        "app_version": "1.1.2",
+        "build_type": "production",
+        "build_verified": true,
+        "build_reason": "verified"
+      },
+      "environment": {
+        "electron": "44.5.1",
+        "chrome": "152.0.7977.130",
+        "os": {
+          "platform": "darwin",
+          "release": "27.0.1",
+          "arch": "arm64"
+        },
+        "runner_class": "local",
+        "cpu": {
+          "model": "Apple M2",
+          "logical_cores": 8
+        },
+        "memory": {
+          "total_bytes": 8589934592,
+          "free_bytes": 183992320
+        },
+        "gpu": {
+          "info_status": "available",
+          "devices": [
+            {
+              "vendor_id": 4203,
+              "device_id": 0,
+              "name": null,
+              "active": true
+            }
+          ],
+          "feature_status": {
+            "gpu_compositing": "enabled",
+            "rasterization": "enabled",
+            "webgl": "enabled",
+            "webgl2": null,
+            "webgpu": "enabled",
+            "video_decode": "enabled",
+            "video_encode": "enabled"
+          }
+        },
+        "visible": true,
+        "focused": true,
+        "window_css_px": {
+          "width": 1280,
+          "height": 800
+        },
+        "window_content_dip_px": {
+          "width": 1280,
+          "height": 800
+        },
+        "device_scale_factor": 2,
+        "refresh_hz_estimate": 60.00239944458008,
+        "devtools_open": false,
+        "decode_backend": null,
+        "parallel_decoder_available": null,
+        "capabilities": {
+          "webgpu": true,
+          "wasm": true,
+          "shared_array_buffer": true,
+          "hardware_concurrency": 8,
+          "device_memory_gb": 8
+        },
+        "power_state": "unknown",
+        "load_state": "unknown",
+        "occlusion_state": "unknown"
+      },
+      "retained_profile_still_exists": true,
+      "process_log_inventory": {
+        "mainStdout": {
+          "present": true,
+          "bytes": 113
+        },
+        "mainStderr": {
+          "present": true,
+          "bytes": 243
+        },
+        "rendererConsole": {
+          "present": true,
+          "bytes": 0
+        }
+      },
+      "process_log_excerpts": {
+        "mainStdout": "Checking for update\n\nUpdate for version 1.1.2 is not available (latest version: 1.0.2, downgrade is disallowed).\n",
+        "mainStderr": "sandbox_extension_issue_file failed for <REPO>/apps/desktop/release/macos-1.1.2-stress-logs/mac-arm64/ReelTerminal.app/Contents/Frameworks/ReelTerminal Helper.app/Contents/Resources: 1 (Operation not permitted)\n",
+        "rendererConsole": ""
+      },
+      "cli_failure_excerpt": "e2e/performance/probe-calibration.e2e.ts > P3 production probe controls and ABBA calibration > detects blocking, distinguishes async waiting, and measures five ABBA blocks\nTimeoutError: locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Open Synthetic performance fixture T01', exact: true })\n\n ❯ e2e/performance/probe-calibration.e2e.ts:81:94\n     79|       expect(environment.devtools_open).toBe(false);\n     80|       stage = \"open_fixture\";\n     81|       await page.getByRole(\"button\", { name: `Open ${fixture.project!.…\n       |                                                                                              ^\n     82|       await page.getByTestId(\"agent-access-status\").waitFor();\n     83|       await enableAgentSessionViaUI(page, launched.endpointFile);\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯",
+      "host_samples_near_artifact": [
+        {
+          "time": "2026-10-15T02:59:17.517+08:00",
+          "offset_from_artifact_ms": -27107,
+          "load": [
+            6.68896484375,
+            4.2255859375,
+            2.90576171875
+          ],
+          "AC": true,
+          "hid_idle_seconds": 938.417851791,
+          "top_cpu_processes": [
+            {
+              "pid": 321,
+              "ppid": 1,
+              "cpu_percent": 12.9,
+              "rss_kib": 14720,
+              "executable_basename": "coreaudiod"
+            },
+            {
+              "pid": 50711,
+              "ppid": 50570,
+              "cpu_percent": 10.9,
+              "rss_kib": 22000,
+              "executable_basename": "SkyComputerUseService"
+            },
+            {
+              "pid": 243,
+              "ppid": 1,
+              "cpu_percent": 3.3,
+              "rss_kib": 6976,
+              "executable_basename": "syspolicyd"
+            }
+          ]
+        },
+        {
+          "time": "2026-10-15T02:59:47.588+08:00",
+          "offset_from_artifact_ms": 2965,
+          "load": [
+            4.71044921875,
+            3.9794921875,
+            2.86181640625
+          ],
+          "AC": true,
+          "hid_idle_seconds": 968.489310958,
+          "top_cpu_processes": [
+            {
+              "pid": 78250,
+              "ppid": 1,
+              "cpu_percent": 45.4,
+              "rss_kib": 32496,
+              "executable_basename": "XprotectService"
+            },
+            {
+              "pid": 78249,
+              "ppid": 78188,
+              "cpu_percent": 20.1,
+              "rss_kib": 26160,
+              "executable_basename": "ReelTerminal"
+            },
+            {
+              "pid": 78255,
+              "ppid": 1,
+              "cpu_percent": 18.6,
+              "rss_kib": 21632,
+              "executable_basename": "CoreServicesUIAgent"
+            }
+          ]
+        },
+        {
+          "time": "2026-10-15T03:00:17.691+08:00",
+          "offset_from_artifact_ms": 33067,
+          "load": [
+            4.05078125,
+            3.9111328125,
+            2.87646484375
+          ],
+          "AC": true,
+          "hid_idle_seconds": 998.591783541,
+          "top_cpu_processes": [
+            {
+              "pid": 169,
+              "ppid": 1,
+              "cpu_percent": 16.4,
+              "rss_kib": 48192,
+              "executable_basename": "WindowServer"
+            },
+            {
+              "pid": 321,
+              "ppid": 1,
+              "cpu_percent": 12.3,
+              "rss_kib": 14320,
+              "executable_basename": "coreaudiod"
+            },
+            {
+              "pid": 50711,
+              "ppid": 50570,
+              "cpu_percent": 9.1,
+              "rss_kib": 24864,
+              "executable_basename": "SkyComputerUseService"
+            }
+          ]
+        }
+      ],
+      "same_identity_success": {
+        "artifact_id": "1792004517710",
+        "artifact_created_local": "2026-10-15T03:01:57.710+08:00",
+        "status": "qualified",
+        "build_identity_equal": true,
+        "visible": true,
+        "focused": true,
+        "free_memory_bytes": 185450496,
+        "groups": 20
+      }
+    },
+    {
+      "artifact_id": "1792006452492",
+      "artifact_created_local": "2026-10-15T03:34:12.492+08:00",
+      "failure_json_bytes": 3341,
+      "failure_json_has_primary_error": true,
+      "failure_stage": "open_fixture",
+      "primary_message": "TimeoutError: locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Open Synthetic performance fixture T01', exact: true })\n",
+      "primary_stack": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Open Synthetic performance fixture T01', exact: true })\n\n    at <REPO>/apps/desktop/e2e/performance/probe-calibration.e2e.ts:81:94\n    at <REPO>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20",
+      "build": {
+        "source_head": "92f8f75335f5281334797c15541e59b493358db4",
+        "dirty": false,
+        "source_digest": "48fa0118adf02ca659500393af90093cdd7e80b3a6594b3753b886c68d5915d0",
+        "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+        "main_bundle_sha256": "e255cc18b8cc7790524bbd10df063b625254e8053f12e4e7777538db65e96981",
+        "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+        "renderer_manifest_sha256": "0e7b3b00700bba15ec0e6d7746166327ea3deb6118c71738b998140d07979762",
+        "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+        "executable_sha256": "ca7e3290800255f5018160cff99cf6ecc58eae299c66148de1374a70e2715c83",
+        "app_version": "1.1.2",
+        "build_type": "production",
+        "build_verified": true,
+        "build_reason": "verified"
+      },
+      "environment": {
+        "electron": "44.5.1",
+        "chrome": "152.0.7977.130",
+        "os": {
+          "platform": "darwin",
+          "release": "27.0.1",
+          "arch": "arm64"
+        },
+        "runner_class": "local",
+        "cpu": {
+          "model": "Apple M2",
+          "logical_cores": 8
+        },
+        "memory": {
+          "total_bytes": 8589934592,
+          "free_bytes": 472252416
+        },
+        "gpu": {
+          "info_status": "available",
+          "devices": [
+            {
+              "vendor_id": 4203,
+              "device_id": 0,
+              "name": null,
+              "active": true
+            }
+          ],
+          "feature_status": {
+            "gpu_compositing": "enabled",
+            "rasterization": "enabled",
+            "webgl": "enabled",
+            "webgl2": null,
+            "webgpu": "enabled",
+            "video_decode": "enabled",
+            "video_encode": "enabled"
+          }
+        },
+        "visible": true,
+        "focused": true,
+        "window_css_px": {
+          "width": 1280,
+          "height": 800
+        },
+        "window_content_dip_px": {
+          "width": 1280,
+          "height": 800
+        },
+        "device_scale_factor": 2,
+        "refresh_hz_estimate": 60.00239944458008,
+        "devtools_open": false,
+        "decode_backend": null,
+        "parallel_decoder_available": null,
+        "capabilities": {
+          "webgpu": true,
+          "wasm": true,
+          "shared_array_buffer": true,
+          "hardware_concurrency": 8,
+          "device_memory_gb": 8
+        },
+        "power_state": "unknown",
+        "load_state": "unknown",
+        "occlusion_state": "unknown"
+      },
+      "retained_profile_still_exists": true,
+      "process_log_inventory": {
+        "mainStdout": {
+          "present": true,
+          "bytes": 113
+        },
+        "mainStderr": {
+          "present": true,
+          "bytes": 254
+        },
+        "rendererConsole": {
+          "present": true,
+          "bytes": 0
+        }
+      },
+      "process_log_excerpts": {
+        "mainStdout": "Checking for update\n\nUpdate for version 1.1.2 is not available (latest version: 1.0.2, downgrade is disallowed).\n",
+        "mainStderr": "sandbox_extension_issue_file failed for <REPO>/apps/desktop/release/macos-1.1.2-stress-export-observer/mac-arm64/ReelTerminal.app/Contents/Frameworks/ReelTerminal Helper.app/Contents/Resources: 1 (Operation not permitted)\n",
+        "rendererConsole": ""
+      },
+      "cli_failure_excerpt": "e2e/performance/probe-calibration.e2e.ts > P3 production probe controls and ABBA calibration > detects blocking, distinguishes async waiting, and measures five ABBA blocks\nTimeoutError: locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Open Synthetic performance fixture T01', exact: true })\n\n ❯ e2e/performance/probe-calibration.e2e.ts:81:94\n     79|       expect(environment.devtools_open).toBe(false);\n     80|       stage = \"open_fixture\";\n     81|       await page.getByRole(\"button\", { name: `Open ${fixture.project!.…\n       |                                                                                              ^\n     82|       await page.getByTestId(\"agent-access-status\").waitFor();\n     83|       await enableAgentSessionViaUI(page, launched.endpointFile);\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯",
+      "host_samples_near_artifact": [
+        {
+          "time": "2026-10-15T03:33:54.330+08:00",
+          "offset_from_artifact_ms": -18162,
+          "load": [
+            3.955078125,
+            3.48974609375,
+            3.9111328125
+          ],
+          "AC": true,
+          "hid_idle_seconds": 3015.226740041,
+          "top_cpu_processes": [
+            {
+              "pid": 84592,
+              "ppid": 84559,
+              "cpu_percent": 685.7,
+              "rss_kib": 39600,
+              "executable_basename": "hdiutil"
+            },
+            {
+              "pid": 84543,
+              "ppid": 84427,
+              "cpu_percent": 55.9,
+              "rss_kib": 2544,
+              "executable_basename": "zip"
+            },
+            {
+              "pid": 50677,
+              "ppid": 50570,
+              "cpu_percent": 9.6,
+              "rss_kib": 657056,
+              "executable_basename": "Codex (Renderer)"
+            }
+          ]
+        },
+        {
+          "time": "2026-10-15T03:34:24.423+08:00",
+          "offset_from_artifact_ms": 11932,
+          "load": [
+            3.76318359375,
+            3.48876953125,
+            3.896484375
+          ],
+          "AC": true,
+          "hid_idle_seconds": 3045.320653541,
+          "top_cpu_processes": [
+            {
+              "pid": 321,
+              "ppid": 1,
+              "cpu_percent": 12.8,
+              "rss_kib": 14080,
+              "executable_basename": "coreaudiod"
+            },
+            {
+              "pid": 50711,
+              "ppid": 50570,
+              "cpu_percent": 10.3,
+              "rss_kib": 25712,
+              "executable_basename": "SkyComputerUseService"
+            },
+            {
+              "pid": 53527,
+              "ppid": 50678,
+              "cpu_percent": 1.6,
+              "rss_kib": 6720,
+              "executable_basename": "Python"
+            }
+          ]
+        },
+        {
+          "time": "2026-10-15T03:34:54.505+08:00",
+          "offset_from_artifact_ms": 42013,
+          "load": [
+            3.103515625,
+            3.3466796875,
+            3.82958984375
+          ],
+          "AC": true,
+          "hid_idle_seconds": 3075.402001583,
+          "top_cpu_processes": [
+            {
+              "pid": 50677,
+              "ppid": 50570,
+              "cpu_percent": 169.9,
+              "rss_kib": 689888,
+              "executable_basename": "Codex (Renderer)"
+            },
+            {
+              "pid": 50676,
+              "ppid": 50570,
+              "cpu_percent": 51.9,
+              "rss_kib": 343296,
+              "executable_basename": "Codex (Renderer)"
+            },
+            {
+              "pid": 169,
+              "ppid": 1,
+              "cpu_percent": 19.5,
+              "rss_kib": 48160,
+              "executable_basename": "WindowServer"
+            }
+          ]
+        }
+      ],
+      "same_identity_success": {
+        "artifact_id": "1792006532246",
+        "artifact_created_local": "2026-10-15T03:35:32.246+08:00",
+        "status": "qualified",
+        "build_identity_equal": true,
+        "visible": true,
+        "focused": true,
+        "free_memory_bytes": 345751552,
+        "groups": 20
+      }
+    }
+  ],
+  "targeted_startup": {
+    "status": "opened",
+    "source_failure": "1792006452492",
+    "started_local": "2026-10-15T17:01:43.070+08:00",
+    "finished_local": "2026-10-15T17:01:46.990+08:00",
+    "package": "macos-1.1.2-stress-export-observer",
+    "profile": "copy_of_retained_synthetic_failure_profile; original not launched or modified",
+    "click_ms": 921,
+    "editor_ready_ms": 2323,
+    "free_memory_bytes": 109658112,
+    "samples": [
+      {
+        "time": "2026-10-15T17:01:45.669+08:00",
+        "url": "app://reelterminal/index.html",
+        "ready": "complete",
+        "hidden": false,
+        "rootChildren": 1,
+        "library": true,
+        "openButton": true,
+        "editor": false
+      },
+      {
+        "time": "2026-10-15T17:01:46.669+08:00",
+        "url": "app://reelterminal/index.html",
+        "ready": "complete",
+        "hidden": false,
+        "rootChildren": 1,
+        "library": false,
+        "openButton": false,
+        "editor": false
+      },
+      {
+        "time": "2026-10-15T17:01:46.989+08:00",
+        "url": "app://reelterminal/index.html",
+        "ready": "complete",
+        "hidden": false,
+        "rootChildren": 1,
+        "library": false,
+        "openButton": false,
+        "editor": true
+      }
+    ],
+    "timing_caveat": "one observed launch, 1-second DOM reads perturb timing; no performance certification"
+  },
+  "native_picker": {
+    "status": "blocked_source_acquisition",
+    "package_source_head": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
+    "app_version": "1.1.2",
+    "asar_sha256": "5c11ff60687d0f2de0dd7df999d9586fe3251e82654297165e8fd9f0117227a0",
+    "asar_hash_reverified": true,
+    "attempts": [
+      {
+        "trigger": "Playwright UI click",
+        "owned_pid": 12458,
+        "system_picker_visible": "user reports absent",
+        "native_picker_cancel_observed": false
+      },
+      {
+        "trigger": "CUA native macOS click on observed Start Recording button",
+        "owned_pid": 12581,
+        "system_picker_visible": "not observed in app AX/screenshot",
+        "native_picker_cancel_observed": false
+      }
+    ],
+    "permissions": {
+      "screen": "granted",
+      "microphone": "granted",
+      "camera": "not-determined",
+      "packaged": true,
+      "version": "1.1.2"
+    },
+    "permission_change": false,
+    "audio_microphone_camera_enabled": false,
+    "synthetic_target": "separate owned 720x480 BrowserWindow with animated colored box and frame counter",
+    "acquisition_observer": "transparent wrapper calls original getDisplayMedia with unchanged receiver and arguments; no substitute stream or forced source",
+    "system_ui_binding_errors": [
+      "screencaptureui: timeoutReached",
+      "WindowManager: procNotFound"
+    ],
+    "user_confirmation": "系统选源器未出现",
+    "before": {
+      "revision": 0,
+      "media_count": 0,
+      "capture": {
+        "pending": 0,
+        "requests": [],
+        "tracks": []
+      },
+      "workspace": {
+        "runtimes": 1,
+        "queuedWrites": 0,
+        "pendingWrites": 0,
+        "initializingRuntimeCount": 0,
+        "editedWorkspaceCount": 0,
+        "activeWriteDrainCount": 0,
+        "queuedCommandCount": 0,
+        "failedWriteCount": 0,
+        "activeWorkspace": true
+      },
+      "autosave": {
+        "status": "idle",
+        "automaticSaveRunning": false,
+        "pendingRevision": false,
+        "scheduledSave": false,
+        "queuedSaveOperations": 0
+      }
+    },
+    "pending_samples": [
+      {
+        "time": "2026-10-15T17:05:32.982+08:00",
+        "revision": 0,
+        "media_count": 0,
+        "capture": {
+          "pending": 0,
+          "requests": [],
+          "tracks": []
+        }
+      },
+      {
+        "time": "2026-10-15T17:05:38.009+08:00",
+        "revision": 0,
+        "media_count": 0,
+        "capture": {
+          "pending": 0,
+          "requests": [],
+          "tracks": []
+        }
+      },
+      {
+        "time": "2026-10-15T17:05:43.060+08:00",
+        "revision": 0,
+        "media_count": 0,
+        "capture": {
+          "pending": 1,
+          "requests": [
+            {
+              "started": 1792055138394
+            }
+          ],
+          "tracks": []
+        }
+      },
+      {
+        "time": "2026-10-15T17:05:48.110+08:00",
+        "revision": 0,
+        "media_count": 0,
+        "capture": {
+          "pending": 1,
+          "requests": [
+            {
+              "started": 1792055138394
+            }
+          ],
+          "tracks": []
+        }
+      },
+      {
+        "time": "2026-10-15T17:05:53.150+08:00",
+        "revision": 0,
+        "media_count": 0,
+        "capture": {
+          "pending": 0,
+          "requests": [
+            {
+              "started": 1792055138394,
+              "result": "rejected",
+              "error": {
+                "name": "AbortError",
+                "message": "Timeout starting video source"
+              },
+              "finished": 1792055148418
+            }
+          ],
+          "tracks": []
+        }
+      }
+    ],
+    "after_source_failure": {
+      "revision": 0,
+      "media_count": 0,
+      "capture": {
+        "pending": 0,
+        "requests": [
+          {
+            "started": 1792055138394,
+            "result": "rejected",
+            "error": {
+              "name": "AbortError",
+              "message": "Timeout starting video source"
+            },
+            "finished": 1792055148418
+          }
+        ],
+        "tracks": []
+      },
+      "workspace": {
+        "runtimes": 1,
+        "queuedWrites": 0,
+        "pendingWrites": 0,
+        "initializingRuntimeCount": 0,
+        "editedWorkspaceCount": 0,
+        "activeWriteDrainCount": 0,
+        "queuedCommandCount": 0,
+        "failedWriteCount": 0,
+        "activeWorkspace": true
+      },
+      "autosave": {
+        "status": "idle",
+        "automaticSaveRunning": false,
+        "pendingRevision": false,
+        "scheduledSave": false,
+        "queuedSaveOperations": 0
+      }
+    },
+    "source_error": {
+      "started": 1792055138394,
+      "result": "rejected",
+      "error": {
+        "name": "AbortError",
+        "message": "Timeout starting video source"
+      },
+      "finished": 1792055148418
+    },
+    "cancel_verified": false,
+    "selection_verified": false,
+    "record_stop_import_decode_verified": false,
+    "capture_queue_metric": "not directly exposed; pending requests and observed returned tracks checked; no capture began",
+    "cleanup": "owned test applications and synthetic windows exited; ps confirms PIDs 12408,12458,12581 absent; user apps not closed",
+    "reference": "https://www.electronjs.org/docs/latest/api/session#sessetdisplaymediarequesthandlerhandler-opts"
+  },
+  "shared_code_coordination": {
+    "already_received": "abb75cb22032078ee2e20f18192f532c2392cda8 adds await_editor/enable_agent_session/await_endpoint/connect_agent stages",
+    "remote_preserved": [
+      "abb75cb22032078ee2e20f18192f532c2392cda8",
+      "255503c4",
+      "f0dd64d1"
+    ],
+    "merge": "fast-forward origin/main from 7e467bac to f0dd64d1 before report commit",
+    "files_not_edited_by_this_work": [
+      "apps/desktop/e2e/harness/launch.ts",
+      "apps/desktop/e2e/performance/probe-calibration.e2e.ts",
+      "apps/desktop/e2e/harness/performance/calibration-failure.ts",
+      "apps/desktop/src/main/screen-capture.ts"
+    ],
+    "suggested_files_requiring_coordination": [
+      {
+        "file": "apps/desktop/e2e/harness/launch.ts",
+        "suggestion": "attach navigation/load-failure, renderer-gone and unresponsive/responsive events as early as launch permits; timestamp safe lifecycle evidence"
+      },
+      {
+        "file": "apps/desktop/e2e/performance/probe-calibration.e2e.ts",
+        "suggestion": "retain the Windows stage split; bounded pre-click and failure snapshots of URL, readyState, root/library presence, exact-button count, locale and visibility; do not extend timeout"
+      },
+      {
+        "file": "apps/desktop/e2e/harness/performance/calibration-failure.ts",
+        "suggestion": "persist the bounded safe DOM/lifecycle diagnostics with the primary error before screenshot; no endpoints or full project state"
+      }
+    ],
+    "runtime_fix_recommendation": "none supported by present evidence; do not alter shared startup or native picker fallback yet"
+  },
+  "missing_evidence": [
+    "failure-time DOM/root/library and accessibility locator results",
+    "timed main/renderer lifecycle, injected-script execution and heartbeat evidence during original 30 seconds",
+    "original first-run exception and process logs (not recoverable from saved artifacts)",
+    "old session lock/occlusion events, complete process tree with start time and ownership, contemporaneous pressure/swap samples",
+    "native-picker branch invocation/error events and OS presentation evidence; a successful real system cancel and owned-window selection"
+  ],
+  "evidence_manifest": [
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/clean-audio-probe.log",
+      "bytes": 1643,
+      "sha256": "0406cce0e5f1198079a210a20fe3843d9131fa00f27f2d15e4c259c51a4e4f7c",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/clean-final-results.json",
+      "bytes": 188,
+      "sha256": "4eab321662ca05ad9d7f0a1ca4c0d6deb5e86ad3f024601bc1f7c903519a8eec",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/clean-final-serial.py",
+      "bytes": 1754,
+      "sha256": "415e3d0bfc7d614ae6373e87de6506e8d595d6d1f95a61e430dcb1e18884297c",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/diagnostics-audio-probe.log",
+      "bytes": 1837,
+      "sha256": "8a0c5edd8174cebd9ffa54dfe37b69ec9b0a142a67d5f0f523cd890f7b52dbc0",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/diagnostics-final-results.json",
+      "bytes": 589,
+      "sha256": "82f105497af07e594f151fec3de71f0be87cdfdf1efd9fd697bcb865eb5d2d5e",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/diagnostics-final-serial.py",
+      "bytes": 2204,
+      "sha256": "561d5192c05a2795192883d9ac43a6daf580823c645dfa96a22f9f15fa41ed10",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/export-observer-results.json",
+      "bytes": 1086,
+      "sha256": "6f515bc2a1a553a90ea355fceef25363720c7d02302ff62894be73b8b0bc9c53",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/export-observer-serial.py",
+      "bytes": 2657,
+      "sha256": "50720288ea4659d071a49e282fb140e6e5c1bcbeae246b9efebe6f6801b90493",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/host-observations.jsonl",
+      "bytes": 2399857,
+      "sha256": "c9ad87570ede70ff8fdfdec8b471f05c7f918a1ae89487b5521b9e240dd28935",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/host-pressure-diagnostics.jsonl",
+      "bytes": 1681,
+      "sha256": "8b56f6dc4a777eab06c2aef50dc5f23dd63e32c928b0d6ca93a93e8ce67befc4",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/observer-probe.log",
+      "bytes": 1837,
+      "sha256": "fece6adab07038e7031a19481dcf817e3eb1e11a3d5715fd0fedfcd41278784f",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/probe-environment-diagnostic.json",
+      "bytes": 6696,
+      "sha256": "77b96318fea4d33325476e327ca8311e6f495910ce9c1420f9e71f9b225d1499",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/probe-environment.diagnostic.ts",
+      "bytes": 2737,
+      "sha256": "fdf1c0fc2430b9b530a00c2620000f9d49039fd3307fcb1078f8be0837dc3f09",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/probe-open-diagnostic.json",
+      "bytes": 7967,
+      "sha256": "22e552102050f250add88da560d4f58ae9fd3cf2785845e667fc0229163c4a3f",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/probe-open-diagnostic.log",
+      "bytes": 235,
+      "sha256": "95c08bcd9d90d3e34c913519d8e8e7bf1df9f29ab0d8b2cb82673fad79608241",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/probe-open.diagnostic.ts",
+      "bytes": 2641,
+      "sha256": "ad2da3897153aa109dabd9afcf177ce381872a43d82408ada65e63bccf63af39",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/probe-resize-diagnostic.json",
+      "bytes": 4984,
+      "sha256": "74dbf5069f853e77b4d4e3a840593170f4c906edc7cbadb7ff7fcd0cbcf34560",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/probe-resize.diagnostic.ts",
+      "bytes": 2593,
+      "sha256": "b9641f96204e858262eb9bb2a78bd931f0c7bfea2ee72588a5dc31ce49530892",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/probe-startup-ab.diagnostic.ts",
+      "bytes": 1688,
+      "sha256": "c0a9b8a759548d65252ca3543019abeb97acf9bae99a25cdb6046c6a72493526",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/probe-startup-ab.json",
+      "bytes": 7093,
+      "sha256": "27a7ff86bd8f822093c6b8bdf9918a05b1b49174c85128abf2e3cc02e6afe75a",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/probe-startup-ab.log",
+      "bytes": 238,
+      "sha256": "05a8908ac5d5f9944baf28f04f92fe812a476f228019a4e989a86c6739e7d30b",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/remaining-probe.log",
+      "bytes": 1837,
+      "sha256": "bde7950d3174ea35a7c5e9eb65b99e5d8656cd592f4c1dc0e155d41e69b2b974",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/resource-log-validation-results.json",
+      "bytes": 1167,
+      "sha256": "81667abb247b46180495d0142b2d0efcc976c9f9023eebdefdec2904ceb9d66c",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/startup-retry-results.json",
+      "bytes": 582,
+      "sha256": "49ac89924de3094bf60e14a61413a41c4e7d9ca068373f22c39e022e67c4444e",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-1.1.2-2026-10-14/startup-retry-serial.py",
+      "bytes": 1772,
+      "sha256": "581431533ca17d52b379181630931ddd3d010f74d2672643754d1b31bcadd5e0",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/native-package-identity.json",
+      "bytes": 2341,
+      "sha256": "30ef9828ff80cbca68224c84996a4c6230c2c131209212c418b8b122321faae1",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-physical-input-result.json",
+      "bytes": 65934,
+      "sha256": "11020a020f62625009e7ad8bae1f8820d9aca74d432a2c719107aaf642917d4f",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-physical-ui-observation.json",
+      "bytes": 300,
+      "sha256": "04eda610818219bd89e412e28f8dfda7515260d6ed53385d6c37b538b1096951",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-physical.diagnostic.ts",
+      "bytes": 7446,
+      "sha256": "6b76231e227482e3787f0a172f8be6526f377ac7868b344e9d366d4879523a7e",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-physical.log",
+      "bytes": 1139,
+      "sha256": "f6e63361fa8ac6a14ab77a6dabec5c9091aa24df27e94aa68ce8343a01623708",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-physical.vitest.ts",
+      "bytes": 235,
+      "sha256": "7a28fc9811183ee38bfad5ffbee72957a2f168291a7d3116efa543852afebc69",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-result.json",
+      "bytes": 49218,
+      "sha256": "5a445183be57464b27061d6b38c61a23f8a3c0f614c564254b581ba69ca1a0a2",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-ui-observation.json",
+      "bytes": 348,
+      "sha256": "40fb2c77e1636cd7f6d19c55adb88f3fcb6b31c64be2d351b968311ef69db258",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native.diagnostic.ts",
+      "bytes": 7145,
+      "sha256": "66f97a67498ad140c2a28a223081cb7736443e585670556dce92304553b019db",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native.log",
+      "bytes": 1099,
+      "sha256": "6887fd4949ece8eca625a1693334e6bebb340d0ce9da2ef7f221b46c629eacbb",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native.vitest.ts",
+      "bytes": 226,
+      "sha256": "955cd0cdbd6a5b79cda47d639961102cc9cdf73b7228e45ccf8f05ce6f159367",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/startup-result.json",
+      "bytes": 6369,
+      "sha256": "81b315a32595f6d5cb043d5fa88e2c679dc3ae7465b96a77fa9b4be20358660e",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/startup.diagnostic.ts",
+      "bytes": 2852,
+      "sha256": "b8c8c03d6649d7803cf5173b3924f8b1521e113fbf2f9995f7d4d41c7ed6edd9",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/startup.log",
+      "bytes": 236,
+      "sha256": "191e90d58a5de4e0f7e69beb937f391d72e7f78e8da23a71ae14888bc06c8b6e",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/startup.vitest.ts",
+      "bytes": 226,
+      "sha256": "0214677ebb3b51406441344a15847eb6e986aacaa00fa61a88430c2cc27d7e94",
+      "matches_2026_10_15_prior_manifest": null
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792000750762.json",
+      "bytes": 106,
+      "sha256": "183d34bb8ce3f2c61320e094ebd9dc7618f603f93c016a4b0ee93550120d8e4c",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792001322156.json",
+      "bytes": 3341,
+      "sha256": "3012060dc0e6959e66a2167de92df42821e379eb98aa0c511297815ab5e27c08",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792001322156.mainStderr.redacted.log",
+      "bytes": 250,
+      "sha256": "db556645ae22debfa4415fe050225ea4d3af98d314b31ba6435e77fe9f59c83c",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792001322156.mainStdout.redacted.log",
+      "bytes": 113,
+      "sha256": "6b826e3020b4e88be8d3163c2eaee36300c63b808461ae26b75cfc0b05d681c9",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792001322156.rendererConsole.redacted.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792001322156.screenshot-error.json",
+      "bytes": 772,
+      "sha256": "c9949b607b61aefec31a721ced90031c2a015cf8d2c1fadb68a12b774a156752",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792002142999.json",
+      "bytes": 28199,
+      "sha256": "efb1d5adc06b336128f635e988c6a2a9d2f449e17b37eeb315fb9bdeefe43b93",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792004384624.json",
+      "bytes": 3341,
+      "sha256": "570e018805fff1247f0d30d1ecb1fe1141462dcfd3348c3b29ad77634387e942",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792004384624.mainStderr.redacted.log",
+      "bytes": 243,
+      "sha256": "65bbb685720aeca395841d42d81bd2bba1b10275e294fcb2bee92f36a928aff5",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792004384624.mainStdout.redacted.log",
+      "bytes": 113,
+      "sha256": "6b826e3020b4e88be8d3163c2eaee36300c63b808461ae26b75cfc0b05d681c9",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792004384624.rendererConsole.redacted.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792004384624.screenshot-error.json",
+      "bytes": 772,
+      "sha256": "c9949b607b61aefec31a721ced90031c2a015cf8d2c1fadb68a12b774a156752",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792004517710.json",
+      "bytes": 28210,
+      "sha256": "f3b8ebe72dff75f4d2afa848f8a097a05a6405c1a10140d01a09a028a746eddb",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792006452492.json",
+      "bytes": 3341,
+      "sha256": "54099747047ee304f6e7ccdbcd504b9dba2727125744cecfe176467275c33048",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792006452492.mainStderr.redacted.log",
+      "bytes": 254,
+      "sha256": "b18bf865580a2daca3d7da7c4909d230e484b986b428e5a50a136a0a69dc2de3",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792006452492.mainStdout.redacted.log",
+      "bytes": 113,
+      "sha256": "6b826e3020b4e88be8d3163c2eaee36300c63b808461ae26b75cfc0b05d681c9",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792006452492.rendererConsole.redacted.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792006452492.screenshot-error.json",
+      "bytes": 772,
+      "sha256": "c9949b607b61aefec31a721ced90031c2a015cf8d2c1fadb68a12b774a156752",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792006532246.json",
+      "bytes": 28173,
+      "sha256": "757c77f73ac92bc52084843fcfd7d68f002d3aa75187d798d6591be8a7772b28",
+      "matches_2026_10_15_prior_manifest": true
+    },
+    {
+      "path": "apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/mac-arm64/ReelTerminal.app/Contents/Resources/app.asar",
+      "bytes": 135556932,
+      "sha256": "5c11ff60687d0f2de0dd7df999d9586fe3251e82654297165e8fd9f0117227a0",
+      "matches_2026_10_15_prior_manifest": null
+    }
+  ]
+}
