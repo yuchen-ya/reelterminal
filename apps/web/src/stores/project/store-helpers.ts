@@ -49,6 +49,7 @@ export function createProjectStoreHelpers(
   set: Set,
   get: Get,
   overlayEngines: { titleEngine: TitleEngine; graphicsEngine: GraphicsEngine },
+  invalidateRedoBranches: () => Pick<ProjectState, "templateRedoStack" | "redoJournal">,
 ): ProjectStoreHelpers {
   const cloneClipSnapshot = <T,>(clip: T): T =>
     JSON.parse(JSON.stringify(clip)) as T;
@@ -86,6 +87,7 @@ export function createProjectStoreHelpers(
       modifiedAt: Date.now(),
     } as Project;
     set({
+      ...invalidateRedoBranches(),
       project: {
         ...nextProject,
         timeline: {
@@ -129,6 +131,7 @@ export function createProjectStoreHelpers(
       modifiedAt: Date.now(),
     } as Project;
     set({
+      ...invalidateRedoBranches(),
       project: {
         ...nextProject,
         timeline: {
@@ -168,6 +171,7 @@ export function createProjectStoreHelpers(
       modifiedAt: Date.now(),
     } as Project;
     set({
+      ...invalidateRedoBranches(),
       project: {
         ...nextProject,
         timeline: {

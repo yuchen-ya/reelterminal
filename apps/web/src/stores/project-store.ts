@@ -788,6 +788,13 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
     const actionExecutor = new ActionExecutor(actionHistory);
     let executingBatchOperation: PerfOperation | undefined;
 
+    // Call only at a validated new-edit commit, never for undo/redo or an
+    // unsuccessful operation. Both history systems keep their valid undo.
+    const invalidateRedoBranches = (): Pick<ProjectState, "templateRedoStack" | "redoJournal"> => {
+      get().actionHistory.clearRedo();
+      return { templateRedoStack: [], redoJournal: [] };
+    };
+
     const getProjectClipIds = (project: Project): string[] => [
       ...project.timeline.tracks.flatMap((track) =>
         track.clips.map((clip) => clip.id),
@@ -1063,7 +1070,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
       sharedEngines.getGraphicsEngine()?.loadStickerClips(project.stickerClips ?? []);
     };
 
-    const helpers = createProjectStoreHelpers(set, get, overlayEngines);
+    const helpers = createProjectStoreHelpers(set, get, overlayEngines, invalidateRedoBranches);
     const { syncOverlayEnginesFromProject } = helpers;
 
     type OverlayEffectOwner = TextClip | ShapeClip | SVGClip | StickerClip;
@@ -1970,7 +1977,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
       }),
 
       // Media library actions
-      ...createMediaSlice(set, get),
+      ...createMediaSlice(set, get, invalidateRedoBranches),
 
       // Track actions
       ...createTrackSlice(set, get),
@@ -2927,7 +2934,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
               try {
                 set({
                   project: committedProject,
-                  templateRedoStack: [],
+                  ...invalidateRedoBranches(),
                 });
               } catch (error) {
                 // Zustand assigns state before notifying subscribers. Treat a
@@ -3070,7 +3077,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
         set({
           project: applied.project,
           templateUndoStack: [...templateUndoStack, historyEntry],
-          templateRedoStack: [],
+          ...invalidateRedoBranches(),
         });
 
         return applied.applicationState.applicationId;
@@ -3131,7 +3138,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
         set({
           project: updated.project,
           templateUndoStack: [...templateUndoStack, historyEntry],
-          templateRedoStack: [],
+          ...invalidateRedoBranches(),
         });
 
         return true;
@@ -3144,7 +3151,6 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
         const {
           project,
           templateUndoStack,
-          templateRedoStack,
         } = get();
 
         if (!hasEditingTemplateArtifacts(project, clipId, applicationId)) {
@@ -3166,10 +3172,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             (entry) =>
               !(entry.ownerClipId === clipId && entry.applicationId === applicationId),
           ),
-          templateRedoStack: templateRedoStack.filter(
-            (entry) =>
-              !(entry.ownerClipId === clipId && entry.applicationId === applicationId),
-          ),
+          ...invalidateRedoBranches(),
         });
 
         return true;
@@ -4084,7 +4087,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
         }
 
         syncClipEffectsBridge(updatedProject, clipId);
-        set({ project: updatedProject, templateRedoStack: [] });
+        set({ project: updatedProject, ...invalidateRedoBranches() });
         const actionId = uuidv4();
         get().actionExecutor.getHistory().push(
           {
@@ -4593,7 +4596,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             };
             set({
               project: updatedProject,
-              templateRedoStack: [],
+              ...invalidateRedoBranches(),
             });
             const actionId = uuidv4();
             get().actionExecutor.getHistory().push(

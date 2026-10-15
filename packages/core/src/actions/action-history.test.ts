@@ -234,6 +234,25 @@ describe("ActionHistory group ownership", () => {
 });
 
 describe("ActionHistory eviction listener", () => {
+  it("discards redo without losing valid undo entries and releases only the discarded entries", () => {
+    const history = new ActionHistory();
+    const first = act("track/add", { trackType: "video" });
+    const second = act("track/add", { trackType: "audio" });
+    history.push(first, inv("track/remove"));
+    history.push(second, inv("track/remove"));
+    history.undo();
+    const evicted: HistoryEntry[] = [];
+    history.setEvictionListener((entries) => evicted.push(...entries));
+
+    history.clearRedo();
+
+    expect(history.getHistory()).toEqual([first]);
+    expect(history.canUndo()).toBe(true);
+    expect(history.canRedo()).toBe(false);
+    expect(evicted.map((entry) => entry.action)).toEqual([second]);
+    expect(history.undo()).not.toBeNull();
+    expect(history.canRedo()).toBe(true);
+  });
   const collectEvictions = (history: ActionHistory) => {
     const evictions: HistoryEntry[][] = [];
     history.setEvictionListener((evicted) => evictions.push([...evicted]));

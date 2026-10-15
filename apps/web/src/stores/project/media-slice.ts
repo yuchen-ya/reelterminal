@@ -266,7 +266,11 @@ function revokeMediaItemBlobUrls(item: MediaItem): void {
   }
 }
 
-export function createMediaSlice(set: Set, get: Get): MediaSlice {
+export function createMediaSlice(
+  set: Set,
+  get: Get,
+  invalidateRedoBranches: () => Pick<ProjectState, "templateRedoStack" | "redoJournal">,
+): MediaSlice {
   return {
     importMedia: async (file: File, options: ImportMediaOptions = {}) => {
       ensureProjectMediaGc(get().actionHistory, () => get().project);
@@ -765,7 +769,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           });
         }
         const actionResult = await actionExecutor.execute(action, project);
-        if (actionResult.success) set({ project: { ...project } });
+        if (actionResult.success) set({ project: { ...project }, ...invalidateRedoBranches() });
         return actionResult;
       });
       return result;
@@ -934,6 +938,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
             if (!linked.success) return linked;
             const latestProject = get().project;
             set({
+              ...invalidateRedoBranches(),
               project: {
                 ...latestProject,
                 mediaLibrary: {
@@ -1006,7 +1011,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
       };
       const result = await actionExecutor.execute(action, project);
       if (result.success) {
-        set({ project: { ...project } });
+        set({ project: { ...project }, ...invalidateRedoBranches() });
       }
       return result;
     },

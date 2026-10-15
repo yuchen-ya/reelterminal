@@ -603,6 +603,18 @@ export class ActionHistory {
     return [...this.redoStack];
   }
 
+  /** A committed edit outside the action executor invalidates the redo branch. */
+  clearRedo(): void {
+    if (this.redoStack.length === 0) return;
+    const evicted = this.redoStack;
+    this.redoStack = [];
+    this.snapshots = this.snapshots.filter(
+      (snapshot) => snapshot.stackIndex <= this.undoStack.length,
+    );
+    this.emitEviction(evicted);
+    this.notify();
+  }
+
   clear(): void {
     const evicted = [...this.undoStack, ...this.redoStack];
     this.undoStack = [];
