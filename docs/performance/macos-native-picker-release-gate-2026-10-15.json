@@ -1,5 +1,5 @@
 {
-  "schema": "reelterminal.macos-native-picker-release-gate/v1",
+  "schema": "reelterminal.macos-native-picker-release-gate/v2",
   "date": "2026-10-15",
   "timezone": "Asia/Shanghai",
   "release_ready": false,
@@ -103,12 +103,12 @@
     "no returned tracks, no media additions, revision unchanged"
   ],
   "not_proven": [
-    "why macOS native picker did not become interactively visible",
-    "whether manually clicking without automated UI observation works",
-    "a product-level minimal runtime fix"
+    "why some native requests do not expose usable source-selection UI before the 10-second source deadline",
+    "successful selection and recording of the separately named animated synthetic window",
+    "a product runtime root-cause fix or readiness of the latest source as a newly built Mac candidate"
   ],
-  "manual_required": "currently needed for real system selection and cancellation; not a confirmed workaround",
-  "manual_status": "ready_for_cancel",
+  "manual_required": "real system picker interaction needed human input in this environment; manual operation is not a reliable complete workaround",
+  "manual_status": "partial_pass; specified synthetic target not selected; all owned tests cleaned up",
   "permission_changes": false,
   "new_build_or_package": false,
   "long_tests_rerun": false,
@@ -126,12 +126,6 @@
       "finding": "native capturer invokes SCContentSharingPicker present and waits for selected filter; patch includes cancellation callback caveat"
     }
   ],
-  "manual_result_at_report": {
-    "status": "running",
-    "phase": "ready_for_cancel",
-    "request_count": 0,
-    "acceptance": "not_performed; awaiting human input"
-  },
   "evidence_manifest": [
     {
       "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-trace-result.json",
@@ -202,6 +196,310 @@
       "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/upstream/feat_allow_usage_of_sccontentsharingpicker_on_supported_platforms.patch",
       "bytes": 17910,
       "sha256": "4d01f6e0d6e98bdd5c3e3a3e30b71411111315f2dd6484405cba8cda0d86af54"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/native-manual-result.json",
+      "bytes": 193758,
+      "sha256": "c81f9cb14412d7d93da6a181fb09d850293efe383c6ea09d5aa4d597f0559a06"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/native-manual.diagnostic.ts",
+      "bytes": 7418,
+      "sha256": "903e1a8cfbb7796f7628b01cd8aca2c871316e8e61278ed3bd16f424178b8176"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/native-manual.vitest.ts",
+      "bytes": 239,
+      "sha256": "5cd8ba275aeb9c477a76c9e77cbe1c445b30a509df1742ae7c598c6d27c55e9d"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/native-manual.log",
+      "bytes": 1158,
+      "sha256": "3f24b4410733d0b97e406d66416fd2af81b7a2ad469276b7edbd7a0a6998da1f"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/manual-current-app-validation.json",
+      "bytes": 2620,
+      "sha256": "0502f6e768672d90938c066360cef05daab929eb8da7e28d028523da2abd5d75"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/manual-current-app-recording.webm",
+      "bytes": 2142570,
+      "sha256": "4e47761065c3f6fef4c0e106b81e899bcf822fbf38c74cc199522a423c3e3d0c"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/manual-current-app-frame.png",
+      "bytes": 289876,
+      "sha256": "a92aff2598f351de1107ae6cf39ccc9c078505b287c47c3483ed5a69a8f61f99"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/before-real-cancel.json",
+      "bytes": 5232,
+      "sha256": "164512f3d2b1142b6acad8c590380c7d4835b950a4a4beec237911d1415ba709"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/second-request-product-cancel-validation.json",
+      "bytes": 2336,
+      "sha256": "56016ff39659d34615f2c26ad803a7384711fc8773c4db462728210e270972eb"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/human-cancel-observation.json",
+      "bytes": 191,
+      "sha256": "60edac23042df5668b639c809d436fa398dd6c9d2f90c6b3fba1c624dea807bc"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/current-app-system-log.json",
+      "bytes": 66537,
+      "sha256": "d9d9fb159291e97a8ae7e9405bdf2e5ced80469685d1b0588882ec883900574b"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-manual-retry-2026-10-15/current-app-system-events-sanitized.json",
+      "bytes": 6701,
+      "sha256": "d47dbe1d28325ea4d96c0feaa9beeed5644b620f2fe6d3ee22085d095eb21dc7"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/native-manual-result.json",
+      "bytes": 127706,
+      "sha256": "9a3080f21f2bf4dec57f15df8ef1b27a9b8c6a906eb26de163ff89b978245214"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/native-manual.diagnostic.ts",
+      "bytes": 7715,
+      "sha256": "4a267ded55f01f95fbe68b77bfdadaa06a8f2653ea23bad1e3b0295ed753acff"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/native-manual.vitest.ts",
+      "bytes": 239,
+      "sha256": "b8a044d01d6bee191dbb93d23ff23d2c4ae555bdd479940366f04add0192e72a"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/native-manual.log",
+      "bytes": 1158,
+      "sha256": "fe3215114ea66445cff157d8fe4e665c72fa287f27b56a6e6265c82dc92eb664"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/human-system-cancel-confirmation.json",
+      "bytes": 183,
+      "sha256": "32f94c585ce7894c0a4410a3880f344d1e41fe57c6b72c63386a0a580a9df13e"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/verified-system-cancel-summary.json",
+      "bytes": 1225,
+      "sha256": "5510f997bcb160d41312133f552783568f4c485b96e724af945c6030af087008"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/human-target-selection-observation.json",
+      "bytes": 146,
+      "sha256": "43116fc99c3a25515fe63ede349b2f27cab6f748c1d56e0271c9659522d7927d"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/observe-selected-stream.py",
+      "bytes": 980,
+      "sha256": "3a2fd4cd27ad6e6eafcdbc47b057178912a2b7f2844521e3ccc3c3ba459d69da"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/observe-selected-stream.log",
+      "bytes": 23,
+      "sha256": "7de64dca5963028c88fb577846bb0c90477547f9109bac12910c2a47e4eb87ff"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/fresh-system-log.json",
+      "bytes": 50134,
+      "sha256": "c34b77044e24b914198cca5b5841fc44898697da5654e7737620fcbddb5b7254"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/fresh-system-events-sanitized.json",
+      "bytes": 5117,
+      "sha256": "f3f64f8ad613475bb6ca683717e77ec1bd516f5a32d3e1c60585413277207806"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/cleanup-verification.json",
+      "bytes": 761,
+      "sha256": "a101c1d8e83a9a3a6ce66e4c4d8e31eb2bc510360c18982dd68ce0b33c1bdc78"
     }
-  ]
+  ],
+  "report_checkout_head": "3e9f853c034967aa7b39a5c884436b366c797ecd",
+  "package_asar_sha256_reverified": "5c11ff60687d0f2de0dd7df999d9586fe3251e82654297165e8fd9f0117227a0",
+  "manual_followup": {
+    "package_source_head": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
+    "runtime_fix_applied": false,
+    "original_failed_manual_preparation": {
+      "pid": 13437,
+      "result": "operator gate expired without any source request; not a failed capture and not a cancellation pass"
+    },
+    "current_app_recording": {
+      "human_observation": "我点了准许录制当前应用窗口",
+      "owned_pid": 14390,
+      "request": {
+        "started_local": "2026-10-15T19:16:15.835+08:00",
+        "finished_local": "2026-10-15T19:16:20.764+08:00",
+        "elapsed_ms": 4929,
+        "result": "resolved"
+      },
+      "source_verified": "decoded sample shows isolated ReelTerminal test editor, not the separately named animated synthetic window",
+      "codec": "vp9",
+      "width": 1846,
+      "height": 1078,
+      "audio_streams": 0,
+      "max_packet_end_seconds": 58.157,
+      "packet_count": 1677,
+      "full_decode_exit_code": 0,
+      "media_count_after": 1,
+      "revision_after": 1,
+      "tracks_after": [
+        {
+          "kind": "video",
+          "label": "",
+          "readyState": "ended",
+          "settings": {
+            "deviceId": "window:-4:-1"
+          }
+        }
+      ],
+      "status": "capture_stop_import_decode_passed_for_owned_current_app_window_only",
+      "acceptance_deviation": "user selected current app before cancellation leg; original harness zero-media cancel baseline no longer applicable; no full scenario pass claimed"
+    },
+    "second_request_in_same_process": {
+      "human_observation": "未出现系统选源界面",
+      "request": {
+        "started_local": "2026-10-15T19:19:23.166+08:00",
+        "finished_local": "2026-10-15T19:19:25.092+08:00",
+        "elapsed_ms": 1926,
+        "result": "resolved"
+      },
+      "returned_window_stream": true,
+      "operator_cleanup": "product Cancel recording discarded the second recording; not system picker cancellation",
+      "product_cancel_verified": true,
+      "revision_before": 1,
+      "revision_after": 1,
+      "media_count_before": 1,
+      "media_count_after": 1,
+      "pending_after": 0,
+      "all_tracks_ended": true
+    },
+    "fresh_process_real_system_cancel": {
+      "owned_pid": 14977,
+      "human_confirmation": "已在系统选源界面取消",
+      "requests": [
+        {
+          "started_local": "2026-10-15T19:21:26.399+08:00",
+          "finished_local": "2026-10-15T19:21:30.522+08:00",
+          "elapsed_ms": 4123,
+          "result": "rejected",
+          "error": {
+            "name": "NotReadableError",
+            "message": "Could not start video source"
+          }
+        },
+        {
+          "started_local": "2026-10-15T19:22:41.049+08:00",
+          "finished_local": "2026-10-15T19:22:43.130+08:00",
+          "elapsed_ms": 2081,
+          "result": "rejected",
+          "error": {
+            "name": "NotReadableError",
+            "message": "Could not start video source"
+          }
+        }
+      ],
+      "system_cancel_events": [
+        {
+          "time": "2026-10-15 19:21:30.517371+0800",
+          "message": " [INFO] -[RPDaemonProxy contentPickerDidCancelForStream:]:1590"
+        },
+        {
+          "time": "2026-10-15 19:22:43.129088+0800",
+          "message": " [INFO] -[RPDaemonProxy contentPickerDidCancelForStream:]:1590"
+        }
+      ],
+      "verified": true,
+      "revision_before": 0,
+      "revision_after": 0,
+      "media_count_before": 0,
+      "media_count_after": 0,
+      "pending_after": 0,
+      "tracks_after": [],
+      "media_recorders_created": 0,
+      "workspace_after": {
+        "runtimes": 1,
+        "queuedWrites": 0,
+        "pendingWrites": 0,
+        "initializingRuntimeCount": 0,
+        "editedWorkspaceCount": 0,
+        "activeWriteDrainCount": 0,
+        "queuedCommandCount": 0,
+        "failedWriteCount": 0,
+        "activeWorkspace": true
+      },
+      "autosave_after": {
+        "status": "idle",
+        "automaticSaveRunning": false,
+        "pendingRevision": false,
+        "scheduledSave": false,
+        "queuedSaveOperations": 0
+      }
+    },
+    "specified_synthetic_window_attempt": {
+      "target": "REELTERMINAL SYNTHETIC PICKER TEST 14977; green background, moving orange block, FRAME counter",
+      "human_observation": "没有系统选源界面／找不到目标窗口",
+      "request": {
+        "started_local": "2026-10-15T19:28:12.366+08:00",
+        "finished_local": "2026-10-15T19:28:22.403+08:00",
+        "elapsed_ms": 10037,
+        "result": "rejected",
+        "error": {
+          "name": "AbortError",
+          "message": "Timeout starting video source"
+        }
+      },
+      "target_selected": false,
+      "stream_returned": false,
+      "media_recorders_created": 0,
+      "revision_after": 0,
+      "media_count_after": 0,
+      "stop_import_decode_for_target": "not_covered"
+    },
+    "cleanup": {
+      "checked_epoch_ms": 1792063801986,
+      "owned_main_pids": [
+        14390,
+        14977
+      ],
+      "owned_main_or_direct_children_still_present": [],
+      "pending_capture_requests": 0,
+      "observed_returned_tracks": 0,
+      "created_media_recorders": 0,
+      "final_revision": 0,
+      "final_media_count": 0,
+      "workspace": {
+        "runtimes": 1,
+        "queuedWrites": 0,
+        "pendingWrites": 0,
+        "initializingRuntimeCount": 0,
+        "editedWorkspaceCount": 0,
+        "activeWriteDrainCount": 0,
+        "queuedCommandCount": 0,
+        "failedWriteCount": 0,
+        "activeWorkspace": true
+      },
+      "autosave": {
+        "status": "idle",
+        "automaticSaveRunning": false,
+        "pendingRevision": false,
+        "scheduledSave": false,
+        "queuedSaveOperations": 0
+      },
+      "user_applications_closed": false
+    },
+    "runner_status_caveat": "both manual runners intentionally stopped at uncovered/deviated legs; their operator_abort exits are retained; a successful leg does not become a full-suite pass",
+    "permission_boundary": "no scripted permission changes; preflight screen=granted, microphone/camera disabled. User current-app consent wording preserved without assuming it changed a global TCC setting."
+  },
+  "coordination": {
+    "provided_windows_thread_id": "01a13eb4-274b-7347-a06b-5cd95d37e026",
+    "read_thread_result": "not found on available local host",
+    "send_message_result": "not found on available local host; no delivery claimed",
+    "runtime_files_changed_by_this_work": [],
+    "remote_changes_preserved_through": "3e9f853c",
+    "merge": "fast-forward after all owned capture tests completed"
+  }
 }
