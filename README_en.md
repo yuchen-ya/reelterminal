@@ -75,7 +75,7 @@ Some export, media-analysis, and frame tools need local FFmpeg/ffprobe. OpenCV t
 
 ### Option 2: Build from source
 
-Use Node.js 22.13.0 or newer and the repository-pinned pnpm 11.7.0. The examples invoke pnpm through Corepack:
+Use Node.js 22.13.0 or newer and the repository-pinned pnpm 11.7.0. Enable Corepack so that the `pnpm` command is also available to build scripts:
 
 ```bash
 # 1. Clone the repository
@@ -83,6 +83,7 @@ git clone https://github.com/yuchen-ya/reelterminal.git
 cd reelterminal
 
 # 2. Install dependencies and build the WASM modules
+corepack enable
 corepack pnpm install --frozen-lockfile
 corepack pnpm build:wasm
 

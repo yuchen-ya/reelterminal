@@ -77,12 +77,13 @@ flowchart LR
 
 ### 方式二：开发者源码构建与启动
 
-使用 Node.js 22.13.0 或更新版本，以及仓库固定的 pnpm 11.7.0。以下示例通过 Corepack 调用 pnpm：
+使用 Node.js 22.13.0 或更新版本，以及仓库固定的 pnpm 11.7.0。示例先启用 Corepack，确保构建脚本也能找到 `pnpm` 命令：
 
 ```bash
 git clone https://github.com/yuchen-ya/reelterminal.git
 cd reelterminal
 
+corepack enable
 corepack pnpm install --frozen-lockfile
 corepack pnpm build:wasm
 corepack pnpm --filter @reelterminal/desktop build
