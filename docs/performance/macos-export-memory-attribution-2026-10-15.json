@@ -1,0 +1,704 @@
+{
+  "schema": "reelterminal.export-memory-attribution/v1",
+  "date": "2026-10-15",
+  "timezone": "Asia/Shanghai",
+  "original_tested_commit": "92f8f75335f5281334797c15541e59b493358db4",
+  "analysis_parent_commit": "e17f5003e97cc4c0c601cbcc0652216e95c739e0",
+  "fix_commit": "3088bf4f2f45233b6aa552ba0b4f9ba6a7c546b5",
+  "retained_original_export_run": "real-media-1792006839220",
+  "scope": "retained evidence first, then four variants x two 12-second real exports; no repeated R02/T03/full stress suite",
+  "cases": [
+    {
+      "case": "run-3",
+      "runtime_variant": "unmodified runtime, lifecycle instrumentation",
+      "completed_real_exports": 2,
+      "frames_per_export": 360,
+      "media_duration_seconds": 12,
+      "post_export_idle_seconds": 30,
+      "command_seconds": 310.9859778881073,
+      "functional_full_decode_passed": true,
+      "sampled_frame_counter_oracle_passed": false,
+      "checkpoints": [
+        {
+          "seq": 15,
+          "round": 1,
+          "phase": "after_export_finally",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 3768.0,
+          "browser_top_MEM_MiB": 4264.0,
+          "cumulative_video_decoders_created": 1082,
+          "cumulative_video_decoders_closed": 1082,
+          "backwards_resets": null,
+          "heap": {
+            "usedSize": 43777796,
+            "totalSize": 90554368,
+            "embedderHeapUsedSize": 3222576,
+            "backingStorageSize": 13382242
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        },
+        {
+          "seq": 30,
+          "round": 2,
+          "phase": "after_export_finally",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 4121.0,
+          "browser_top_MEM_MiB": 4267.0,
+          "cumulative_video_decoders_created": 1272,
+          "cumulative_video_decoders_closed": 1272,
+          "backwards_resets": null,
+          "heap": {
+            "usedSize": 7982160,
+            "totalSize": 43220992,
+            "embedderHeapUsedSize": 3203584,
+            "backingStorageSize": 41141674
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        },
+        {
+          "seq": 31,
+          "round": 2,
+          "phase": "idle_30s",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 4086.0,
+          "browser_top_MEM_MiB": 4267.0,
+          "cumulative_video_decoders_created": 1272,
+          "cumulative_video_decoders_closed": 1272,
+          "backwards_resets": null,
+          "heap": {
+            "usedSize": 7778456,
+            "totalSize": 9928704,
+            "embedderHeapUsedSize": 3112424,
+            "backingStorageSize": 2648307
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        }
+      ],
+      "vmmap": [
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/run-3/vmmap-15-96950-after_export_finally.txt",
+          "physical_footprint_reported": "3.7G",
+          "shared_memory_summary": "shared memory                      5.0G   155.3M   155.3M     3.3G       0K       0K       0K     2512",
+          "shared_memory_region_count": 2512,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        },
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/run-3/vmmap-30-96950-after_export_finally.txt",
+          "physical_footprint_reported": "4.0G",
+          "shared_memory_summary": "shared memory                      5.4G   245.9M   245.9M     3.6G       0K       0K       0K     2702",
+          "shared_memory_region_count": 2702,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        },
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/run-3/vmmap-31-96950-idle_30s.txt",
+          "physical_footprint_reported": "4.0G",
+          "shared_memory_summary": "shared memory                      5.4G    56.9M    56.9M     3.8G       0K       0K       0K     2702",
+          "shared_memory_region_count": 2702,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        }
+      ],
+      "source_runtime_files_verified_against_fix_commit": false
+    },
+    {
+      "case": "cold-init-fixed",
+      "runtime_variant": "initialize media engine only",
+      "completed_real_exports": 2,
+      "frames_per_export": 360,
+      "media_duration_seconds": 12,
+      "post_export_idle_seconds": 30,
+      "command_seconds": 221.7124888896942,
+      "functional_full_decode_passed": true,
+      "sampled_frame_counter_oracle_passed": false,
+      "checkpoints": [
+        {
+          "seq": 15,
+          "round": 1,
+          "phase": "after_export_finally",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 1121.0,
+          "browser_top_MEM_MiB": 21.0,
+          "cumulative_video_decoders_created": 191,
+          "cumulative_video_decoders_closed": 191,
+          "backwards_resets": 187,
+          "heap": {
+            "usedSize": 21714600,
+            "totalSize": 46759936,
+            "embedderHeapUsedSize": 791104,
+            "backingStorageSize": 39765560
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        },
+        {
+          "seq": 30,
+          "round": 2,
+          "phase": "after_export_finally",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 1423.0,
+          "browser_top_MEM_MiB": 23.0,
+          "cumulative_video_decoders_created": 381,
+          "cumulative_video_decoders_closed": 381,
+          "backwards_resets": 374,
+          "heap": {
+            "usedSize": 7717704,
+            "totalSize": 76775424,
+            "embedderHeapUsedSize": 913736,
+            "backingStorageSize": 49136349
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        },
+        {
+          "seq": 31,
+          "round": 2,
+          "phase": "idle_30s",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 1343.0,
+          "browser_top_MEM_MiB": 23.0,
+          "cumulative_video_decoders_created": 381,
+          "cumulative_video_decoders_closed": 381,
+          "backwards_resets": 374,
+          "heap": {
+            "usedSize": 7161132,
+            "totalSize": 8617984,
+            "embedderHeapUsedSize": 805784,
+            "backingStorageSize": 2648741
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        }
+      ],
+      "vmmap": [
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/cold-init-fixed/vmmap-15-98219-after_export_finally.txt",
+          "physical_footprint_reported": "1.1G",
+          "shared_memory_summary": "shared memory                    905.3M   855.0M   855.0M    43.2M       0K       0K       0K      286",
+          "shared_memory_region_count": 286,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        },
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/cold-init-fixed/vmmap-30-98219-after_export_finally.txt",
+          "physical_footprint_reported": "1.4G",
+          "shared_memory_summary": "shared memory                      1.3G     1.1G     1.1G   186.4M       0K       0K       0K      477",
+          "shared_memory_region_count": 477,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        },
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/cold-init-fixed/vmmap-31-98219-idle_30s.txt",
+          "physical_footprint_reported": "1.3G",
+          "shared_memory_summary": "shared memory                      1.3G     1.1G     1.1G   186.4M       0K       0K       0K      477",
+          "shared_memory_region_count": 477,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        }
+      ],
+      "source_runtime_files_verified_against_fix_commit": false
+    },
+    {
+      "case": "clip-stream-fixed",
+      "runtime_variant": "initialize media engine + clip stream cursors",
+      "completed_real_exports": 2,
+      "frames_per_export": 360,
+      "media_duration_seconds": 12,
+      "post_export_idle_seconds": 30,
+      "command_seconds": 67.0463879108429,
+      "functional_full_decode_passed": true,
+      "sampled_frame_counter_oracle_passed": true,
+      "checkpoints": [
+        {
+          "seq": 15,
+          "round": 1,
+          "phase": "after_export_finally",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 795.0,
+          "browser_top_MEM_MiB": 24.0,
+          "cumulative_video_decoders_created": 5,
+          "cumulative_video_decoders_closed": 5,
+          "backwards_resets": 0,
+          "heap": {
+            "usedSize": 21339672,
+            "totalSize": 50790400,
+            "embedderHeapUsedSize": 886856,
+            "backingStorageSize": 48730539
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "exportDecoderStreams": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        },
+        {
+          "seq": 30,
+          "round": 2,
+          "phase": "after_export_finally",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 851.0,
+          "browser_top_MEM_MiB": 28.0,
+          "cumulative_video_decoders_created": 9,
+          "cumulative_video_decoders_closed": 9,
+          "backwards_resets": 0,
+          "heap": {
+            "usedSize": 42985680,
+            "totalSize": 90030080,
+            "embedderHeapUsedSize": 805208,
+            "backingStorageSize": 48665136
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "exportDecoderStreams": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        },
+        {
+          "seq": 31,
+          "round": 2,
+          "phase": "idle_30s",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 610.0,
+          "browser_top_MEM_MiB": 27.0,
+          "cumulative_video_decoders_created": 9,
+          "cumulative_video_decoders_closed": 9,
+          "backwards_resets": 0,
+          "heap": {
+            "usedSize": 7011868,
+            "totalSize": 8093696,
+            "embedderHeapUsedSize": 395256,
+            "backingStorageSize": 2649265
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "exportDecoderStreams": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        }
+      ],
+      "vmmap": [
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/clip-stream-fixed/vmmap-15-99502-after_export_finally.txt",
+          "physical_footprint_reported": "794.8M",
+          "shared_memory_summary": "shared memory                    535.3M   522.8M   522.8M    5552K       0K       0K       0K      101",
+          "shared_memory_region_count": 101,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        },
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/clip-stream-fixed/vmmap-30-99502-after_export_finally.txt",
+          "physical_footprint_reported": "851.2M",
+          "shared_memory_summary": "shared memory                    549.3M   529.9M   529.9M    12.3M       0K       0K       0K      108",
+          "shared_memory_region_count": 108,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        },
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/clip-stream-fixed/vmmap-31-99502-idle_30s.txt",
+          "physical_footprint_reported": "602.5M",
+          "shared_memory_summary": "shared memory                    541.3M   522.0M   522.0M    12.3M       0K       0K       0K      107",
+          "shared_memory_region_count": 107,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        }
+      ],
+      "source_runtime_files_verified_against_fix_commit": false,
+      "source_runtime_files_verified_against_initial_fix_commit": true
+    },
+    {
+      "case": "bounded-stream-fixed",
+      "runtime_variant": "both fixes + retire inactive auxiliary cursors",
+      "completed_real_exports": 2,
+      "frames_per_export": 360,
+      "media_duration_seconds": 12,
+      "post_export_idle_seconds": 30,
+      "command_seconds": 68.63543891906738,
+      "functional_full_decode_passed": true,
+      "sampled_frame_counter_oracle_passed": true,
+      "checkpoints": [
+        {
+          "seq": 15,
+          "round": 1,
+          "phase": "after_export_finally",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 804.0,
+          "browser_top_MEM_MiB": 24.0,
+          "cumulative_video_decoders_created": 5,
+          "cumulative_video_decoders_closed": 5,
+          "backwards_resets": 0,
+          "heap": {
+            "usedSize": 21352912,
+            "totalSize": 50266112,
+            "embedderHeapUsedSize": 765928,
+            "backingStorageSize": 48665866
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "exportDecoderStreams": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        },
+        {
+          "seq": 30,
+          "round": 2,
+          "phase": "after_export_finally",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 854.0,
+          "browser_top_MEM_MiB": 28.0,
+          "cumulative_video_decoders_created": 9,
+          "cumulative_video_decoders_closed": 9,
+          "backwards_resets": 0,
+          "heap": {
+            "usedSize": 43021332,
+            "totalSize": 89505792,
+            "embedderHeapUsedSize": 681064,
+            "backingStorageSize": 48731426
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "exportDecoderStreams": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        },
+        {
+          "seq": 31,
+          "round": 2,
+          "phase": "idle_30s",
+          "frames": 360,
+          "renderer_top_MEM_MiB": 608.0,
+          "browser_top_MEM_MiB": 27.0,
+          "cumulative_video_decoders_created": 9,
+          "cumulative_video_decoders_closed": 9,
+          "backwards_resets": 0,
+          "heap": {
+            "usedSize": 7028048,
+            "totalSize": 8355840,
+            "embedderHeapUsedSize": 395256,
+            "backingStorageSize": 2649995
+          },
+          "resources": {
+            "exportDecoders": 0,
+            "frameCache": 0,
+            "exportDecoderStreams": 0,
+            "videoElementCache": 0,
+            "staticImageCache": 0,
+            "interpFrameCache": 0,
+            "gifFrameCache": 0
+          }
+        }
+      ],
+      "vmmap": [
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-stream-fixed/vmmap-15-1308-after_export_finally.txt",
+          "physical_footprint_reported": "804.5M",
+          "shared_memory_summary": "shared memory                    536.3M   525.3M   525.3M    4768K       0K       0K       0K      104",
+          "shared_memory_region_count": 104,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        },
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-stream-fixed/vmmap-30-1308-after_export_finally.txt",
+          "physical_footprint_reported": "853.6M",
+          "shared_memory_summary": "shared memory                    550.3M   533.0M   533.0M    10.9M       0K       0K       0K      111",
+          "shared_memory_region_count": 111,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        },
+        {
+          "artifact": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-stream-fixed/vmmap-31-1308-idle_30s.txt",
+          "physical_footprint_reported": "607.9M",
+          "shared_memory_summary": "shared memory                    542.4M   525.1M   525.1M    10.9M       0K       0K       0K      110",
+          "shared_memory_region_count": 110,
+          "partition_alloc_analysis_incomplete": null,
+          "success_stderr_retained": false,
+          "analysis_completeness": "unknown; do not infer completeness from warning absence"
+        }
+      ],
+      "source_runtime_files_verified_against_fix_commit": true
+    }
+  ],
+  "localized_triggers": [
+    {
+      "trigger": "cold_media_engine_initialization",
+      "proof": "createExportDecoder throws before initialization and caller swallows it; first export falls back to getFrameAtTime per video frame",
+      "fix": "initialize media engine before decoder preparation"
+    },
+    {
+      "trigger": "shared_sequential_cursor_between_overlapping_clips",
+      "proof": "source-2 requests alternate ~5.9sec and 0sec; cold-only variant records 187 backwards resets per export",
+      "fix": "lazy independent cursor for each touched clip, disposed with its source export decoder"
+    },
+    {
+      "trigger": "auxiliary cursor lifetime",
+      "fix": "retire auxiliary cursors absent from the current outermost export frame; keep the source primary cursor, avoid retaining every touched clip until export end",
+      "validation": "unit verifies unused cursor input/iterator disposal; final two real exports verify zero backwards resets and correct AV/frame markers"
+    }
+  ],
+  "attribution_limit": "Growth is localized to video decode churn and native/shared allocations that persist after close. Underlying Chromium C++ retaining object/allocator ownership remains unidentified; no claim all native memory is released. Two fixed exports are not a release soak or formal performance comparison.",
+  "observations": {
+    "no_forced_GC": true,
+    "no_history_limit_change": true,
+    "no_worker_restart_between_exports_within_each_case": true,
+    "cases_are_separate_processes_for_configuration_isolation": true,
+    "memory_statistics_are_diagnostic_not_performance_scores": true,
+    "final_renderer_after_first_MiB": 804.0,
+    "final_renderer_after_second_MiB": 854.0,
+    "final_renderer_after_idle_MiB": 608.0
+  },
+  "validation": {
+    "meaningful_before_fix_regressions_failed": 2,
+    "targeted_core_tests_passed": 45,
+    "core_typecheck": "passed",
+    "runtime_typecheck": "passed",
+    "production_worker_build": {
+      "status": "passed",
+      "artifact": "apps/desktop/dist/browser-entry.mjs",
+      "bytes": 2557948,
+      "sha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b",
+      "native_app_repackaged": false,
+      "instrumented_diagnostic_bundle_is_separate": true
+    },
+    "final_raw_metadata_correction": "Earlier patched runs incorrectly hardcoded no_production_code_change=true; raw results preserved. Final bounded-stream run uses the corrected real_business_methods_not_simulated field; runtime file hashes verify actual patches.",
+    "setup_failures_preserved": [
+      "root run.log: diagnostic variable collision before launch",
+      "run-2/run.log: wrong probe method name; zero exports"
+    ],
+    "vmmap_stderr_limitation": "Directed summary captures retained stdout only on successful commands; completeness is unknown. Original and full baseline vmmap limitations retained. Future harness now persists stdout and stderr."
+  },
+  "release_acceptance": "not_revalidated; historical release recommendation not changed",
+  "native_app_repackaged": false,
+  "evidence_local_root": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15",
+  "cleanup": {
+    "completed_at": "2026-10-15T13:21:10.467010+08:00",
+    "owned_browser_process_count_observed": 24,
+    "remaining_owned_browser_processes": [],
+    "empty_failed_setup_temp_dirs_removed": [
+      "reelterminal-e2e-export-attribution-0obGJE"
+    ],
+    "all_caffeinate_commands_ended_with_test_subprocesses": true,
+    "failed_and_successful_evidence_preserved": true,
+    "no_user_project_or_profile_used": true,
+    "full_soak_repeated": false,
+    "small_scope": "four configurations, two 12-second exports each; final two configurations include sampled frame counters and AV stream verification",
+    "native_app_repackaged": false
+  },
+  "initial_fix_commit": "cc7e7834a52f4e1ed7a47ca84828fcb59e8dbfb0",
+  "evidence_file_digests": [
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/run-3/phase-memory.jsonl",
+      "bytes": 37251,
+      "sha256": "cfaa126034873af2f84c87fe5feb4b00a443cde2a1762150a2a538b6388d26f5"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/run-3/execution.json",
+      "bytes": 330,
+      "sha256": "5fb02920f53112a3a2dcbb465e960b3582b902202fccf4d30c71151ad820bcfc"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/run-3/exit.json",
+      "bytes": 55,
+      "sha256": "bd136fc42161262ed836103a1e8726514e84a7310485233ec5017f581f30b75a"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/run-3/vmmap-31-96950-idle_30s.txt",
+      "bytes": 6682,
+      "sha256": "a861fdc052bbc4127d3d22619e0dcb47441c2c9e20480243af3d1cb3e9e28939"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/run-3/vmmap-30-96950-after_export_finally.txt",
+      "bytes": 6833,
+      "sha256": "331c02eb0343847a3d318701c9bb0b1631392a116a6666b2f75259c7a707eb36"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/run-3/vmmap-15-96950-after_export_finally.txt",
+      "bytes": 6833,
+      "sha256": "cd2aea4a42927f2e8200b664f7af11b4d53e320fd92e475b8ce9e9a062ddbb94"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/cold-init-fixed/phase-memory.jsonl",
+      "bytes": 73403,
+      "sha256": "052404e70f586ac9409535afb5d4216588273c9489a01936d678c268db1273ff"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/cold-init-fixed/execution.json",
+      "bytes": 413,
+      "sha256": "ccc24caaf0450ad3759817d25f176485a452e464888f9b23daa2ff7607118902"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/cold-init-fixed/exit.json",
+      "bytes": 54,
+      "sha256": "72bdc5f2562f975791a4e9032492de73c85cc81bfacc5f9cd0e1c28403b16236"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/cold-init-fixed/vmmap-30-98219-after_export_finally.txt",
+      "bytes": 6836,
+      "sha256": "135a6831d90ac670dd855040d927ee6611f19b7086dc7fbcfa1f772570083ebe"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/cold-init-fixed/vmmap-15-98219-after_export_finally.txt",
+      "bytes": 6835,
+      "sha256": "57fdd61bd8b4d54e123b6987c0e1aea9e981b0a650222e93e630918622380a6f"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/cold-init-fixed/vmmap-31-98219-idle_30s.txt",
+      "bytes": 6684,
+      "sha256": "17217e3eb797f8a81a8ec657451dbefbf855cb3a4607e38f24c313da5e97e13a"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/clip-stream-fixed/phase-memory.jsonl",
+      "bytes": 49759,
+      "sha256": "598ccbeeb0077540da0c8f2a32db01a74523f0a19b27fe9f1b704787769e9ac4"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/clip-stream-fixed/execution.json",
+      "bytes": 515,
+      "sha256": "c76c54ca15f709252f09cf219df686991f9c4ebc7909d5e97e3cbacbeacfb877"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/clip-stream-fixed/exit.json",
+      "bytes": 55,
+      "sha256": "7a748ee866025c6cbd48b88bcc7cdd0100653ad47b3fe4d673085ca2b4f56074"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/clip-stream-fixed/vmmap-31-99502-idle_30s.txt",
+      "bytes": 6688,
+      "sha256": "313c77884a1cf0446e2f28a82d29b93b8be366f03112f025c69b1905ebdbc255"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/clip-stream-fixed/vmmap-30-99502-after_export_finally.txt",
+      "bytes": 6839,
+      "sha256": "2670fd0b0da9fa935f2735f13968daca2a43c0b2c8fd3cd25c1d3c8b13d32c1e"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/clip-stream-fixed/vmmap-15-99502-after_export_finally.txt",
+      "bytes": 6839,
+      "sha256": "5688007c6bfb171054767fb2191063030356fdca1c4a57f85ebfc59ea0ed70a3"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-stream-fixed/phase-memory.jsonl",
+      "bytes": 49617,
+      "sha256": "951c0aca83a1f397087c8ca2aeaf630a2e86a793b13d5963a1720770036726c9"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-stream-fixed/execution.json",
+      "bytes": 558,
+      "sha256": "ccf61eb4d93fce47b1d068111b772387be889b691fc9c88461a92ae44eb192f1"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-stream-fixed/exit.json",
+      "bytes": 54,
+      "sha256": "39b6661a4103a401e937cf4b48c1dd31b91c2cb8f6fe8161240c4f9d1992ff9a"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-stream-fixed/vmmap-31-1308-idle_30s.txt",
+      "bytes": 6687,
+      "sha256": "2eabdf5956d4d18b1785d5ec2dcc373d4b99b1f969a2febbfe0ee74d1cfdbeaa"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-stream-fixed/vmmap-30-1308-after_export_finally.txt",
+      "bytes": 6687,
+      "sha256": "1d95b9f64d173f85f801640e9a2b2e69d6147925b188d869610127a33385f633"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-stream-fixed/vmmap-15-1308-after_export_finally.txt",
+      "bytes": 6838,
+      "sha256": "2a6f9aa13abbecd622151ba75ceec7589994d7a2cfd2b45564dbd07b85a7c25d"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/production-worker-build-final.json",
+      "bytes": 265,
+      "sha256": "e1b78507f9446a27c53614f250e7cf811c58fb904c9cc6d751f2cdb663691d67"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-stream-core-regressions.log",
+      "bytes": 239,
+      "sha256": "74f6515dc0f832527fffa569539c3cd9c0bcbc0b84de706e636ddc906a71c13d"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-core-typecheck.log",
+      "bytes": 15,
+      "sha256": "8366207267355d3e3d5bf3bf6e8c94c5f93f6078c34f08973fa2b38cdda6cc92"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/bounded-runtime-typecheck.log",
+      "bytes": 15,
+      "sha256": "8366207267355d3e3d5bf3bf6e8c94c5f93f6078c34f08973fa2b38cdda6cc92"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/export-attribution-2026-10-15/CLEANUP.json",
+      "bytes": 619,
+      "sha256": "8c9bda3e06930e42438c2e32775df9721e0857f12913db1fcca385a192a0890c"
+    }
+  ]
+}

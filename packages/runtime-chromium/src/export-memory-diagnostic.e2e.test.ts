@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile, appendFile, rm } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import type { Page, Browser } from "playwright-core";
 import { ChromiumRuntime, PartFileWriter } from "./node/runtime";
 
@@ -162,9 +162,11 @@ diagnosticApi.exportToMp4Webcodecs = async (...args: any[]) => {
         await appendFile(join(evidence, "phase-memory.jsonl"), JSON.stringify({ seq, epoch_ms: Date.now(), ...point, processes, heap, dom, rss, top, forced_gc: false }) + "\n");
         if (["after_hydrate", "after_backend_addAudioBuffer", "before_backend_finalize", "after_backend_finalize", "after_export_finally", "idle_30s"].includes(point.phase)) {
           for (const p of processes.filter(p => p.type === "renderer")) {
-            let text: string;
-            try { text = execFileSync("vmmap", ["-summary", String(p.pid)], { encoding: "utf8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] }); }
-            catch (e: any) { text = String(e.stdout ?? "") + String(e.stderr ?? "") + "\nvmmap_status=" + e.status; }
+            const mapped = spawnSync("vmmap", ["-summary", String(p.pid)], {
+              encoding: "utf8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"],
+            });
+            const text = String(mapped.stdout ?? "") + String(mapped.stderr ?? "")
+              + "\nvmmap_status=" + mapped.status;
             await writeFile(join(evidence, `vmmap-${seq}-${p.pid}-${point.phase}.txt`), text);
           }
         }
