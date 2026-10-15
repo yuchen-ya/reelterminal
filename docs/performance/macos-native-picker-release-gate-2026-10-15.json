@@ -1,0 +1,207 @@
+{
+  "schema": "reelterminal.macos-native-picker-release-gate/v1",
+  "date": "2026-10-15",
+  "timezone": "Asia/Shanghai",
+  "release_ready": false,
+  "feature_accepted": false,
+  "source_head": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
+  "investigation_head": "cf7bf9cb",
+  "runtime_files_changed": [],
+  "native_trace": {
+    "status": "native_source_start_timeout; not accepted",
+    "source_request": [
+      {
+        "started": 1792056421020,
+        "result": "rejected",
+        "error": {
+          "name": "AbortError",
+          "message": "Timeout starting video source"
+        },
+        "finished": 1792056431050
+      }
+    ],
+    "fallback_events": [],
+    "native_system_events": [
+      {
+        "time": "2026-10-15 17:27:01.051440+0800",
+        "pid": 13350,
+        "message": " [INFO] -[SCContentSharingPicker init]:136 <object>"
+      },
+      {
+        "time": "2026-10-15 17:27:01.051443+0800",
+        "pid": 13350,
+        "message": " [INFO] -[SCContentSharingPickerConfiguration init]:39 <object>"
+      },
+      {
+        "time": "2026-10-15 17:27:01.053517+0800",
+        "pid": 13350,
+        "message": " [INFO] -[SCContentSharingPicker setMaximumStreamCount:]:236 <object>"
+      },
+      {
+        "time": "2026-10-15 17:27:01.053522+0800",
+        "pid": 13350,
+        "message": " [INFO] -[SCContentSharingPicker setActive:]:207 <object>"
+      },
+      {
+        "time": "2026-10-15 17:27:01.056383+0800",
+        "pid": 13350,
+        "message": " [INFO] -[RPDaemonProxy updatePickerActiveState:withConfig:]:1253"
+      },
+      {
+        "time": "2026-10-15 17:27:01.056558+0800",
+        "pid": 13350,
+        "message": " [INFO] -[SCContentSharingPickerConfiguration init]:39 <object>"
+      },
+      {
+        "time": "2026-10-15 17:27:01.056562+0800",
+        "pid": 13350,
+        "message": " [INFO] -[SCContentSharingPickerConfiguration dealloc]:75 <object>"
+      },
+      {
+        "time": "2026-10-15 17:27:01.056563+0800",
+        "pid": 13350,
+        "message": " [INFO] -[SCContentSharingPicker present]:350 <object>"
+      },
+      {
+        "time": "2026-10-15 17:27:01.056569+0800",
+        "pid": 13350,
+        "message": " [INFO] -[RPDaemonProxy startPickingWithConfiguration:withStream:withFilter:withContentStyle:]:1264"
+      },
+      {
+        "time": "2026-10-15 17:27:11.047975+0800",
+        "pid": 13350,
+        "message": " [INFO] -[SCContentSharingPicker setMaximumStreamCount:]:236 <object>"
+      },
+      {
+        "time": "2026-10-15 17:27:11.048013+0800",
+        "pid": 13350,
+        "message": " [INFO] -[RPDaemonProxy updatePickerConfig:]:1231"
+      },
+      {
+        "time": "2026-10-15 17:27:11.048126+0800",
+        "pid": 13350,
+        "message": " [INFO] -[SCContentSharingPicker setActive:]:207 <object>"
+      },
+      {
+        "time": "2026-10-15 17:27:11.048133+0800",
+        "pid": 13350,
+        "message": " [INFO] -[RPDaemonProxy updatePickerActiveState:withConfig:]:1253"
+      }
+    ],
+    "revision_before": 0,
+    "revision_after": 0,
+    "media_count_after": 0,
+    "pending_after": 0,
+    "returned_tracks_after": 0,
+    "controlcenter_matching_log_rows": 0,
+    "caveat": "own-process logs prove native picker present invoked; no evidence of source selection. replayd-wide TCC/streams can belong to other clients and are not attributed to this test."
+  },
+  "proven": [
+    "native request invoked SCContentSharingPicker present in owned process",
+    "product desktopCapturer.getSources and fallback Menu were not entered",
+    "request failed after 10030ms with AbortError: Timeout starting video source",
+    "no returned tracks, no media additions, revision unchanged"
+  ],
+  "not_proven": [
+    "why macOS native picker did not become interactively visible",
+    "whether manually clicking without automated UI observation works",
+    "a product-level minimal runtime fix"
+  ],
+  "manual_required": "currently needed for real system selection and cancellation; not a confirmed workaround",
+  "manual_status": "ready_for_cancel",
+  "permission_changes": false,
+  "new_build_or_package": false,
+  "long_tests_rerun": false,
+  "source_references": [
+    {
+      "url": "https://github.com/electron/electron/blob/v44.5.1/lib/browser/api/session.ts",
+      "finding": "useSystemPicker returns special native-picker video source and bypasses application handler"
+    },
+    {
+      "url": "https://github.com/electron/electron/blob/v44.5.1/shell/browser/api/electron_api_desktop_capturer_mac.mm",
+      "finding": "system-picker availability determined by macOS >= 15, without presentation health probe"
+    },
+    {
+      "url": "https://github.com/electron/electron/blob/v44.5.1/patches/chromium/feat_allow_usage_of_sccontentsharingpicker_on_supported_platforms.patch",
+      "finding": "native capturer invokes SCContentSharingPicker present and waits for selected filter; patch includes cancellation callback caveat"
+    }
+  ],
+  "manual_result_at_report": {
+    "status": "running",
+    "phase": "ready_for_cancel",
+    "request_count": 0,
+    "acceptance": "not_performed; awaiting human input"
+  },
+  "evidence_manifest": [
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-trace-result.json",
+      "bytes": 62665,
+      "sha256": "d3147c64ea62b84a4467b84999ac28c07764fd30f1d804230f69d79dfcf018e2"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-trace-sanitized.json",
+      "bytes": 2864,
+      "sha256": "548f42b595dfe982418768887e612b6879149c7ebf7ed977b56fcaae1d0e8e35"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-trace.diagnostic.ts",
+      "bytes": 7036,
+      "sha256": "c51ff60331a854b2c7aaf422e7598f57faa13f354a2ec7bfecb2c77be41be1f0"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-trace.vitest.ts",
+      "bytes": 232,
+      "sha256": "2e0b079d8290a743126486feb5d894e78c68dc8d856e9207ac329e7d60f8f271"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-trace.log",
+      "bytes": 238,
+      "sha256": "8162369cfaa3413bd2f0ea7d3d43f4ddd9586352c3749bd8f5ab4fa83fbbe6f7"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-system-log.json",
+      "bytes": 784270,
+      "sha256": "d88e37eedc54fb64ead87264854289ccb4484ee79c2436a3ae3486a1a76efc44"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-system-log.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-controlcenter-log.json",
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-controlcenter-log.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-manual.diagnostic.ts",
+      "bytes": 7418,
+      "sha256": "8385606d44cc99b0e229700c3c042239ffe4479d315ac1838debd900cdb48523"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/native-manual.vitest.ts",
+      "bytes": 233,
+      "sha256": "48d15833f8a4be42925839774d314254fddab69d99f70b437bd997d70609ef28"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/upstream/session.ts",
+      "bytes": 4112,
+      "sha256": "2be8ca5928901b28a753c73e39a964ffa7fb9a86a86c1da5a03b3167f0da1d44"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/upstream/electron_api_desktop_capturer_mac.mm",
+      "bytes": 406,
+      "sha256": "0e198a03dc2337c2ee16cda5b30a18db02b068a08bebd0da9bae0ab9bba58a5f"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-startup-picker-2026-10-15/upstream/feat_allow_usage_of_sccontentsharingpicker_on_supported_platforms.patch",
+      "bytes": 17910,
+      "sha256": "4d01f6e0d6e98bdd5c3e3a3e30b71411111315f2dd6484405cba8cda0d86af54"
+    }
+  ]
+}
