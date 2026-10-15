@@ -8,19 +8,22 @@ Only the existing checkout and isolated test profiles were used, serially.
 ## Current handoff
 
 Runtime candidate: `b62ef59eb61f57c42f250b80ae2e66544cabefac`, unsigned and
-unpublished, with 27/27 packaged core checks passing. Frozen-source Windows
-Electron passes all 123 active tests. Mac Electron's one remaining failure
-captures an explicitly busy save at 1071 ms, before a completion receipt.
-The test-only completion synchronization preserves the original shared
-30-second GUI action budget and one-second post-completion node assertion;
-its hosted Mac validation is pending. No runtime repackaging is needed for it.
+unpublished, with 27/27 packaged core checks passing. Final validation source
+`9db422776d0e90cc5859a79985aa252412698e1d` passes ordinary CI, Chromium,
+performance contracts and both Electron platforms (123 passed / 13 opt-in
+skips each). Save completion synchronization preserves the original shared
+30-second GUI action budget and one-second post-completion node assertion.
+The new clean build matches 213 compared candidate payload files; the build
+identity intentionally remains b62 in the retained package. No repackaging
+was required for the test/comment-only follow-up.
 
-Mac pure-Node audio normalization still has an unattributed five-second
-test timeout. Existing Mac a8c6925c native recording manual specialty
-acceptance is passed (5f447ab7). Historical startup/source timeouts, native
-memory retention/bound, latest-source Mac package qualification and the
-local clipboard boundary retain their documented evidence gaps. Full run
-links and first-condition evidence are in the final section below.
+Existing Mac a8c6925c native recording manual specialty acceptance is passed
+(5f447ab7). Historical startup/source and five-second audio-test incidents,
+native memory retention/bound and the local clipboard boundary remain known
+risks or evidence gaps, rather than automatic hard gates for every narrower
+Windows use. Latest-source Mac package and long-term no-leak claims are not
+established. The final section separates supported scope from wider claims
+and the user's subsequent release decision. No publication was performed.
 
 ## Existing hosted round: 7e841bf9
 
@@ -371,3 +374,54 @@ have no attributed cause or proven long-term bound. Existing Mac recording
 specialty acceptance remains passed; old timeouts and latest full-source Mac
 package qualification remain separate open items. Release readiness is not
 asserted by these results.
+
+## Completed 9db42277 follow-up and candidate coverage
+
+All ordinary push runs for the final test-only source reached success:
+[CI 38734599840](https://github.com/yuchen-ya/reelterminal/actions/runs/38734599840),
+[Electron 38734599871](https://github.com/yuchen-ya/reelterminal/actions/runs/38734599871),
+[Chromium 38734599825](https://github.com/yuchen-ya/reelterminal/actions/runs/38734599825),
+[performance contracts 38734599873](https://github.com/yuchen-ya/reelterminal/actions/runs/38734599873).
+Windows and Mac Electron each pass 123 tests with 13 explicit opt-in skips.
+The saved inspector artifacts show Windows receipt/node completion at
+869/884 ms and Mac at 904/947 ms. The original node assertion, success/error
+receipt, actual target, CAS, preview, board, undo and save/reopen checks remain.
+The previous Mac five-second normalization test also passes at its unchanged
+limit; that later pass does not establish the cause of historical timeouts.
+
+`git diff b62ef59e..9db42277 -- apps packages scripts` contains the save-test
+synchronization and comments only; production logic is unchanged. A normal
+desktop build of clean 9db42277 was performed without packaging. Comparing it
+with the retained b62 candidate yields zero mismatches across 213 files:
+13 packaged dist files, 190 renderer files, two offline guides, three bin
+resources, two aurora resources, one rigging resource and two root launchers.
+Package/lock inputs are unchanged; all five retained package artifact hashes
+are unchanged. Full proof and per-file SHA-256 pairs are committed:
+[equivalence summary](windows-runtime-payload-equivalence-9db42277-2026-10-15.json),
+[file manifest](windows-runtime-payload-equivalence-9db42277-files-2026-10-15.json).
+
+`dist/performance-build.json` is deliberately different: it names the actual
+source/build identity. Non-runtime placeholders and unshipped sourcemaps are
+excluded. No hypothetical 9db installer was built, and no full-installer hash
+equivalence is claimed. The existing package remains labeled b62; it contains
+the same compared functional payload as 9db. Hash equality does not turn
+27 packaged checks into 123 packaged checks, validate the installer wizard,
+qualify a latest-source Mac package, or prove a long-term memory bound.
+
+**Scope judgment:** evidence supports closing the tested Windows configured-core
+candidate scope: edit/preview, real connector/CAS, strict review adoption/undo,
+save points/board/recovery, reopen, first frame and export. Existing unsigned
+portable/unpacked artifacts are reviewable. Full source Electron coverage is
+separately recorded for both platforms. Historical unattributed incidents are
+tracked risks and follow-up opportunities, not automatic hard gates against
+every limited Windows release. Do not claim all-environment clipboard behavior,
+latest packaged-Mac acceptance or indefinite no-growth memory behavior from
+this evidence.
+
+**Remaining user decisions:** choose whether a later release should accept
+that limited Windows scope and its stated risks, or require wider claims first.
+For wider installer, latest Mac package, local copy-prompt or long-term-memory
+guarantees, authorize only the corresponding targeted acceptance; old incidents
+need phase evidence rather than a blanket full rerun. This task makes no
+publication decision: no installer was installed, no certificate or account
+permission was changed, and no tag, Release or installer upload was performed.

@@ -21,14 +21,26 @@ case passes too; its first save point appeared after 199 ms. Actual connector,
 CAS, strict frame rejection, adoption/undo, saved-project reopen, MP4 export,
 comparison layout and eight-second first-frame assertions remain active.
 
-Frozen-source hosted Windows Electron passes 123 tests / 13 opt-in skips.
-Mac Electron passes 122 with one premature initial-save assertion: at 1071 ms
+Final test-source **9db42277 passes CI, Chromium, performance contracts and
+both Electron platforms: 123 passed / 13 opt-in skips each**. The existing
+candidate and a clean 9db build match all 213 compared application/help/
+launcher/resource files, including thirteen dist files and 190 renderer files;
+dependency inputs and all five retained artifact hashes are unchanged.
+Only the build-identity file is deliberately excluded. This proves the
+candidate contains the same compared functional payload, not equality to a
+new 9db installer. Its truthful package identity remains b62ef59e. Proof:
+[summary](windows-runtime-payload-equivalence-9db42277-2026-10-15.json),
+[per-file hashes](windows-runtime-payload-equivalence-9db42277-files-2026-10-15.json).
+
+In the initial b62 hosted round, Windows Electron passed 123 / 13 skips;
+Mac Electron passed 122 with one premature initial-save assertion: at 1071 ms
 the UI was explicitly busy, with no error and an unchanged target. The
 test-only follow-up waits for the real completion receipt within the **same
 shared 30-second click/action budget**, then retains the original one-second
 durable-node assertion. A local real-desktop run passes in 9.16 s (receipt
 226 ms, durable node 232 ms). It does not change product runtime or require
-another package. Updated hosted validation is recorded in the continuation.
+another package. Updated hosted save receipts are 869/884 ms on Windows and
+904/947 ms on Mac (receipt/durable-node assertion).
 
 The frozen-source Mac pure-Node job also repeats the historical
 `audio-normalize.test.ts:93` five-second timeout. Which normalization or

@@ -329,19 +329,17 @@
       "runtimeChanged": false,
       "localDurableNodeMs": 232,
       "unchangedPostReceiptNodeAssertionMs": 1000,
-      "hostedValidation": "pending",
+      "hostedValidation": "passed on Windows and Mac in 9db42277",
       "localTestSeconds": 9.16,
       "localReceiptMs": 226,
       "sharedClickAndReceiptBudgetMs": 30000,
       "repackaged": false
     },
     "remaining": [
-      "Mac audio-normalize five-second timeout phase unattributed",
-      "test-only save completion receipt synchronization requires hosted Mac validation",
-      "historical startup/source timeouts unattributed; first old startup primary error lost",
-      "native/export shared-memory and post-saturation history heap trend lack cause and long-term bound",
-      "latest all-source Mac package not qualified; old a8c6925c recording specialty passed",
-      "local native clipboard and content-size setup boundary unresolved; no system settings or clipboard changed in this follow-up"
+      "historical startup/source and audio-normalize five-second incidents remain unattributed; latest validation passed",
+      "native/export shared-memory and post-saturation history trend have no attributed cause or proven long-term bound",
+      "latest complete-source Mac package not qualified; existing a8c6925c recording specialty passed",
+      "local native clipboard boundary and content-size setup mismatch remain local qualification gaps"
     ],
     "macNativeRecording": {
       "latestSourceMacPackageAccepted": false,
@@ -349,7 +347,83 @@
       "reportCommit": "5f447ab77989df3089a0b35b4144e40045718fa1",
       "featureAccepted": true,
       "oldTimeoutCause": "unattributed"
-    }
+    },
+    "validationSourceSha": "9db422776d0e90cc5859a79985aa252412698e1d",
+    "latestValidation": {
+      "testOnlyChange": true,
+      "electron": {
+        "macos": {
+          "saveReceiptMs": 904,
+          "durableNodeMs": 947,
+          "skipped": 13,
+          "passed": 123
+        },
+        "windows": {
+          "saveReceiptMs": 869,
+          "durableNodeMs": 884,
+          "skipped": 13,
+          "passed": 123
+        }
+      },
+      "runs": [
+        {
+          "conclusion": "success",
+          "databaseId": 38734599871,
+          "headSha": "9db422776d0e90cc5859a79985aa252412698e1d",
+          "name": "Electron E2E",
+          "status": "completed",
+          "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38734599871"
+        },
+        {
+          "conclusion": "success",
+          "databaseId": 38734599825,
+          "headSha": "9db422776d0e90cc5859a79985aa252412698e1d",
+          "name": "Chromium E2E",
+          "status": "completed",
+          "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38734599825"
+        },
+        {
+          "conclusion": "success",
+          "databaseId": 38734599873,
+          "headSha": "9db422776d0e90cc5859a79985aa252412698e1d",
+          "name": "Performance contracts @ 9db422776d0e90cc5859a79985aa252412698e1d",
+          "status": "completed",
+          "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38734599873"
+        },
+        {
+          "conclusion": "success",
+          "databaseId": 38734599840,
+          "headSha": "9db422776d0e90cc5859a79985aa252412698e1d",
+          "name": "CI",
+          "status": "completed",
+          "url": "https://github.com/yuchen-ya/reelterminal/actions/runs/38734599840"
+        }
+      ],
+      "sourceSha": "9db422776d0e90cc5859a79985aa252412698e1d"
+    },
+    "runtimePayloadEquivalence": {
+      "dependencyInputsUnchanged": true,
+      "equal": true,
+      "excludedBuildIdentity": true,
+      "comparedFiles": 213,
+      "proof": "windows-runtime-payload-equivalence-9db42277-2026-10-15.json",
+      "candidateArtifactsUnchanged": true,
+      "fullInstallerEquivalenceClaimed": false,
+      "distFiles": 13,
+      "rendererFiles": 190
+    },
+    "qualification": {
+      "historicalRisksAreAutomaticHardGates": false,
+      "windowsConfiguredCoreCandidate": "supported by packaged 27/27 and source Electron 123/13 skips per platform",
+      "longTermNoLeakClaim": "not established",
+      "packageFullE2E123Claimed": false,
+      "publicationAuthorized": false,
+      "allPlatformLatestPackage": "not established"
+    },
+    "remainingUserDecisions": [
+      "choose whether to accept the tested Windows configured-core/portable-candidate scope with stated risks",
+      "if wider installer, latest Mac package, long-term-memory or local copy-prompt guarantees are required, authorize only the corresponding targeted acceptance; do not publish yet"
+    ]
   },
   "previousContinuation81c1ea4e": {
     "packagedCore": {
