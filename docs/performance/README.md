@@ -31,6 +31,11 @@ CI 触发、baseline proposal 与现场排查见 [P6 CI 与基线](p6-ci-baselin
 逐次导出的后续定向归因与局部修复见
 [导出内存归因](macos-export-memory-attribution-2026-10-15.md)：只复用原素材做
 小规模对照，不把短跑修复验证替代新包发布验收。
+包含修复的 arm64 新包后续完成了
+[十次真实导出及五分钟空闲复测](macos-native-export-retest-2026-10-15.md)
+（[结构化结果](macos-native-export-retest-2026-10-15.json)）：10/10 输出验证通过，
+空闲实际 300.442 秒；导出阶段仍有残余增长，空闲段未见继续明显增长，
+长期上界未证实。未重跑 R02/T03，也未将旧失败结论改写为发布通过。
 
 ## 模式与预算
 

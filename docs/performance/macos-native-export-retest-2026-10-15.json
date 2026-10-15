@@ -1,0 +1,2090 @@
+{
+  "schema": "reelterminal.macos-native-export-retest/v1",
+  "date": "2026-10-15",
+  "timezone": "Asia/Shanghai",
+  "tested_commit": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
+  "app_version": "1.1.2",
+  "original_requested_base": "84005f5d7f83317c11474f6eefa38dd2f76b79da",
+  "documentation_commit_is_not_tested_build": true,
+  "fix_commits": [
+    "cc7e7834a52f4e1ed7a47ca84828fcb59e8dbfb0",
+    "3088bf4f2f45233b6aa552ba0b4f9ba6a7c546b5"
+  ],
+  "environment": {
+    "model": "MacBook Air Mac14,2",
+    "chip": "Apple M2 8CPU (4P+4E)",
+    "memory_GiB": 8,
+    "arch": "arm64",
+    "macOS": "27.0.1 (26A434)",
+    "node": "23.11.0",
+    "pnpm": "11.7.0",
+    "FFmpeg": "9.0.1",
+    "electron": "44.5.1",
+    "electron_chrome": "152.0.7977.130",
+    "export_chromium": "148.0.7778.96"
+  },
+  "build": {
+    "identity": {
+      "source_head": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
+      "package_root": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/mac-arm64/ReelTerminal.app",
+      "executable": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/mac-arm64/ReelTerminal.app/Contents/MacOS/ReelTerminal",
+      "binary": "Mach-O 64-bit executable arm64",
+      "executable_sha256": "ca7e3290800255f5018160cff99cf6ecc58eae299c66148de1374a70e2715c83",
+      "asar_sha256": "5c11ff60687d0f2de0dd7df999d9586fe3251e82654297165e8fd9f0117227a0",
+      "stamp": {
+        "schema": "reelterminal.performance-build/v1",
+        "build_type": "production",
+        "source_head": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
+        "dirty": false,
+        "source_digest": "95533c537eae68403fd76c53692b7dcb2a8c16195b41e9c7d28aec2612e75b5a",
+        "dirty_diff_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "lockfile_digest": "047487e3872aa8fbfdfeeb870e3fbeb3347732e416343ce1a6d191c1efbffeb8",
+        "main_bundle_sha256": "e255cc18b8cc7790524bbd10df063b625254e8053f12e4e7777538db65e96981",
+        "preload_bundle_sha256": "bb2097ec91c964748ca10db6f8acf0c24813e25eeb56a62236ae6204a6a8d1a9",
+        "renderer_manifest_sha256": "1e760816a773a99ef62c3b40bd861e7e6cb7895dbfae47cbb6a816cdcf33040d",
+        "worker_manifest_sha256": "9831157a9691c926f1f4d646310e12decca4d670a2debcbf6a4532a8e991c6e3",
+        "executable_sha256": "ca7e3290800255f5018160cff99cf6ecc58eae299c66148de1374a70e2715c83",
+        "app_version": "1.1.2"
+      },
+      "checks": [
+        {
+          "file": "dist/main/index.js",
+          "matched": true
+        },
+        {
+          "file": "dist/preload/index.js",
+          "matched": true
+        },
+        {
+          "file": "dist/performance-build.json",
+          "matched": true
+        }
+      ],
+      "fixed_worker_identity": {
+        "embedded_worker_matches_current_build": true,
+        "embedded_worker_matches_validated_fix": true
+      },
+      "embedded_worker_sha256": "d8f9fdc0b724f6904bf00d3361fe7ad5af84f696576e127e8251fe1ac615aa0b",
+      "app_version": "1.1.2",
+      "renderer_tree": {
+        "local_files": 191,
+        "packaged_files": 190,
+        "all_differences": [
+          "workers/.gitkeep"
+        ],
+        "runtime_differences": [],
+        "expected_excluded_empty_placeholder": "workers/.gitkeep"
+      },
+      "update_config_present": true
+    },
+    "result": {
+      "returncode": 0,
+      "started_epoch": 1792042152.485746,
+      "finished_epoch": 1792042230.234369,
+      "elapsed_seconds": 77.74862408638
+    },
+    "downloads": [
+      {
+        "path": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/ReelTerminal-1.1.2-arm64.dmg",
+        "bytes": 259880481,
+        "sha256": "48c1cf3a077d07b0056e1c864a72bcc9d16d671b7e2c445c5fc557419a3b56c0"
+      },
+      {
+        "path": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/ReelTerminal-1.1.2-arm64.dmg.blockmap",
+        "bytes": 273870,
+        "sha256": "b65e8339509826f7b9cb7fb0038540c42bd0e7bcc2579f7276b28dd418595712"
+      },
+      {
+        "path": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/ReelTerminal-1.1.2-arm64.zip",
+        "bytes": 260495443,
+        "sha256": "06a46732b62a81938eb943ac7fe9020be572d174d88d722e75268cd15429da45"
+      },
+      {
+        "path": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/ReelTerminal-1.1.2-arm64.zip.blockmap",
+        "bytes": 274744,
+        "sha256": "74339d90e2adccc8f2dadd7e24fe1d0763069d3d8711b2c30d339fbf5ebc0de4"
+      }
+    ],
+    "signed": false,
+    "notarized": false,
+    "published": false
+  },
+  "scope": {
+    "real_exports": 10,
+    "post_export_idle_seconds": 300.4418542909999,
+    "R02_rerun": false,
+    "T03_rerun": false,
+    "forced_GC": false,
+    "runtime_source_changed": false,
+    "worker_restart_within_ten_and_idle": false,
+    "worker_recreated_after_intentional_prelude_failure": true,
+    "history_cap_reduced": false,
+    "history_cleared": false
+  },
+  "calibration": {
+    "status": "qualified",
+    "completed_groups": 20,
+    "artifact": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792047521523.json",
+    "prior_attempt": {
+      "status": "invalid",
+      "cause": "locked desktop; visible true but focus false",
+      "completed_exports": 0,
+      "artifact": "apps/desktop/e2e/.artifacts/performance/probe-calibration-1792042297186.json",
+      "user_unlocked_before_retry": true
+    }
+  },
+  "stages": [
+    {
+      "stage": "native-probe",
+      "returncode": 0,
+      "started_epoch": 1792047520.2032151,
+      "finished_epoch": 1792047600.504829,
+      "elapsed_seconds": 80.30161476135254,
+      "executable": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/mac-arm64/ReelTerminal.app/Contents/MacOS/ReelTerminal",
+      "execution_mode": "native_package"
+    },
+    {
+      "stage": "native-real-exports-10x-idle300",
+      "returncode": 0,
+      "started_epoch": 1792047600.505457,
+      "finished_epoch": 1792048158.66628,
+      "elapsed_seconds": 558.1608231067657,
+      "executable": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/mac-arm64/ReelTerminal.app/Contents/MacOS/ReelTerminal",
+      "execution_mode": "native_package"
+    },
+    {
+      "stage": "native-audio-output-verification",
+      "returncode": 0,
+      "started_epoch": 1792048158.6671062,
+      "finished_epoch": 1792048159.459038,
+      "elapsed_seconds": 0.7919318675994873,
+      "executable": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/mac-arm64/ReelTerminal.app/Contents/MacOS/ReelTerminal",
+      "execution_mode": "native_package"
+    }
+  ],
+  "workload": {
+    "scale": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "duration_seconds": 12,
+      "independent_sources": 3,
+      "source_durations_seconds": [
+        12,
+        18,
+        12
+      ],
+      "video_tracks": 3,
+      "text_tracks": 1
+    },
+    "export_settings": {
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 30,
+      "codec": "h264",
+      "format": "mp4",
+      "videoBitrateKbps": 6000
+    },
+    "source_encoding": "software_libx264_AAC",
+    "encoder_preference": "prefer-hardware_then_no-preference",
+    "actual_hardware_encoder": {
+      "status": "unsupported_not_exposed",
+      "name": null
+    },
+    "fixed_revision": 48,
+    "continuous_playback": [
+      {
+        "pass": 0,
+        "elapsed_ms": 10060.471207999999,
+        "playhead_seconds": 10.005333333333336
+      },
+      {
+        "pass": 1,
+        "elapsed_ms": 10060.761625000003,
+        "playhead_seconds": 9.903999999999996
+      },
+      {
+        "pass": 2,
+        "elapsed_ms": 10064.456749999998,
+        "playhead_seconds": 9.925333333333334
+      }
+    ],
+    "edit_undo_save_rounds": 20,
+    "history_preview_return_passed": true,
+    "prelude_cancel_state": "cancelled",
+    "prelude_failure_state": "error",
+    "failure_queue_recovered": true,
+    "cancel_and_failure_left_no_destination": true,
+    "audio_normalization_jobs": 2,
+    "unsupported_audio": {
+      "pitch_correction": true,
+      "result": {
+        "ok": false,
+        "error": {
+          "code": "INTERNAL",
+          "message": "Clip clip-facade-mv96voru-7-4f0e67ed-f82d-4679-bbef-34bde0343a0a: pitch correction requires a time-stretch renderer that is not available. Disable pitch correction for varispeed audio, or use 1x."
+        }
+      }
+    },
+    "selected_audio_mode": "1.5x_varispeed_pitch_correction_false"
+  },
+  "results": {
+    "export_functional_status": "passed",
+    "memory_status": "residual positive trend across exports; no continued top MEM growth observed during 300.442-second idle; long-term bound unproven",
+    "overall_release_recommendation": "do_not_approve_from_this_retest_alone",
+    "persisted_status_files": 14,
+    "all_ten_done_statuses_preserved": true,
+    "full_decode_passed_outputs": 10,
+    "frame_marker_checked_outputs": 10,
+    "frame_marker_tolerance_frames": 1,
+    "output_video_duration_seconds": 12.0,
+    "output_video_frames": 360,
+    "output_container_and_audio_duration_seconds": 12.074667,
+    "independent_audio_tone_verification_passed": true,
+    "expected_audio_hz": [
+      440,
+      880,
+      990
+    ]
+  },
+  "timing_seconds": {
+    "export_job_all": {
+      "n": 10,
+      "min": 8.328921375000006,
+      "median": 8.691307749999993,
+      "max": 9.442848041999998
+    },
+    "export_job_segments": {
+      "前3次": {
+        "n": 3,
+        "min": 8.328921375000006,
+        "median": 8.825066208000004,
+        "max": 9.442848041999998
+      },
+      "中4次": {
+        "n": 4,
+        "min": 8.335040624999994,
+        "median": 8.59901214550002,
+        "max": 8.865397874999996
+      },
+      "后3次": {
+        "n": 3,
+        "min": 8.337796875,
+        "median": 8.557549291999981,
+        "max": 8.884283834000001
+      }
+    },
+    "edit_round_segments": {
+      "前7轮": {
+        "n": 7,
+        "min": 3.928450582999998,
+        "median": 4.0168934169999995,
+        "max": 4.7511108339999994
+      },
+      "中6轮": {
+        "n": 6,
+        "min": 4.029042749999993,
+        "median": 4.199342374499997,
+        "max": 4.4037244159999975
+      },
+      "后7轮": {
+        "n": 7,
+        "min": 3.918394625000001,
+        "median": 4.011623041999992,
+        "max": 4.089094291999994
+      }
+    },
+    "qualification": "report-only; job latency excludes later content verification and sampling"
+  },
+  "process_roles": {
+    "5195": "electron_main",
+    "5196": "electron_gpu",
+    "5200": "electron_renderer",
+    "5883": "export_browser",
+    "5886": "export_renderer",
+    "5884": "export_gpu"
+  },
+  "per_export": [
+    {
+      "round": 1,
+      "job_elapsed_seconds": 9.442848041999998,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1810.0,
+          "ps_RSS_MiB": 170.84375,
+          "electron_workingSetSize_MiB": 170.671875
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 592.0,
+          "ps_RSS_MiB": 72.203125,
+          "electron_workingSetSize_MiB": 72.203125
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1070.0,
+          "ps_RSS_MiB": 169.03125,
+          "electron_workingSetSize_MiB": 167.71875
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 23.0,
+          "ps_RSS_MiB": 76.28125,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 791.0,
+          "ps_RSS_MiB": 806.5625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": 32.0,
+          "ps_RSS_MiB": 56.484375,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 60.10661315917969,
+      "GUI_heap_MiB": 38.1231689453125
+    },
+    {
+      "round": 2,
+      "job_elapsed_seconds": 8.328921375000006,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1868.0,
+          "ps_RSS_MiB": 181.234375,
+          "electron_workingSetSize_MiB": 181.09375
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 526.0,
+          "ps_RSS_MiB": 62.5625,
+          "electron_workingSetSize_MiB": 62.5625
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1067.0,
+          "ps_RSS_MiB": 250.484375,
+          "electron_workingSetSize_MiB": 250.234375
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 28.0,
+          "ps_RSS_MiB": 75.703125,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 858.0,
+          "ps_RSS_MiB": 737.828125,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": 32.0,
+          "ps_RSS_MiB": 50.515625,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 89.41554260253906,
+      "GUI_heap_MiB": 25.184032440185547
+    },
+    {
+      "round": 3,
+      "job_elapsed_seconds": 8.825066208000004,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1843.0,
+          "ps_RSS_MiB": 163.046875,
+          "electron_workingSetSize_MiB": 162.84375
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 471.0,
+          "ps_RSS_MiB": 58.953125,
+          "electron_workingSetSize_MiB": 58.953125
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1027.0,
+          "ps_RSS_MiB": 169.21875,
+          "electron_workingSetSize_MiB": 168.34375
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 32.0,
+          "ps_RSS_MiB": 73.421875,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 879.0,
+          "ps_RSS_MiB": 498.359375,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": 32.0,
+          "ps_RSS_MiB": 47.984375,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 66.86108016967773,
+      "GUI_heap_MiB": 23.586292266845703
+    },
+    {
+      "round": 4,
+      "job_elapsed_seconds": 8.335040624999994,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1857.0,
+          "ps_RSS_MiB": 181.59375,
+          "electron_workingSetSize_MiB": 181.40625
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 465.0,
+          "ps_RSS_MiB": 63.0625,
+          "electron_workingSetSize_MiB": 63.0625
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1035.0,
+          "ps_RSS_MiB": 147.03125,
+          "electron_workingSetSize_MiB": 145.671875
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 36.0,
+          "ps_RSS_MiB": 74.890625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 888.0,
+          "ps_RSS_MiB": 486.375,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": 32.0,
+          "ps_RSS_MiB": 47.796875,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 68.65282440185547,
+      "GUI_heap_MiB": 24.57861328125
+    },
+    {
+      "round": 5,
+      "job_elapsed_seconds": 8.35667745800002,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1877.0,
+          "ps_RSS_MiB": 169.8125,
+          "electron_workingSetSize_MiB": 169.59375
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 481.0,
+          "ps_RSS_MiB": 63.734375,
+          "electron_workingSetSize_MiB": 63.734375
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1038.0,
+          "ps_RSS_MiB": 139.609375,
+          "electron_workingSetSize_MiB": 138.421875
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 39.0,
+          "ps_RSS_MiB": 66.765625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 765.0,
+          "ps_RSS_MiB": 591.59375,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": 32.0,
+          "ps_RSS_MiB": 49.03125,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 96.62606430053711,
+      "GUI_heap_MiB": 31.008705139160156
+    },
+    {
+      "round": 6,
+      "job_elapsed_seconds": 8.841346833000017,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1837.0,
+          "ps_RSS_MiB": 144.640625,
+          "electron_workingSetSize_MiB": 144.046875
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 476.0,
+          "ps_RSS_MiB": 61.40625,
+          "electron_workingSetSize_MiB": 61.40625
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1037.0,
+          "ps_RSS_MiB": 143.546875,
+          "electron_workingSetSize_MiB": 141.71875
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 43.0,
+          "ps_RSS_MiB": 58.46875,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 907.0,
+          "ps_RSS_MiB": 453.140625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 42.4375,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 56.36367416381836,
+      "GUI_heap_MiB": 31.18783950805664
+    },
+    {
+      "round": 7,
+      "job_elapsed_seconds": 8.865397874999996,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1842.0,
+          "ps_RSS_MiB": 143.125,
+          "electron_workingSetSize_MiB": 142.921875
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 474.0,
+          "ps_RSS_MiB": 58.171875,
+          "electron_workingSetSize_MiB": 58.171875
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1046.0,
+          "ps_RSS_MiB": 125.40625,
+          "electron_workingSetSize_MiB": 123.796875
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 47.0,
+          "ps_RSS_MiB": 54.40625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 932.0,
+          "ps_RSS_MiB": 374.53125,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 33.75,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 71.29269790649414,
+      "GUI_heap_MiB": 33.70026397705078
+    },
+    {
+      "round": 8,
+      "job_elapsed_seconds": 8.884283834000001,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1834.0,
+          "ps_RSS_MiB": 151.9375,
+          "electron_workingSetSize_MiB": 151.734375
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 474.0,
+          "ps_RSS_MiB": 59.734375,
+          "electron_workingSetSize_MiB": 59.734375
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1045.0,
+          "ps_RSS_MiB": 187.421875,
+          "electron_workingSetSize_MiB": 187.1875
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 51.0,
+          "ps_RSS_MiB": 54.15625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 935.0,
+          "ps_RSS_MiB": 470.046875,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 32.796875,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 74.32464981079102,
+      "GUI_heap_MiB": 23.724468231201172
+    },
+    {
+      "round": 9,
+      "job_elapsed_seconds": 8.557549291999981,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1859.0,
+          "ps_RSS_MiB": 179.828125,
+          "electron_workingSetSize_MiB": 179.65625
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 466.0,
+          "ps_RSS_MiB": 61.109375,
+          "electron_workingSetSize_MiB": 61.109375
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1051.0,
+          "ps_RSS_MiB": 139.15625,
+          "electron_workingSetSize_MiB": 137.890625
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 55.0,
+          "ps_RSS_MiB": 56.953125,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 963.0,
+          "ps_RSS_MiB": 599.390625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 34.109375,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 75.53304672241211,
+      "GUI_heap_MiB": 43.68441390991211
+    },
+    {
+      "round": 10,
+      "job_elapsed_seconds": 8.337796875,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1887.0,
+          "ps_RSS_MiB": 177.375,
+          "electron_workingSetSize_MiB": 177.078125
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 471.0,
+          "ps_RSS_MiB": 57.4375,
+          "electron_workingSetSize_MiB": 57.4375
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1056.0,
+          "ps_RSS_MiB": 195.546875,
+          "electron_workingSetSize_MiB": 195.28125
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 59.0,
+          "ps_RSS_MiB": 55.953125,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 983.0,
+          "ps_RSS_MiB": 603.3125,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 33.265625,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 103.33072280883789,
+      "GUI_heap_MiB": 24.23910903930664
+    }
+  ],
+  "idle_samples": [
+    {
+      "seconds": 30.453,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1811.0,
+          "ps_RSS_MiB": 103.921875,
+          "electron_workingSetSize_MiB": 103.453125
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 417.0,
+          "ps_RSS_MiB": 46.6875,
+          "electron_workingSetSize_MiB": 46.6875
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1052.0,
+          "ps_RSS_MiB": 131.0625,
+          "electron_workingSetSize_MiB": 126.5
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 59.0,
+          "ps_RSS_MiB": 54.375,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 745.0,
+          "ps_RSS_MiB": 117.609375,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 35.140625,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 61.4932975769043,
+      "GUI_heap_MiB": 26.610424041748047
+    },
+    {
+      "seconds": 60.892,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1810.0,
+          "ps_RSS_MiB": 108.15625,
+          "electron_workingSetSize_MiB": 107.859375
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 417.0,
+          "ps_RSS_MiB": 41.15625,
+          "electron_workingSetSize_MiB": 41.15625
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1052.0,
+          "ps_RSS_MiB": 85.34375,
+          "electron_workingSetSize_MiB": 79.859375
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 59.0,
+          "ps_RSS_MiB": 54.765625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 745.0,
+          "ps_RSS_MiB": 83.5,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 34.8125,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 61.8548469543457,
+      "GUI_heap_MiB": 26.675128936767578
+    },
+    {
+      "seconds": 91.327,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1811.0,
+          "ps_RSS_MiB": 110.375,
+          "electron_workingSetSize_MiB": 109.96875
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 417.0,
+          "ps_RSS_MiB": 45.640625,
+          "electron_workingSetSize_MiB": 45.640625
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1052.0,
+          "ps_RSS_MiB": 84.265625,
+          "electron_workingSetSize_MiB": 80.828125
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 59.0,
+          "ps_RSS_MiB": 55.34375,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 745.0,
+          "ps_RSS_MiB": 84.40625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 35.4375,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 61.484195709228516,
+      "GUI_heap_MiB": 26.738323211669922
+    },
+    {
+      "seconds": 121.757,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1811.0,
+          "ps_RSS_MiB": 107.265625,
+          "electron_workingSetSize_MiB": 107.234375
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 417.0,
+          "ps_RSS_MiB": 45.484375,
+          "electron_workingSetSize_MiB": 45.484375
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1052.0,
+          "ps_RSS_MiB": 85.1875,
+          "electron_workingSetSize_MiB": 84.28125
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 59.0,
+          "ps_RSS_MiB": 55.078125,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 745.0,
+          "ps_RSS_MiB": 82.671875,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 35.3125,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 61.83427429199219,
+      "GUI_heap_MiB": 26.801517486572266
+    },
+    {
+      "seconds": 152.198,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1812.0,
+          "ps_RSS_MiB": 105.015625,
+          "electron_workingSetSize_MiB": 103.09375
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 417.0,
+          "ps_RSS_MiB": 40.09375,
+          "electron_workingSetSize_MiB": 40.09375
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1052.0,
+          "ps_RSS_MiB": 85.296875,
+          "electron_workingSetSize_MiB": 82.796875
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 59.0,
+          "ps_RSS_MiB": 52.3125,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 745.0,
+          "ps_RSS_MiB": 76.25,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 33.109375,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 61.47734832763672,
+      "GUI_heap_MiB": 26.86581039428711
+    },
+    {
+      "seconds": 182.639,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1811.0,
+          "ps_RSS_MiB": 103.1875,
+          "electron_workingSetSize_MiB": 102.765625
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 417.0,
+          "ps_RSS_MiB": 39.9375,
+          "electron_workingSetSize_MiB": 39.9375
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1052.0,
+          "ps_RSS_MiB": 83.578125,
+          "electron_workingSetSize_MiB": 77.5625
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 59.0,
+          "ps_RSS_MiB": 50.875,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 745.0,
+          "ps_RSS_MiB": 75.09375,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 32.546875,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 61.869258880615234,
+      "GUI_heap_MiB": 26.934600830078125
+    },
+    {
+      "seconds": 213.066,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1810.0,
+          "ps_RSS_MiB": 107.578125,
+          "electron_workingSetSize_MiB": 107.5
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 417.0,
+          "ps_RSS_MiB": 40.4375,
+          "electron_workingSetSize_MiB": 40.4375
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1052.0,
+          "ps_RSS_MiB": 84.859375,
+          "electron_workingSetSize_MiB": 78.03125
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 59.0,
+          "ps_RSS_MiB": 52.265625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 745.0,
+          "ps_RSS_MiB": 79.515625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 33.3125,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 61.51302719116211,
+      "GUI_heap_MiB": 26.997848510742188
+    },
+    {
+      "seconds": 243.506,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1811.0,
+          "ps_RSS_MiB": 104.828125,
+          "electron_workingSetSize_MiB": 104.5625
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 417.0,
+          "ps_RSS_MiB": 41.140625,
+          "electron_workingSetSize_MiB": 41.140625
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1052.0,
+          "ps_RSS_MiB": 83.4375,
+          "electron_workingSetSize_MiB": 78.046875
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 59.0,
+          "ps_RSS_MiB": 51.40625,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 745.0,
+          "ps_RSS_MiB": 77.75,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 32.546875,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 61.85943603515625,
+      "GUI_heap_MiB": 27.064937591552734
+    },
+    {
+      "seconds": 273.948,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1811.0,
+          "ps_RSS_MiB": 104.140625,
+          "electron_workingSetSize_MiB": 103.953125
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 417.0,
+          "ps_RSS_MiB": 39.796875,
+          "electron_workingSetSize_MiB": 39.796875
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1052.0,
+          "ps_RSS_MiB": 82.984375,
+          "electron_workingSetSize_MiB": 77.765625
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 59.0,
+          "ps_RSS_MiB": 51.078125,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 745.0,
+          "ps_RSS_MiB": 75.453125,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 32.421875,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 61.490657806396484,
+      "GUI_heap_MiB": 27.12816619873047
+    },
+    {
+      "seconds": 300.44,
+      "memory": {
+        "5195": {
+          "role": "electron_main",
+          "top_MEM_MiB": 1811.0,
+          "ps_RSS_MiB": 102.53125,
+          "electron_workingSetSize_MiB": 102.25
+        },
+        "5196": {
+          "role": "electron_gpu",
+          "top_MEM_MiB": 417.0,
+          "ps_RSS_MiB": 42.53125,
+          "electron_workingSetSize_MiB": 44.25
+        },
+        "5200": {
+          "role": "electron_renderer",
+          "top_MEM_MiB": 1052.0,
+          "ps_RSS_MiB": 80.65625,
+          "electron_workingSetSize_MiB": 75.265625
+        },
+        "5883": {
+          "role": "export_browser",
+          "top_MEM_MiB": 59.0,
+          "ps_RSS_MiB": 49.71875,
+          "electron_workingSetSize_MiB": null
+        },
+        "5886": {
+          "role": "export_renderer",
+          "top_MEM_MiB": 745.0,
+          "ps_RSS_MiB": 74.984375,
+          "electron_workingSetSize_MiB": null
+        },
+        "5884": {
+          "role": "export_gpu",
+          "top_MEM_MiB": null,
+          "ps_RSS_MiB": 32.1875,
+          "electron_workingSetSize_MiB": null
+        }
+      },
+      "main_heap_MiB": 61.83628463745117,
+      "GUI_heap_MiB": 27.191368103027344
+    }
+  ],
+  "process_trends": [
+    {
+      "pid": 5195,
+      "role": "electron_main",
+      "metric": "top_MEM_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 1810.0,
+        "last_MiB": 1887.0,
+        "min_MiB": 1810.0,
+        "max_MiB": 1887.0,
+        "OLS_MiB_per_x": 3.0303030303030303,
+        "first_half_median_MiB": 1857.0,
+        "last_half_median_MiB": 1842.0
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 1811.0,
+        "last_MiB": 1811.0,
+        "min_MiB": 1810.0,
+        "max_MiB": 1812.0,
+        "OLS_MiB_per_x": 0.03603693551525154,
+        "first_half_median_MiB": 1811.0,
+        "last_half_median_MiB": 1811.0
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5195,
+      "role": "electron_main",
+      "metric": "ps_RSS_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 170.84375,
+        "last_MiB": 177.375,
+        "min_MiB": 143.125,
+        "max_MiB": 181.59375,
+        "OLS_MiB_per_x": -0.8920454545454546,
+        "first_half_median_MiB": 170.84375,
+        "last_half_median_MiB": 151.9375
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 103.921875,
+        "last_MiB": 102.53125,
+        "min_MiB": 102.53125,
+        "max_MiB": 110.375,
+        "OLS_MiB_per_x": -0.829131407467984,
+        "first_half_median_MiB": 107.265625,
+        "last_half_median_MiB": 104.140625
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5195,
+      "role": "electron_main",
+      "metric": "electron_workingSetSize_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 170.671875,
+        "last_MiB": 177.078125,
+        "min_MiB": 142.921875,
+        "max_MiB": 181.40625,
+        "OLS_MiB_per_x": -0.9027462121212121,
+        "first_half_median_MiB": 170.671875,
+        "last_half_median_MiB": 151.734375
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 103.453125,
+        "last_MiB": 102.25,
+        "min_MiB": 102.25,
+        "max_MiB": 109.96875,
+        "OLS_MiB_per_x": -0.7749054884617389,
+        "first_half_median_MiB": 107.234375,
+        "last_half_median_MiB": 103.953125
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5196,
+      "role": "electron_gpu",
+      "metric": "top_MEM_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 592.0,
+        "last_MiB": 471.0,
+        "min_MiB": 465.0,
+        "max_MiB": 592.0,
+        "OLS_MiB_per_x": -8.921212121212122,
+        "first_half_median_MiB": 481.0,
+        "last_half_median_MiB": 474.0
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 417.0,
+        "last_MiB": 417.0,
+        "min_MiB": 417.0,
+        "max_MiB": 417.0,
+        "OLS_MiB_per_x": 0.0,
+        "first_half_median_MiB": 417.0,
+        "last_half_median_MiB": 417.0
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5196,
+      "role": "electron_gpu",
+      "metric": "ps_RSS_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 72.203125,
+        "last_MiB": 57.4375,
+        "min_MiB": 57.4375,
+        "max_MiB": 72.203125,
+        "OLS_MiB_per_x": -0.9464015151515152,
+        "first_half_median_MiB": 63.0625,
+        "last_half_median_MiB": 59.734375
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 46.6875,
+        "last_MiB": 42.53125,
+        "min_MiB": 39.796875,
+        "max_MiB": 46.6875,
+        "OLS_MiB_per_x": -1.0272533131292096,
+        "first_half_median_MiB": 45.484375,
+        "last_half_median_MiB": 40.4375
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5196,
+      "role": "electron_gpu",
+      "metric": "electron_workingSetSize_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 72.203125,
+        "last_MiB": 57.4375,
+        "min_MiB": 57.4375,
+        "max_MiB": 72.203125,
+        "OLS_MiB_per_x": -0.9464015151515152,
+        "first_half_median_MiB": 63.0625,
+        "last_half_median_MiB": 59.734375
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 46.6875,
+        "last_MiB": 44.25,
+        "min_MiB": 39.796875,
+        "max_MiB": 46.6875,
+        "OLS_MiB_per_x": -0.8446815794968285,
+        "first_half_median_MiB": 45.484375,
+        "last_half_median_MiB": 40.4375
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5200,
+      "role": "electron_renderer",
+      "metric": "top_MEM_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 1070.0,
+        "last_MiB": 1056.0,
+        "min_MiB": 1027.0,
+        "max_MiB": 1070.0,
+        "OLS_MiB_per_x": -0.703030303030303,
+        "first_half_median_MiB": 1038.0,
+        "last_half_median_MiB": 1046.0
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 1052.0,
+        "last_MiB": 1052.0,
+        "min_MiB": 1052.0,
+        "max_MiB": 1052.0,
+        "OLS_MiB_per_x": 0.0,
+        "first_half_median_MiB": 1052.0,
+        "last_half_median_MiB": 1052.0
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5200,
+      "role": "electron_renderer",
+      "metric": "ps_RSS_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 169.03125,
+        "last_MiB": 195.546875,
+        "min_MiB": 125.40625,
+        "max_MiB": 250.484375,
+        "OLS_MiB_per_x": -3.0944128787878786,
+        "first_half_median_MiB": 169.03125,
+        "last_half_median_MiB": 143.546875
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 131.0625,
+        "last_MiB": 80.65625,
+        "min_MiB": 80.65625,
+        "max_MiB": 131.0625,
+        "OLS_MiB_per_x": -5.7545570801021535,
+        "first_half_median_MiB": 85.296875,
+        "last_half_median_MiB": 83.4375
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5200,
+      "role": "electron_renderer",
+      "metric": "electron_workingSetSize_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 167.71875,
+        "last_MiB": 195.28125,
+        "min_MiB": 123.796875,
+        "max_MiB": 250.234375,
+        "OLS_MiB_per_x": -3.0694128787878787,
+        "first_half_median_MiB": 167.71875,
+        "last_half_median_MiB": 141.71875
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 126.5,
+        "last_MiB": 75.265625,
+        "min_MiB": 75.265625,
+        "max_MiB": 126.5,
+        "OLS_MiB_per_x": -6.195956350720089,
+        "first_half_median_MiB": 82.796875,
+        "last_half_median_MiB": 77.765625
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5883,
+      "role": "export_browser",
+      "metric": "top_MEM_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 23.0,
+        "last_MiB": 59.0,
+        "min_MiB": 23.0,
+        "max_MiB": 59.0,
+        "OLS_MiB_per_x": 3.909090909090909,
+        "first_half_median_MiB": 32.0,
+        "last_half_median_MiB": 51.0
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 59.0,
+        "last_MiB": 59.0,
+        "min_MiB": 59.0,
+        "max_MiB": 59.0,
+        "OLS_MiB_per_x": 0.0,
+        "first_half_median_MiB": 59.0,
+        "last_half_median_MiB": 59.0
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5883,
+      "role": "export_browser",
+      "metric": "ps_RSS_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 76.28125,
+        "last_MiB": 55.953125,
+        "min_MiB": 54.15625,
+        "max_MiB": 76.28125,
+        "OLS_MiB_per_x": -2.9107954545454544,
+        "first_half_median_MiB": 74.890625,
+        "last_half_median_MiB": 55.953125
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 54.375,
+        "last_MiB": 49.71875,
+        "min_MiB": 49.71875,
+        "max_MiB": 55.34375,
+        "OLS_MiB_per_x": -1.1692810286535087,
+        "first_half_median_MiB": 54.765625,
+        "last_half_median_MiB": 51.078125
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5883,
+      "role": "export_browser",
+      "metric": "electron_workingSetSize_MiB",
+      "exports": {
+        "n": 0
+      },
+      "idle": {
+        "n": 0
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5886,
+      "role": "export_renderer",
+      "metric": "top_MEM_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 791.0,
+        "last_MiB": 983.0,
+        "min_MiB": 765.0,
+        "max_MiB": 983.0,
+        "OLS_MiB_per_x": 18.284848484848485,
+        "first_half_median_MiB": 858.0,
+        "last_half_median_MiB": 935.0
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 745.0,
+        "last_MiB": 745.0,
+        "min_MiB": 745.0,
+        "max_MiB": 745.0,
+        "OLS_MiB_per_x": 0.0,
+        "first_half_median_MiB": 745.0,
+        "last_half_median_MiB": 745.0
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5886,
+      "role": "export_renderer",
+      "metric": "ps_RSS_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 806.5625,
+        "last_MiB": 603.3125,
+        "min_MiB": 374.53125,
+        "max_MiB": 806.5625,
+        "OLS_MiB_per_x": -20.69005681818182,
+        "first_half_median_MiB": 591.59375,
+        "last_half_median_MiB": 470.046875
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 117.609375,
+        "last_MiB": 74.984375,
+        "min_MiB": 74.984375,
+        "max_MiB": 117.609375,
+        "OLS_MiB_per_x": -5.838345551699749,
+        "first_half_median_MiB": 83.5,
+        "last_half_median_MiB": 75.453125
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5886,
+      "role": "export_renderer",
+      "metric": "electron_workingSetSize_MiB",
+      "exports": {
+        "n": 0
+      },
+      "idle": {
+        "n": 0
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5884,
+      "role": "export_gpu",
+      "metric": "top_MEM_MiB",
+      "exports": {
+        "n": 5,
+        "first_MiB": 32.0,
+        "last_MiB": 32.0,
+        "min_MiB": 32.0,
+        "max_MiB": 32.0,
+        "OLS_MiB_per_x": 0.0,
+        "first_half_median_MiB": 32.0,
+        "last_half_median_MiB": 32.0
+      },
+      "idle": {
+        "n": 0
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5884,
+      "role": "export_gpu",
+      "metric": "ps_RSS_MiB",
+      "exports": {
+        "n": 10,
+        "first_MiB": 56.484375,
+        "last_MiB": 33.265625,
+        "min_MiB": 32.796875,
+        "max_MiB": 56.484375,
+        "OLS_MiB_per_x": -2.7180871212121214,
+        "first_half_median_MiB": 49.03125,
+        "last_half_median_MiB": 33.75
+      },
+      "idle": {
+        "n": 10,
+        "first_MiB": 35.140625,
+        "last_MiB": 32.1875,
+        "min_MiB": 32.1875,
+        "max_MiB": 35.4375,
+        "OLS_MiB_per_x": -0.7747370452705531,
+        "first_half_median_MiB": 35.140625,
+        "last_half_median_MiB": 32.546875
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    },
+    {
+      "pid": 5884,
+      "role": "export_gpu",
+      "metric": "electron_workingSetSize_MiB",
+      "exports": {
+        "n": 0
+      },
+      "idle": {
+        "n": 0
+      },
+      "export_slope_unit": "MiB/export",
+      "idle_slope_unit": "MiB/minute"
+    }
+  ],
+  "worker_idle_heap_observations": [
+    {
+      "epoch_ms": 1792047870698,
+      "last_completed_checkpoint": "after_export_9",
+      "active_job": {
+        "kind": "export",
+        "state": "done",
+        "progress": {
+          "phase": "complete",
+          "percent": 1,
+          "currentFrame": 360,
+          "totalFrames": 360,
+          "bytesWritten": 9166098
+        }
+      },
+      "heap_MiB": {
+        "usedSize": 8.783683776855469,
+        "totalSize": 10.203125,
+        "embedderHeapUsedSize": 0.8842620849609375,
+        "backingStorageSize": 2.5248641967773438
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 23,
+        "jsEventListeners": 28
+      },
+      "browser_version": "148.0.7778.96"
+    },
+    {
+      "epoch_ms": 1792047900718,
+      "last_completed_checkpoint": "post_export_idle",
+      "active_job": {
+        "kind": "export",
+        "state": "done",
+        "progress": {
+          "phase": "complete",
+          "percent": 1,
+          "currentFrame": 360,
+          "totalFrames": 360,
+          "bytesWritten": 9166098
+        }
+      },
+      "heap_MiB": {
+        "usedSize": 8.785099029541016,
+        "totalSize": 10.203125,
+        "embedderHeapUsedSize": 0.8842620849609375,
+        "backingStorageSize": 2.5248641967773438
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 23,
+        "jsEventListeners": 28
+      },
+      "browser_version": "148.0.7778.96"
+    },
+    {
+      "epoch_ms": 1792047930714,
+      "last_completed_checkpoint": "post_export_idle",
+      "active_job": {
+        "kind": "export",
+        "state": "done",
+        "progress": {
+          "phase": "complete",
+          "percent": 1,
+          "currentFrame": 360,
+          "totalFrames": 360,
+          "bytesWritten": 9166098
+        }
+      },
+      "heap_MiB": {
+        "usedSize": 8.786514282226562,
+        "totalSize": 10.203125,
+        "embedderHeapUsedSize": 0.8842620849609375,
+        "backingStorageSize": 2.5248641967773438
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 23,
+        "jsEventListeners": 28
+      },
+      "browser_version": "148.0.7778.96"
+    },
+    {
+      "epoch_ms": 1792047960722,
+      "last_completed_checkpoint": "post_export_idle",
+      "active_job": {
+        "kind": "export",
+        "state": "done",
+        "progress": {
+          "phase": "complete",
+          "percent": 1,
+          "currentFrame": 360,
+          "totalFrames": 360,
+          "bytesWritten": 9166098
+        }
+      },
+      "heap_MiB": {
+        "usedSize": 8.78792953491211,
+        "totalSize": 10.203125,
+        "embedderHeapUsedSize": 0.8842620849609375,
+        "backingStorageSize": 2.5248641967773438
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 23,
+        "jsEventListeners": 28
+      },
+      "browser_version": "148.0.7778.96"
+    },
+    {
+      "epoch_ms": 1792047990736,
+      "last_completed_checkpoint": "post_export_idle",
+      "active_job": {
+        "kind": "export",
+        "state": "done",
+        "progress": {
+          "phase": "complete",
+          "percent": 1,
+          "currentFrame": 360,
+          "totalFrames": 360,
+          "bytesWritten": 9166098
+        }
+      },
+      "heap_MiB": {
+        "usedSize": 8.789344787597656,
+        "totalSize": 10.203125,
+        "embedderHeapUsedSize": 0.8842620849609375,
+        "backingStorageSize": 2.5248641967773438
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 23,
+        "jsEventListeners": 28
+      },
+      "browser_version": "148.0.7778.96"
+    },
+    {
+      "epoch_ms": 1792048020759,
+      "last_completed_checkpoint": "post_export_idle",
+      "active_job": {
+        "kind": "export",
+        "state": "done",
+        "progress": {
+          "phase": "complete",
+          "percent": 1,
+          "currentFrame": 360,
+          "totalFrames": 360,
+          "bytesWritten": 9166098
+        }
+      },
+      "heap_MiB": {
+        "usedSize": 8.790760040283203,
+        "totalSize": 10.203125,
+        "embedderHeapUsedSize": 0.9219207763671875,
+        "backingStorageSize": 2.5248641967773438
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 23,
+        "jsEventListeners": 28
+      },
+      "browser_version": "148.0.7778.96"
+    },
+    {
+      "epoch_ms": 1792048050757,
+      "last_completed_checkpoint": "post_export_idle",
+      "active_job": {
+        "kind": "export",
+        "state": "done",
+        "progress": {
+          "phase": "complete",
+          "percent": 1,
+          "currentFrame": 360,
+          "totalFrames": 360,
+          "bytesWritten": 9166098
+        }
+      },
+      "heap_MiB": {
+        "usedSize": 8.79217529296875,
+        "totalSize": 10.203125,
+        "embedderHeapUsedSize": 0.9219207763671875,
+        "backingStorageSize": 2.5248641967773438
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 23,
+        "jsEventListeners": 28
+      },
+      "browser_version": "148.0.7778.96"
+    },
+    {
+      "epoch_ms": 1792048080743,
+      "last_completed_checkpoint": "post_export_idle",
+      "active_job": {
+        "kind": "export",
+        "state": "done",
+        "progress": {
+          "phase": "complete",
+          "percent": 1,
+          "currentFrame": 360,
+          "totalFrames": 360,
+          "bytesWritten": 9166098
+        }
+      },
+      "heap_MiB": {
+        "usedSize": 8.793590545654297,
+        "totalSize": 10.203125,
+        "embedderHeapUsedSize": 0.9219207763671875,
+        "backingStorageSize": 2.5248641967773438
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 23,
+        "jsEventListeners": 28
+      },
+      "browser_version": "148.0.7778.96"
+    },
+    {
+      "epoch_ms": 1792048110778,
+      "last_completed_checkpoint": "post_export_idle",
+      "active_job": {
+        "kind": "export",
+        "state": "done",
+        "progress": {
+          "phase": "complete",
+          "percent": 1,
+          "currentFrame": 360,
+          "totalFrames": 360,
+          "bytesWritten": 9166098
+        }
+      },
+      "heap_MiB": {
+        "usedSize": 8.795074462890625,
+        "totalSize": 10.203125,
+        "embedderHeapUsedSize": 0.9219207763671875,
+        "backingStorageSize": 2.5248641967773438
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 23,
+        "jsEventListeners": 28
+      },
+      "browser_version": "148.0.7778.96"
+    },
+    {
+      "epoch_ms": 1792048140791,
+      "last_completed_checkpoint": "post_export_idle",
+      "active_job": {
+        "kind": "export",
+        "state": "done",
+        "progress": {
+          "phase": "complete",
+          "percent": 1,
+          "currentFrame": 360,
+          "totalFrames": 360,
+          "bytesWritten": 9166098
+        }
+      },
+      "heap_MiB": {
+        "usedSize": 8.796504974365234,
+        "totalSize": 10.203125,
+        "embedderHeapUsedSize": 0.9219207763671875,
+        "backingStorageSize": 2.5248641967773438
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 23,
+        "jsEventListeners": 28
+      },
+      "browser_version": "148.0.7778.96"
+    }
+  ],
+  "fixed_resources": {
+    "schemaVersion": 1,
+    "capturedAtUs": 156840285,
+    "history": {
+      "actionCapacity": 1000,
+      "actionUndo": 18,
+      "actionRedo": 0,
+      "templateUndo": 0,
+      "templateRedo": 0,
+      "redoJournal": 20,
+      "changeJournalEntries": 104,
+      "changeJournalRevisions": 48
+    },
+    "workspace": {
+      "runtimes": 1,
+      "queuedWrites": 0,
+      "pendingWrites": 0,
+      "initializingRuntimeCount": 0,
+      "editedWorkspaceCount": 1,
+      "activeWriteDrainCount": 0,
+      "queuedCommandCount": 0,
+      "failedWriteCount": 0,
+      "activeWorkspace": true
+    },
+    "autoSave": {
+      "status": "idle",
+      "automaticSaveRunning": false,
+      "pendingRevision": false,
+      "scheduledSave": false,
+      "queuedSaveOperations": 0
+    },
+    "fonts": {
+      "projectLeases": 2,
+      "leasedFaces": 0,
+      "projectFaces": 0,
+      "documentFaces": 251
+    },
+    "media": {
+      "ownedBlobUrls": 0,
+      "motionImageBitmapCacheEntries": 0,
+      "motionVideoElementCacheEntries": 0,
+      "previewVideoCacheEntries": 0,
+      "previewImageBitmapCacheEntries": 0,
+      "allBlobUrls": null,
+      "decoderContexts": null,
+      "webWorkers": null
+    }
+  },
+  "history_constant_during_ten_and_idle": true,
+  "save_queues_drained": true,
+  "all_resource_checkpoints_visible": true,
+  "export_process_ids_stable": true,
+  "vmmap": [
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/vmmap-1792047873069-5886-idle.txt",
+      "analysis_complete": false,
+      "summary_lines": [
+        "Physical footprint:         745.2M",
+        "Physical footprint (peak):  1.6G",
+        "shared memory                    650.8M    38.0M    38.0M   607.9M       0K       0K       0K      159 ",
+        "Can't examine target process's malloc zone PartitionAlloc_0x10b9c9ec0, so memory analysis will be incomplete or incorrect.",
+        "vmmap_status=0"
+      ]
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/vmmap-1792048112056-5886-idle.txt",
+      "analysis_complete": false,
+      "summary_lines": [
+        "Physical footprint:         745.3M",
+        "Physical footprint (peak):  1.6G",
+        "shared memory                    650.8M    1136K    1136K   644.8M       0K       0K       0K      159 ",
+        "Can't examine target process's malloc zone PartitionAlloc_0x10b9c9ec0, so memory analysis will be incomplete or incorrect.",
+        "vmmap_status=0"
+      ]
+    }
+  ],
+  "host": {
+    "sample_count": 22,
+    "AC_all_samples": true,
+    "hid_reset_count": 0,
+    "hid_idle_first_last_seconds": [
+      78.877755875,
+      711.114697916
+    ],
+    "background_cpu_peak_percent": {
+      "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer": 45.8,
+      "/Applications/UURemote.app/Contents/Helpers/UURemoteServer": 24.6,
+      "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/155.0.8059.40/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)": 19.1,
+      "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/155.0.8059.40/Helpers/Codex (Service).app/Contents/MacOS/Codex (Service)": 12.7,
+      "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex": 5.3,
+      "/Applications/UURemote.app/Contents/MacOS/UURemote": 1.2,
+      "/Applications/UURemote.app/Contents/MacOS/UURemoteDaemon": 0.1
+    },
+    "pressure_counts": {
+      "kern.memorystatus_vm_pressure_level: 2": 20
+    },
+    "swap_first_last": [
+      "vm.swapusage: total = 5120.00M  used = 4696.38M  free = 423.62M  (encrypted)",
+      "vm.swapusage: total = 5120.00M  used = 4448.44M  free = 671.56M  (encrypted)"
+    ],
+    "latency_baseline_valid": false,
+    "qualification": "background activity, memory pressure/swap and diagnostic observer; report-only"
+  },
+  "cleanup": {
+    "epoch": 1792048205.543282,
+    "verified_owned_pids": [
+      4740,
+      4741,
+      4742,
+      5195,
+      5196,
+      5200,
+      5883,
+      5884,
+      5886
+    ],
+    "still_alive": [],
+    "harness_profile_exists": false,
+    "all_outputs_copied_to_evidence": true,
+    "only_test_processes_cleaned": true,
+    "success_profile_cleanup_by_harness": true
+  },
+  "evidence": {
+    "availability": "local raw evidence and packages; Git contains summary, hashes and paths only",
+    "root": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15",
+    "real_media_run": "apps/desktop/e2e/.artifacts/performance/real-media-1792047601726",
+    "raw_failures_preserved": true,
+    "old_evidence_integrity": {
+      "checked_digest_count": 29,
+      "mismatches": [],
+      "source_manifest": "docs/performance/macos-export-memory-attribution-2026-10-15.json"
+    },
+    "manifest": {
+      "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/EVIDENCE-MANIFEST.json",
+      "file_count": 127,
+      "total_bytes": 154945150,
+      "sha256": "a6e5105d6d81575e14b6fa8b60016512c3208db98f144b27e6c7dcaed66e9d7c"
+    },
+    "selected_file_digests": [
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/analysis.json",
+        "bytes": 84546,
+        "sha256": "9d1ab8262bedb3bc7c953f13eb4862dab98dcf45f9156b2a1b5d9d589d627914"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/audio-verification.json",
+        "bytes": 6281,
+        "sha256": "3a65e6d504b97fe0be6c9cf97efb7fc1d7b0c5877c088dadb678e939ad6608b9"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/cleanup-verification.json",
+        "bytes": 336,
+        "sha256": "3c0b10ca3827f7c0bcc4eea74e21d274abeccb01e1e1b7cef1c4544e9185b597"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/host-summary.json",
+        "bytes": 1327,
+        "sha256": "e09df5b6730cbbfdafe6023fc8d37e4b568a0bacf727cc902596090b290ca961"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/native-package-identity.json",
+        "bytes": 2341,
+        "sha256": "30ef9828ff80cbca68224c84996a4c6230c2c131209212c418b8b122321faae1"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/stage-results-r2.json",
+        "bytes": 1246,
+        "sha256": "0ccaa9651db43e2ecf95c5e7141a479b6b071d3e753babbc340fb365d548e9e8"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/vmmap-1792047873069-5886-idle.txt",
+        "bytes": 7020,
+        "sha256": "802ff5e45290f5f2ce037f152996d32112e483ec60edbba9916f0315b4bcf591"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/macos-native-export-10x-2026-10-15/vmmap-1792048112056-5886-idle.txt",
+        "bytes": 7017,
+        "sha256": "2f31cd79594c8ff88e4602b310492c223b6191565cc6fc441331867494a62c68"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/performance/real-media-1792047601726/export-resources.jsonl",
+        "bytes": 66022,
+        "sha256": "9a8586294425454afba2d7a58420792f5b0c21a78a1cda69cb4ec97d0a52ca3d"
+      },
+      {
+        "path": "apps/desktop/e2e/.artifacts/performance/real-media-1792047601726/result.json",
+        "bytes": 355767,
+        "sha256": "9325925ef4323a89280c92117c9a3bed65039c387795c77619ae7d1b8b8fef43"
+      }
+    ]
+  },
+  "limitations": [
+    "Residual export growth is not proven bounded; five-minute idle does not establish long-term leak freedom.",
+    "Pressure and swap affect resident accounting; top MEM, ps RSS and Electron workingSetSize must remain separate.",
+    "vmmap reports incomplete PartitionAlloc analysis; no C++ allocation owner established.",
+    "Actual hardware encoder not exposed.",
+    "No R02/T03 rerun; earlier startup and OS picker gaps and Windows are not cleared."
+  ]
+}
