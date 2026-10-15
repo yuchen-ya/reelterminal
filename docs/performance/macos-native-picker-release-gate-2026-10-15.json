@@ -1,14 +1,14 @@
 {
-  "schema": "reelterminal.macos-native-picker-release-gate/v2",
+  "schema": "reelterminal.macos-native-picker-release-gate/v3",
   "date": "2026-10-15",
   "timezone": "Asia/Shanghai",
   "release_ready": false,
-  "feature_accepted": false,
+  "feature_accepted": true,
   "source_head": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
   "investigation_head": "cf7bf9cb",
   "runtime_files_changed": [],
   "native_trace": {
-    "status": "native_source_start_timeout; not accepted",
+    "status": "historical_native_source_start_timeout; root_cause_unresolved; subsequent_manual_coverage_passed",
     "source_request": [
       {
         "started": 1792056421020,
@@ -100,15 +100,18 @@
     "native request invoked SCContentSharingPicker present in owned process",
     "product desktopCapturer.getSources and fallback Menu were not entered",
     "request failed after 10030ms with AbortError: Timeout starting video source",
-    "no returned tracks, no media additions, revision unchanged"
+    "no returned tracks, no media additions, revision unchanged",
+    "real system cancellation confirmed by owned PID native events and unchanged project/media state",
+    "dedicated visible synthetic window selected via actual native acquisition, recorded, stopped, imported and fully decoded",
+    "decoded recorded frames show exact synthetic title, advancing FRAME counter and moving orange box; capture resources stopped"
   ],
   "not_proven": [
     "why some native requests do not expose usable source-selection UI before the 10-second source deadline",
-    "successful selection and recording of the separately named animated synthetic window",
-    "a product runtime root-cause fix or readiness of the latest source as a newly built Mac candidate"
+    "a product runtime root-cause fix or readiness of the latest source as a newly built Mac candidate",
+    "reliable automated operation of the native system picker or arbitrary-window selection across all environments"
   ],
-  "manual_required": "real system picker interaction needed human input in this environment; manual operation is not a reliable complete workaround",
-  "manual_status": "partial_pass; specified synthetic target not selected; all owned tests cleaned up",
+  "manual_required": "Human interaction with the real macOS system picker is required for this verified workflow; automated native UI reliability is not established.",
+  "manual_status": "passed_dedicated_synthetic_selection_stop_import_decode_and_separate_real_system_cancel; owned tests cleaned up",
   "permission_changes": false,
   "new_build_or_package": false,
   "long_tests_rerun": false,
@@ -316,9 +319,69 @@
       "path": "apps/desktop/e2e/.artifacts/macos-picker-fresh-cancel-2026-10-15/cleanup-verification.json",
       "bytes": 761,
       "sha256": "a101c1d8e83a9a3a6ce66e4c4d8e31eb2bc510360c18982dd68ce0b33c1bdc78"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/native-manual-result.json",
+      "bytes": 96793,
+      "sha256": "53bc4a66539f7fb3b1ebb90dee9acfd92d2b2ddd75945bea8c4b59702b68f634"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/native-manual.diagnostic.ts",
+      "bytes": 8121,
+      "sha256": "7d012a6ff8e7cb18d4778cdbaf01a0b1f01532a18d8767f1565ad5586b8416f6"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/native-manual.vitest.ts",
+      "bytes": 244,
+      "sha256": "512e3db145e255fbe7d08f9158ffccadef34a968ae0140252de681045ea4887b"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/native-manual.log",
+      "bytes": 716,
+      "sha256": "f4866be7a47fd51a89421973448dce2ae983003c3f57078883090bbc34bcdc0b"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/fixture-visible.png",
+      "bytes": 23620,
+      "sha256": "b1398d7b2dc8a432f15441538bd2b1bd641c19fcbfb5effb72787a6dc0a80768"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/human-green-window-confirmation.json",
+      "bytes": 135,
+      "sha256": "64abd8b54636e646674c5355e9fff332fd0bea9b1301253cf43c756d42815187"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/manual-ready_for_select.json",
+      "bytes": 30,
+      "sha256": "db0e0aa3f9c01d8d01a8a6cc638d9fcb435fe4973f2e13203193dd2a77ca6d51"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/manual-select_observed.json",
+      "bytes": 622,
+      "sha256": "a8fe6cc880ceb7123015641f855b8e6c3d094cfb79e922ed58b9e40314dc510a"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/native-recording.webm",
+      "bytes": 1605366,
+      "sha256": "1a2b9913bd5471fb73a9ad67de72fc72391662799c63fc48d87b4272025607e2"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/recorded-green-1s.png",
+      "bytes": 84674,
+      "sha256": "460b6c8dfa72f2e10448be8971bdb9d00c7ff478d73fb5c76f75cbd68df3e8a4"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/recorded-green-2s.png",
+      "bytes": 83535,
+      "sha256": "798762e6b2b37404a8bac2c2634904408f723cc9e63a976aa513b880fb5ec002"
+    },
+    {
+      "path": "apps/desktop/e2e/.artifacts/macos-picker-visible-target-v2-2026-10-15/green-target-validation.json",
+      "bytes": 2925,
+      "sha256": "70f3498b9d3ddf2cc25981e50d053e3ad2e82f2b5068b25bfcbe8598e9818f38"
     }
   ],
-  "report_checkout_head": "3e9f853c034967aa7b39a5c884436b366c797ecd",
+  "report_checkout_head": "81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b",
   "package_asar_sha256_reverified": "5c11ff60687d0f2de0dd7df999d9586fe3251e82654297165e8fd9f0117227a0",
   "manual_followup": {
     "package_source_head": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
@@ -457,7 +520,10 @@
       "media_recorders_created": 0,
       "revision_after": 0,
       "media_count_after": 0,
-      "stop_import_decode_for_target": "not_covered"
+      "stop_import_decode_for_target": "not_covered",
+      "later_human_clarification": "没看到你说的绿色窗口",
+      "fixture_visibility_verified": false,
+      "attribution_limit": "Real source timeout retained, but fixture visibility precondition was not verified; inability to find the target is not proven to be a product defect. Dedicated-target coverage completed in separate PID 16210."
     },
     "cleanup": {
       "checked_epoch_ms": 1792063801986,
@@ -491,15 +557,163 @@
       },
       "user_applications_closed": false
     },
-    "runner_status_caveat": "both manual runners intentionally stopped at uncovered/deviated legs; their operator_abort exits are retained; a successful leg does not become a full-suite pass",
-    "permission_boundary": "no scripted permission changes; preflight screen=granted, microphone/camera disabled. User current-app consent wording preserved without assuming it changed a global TCC setting."
+    "runner_status_caveat": "Original PID 14390/14977 runners retained operator_abort at deviated/uncovered legs. Separate PID 16210 selection-only runner passed. The separate real-system cancel leg and final dedicated-source leg supply scoped manual acceptance, not a full regression-suite pass.",
+    "permission_boundary": "no scripted permission changes; preflight screen=granted, microphone/camera disabled. User current-app consent wording preserved without assuming it changed a global TCC setting.",
+    "fixture_presentation_correction": {
+      "change_scope": "ignored local test helper only; no product source changes",
+      "old_precondition_gap": "show() on a centered fixture followed by focusing the larger editor did not prove human-visible fixture; occlusion is plausible, not established root cause",
+      "preparation_pid_16136": "always-on-top preparation abandoned before any source request; not a failed capture",
+      "final_layout": "normal non-floating, non-overlapping side-by-side windows; actual fixture rendering checked and recorded output subsequently verified",
+      "human_followup": "抓到了，正在录制"
+    },
+    "dedicated_synthetic_selection": {
+      "selection_scope": "actual macOS system source acquisition; dedicated normal synthetic window",
+      "human_confirmation": "抓到了，正在录制",
+      "status": "passed",
+      "native_request": {
+        "started": 1792064710614,
+        "result": "resolved",
+        "finished": 1792064712550,
+        "elapsed_ms": 1936,
+        "started_local": "2026-10-15T19:45:10.614+08:00",
+        "finished_local": "2026-10-15T19:45:12.550+08:00"
+      },
+      "fixture_visibility": {
+        "bounds": {
+          "x": 1032,
+          "y": 43,
+          "width": 430,
+          "height": 340
+        },
+        "visible": true,
+        "alwaysOnTop": false,
+        "mainBounds": {
+          "x": 0,
+          "y": 33,
+          "width": 1024,
+          "height": 800
+        },
+        "workArea": {
+          "x": 0,
+          "y": 33,
+          "width": 1470,
+          "height": 843
+        }
+      },
+      "video": {
+        "codec": "vp9",
+        "width": 860,
+        "height": 680,
+        "audio_stream_count": 0,
+        "packet_count": 1289,
+        "max_packet_end_seconds": 43.889,
+        "full_decode_exit_code": 0,
+        "full_decode_evidence": "runner execFileSync ffmpeg whole-file decode completed before passed status",
+        "decode_log_caveat": "ffmpeg exit 0; null-output muxer logged four non-monotonically-increasing DTS warnings. No fatal decode error; warnings retained in hashed local runner log, not described as warning-free validation."
+      },
+      "frames": [
+        {
+          "file": "recorded-green-1s.png",
+          "sha256": "460b6c8dfa72f2e10448be8971bdb9d00c7ff478d73fb5c76f75cbd68df3e8a4",
+          "green_fraction": 0.8345981532147743,
+          "orange_pixel_count": 16256,
+          "orange_bbox": [
+            72,
+            434,
+            198,
+            561
+          ],
+          "orange_center_x": 135.0
+        },
+        {
+          "file": "recorded-green-2s.png",
+          "sha256": "798762e6b2b37404a8bac2c2634904408f723cc9e63a976aa513b880fb5ec002",
+          "green_fraction": 0.8350666894664842,
+          "orange_pixel_count": 16384,
+          "orange_bbox": [
+            314,
+            434,
+            441,
+            561
+          ],
+          "orange_center_x": 377.5
+        }
+      ],
+      "visually_read_frame_counters": [
+        481,
+        511
+      ],
+      "revision_before": 0,
+      "revision_after": 1,
+      "media_count_before": 0,
+      "media_count_after": 1,
+      "capture_after": {
+        "pending": 0,
+        "requests": [
+          {
+            "started": 1792064710614,
+            "result": "resolved",
+            "finished": 1792064712550
+          }
+        ],
+        "recorders": [
+          {
+            "state": "inactive",
+            "mimeType": "video/webm;codecs=vp9"
+          }
+        ],
+        "tracks": [
+          {
+            "kind": "video",
+            "label": "",
+            "readyState": "ended",
+            "settings": {
+              "deviceId": "window:-4:-1"
+            }
+          }
+        ]
+      },
+      "workspace_after": {
+        "runtimes": 1,
+        "queuedWrites": 0,
+        "pendingWrites": 0,
+        "initializingRuntimeCount": 0,
+        "editedWorkspaceCount": 1,
+        "activeWriteDrainCount": 0,
+        "queuedCommandCount": 0,
+        "failedWriteCount": 0,
+        "activeWorkspace": true
+      },
+      "autosave_after": {
+        "status": "idle",
+        "automaticSaveRunning": false,
+        "pendingRevision": false,
+        "scheduledSave": false,
+        "queuedSaveOperations": 0
+      },
+      "cleanup": {
+        "owned_main_pids": [
+          16136,
+          16210
+        ],
+        "owned_main_or_direct_children_remaining": [],
+        "user_applications_closed": false,
+        "checked_epoch_ms": 1792064844784
+      },
+      "owned_pid": 16210,
+      "target": "REELTERMINAL SYNTHETIC PICKER TEST 16210",
+      "duration_caveat": "Actual capture spans 43.889 seconds (packet end); human started while visibility confirmation was pending, before the harness stop gate was released. This was one directed capture, not a stress run.",
+      "scope": "selection-only runner passed; actual system cancel verified separately in PID 14977; no combined-suite pass claimed"
+    }
   },
   "coordination": {
     "provided_windows_thread_id": "01a13eb4-274b-7347-a06b-5cd95d37e026",
     "read_thread_result": "not found on available local host",
     "send_message_result": "not found on available local host; no delivery claimed",
     "runtime_files_changed_by_this_work": [],
-    "remote_changes_preserved_through": "3e9f853c",
-    "merge": "fast-forward after all owned capture tests completed"
-  }
+    "remote_changes_preserved_through": "81c1ea4eea460e1e49078e1eaa5a2b7e28f7ea1b",
+    "merge": "fast-forward preserved Windows commits after owned tests completed; direct cross-host thread remained inaccessible"
+  },
+  "recording_gate_status": "passed_manual_on_existing_package",
+  "release_scope": "Recording feature accepted manually only on existing a8c6925c package. Whole-app release and a newly built latest-source Mac candidate are not approved; release_ready remains false. Historical startup and memory risks remain."
 }
