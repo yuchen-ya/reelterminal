@@ -63,6 +63,40 @@ justified by this reproduction.
 
 ## Retained local evidence
 
+## Duplicate selection: product context-CAS defect
+
+Updating the old flow tests to pass explicit project/workspace ids exposed a
+second failure: Flow A's valid rewrite was rejected with context revision
+`3 -> 4`, while project revision, selection ids, playhead, target point,
+references and workspace identity were unchanged. This was not bypassed with
+a fresh read/retry or by removing the context-CAS expectation.
+
+Temporary selection-boundary diagnostics (removed from product source before
+commit) showed a second `select` from the title's `onClick`, publishing an
+identical `{ type, id, trackId }` selection. The context subscription incremented
+its revision solely because the selection array had a new reference. The
+saved trace is `flow-a-selection-trace.json`; `flow-a-context-before.json` and
+the three diagnosis logs retain the rejected requests.
+
+The product now compares selection length and ordered type/id/track tuples
+before incrementing context revision, with a reference-equality fast path.
+Repeated identical selection and redundant deselect/clear preserve the guard;
+actual selection, type, track and order changes still invalidate it.
+
+The new regression failed before the fix (expected revision 12, received 15).
+After the fix, context-store and live-bridge tests passed **57/57**. Rebuilt
+Windows Electron flows A/B and cross-cutting passed **12/12, 24.60 seconds**,
+including real connector writes, stale-context/project conflicts, GUI undo/redo,
+rendered caption pixels, save/relaunch/reopen and endpoint security. Existing
+CAS expectations and assertions were preserved. Explicit node save now supplies
+the required revision and idempotency key as well as the target ids.
+
+The evidence includes `context-unit-before.log`, `context-unit-after.log`,
+`flow-a-selection-trace.json`, `context-fixed-build.log`, and
+`explicit-target-flows-fixed.log` under the task artifact directory below.
+
+## Retained local evidence
+
 Under `apps/desktop/e2e/.artifacts/windows-stability-2026-10-15/`:
 
 - `electron-baseline.log`, `ci-baseline.log`: latest fixed-SHA remote failures.

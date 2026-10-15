@@ -47,6 +47,36 @@ describe("editor-context-store", () => {
     expect(revision()).toBe(before + 1);
   });
 
+  it("keeps context CAS valid when the same selection is published again", () => {
+    const item = { type: "text-clip" as const, id: "title", trackId: "text-track" };
+    useUIStore.getState().select(item);
+    const before = revision();
+    useUIStore.getState().select({ ...item });
+    useUIStore.getState().selectMultiple([{ ...item }]);
+    useUIStore.getState().deselect("already-absent");
+    expect(revision()).toBe(before);
+    expect(getLiveEditorContext().selectedTextIds).toEqual(["title"]);
+
+    useUIStore.getState().clearSelection();
+    expect(revision()).toBe(before + 1);
+    useUIStore.getState().clearSelection();
+    expect(revision()).toBe(before + 1);
+  });
+
+  it("invalidates context CAS for changed selection type, track or order", () => {
+    useUIStore.getState().select({ type: "clip", id: "same", trackId: "a" });
+    const before = revision();
+    useUIStore.getState().select({ type: "text-clip", id: "same", trackId: "a" });
+    useUIStore.getState().select({ type: "text-clip", id: "same", trackId: "b" });
+    useUIStore.getState().selectMultiple([
+      { type: "text-clip", id: "same", trackId: "b" }, { type: "clip", id: "other" },
+    ]);
+    useUIStore.getState().selectMultiple([
+      { type: "clip", id: "other" }, { type: "text-clip", id: "same", trackId: "b" },
+    ]);
+    expect(revision()).toBe(before + 4);
+  });
+
   it("bumps contextRevision when the canvas point changes", () => {
     const before = revision();
     useEditorContextStore.getState().setCanvasPoint({ x: 0.5, y: 0.25 });

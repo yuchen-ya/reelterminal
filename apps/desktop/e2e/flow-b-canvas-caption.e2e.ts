@@ -21,6 +21,7 @@ import {
 } from "./harness/ui";
 
 interface EditorContext {
+  identity: { projectId: string; workspaceId: string };
   projectRevision: number;
   contextRevision: number | null;
   playheadSeconds: number | null;
@@ -43,6 +44,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
   let evidence: EvidenceRecord;
   let contextWithPoint: EditorContext;
   let revisionAfterCaption: number;
+  let target: { projectId: string; workspaceId: string };
 
   const readContext = async (): Promise<EditorContext> => {
     const result = await agent.callTool<EditorContext>("editor_get_context");
@@ -84,6 +86,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
     );
 
     contextWithPoint = await readContext();
+    target = { projectId: contextWithPoint.identity.projectId, workspaceId: contextWithPoint.identity.workspaceId };
     expect(contextWithPoint.playheadSeconds).not.toBeNull();
     expect(Math.abs(contextWithPoint.playheadSeconds! - PLAYHEAD_T)).toBeLessThanOrEqual(0.25);
     expect(contextWithPoint.canvasPoint).not.toBeNull();
@@ -101,6 +104,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
 
   test("agent places the caption at the point; GUI shows it; rendered pixels agree", async () => {
     const applied = await agent.callTool<{ revision: number }>("edit_apply", {
+      ...target,
       ops: [
         { op: "track.add", trackType: "text" },
         {
@@ -127,7 +131,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
       width: number;
       height: number;
       artifact: { path: string; sizeBytes: number; sha256: string };
-    }>("preview_render_frame", { timeSec: PLAYHEAD_T + 1 }, { timeoutMs: 300_000 });
+    }>("preview_render_frame", { ...target, timeSec: PLAYHEAD_T + 1 }, { timeoutMs: 300_000 });
     expect(frame.ok, JSON.stringify(frame)).toBe(true);
     const artifact = frame.value!.artifact;
     const png = readFileSync(artifact.path);
@@ -160,6 +164,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
     );
 
     const replayed = await agent.callTool("edit_apply", {
+      ...target,
       ops: [
         { op: "track.add", trackType: "text" },
         {
@@ -176,7 +181,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
     expect(replayed.isError).toBe(true);
     expect(replayed.error!.code).toBe("CONFLICT");
 
-    const timeline = await agent.callTool<TimelineView>("timeline_get");
+    const timeline = await agent.callTool<TimelineView>("timeline_get", target);
     expect(timeline.value!.textOverlays).toHaveLength(1);
     expect(timeline.value!.textOverlays[0]!.text).toBe(CAPTION_TEXT);
     expect(await timelineTextClip(launched.page, CAPTION_TEXT).count()).toBe(1);

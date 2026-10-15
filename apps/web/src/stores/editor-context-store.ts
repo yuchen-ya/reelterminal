@@ -223,7 +223,16 @@ useTimelineStore.subscribe((state, prevState) => {
 });
 
 useUIStore.subscribe((state, prevState) => {
-  if (state.selectedItems !== prevState.selectedItems) {
+  if (state.selectedItems === prevState.selectedItems) return;
+  const selectionChanged = state.selectedItems.length !== prevState.selectedItems.length ||
+    state.selectedItems.some((item, index) => {
+      const previous = prevState.selectedItems[index];
+      return item.type !== previous?.type || item.id !== previous.id || item.trackId !== previous.trackId;
+    });
+  // Re-publishing an identical selection (e.g. clicking the selected title)
+  // must not invalidate an Agent's context-CAS request. Keep type, track and
+  // order changes meaningful even when the selected ids happen to match.
+  if (selectionChanged) {
     useEditorContextStore.setState((s) => ({
       contextRevision: s.contextRevision + 1,
     }));

@@ -20,6 +20,7 @@ import {
 } from "./harness/ui";
 
 interface EditorContext {
+  identity: { projectId: string; workspaceId: string };
   projectRevision: number;
   contextRevision: number | null;
 }
@@ -48,6 +49,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
   let evidence: EvidenceRecord;
   let revisionAfterAgentCreate: number;
   let revisionAfterHumanDrag: number;
+  let target: { projectId: string; workspaceId: string };
 
   const readContext = async (): Promise<EditorContext> => {
     const result = await agent!.callTool<EditorContext>("editor_get_context");
@@ -56,7 +58,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
   };
 
   const readTimeline = async (): Promise<TimelineView> => {
-    const result = await agent!.callTool<TimelineView>("timeline_get");
+    const result = await agent!.callTool<TimelineView>("timeline_get", target);
     expect(result.ok).toBe(true);
     return result.value!;
   };
@@ -68,9 +70,12 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     await launched.waitForEndpointFile();
     agent = await connectExternalAgent(launched.endpointFile);
+    const context = await readContext();
+    target = { projectId: context.identity.projectId, workspaceId: context.identity.workspaceId };
 
     // Agent creates the caption the later tests work on.
     const applied = await agent.callTool<{ revision: number }>("edit_apply", {
+      ...target,
       ops: [
         { op: "track.add", trackType: "text" },
         { op: "text.create", text: CAPTION_TEXT, startTime: 2, duration: 3 },
@@ -107,6 +112,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
 
     // Agent replays an edit against the PRE-human-edit revision → CONFLICT.
     const stale = await agent!.callTool("edit_apply", {
+      ...target,
       ops: [{ op: "text.update", overlayId: overlay!.id, text: "SHOULD-NOT-LAND" }],
       expectedRevision: revisionAfterAgentCreate,
     });
@@ -144,6 +150,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
 
     expect((await agent!.callTool("editor_get_context")).ok).toBe(true);
     const rejected = await agent!.callTool("edit_apply", {
+      ...target,
       expectedRevision: revisionAfterHumanDrag,
       ops: [{ op: "track.add", trackType: "video" }],
     });
@@ -170,8 +177,11 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
   });
 
   test("save → full relaunch → project recovered with the agent's text; context works again", async () => {
-    const saved = await agent!.callTool<{ revision: number }>("project_save");
-    expect(saved.ok).toBe(true);
+    const saved = await agent!.callTool<{ revision: number }>("project_save", {
+      ...target, expectedRevision: (await readContext()).projectRevision,
+      idempotencyKey: "cross-cutting-save-before-relaunch",
+    });
+    expect(saved.ok, JSON.stringify(saved.error)).toBe(true);
 
     // Full app relaunch (new _electron.launch, SAME userData dir).
     launched = await launched.relaunch();

@@ -31,7 +31,7 @@ interface EditorContext {
   selectedTextIds: string[];
   timeRange: unknown;
   canvasPoint: { x: number; y: number } | null;
-  identity: { projectId: string; projectName: string; windowId: string };
+  identity: { projectId: string; workspaceId: string; projectName: string; windowId: string };
 }
 
 interface TimelineView {
@@ -49,6 +49,7 @@ describe("flow A: select text, external agent rewrites it", () => {
   let firstContext: EditorContext;
   let overlayId: string;
   let revisionAfterAgentEdit: number;
+  let target: { projectId: string; workspaceId: string };
 
   beforeAll(async () => {
     launched = await launchApp();
@@ -80,7 +81,8 @@ describe("flow A: select text, external agent rewrites it", () => {
     expect(typeof ctx.contextRevision).toBe("number");
     expect(ctx.selectedTextIds).toHaveLength(1);
 
-    const timeline = await agent.callTool<TimelineView>("timeline_get");
+    target = { projectId: ctx.identity.projectId, workspaceId: ctx.identity.workspaceId };
+    const timeline = await agent.callTool<TimelineView>("timeline_get", target);
     expect(timeline.ok).toBe(true);
     const overlay = timeline.value!.textOverlays.find((o) => o.text === ORIGINAL_TEXT);
     expect(overlay).toBeDefined();
@@ -98,10 +100,16 @@ describe("flow A: select text, external agent rewrites it", () => {
     const urlBefore = launched.page.url();
 
     const applied = await agent.callTool<{ revision: number }>("edit_apply", {
+      ...target,
       ops: [{ op: "text.update", overlayId, text: AGENT_TEXT }],
       expectedContextRevision: firstContext.contextRevision,
     });
-    expect(applied.ok).toBe(true);
+    evidence.record("rewrite_result", applied);
+    if (!applied.ok) {
+      evidence.record("context_at_rejection", (await agent.callTool<EditorContext>("editor_get_context")).value);
+      evidence.record("renderer_diagnostics", launched.output.rendererConsole.map(line => line.replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")));
+    }
+    expect(applied.ok, JSON.stringify(applied.error)).toBe(true);
     expect(applied.value!.revision).toBeGreaterThan(firstContext.projectRevision);
     revisionAfterAgentEdit = applied.value!.revision;
 
@@ -154,7 +162,7 @@ describe("flow A: select text, external agent rewrites it", () => {
     // agent's own text is intact under the human's timing change.
     const ctx = (await agent.callTool<EditorContext>("editor_get_context")).value!;
     expect(ctx.projectRevision).toBeGreaterThan(revisionAfterAgentEdit);
-    const timeline = await agent.callTool<TimelineView>("timeline_get");
+    const timeline = await agent.callTool<TimelineView>("timeline_get", target);
     const overlay = timeline.value!.textOverlays.find((o) => o.text === AGENT_TEXT);
     expect(overlay).toBeDefined();
     expect(overlay!.startTime).toBeGreaterThan(0);
