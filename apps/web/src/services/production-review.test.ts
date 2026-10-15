@@ -56,6 +56,8 @@ beforeEach(() => {
   useProjectStore.setState({
     project,
     projectRevision: 0,
+    workspaceId: "strict-workspace",
+    workspaceRevision: 0,
     hasOpenProject: true,
     actionHistory: history,
     actionExecutor: new ActionExecutor(history),
@@ -79,6 +81,7 @@ it("rejects a frame-mismatched candidate without changing timeline, status or hi
 });
 
 it("uses verified frame duration rather than rounded container duration and groups undo", async () => {
+  const revisionBeforeVerification = useProjectStore.getState().projectRevision;
   vi.stubGlobal("reelterminal", {
     production: {
       verifyReplacement: vi
@@ -87,6 +90,9 @@ it("uses verified frame duration rather than rounded container duration and grou
     },
   });
   await adoptReviewCandidate("q", "candidate", "Adopt");
+  expect(window.reelterminal!.production!.verifyReplacement).toHaveBeenCalledWith(expect.objectContaining({
+    projectId: useProjectStore.getState().project.id, workspaceId: "strict-workspace", expectedRevision: revisionBeforeVerification,
+  }));
   const store = useProjectStore.getState();
   expect(store.project.timeline.tracks[0].clips[0]).toMatchObject({
     mediaId: "candidate",
@@ -119,4 +125,19 @@ it("refuses edits made while native verification is in flight", async () => {
   expect(
     useProjectStore.getState().project.timeline.tracks[0].clips[0].mediaId,
   ).toBe("original");
+});
+
+it("refuses a workspace switch at the same project revision while strict verification is in flight", async () => {
+  vi.stubGlobal("reelterminal", {
+    production: {
+      verifyReplacement: async () => {
+        useProjectStore.setState({ workspaceId: "another-workspace" });
+        return { durationSec: 2, frameCount: 60, frameRate: 30 };
+      },
+    },
+  });
+  await expect(adoptReviewCandidate("q", "candidate", "Adopt")).rejects.toThrow(/Project changed/);
+  expect(useProjectStore.getState().project.timeline.tracks[0].clips[0].mediaId).toBe("original");
+  expect(useProjectStore.getState().project.requirements?.items[0].status).toBe("review");
+  expect(useProjectStore.getState().actionHistory.canUndo()).toBe(false);
 });

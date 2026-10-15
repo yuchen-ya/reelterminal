@@ -10,7 +10,9 @@ it("binds evidence to the requested timeline frame and revision, independent of 
     const file = path.join(dir, "frame.png");
     await writeFile(file, "frame bytes");
     const callExternal = vi.fn(async (verb: string, params: any) =>
-      verb === "project.get_state"
+      params.projectId !== "project" || params.workspaceId !== "workspace"
+        ? { ok: false, error: { code: "INVALID_PARAMS", message: "explicit workspace target required" } }
+        : verb === "project.get_state"
         ? {
             ok: true,
             value: {
@@ -34,13 +36,15 @@ it("binds evidence to the requested timeline frame and revision, independent of 
     const service = createProductionService({ callExternal } as never, []);
     const captured = await service.captureReview({
       projectId: "project",
+      workspaceId: "workspace",
       expectedRevision: 7,
       timelineFrame: 15,
     });
     expect(callExternal).toHaveBeenCalledWith(
       "preview.render_frame",
-      expect.objectContaining({ timeSec: 0.5, expectedRevision: 7 }),
+      expect.objectContaining({ projectId: "project", workspaceId: "workspace", timeSec: 0.5, expectedRevision: 7 }),
     );
+    expect(callExternal).toHaveBeenCalledWith("project.get_state", { projectId: "project", workspaceId: "workspace" });
     expect(captured.evidence).toEqual({
       timelineFrame: 15,
       timeSec: 0.5,
@@ -81,6 +85,7 @@ it("refuses evidence if a different project revision is returned", async () => {
   await expect(
     service.captureReview({
       projectId: "project",
+      workspaceId: "workspace",
       expectedRevision: 7,
       timelineFrame: 15,
     }),

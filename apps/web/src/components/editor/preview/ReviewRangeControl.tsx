@@ -26,14 +26,17 @@ export function ReviewRangeControl() {
         throw new Error(
           "Frame-bound review evidence requires the desktop render backend",
         );
+      if (!store.workspaceId) throw new Error("Review evidence requires an explicit workspace");
       const captured = await api.captureReview({
         projectId: store.project.id,
+        workspaceId: store.workspaceId,
         expectedRevision: store.projectRevision,
         timelineFrame: start,
       });
       const current = useProjectStore.getState();
       if (
         current.project.id !== store.project.id ||
+        current.workspaceId !== store.workspaceId ||
         current.projectRevision !== store.projectRevision ||
         current.project !== store.project
       )

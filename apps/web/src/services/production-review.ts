@@ -24,8 +24,10 @@ export async function adoptReviewCandidate(
     throw new Error(
       "Direct adoption requires a single reviewed source version",
     );
+  if (!before.workspaceId) throw new Error("Strict candidate adoption requires an explicit workspace");
   const verified = await api.verifyReplacement({
     projectId: before.project.id,
+    workspaceId: before.workspaceId,
     expectedRevision: before.projectRevision,
     sourceMediaId: [...sourceIds][0],
     candidateMediaId,
@@ -33,6 +35,7 @@ export async function adoptReviewCandidate(
   const current = store.getState();
   if (
     current.project.id !== before.project.id ||
+    current.workspaceId !== before.workspaceId ||
     current.projectRevision !== before.projectRevision ||
     current.project !== before.project
   )

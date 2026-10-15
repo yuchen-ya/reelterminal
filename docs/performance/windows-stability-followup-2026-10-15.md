@@ -6,7 +6,10 @@ The clean local `main` at `8e3fd11f` was fast-forwarded to
 `7e467bacd1aefc8d4666d10d3e59ab2d9f7c4667`. Active-process inspection found no
 ReelTerminal application or repository build/test process before testing. All
 work used the sole checkout, disposable harness profiles and serial tests.
-No installer, native package, signing or Release operation was run.
+Initial investigation excluded packaging. The later user instruction authorizes
+an isolated local Windows candidate after targeted validation; package identity
+and smoke results will be recorded separately. No signing or actual publication
+is authorized for this Windows task.
 
 The three committed Mac reports and their JSON were read from the fetched
 baseline. Their raw Mac evidence is **not available on this Windows host**.
@@ -185,6 +188,47 @@ Verification: performance-harness typecheck passed; **7 tests passed** (five
 privacy/deadline/primary-error checks plus the two real decoder-worker tests,
 4.29 seconds). The first-frame timeout remains eight seconds. Evidence:
 `startup-diagnostics-typecheck.log`, `startup-diagnostics-tests.log`.
+
+## Review evidence and strict adoption: product target routing
+
+The real M3 test exposed another product error: creating frame-bound review
+evidence failed visibly because the main production service called
+`project.get_state` with `{}`. Its strict service regression failed before the
+fix with `explicit workspace target required`.
+
+The renderer, IPC guard and main service now carry both project and workspace
+ids into the pre/post snapshot reads and frame render. Existing revision/frame
+checks remain, and the GUI refuses adoption if the workspace changes during
+native verification. No new stored fields or product feature was added.
+
+Validation: **2 main-service tests and 4 GUI-adoption tests passed**, desktop
+typecheck and the normal full desktop source build passed. The real GUI created
+the requested frame 15 / 0.5-second evidence independently of its playhead,
+rejected the short candidate, adopted the valid candidate and undid that
+adoption correctly. The two onboarding tests also passed, including an actual
+import/edit/save/MP4 export and complete FFmpeg decode.
+
+Onboarding uses the existing explicit Add to timeline button once; the earlier
+small-window container double-click produced two actual timeline ids. That
+ambiguous double-click stimulus was not claimed fixed or silently accepted by
+loosening clip counts. Its failed output remains in
+`production-recovery-old-ui.log`. The M3 test navigates back to the preserved
+inspector list and supplies explicit retry ids for honest INTERRUPTED jobs;
+its original safety, undo and recovery assertions remain.
+
+**Full M3 process recovery still fails.** With explicit retry, the original
+120-second completion assertion failed (132.91 seconds total). Retained ledger
+snapshots include INTERRUPTED errors and a new queued job; the batch did not
+reach all-done. This is an unresolved local batch-recovery gate, not a passed
+recovery test and not attributed to a mere locator issue. Investigation stops
+here under the user's release-candidate convergence instruction.
+
+Evidence: `production-target-before.log`, `production-target-after.log`,
+`production-review-final.log`, `production-target-typecheck.log`,
+`production-target-build.log`, `production-recovery-final.log`,
+`production-recovery-explicit-retry.log`, and `m3-recovery-failure-summary.json`.
+Earlier unit-fixture/type failures are retained separately. Mac report
+`ef1fa632` is preserved; its native recording release gate remains blocked.
 
 ## Retained local evidence
 

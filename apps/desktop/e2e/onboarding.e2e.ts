@@ -65,9 +65,10 @@ test("first-time user can find help, finish the tour, import, edit, save and exp
     const sourcePath = path.join(runDir, "first-media.png");
     copyFileSync(path.join(DESKTOP_DIR, "build/icon.png"), sourcePath);
     await page.locator('input[type="file"][aria-label="Import media"]').setInputFiles(sourcePath);
-    await page.locator("[data-live-media-id]").first().dblclick();
-    await page.getByRole("button", { name: "Select clip first-media.png", exact: true }).waitFor();
-    await page.getByRole("button", { name: "Select clip first-media.png", exact: true }).click();
+    await page.locator("[data-live-media-id]").first().getByRole("button", { name: "Add to timeline", exact: true }).click();
+    const timelineClip = page.getByTestId("timeline-tracks-scroll").getByRole("button", { name: "Select clip first-media.png", exact: true });
+    await timelineClip.waitFor();
+    await timelineClip.click();
     await page.keyboard.press("Home");
     for (let frame = 0; frame < 30; frame += 1) {
       await page.keyboard.press("ArrowRight");
@@ -81,7 +82,7 @@ test("first-time user can find help, finish the tour, import, edit, save and exp
       expect(await page.locator('[data-live-editor-target-kind="clip"]').count()).toBe(1);
     });
     await page.keyboard.press("ControlOrMeta+s");
-    await page.getByText("Saved", { exact: true }).waitFor();
+    await page.getByTestId("notification-toast").getByText("Current edits saved", { exact: true }).waitFor();
 
     const outputPath = path.join(runDir, "first-export.mp4");
     await app.evaluate(({ dialog }, filePath) => {

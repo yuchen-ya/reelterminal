@@ -12,7 +12,10 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
   let jobRoot: string | undefined;
   let agent: ExternalAgent | undefined;
   const batchCall = async (name: string, args: Record<string, unknown>) => {
-    const result = await agent!.callTool<any>(name, args);
+    const context = await cli(["context"]);
+    const result = await agent!.callTool<any>(name, {
+      projectId: context.identity.projectId, workspaceId: context.identity.workspaceId, ...args,
+    });
     if (!result.ok) throw new Error(result.error?.message ?? "Batch command failed");
     return result.value;
   };
@@ -51,7 +54,7 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
   const call = async (command: string, args: Record<string, unknown> = {}) => {
     const context = await cli(["context"]);
     return cli(["call", command, "--stdin"], {
-      arguments: args,
+      arguments: { projectId: context.identity.projectId, workspaceId: context.identity.workspaceId, ...args },
       expectedProjectId: context.identity.projectId,
       expectedProjectEpoch: context.identity.projectEpoch,
     });
@@ -266,6 +269,8 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
       importedCandidate.mediaId,
     );
     await page.getByTestId("requirement-board-entry").click();
+    // The inspector preserves its detail view while comparing a candidate.
+    await page.getByTestId("inspector-board").getByRole("button", { name: "Back to list", exact: true }).click();
     await page
       .getByRole("button")
       .filter({ hasText: "M3 selected frame review" })
@@ -330,7 +335,9 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
       { windowsHide: true, timeout: 120_000 },
     );
     const longMedia = await call("media.import", { path: longSource });
-    await call("project.save");
+    await call("project.save", {
+      expectedRevision: (await state()).revision, idempotencyKey: "m3-save-before-recovery",
+    });
     current = await state();
     agent = await connectExternalAgent(launched.endpointFile);
     const batch = await batchCall("batch_start", {
@@ -375,6 +382,9 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
     const resumed = await batchCall("batch_resume", {
       batchId: "m3-live",
       expectedRevision: current.revision,
+      // Restarted unfinished jobs are honest INTERRUPTED errors. The batch
+      // contract requires explicit opt-in before retrying a failed item.
+      retryMediaIds: [longMedia.mediaId],
     });
     expect(resumed.items[0].jobId).toBe(batch.items[0].jobId);
     expect(resumed.items[1].jobId).not.toBe(retry.items[1].jobId);

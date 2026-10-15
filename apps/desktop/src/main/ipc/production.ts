@@ -12,6 +12,7 @@ export function registerProductionIpc(
   const service = createProductionService(host, mediaRoots);
   const guard = {
     projectId: z.string().min(1).max(256),
+    workspaceId: z.string().min(1).max(256),
     expectedRevision: z.number().int().nonnegative(),
   };
   ipcMain.handle(CHANNELS.productionVerifyReplacement, (event, raw) => {

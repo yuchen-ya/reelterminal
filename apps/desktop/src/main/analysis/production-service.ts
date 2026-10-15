@@ -9,6 +9,7 @@ import type { LiveSessionHost } from "../live/live-session-host";
 
 export interface ProductionGuard {
   projectId: string;
+  workspaceId: string;
   expectedRevision: number;
 }
 
@@ -19,7 +20,7 @@ export function createProductionService(
   const snapshot = async (guard: ProductionGuard) => {
     const result = (await host.callExternal(
       "project.get_state",
-      {},
+      { projectId: guard.projectId, workspaceId: guard.workspaceId },
     )) as FacadeResult<ProjectState>;
     if (!result.ok) throw new Error(result.error.message);
     if (
@@ -77,6 +78,8 @@ export function createProductionService(
         Math.round((project.settings.height * scale) / 2) * 2,
       );
       const rendered = (await host.callExternal("preview.render_frame", {
+        projectId: args.projectId,
+        workspaceId: args.workspaceId,
         timeSec,
         width,
         height,
