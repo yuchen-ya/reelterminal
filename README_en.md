@@ -27,7 +27,7 @@
 
 AI video models make it easier to create footage, but turning **a collection of generated clips** into **a finished video** still takes a lot of manual work:
 
-* **Scattered footage:** short generated clips need precise cuts, timing adjustments, transitions, and audio alignment.
+* **Scattered media:** short video clips, separately generated voiceovers, and music selections arrive in different batches. Choosing takes, cutting, retiming, adding transitions, and aligning sound still leave uneven loudness, long pauses, and music competing with speech to resolve.
 * **Bad frames and artifacts:** flicker, distorted shapes, and other defects often affect only a small part of a clip. Repairing that section can be more practical than generating the whole shot again.
 * **Awkward AI collaboration:** traditional editors are difficult for an AI assistant to operate, while batch scripts offer little visual feedback, interaction, or undo.
 
@@ -47,6 +47,18 @@ AI video models make it easier to create footage, but turning **a collection of 
 | 🌿 **Immutable version nodes & comparison** | 🔒 **Local-first media storage** |
 | Save the current workspace or retain a version node for read-only preview, comparison, and adoption. Each workspace has independent state; the creator decides whether to adopt an assistant’s trial edit. | Projects, media caches, decoding, and rendering are processed locally. Hash references and controlled storage manage media. Model/font downloads and optional online services use the network as configured; external AI assistants are chosen by the user. |
 
+### 🎧 Audio workflows
+
+Start with the problem you hear: Agent interfaces provide measurements and explicit processing commands; GUI tools let you edit, listen, and adjust.
+
+* **Uneven loudness between clips:** an Agent can measure LUFS, true peak, and loudness range (LRA), then use local FFmpeg two-pass loudness normalization to create and remeasure a new WAV. Each run covers at most 120 seconds and requires explicit import afterward; it never automatically replaces timeline clips. See [audio normalization](docs/AUDIO-NORMALIZATION.md) for parameters and limits.
+* **Long gaps in a voiceover:** an Agent can analyze silence using a level threshold, and the GUI can trim silence by threshold. Listen and preserve natural pauses; quiet audio does not necessarily mean nobody is speaking.
+* **Music masking speech:** GUI threshold-triggered ducking lowers music based on the source track’s level. Adjust reduction and recovery, then listen for speech clarity.
+* **Cuts that need to follow music:** an Agent can return BPM, beat positions, and confidence; the GUI provides beat-sync tools. Use detections as editing references and review the visual rhythm.
+* **Steady background noise:** basic GUI spectral noise reduction can help with relatively steady fan noise or hiss. Listen afterward to check for damage to speech.
+
+Analysis alone does not modify the timeline; GUI availability does not imply that every tool has an Agent command. See [material analysis](docs/MATERIAL-ANALYSIS.md) for interfaces and boundaries. VAD, voice separation, multitrack sync-offset estimation, and an automatic workflow connecting analysis results to edits remain [planned work](docs/AUDIO-TODO.md). Pronunciation, voice timbre, or delivery errors still need to be corrected at the generation source.
+
 ---
 
 ## 🚀 Quick start
@@ -63,11 +75,11 @@ flowchart LR
 3. Click **“Copy startup prompt”** in the notification and send it to an AI assistant with local CLI or MCP tool access.
 4. The prompt includes this installation’s command paths and collaboration rules. Have the assistant confirm the intended project, workspace, and permissions before editing. Continue reviewing, adjusting, and making creative decisions in the same UI.
 
-Current downloads include a **Windows x64 installer/portable ZIP** and **macOS Apple Silicon (arm64) DMG/ZIP**. Check [Releases](https://github.com/yuchen-ya/reelterminal/releases) for exact assets, architectures, signing, and checksums. Extract the entire Windows ZIP before running `ReelTerminal.exe`. Windows packages are not code-signed and may show an unknown-publisher warning. Mac packages lack Developer ID signing and notarization, so the system may prevent them from opening directly.
+Current downloads include a **Windows x64 installer/portable ZIP** and **macOS Apple Silicon (M-series, arm64) DMG/ZIP**. Check [Releases](https://github.com/yuchen-ya/reelterminal/releases) for exact assets, architectures, signing, and checksums. Extract the entire Windows ZIP before running `ReelTerminal.exe`.
 
 **Source and installed packages are maintained separately.** This page describes the current repository’s capabilities and usage. Check the corresponding Release for a download’s features, fixes, and limitations; updating source does not update an installed app.
 
-With published packages, export native video to a new filename and verify it before replacing an existing file. Keep a project copy before applying a whole-project template, and avoid replaying pre-replacement undo/redo afterward. Inspector 3D property changes are not recorded as separate undo steps; retain version nodes for important stages. Large projects and long editing sessions can use substantial memory.
+Native export replaces the target file only after success; cancellation or failure preserves an existing file. Confirming and successfully applying a whole-project template starts fresh undo/redo history; cancellation preserves the project and its history. Inspector 3D property changes are not recorded as separate undo steps; retain version nodes for important stages. Large projects and long editing sessions can use substantial memory.
 
 Some export, media-analysis, and frame tools need local FFmpeg/ffprobe. OpenCV tools also need Python with `cv2` and `numpy`. See [external dependencies](docs/EXTERNAL-DEPENDENCIES.md) for tool requirements and network behavior.
 
