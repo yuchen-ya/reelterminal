@@ -99,7 +99,7 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
   - `git diff --check`：成功。
 - 本机未执行 macOS/Linux；macOS 的原生临时目录别名回归与远端 CI 结果待协调会话审阅推送后验证，不能以本机通过替代。仅本批测试调用修复与此记录提交到本地，不 push、不发布、不打包、不操作用户 live 工程。本批修复已完成，没有将这两项错误移入后续待办。
 
-## AUD-01：本地 VAD 接入（2026-10-17，提交 `bc88fa8f`，待用户验收）
+## AUD-01：本地 VAD 接入（2026-10-17，提交 `40ce355b`，待用户验收）
 
 按 [AUDIO-TODO.md](AUDIO-TODO.md) 推荐批次执行。运行时与模型锁定为单一组合：**Silero VAD v5.1.2 官方 ONNX 权重**（2327524 字节，sha256 `2623a2953f6ff3d2c1e61740c6cdb7168133479b267dfef114a4a3cc5bdd788f`，MIT，来源 `github.com/snakers4/silero-vad` tag v5.1.2）+ **onnxruntime-node 1.30.0**（MIT，`agent-facade` optionalDependency、`desktop` dependency，动态 import，缺失时如实报不可用）。未采用 sherpa-onnx：仅做 VAD 时其体积与原生依赖远超需要；后续若引入其 ASR/说话人能力再按 AUD-07/09 重新评测。
 
