@@ -586,7 +586,7 @@
         {
           "job": "Live-collaboration E2E (windows-latest)",
           "test": "FAIL   desktop-e2e  e2e/multi-project-versioning.e2e.ts > multi-project version nodes UX on the real desktop > task media stays protected: immutable node media and a fixed-input export",
-          "symptom": "AssertionError: expected 'C:\\Users\\runneradmin\\AppData\\Local\\Te鈥? to be 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\鈥? // Object.is equality",
+          "symptom": "AssertionError: expected 'C:\\Users\\runneradmin\\AppData\\Local\\Te鈥? to be '<LOCAL_PATH> // Object.is equality",
           "location": "e2e/multi-project-versioning.e2e.ts:642:35",
           "notificationInterceptsPointer": false
         },

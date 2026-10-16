@@ -51,7 +51,7 @@ describe("capabilities.get / session.describe", () => {
     expect(capabilities.ok).toBe(true);
     if (!capabilities.ok) return;
 
-    for (const type of ["audioSummary", "silence", "beatGrid"] as const) {
+    for (const type of ["audioSummary", "silence", "beatGrid", "speechActivity"] as const) {
       const status = capabilities.value.mediaAnalysis.types[type];
       expect(status.available).toBe(false);
       expect(status.reason).toContain("artifactRoot");

@@ -67,6 +67,8 @@ export interface AnalysisRecord {
     readonly reviewQuestion?: string;
     /** Effective silence tuning, including defaults; absent on historical records. */
     readonly silenceParams?: Required<MediaSilenceAnalysisParams>;
+    /** Effective speech-activity (Silero VAD) tuning, including defaults; absent on historical records. */
+    readonly vadParams?: { readonly threshold: number; readonly exitThreshold: number; readonly minSpeechSec: number; readonly minSilenceSec: number; readonly padSec: number };
   };
   readonly provenance: readonly {
     readonly kind: AnalysisProvenance;
@@ -200,13 +202,15 @@ const AUDIO_SERIES = {
   "audioSummary.silence": { source: "audioSummary", field: "silence", count: "silenceCount" },
   "silence.silentRegions": { source: "silence", field: "silentRegions", count: "regionCount" },
   "beatGrid.beats": { source: "beatGrid", field: "beats", count: "beatCount" },
+  "speechActivity.speechRegions": { source: "speechActivity", field: "speechRegions", count: "regionCount" },
 } as const;
 type AudioSeries = keyof typeof AUDIO_SERIES;
 
 /** The stored facts are full; job and Agent summary views omit dense audio arrays. */
 export function compactAnalysisFacts(source: string, facts: Record<string, unknown>): Record<string, unknown> {
   const omitted = source === "audioSummary" ? ["waveform", "onsets", "silence"]
-    : source === "silence" ? ["silentRegions"] : source === "beatGrid" ? ["beats"] : [];
+    : source === "silence" ? ["silentRegions"] : source === "beatGrid" ? ["beats"]
+    : source === "speechActivity" ? ["speechRegions"] : [];
   return Object.fromEntries(Object.entries(facts).filter(([key]) => !omitted.includes(key)));
 }
 

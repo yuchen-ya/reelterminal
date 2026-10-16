@@ -27,7 +27,7 @@ import type { AnalysisJobResult, JobStatusView } from "./types";
 function compactAnalysisJobResult(result: AnalysisJobResult): AnalysisJobResult {
   const summary: Record<string, unknown> = {};
   for (const [source, value] of Object.entries(result.summary)) {
-    const projected = (source === "audioSummary" || source === "silence" || source === "beatGrid") &&
+    const projected = (source === "audioSummary" || source === "silence" || source === "beatGrid" || source === "speechActivity") &&
       value !== null && typeof value === "object" && !Array.isArray(value)
       ? compactAnalysisFacts(source, value as Record<string, unknown>)
       : value;

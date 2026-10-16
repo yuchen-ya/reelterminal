@@ -116,7 +116,7 @@ describe("emitted MCP output schemas", () => {
     expect(properties.view).toEqual({ enum: ["summary", "events", "waveform"] });
 
     const details = properties.details as Schema;
-    expect(details.maxItems).toBe(4);
+    expect(details.maxItems).toBe(5);
     const detail = details.items as Schema;
     expect(detail.required).toEqual(["series", "totalCount", "storedCount", "complete"]);
     expect((detail.properties as Schema).totalCount).toMatchObject({ anyOf: [{ type: "integer", minimum: 0 }, { const: null }] });

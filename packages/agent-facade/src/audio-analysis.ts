@@ -42,6 +42,9 @@ async function requireAudioBinaries(signal?: AbortSignal) {
   return binaries;
 }
 
+/** Shared bounded-subprocess helpers for the audio analysis kernels (incl. VAD). */
+export { run as runAudioSubprocess, requireAudioBinaries, validateAudioRange };
+
 export async function audioAnalysisPreflight() {
   try {
     const binaries = await requireAudioBinaries();

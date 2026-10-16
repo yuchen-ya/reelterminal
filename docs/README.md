@@ -57,7 +57,7 @@
 
 ## Historical acceptance records
 
-- [`AUDIO-PIPELINE-EXECUTION-PLAN.md`](AUDIO-PIPELINE-EXECUTION-PLAN.md) — completed audio batches A–C, commits and validation evidence.
+- [`AUDIO-PIPELINE-EXECUTION-PLAN.md`](AUDIO-PIPELINE-EXECUTION-PLAN.md) — completed audio batches A–C plus the AUD-01 Silero VAD record, commits and validation evidence.
 
 Dated records are kept as evidence and are not overwritten by newer rounds.
 Treat them as history, not current specs; the current specs are the documents

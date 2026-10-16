@@ -28,7 +28,7 @@ export default defineConfig({
   // binary, playwright-core its browser registry); they are real dependencies
   // of this package so the bundle's require() resolves them from
   // apps/desktop/node_modules at runtime.
-  external: ["electron", "esbuild", "playwright-core", "mediabunny"],
+  external: ["electron", "esbuild", "playwright-core", "mediabunny", "onnxruntime-node"],
   noExternal: [
     "electron-updater",
     "zod",

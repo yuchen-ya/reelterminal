@@ -28,16 +28,52 @@ FFmpeg and ffprobe. It reports stream facts, integrated loudness, true peak,
 loudness range, bounded waveform levels, silence intervals, and onset
 candidates. It does not upload audio or modify the project.
 
-Audio analysis (`audioSummary`, `silence`, `beatGrid`) requires `artifactRoot`.
-Without it, capabilities report these types unavailable and the start request
-is rejected before creating a job. `job.status` returns audio counts and scalar
-measurements plus `summary.analysisRecord.id`; use that ID to read details.
-Restored jobs and batch checkpoints use the same compact audio view.
+Audio analysis (`audioSummary`, `silence`, `beatGrid`, `speechActivity`)
+requires `artifactRoot`. Without it, capabilities report these types
+unavailable and the start request is rejected before creating a job.
+`job.status` returns audio counts and scalar measurements plus
+`summary.analysisRecord.id`; use that ID to read details. Restored jobs and
+batch checkpoints use the same compact audio view.
 
 Source ranges are limited to 120 seconds. At most two analysis jobs run per
 session, with four local audio subprocesses per process. Each process has a
 60-second deadline and a 16 MiB combined output limit. Missing FFmpeg or ffprobe
 is reported through capabilities and job results.
+
+### Speech activity (VAD)
+
+`media.analyze_start` with `analysisTypes: ["speechActivity"]` runs Silero VAD
+v5.1.2 locally through the optional `onnxruntime-node` package — the same
+locked runtime and weights for live and headless sessions. Audio is decoded by
+the local FFmpeg path above into a 16 kHz strongest-absolute-sample mono mix
+(right-only speech survives; anti-phase channels cannot cancel), then scored
+in 512-sample (32 ms) chunks with carried model state.
+
+Regions are hysteresis-thresholded speech probabilities (enter `threshold`,
+exit `threshold − 0.15`), filtered by minimum speech/silence durations and
+padded, in original source seconds. Tuning mirrors the Silero reference and is
+adjustable via `vadParams {threshold, minSpeechSec, minSilenceSec, padSec}`
+(defaults 0.5 / 0.25 s / 0.1 s / 0.03 s); the effective values (including the
+computed exit threshold) are persisted in the record config and replayed by
+GUI rechecks. Results report `granularitySec` and `boundaryUncertaintySec` of
+0.032: boundaries land on chunk edges plus the requested padding, and the
+final partial chunk is zero-padded with ends clamped to the analyzed range.
+
+The pinned model (2 327 524 bytes, sha256
+`2623a2953f6ff3d2c1e61740c6cdb7168133479b267dfef114a4a3cc5bdd788f`, MIT) is
+downloaded once on first use from the locked GitHub tag into
+`~/.reelterminal/models/silero-vad-5.1.2/`, or supplied via
+`REELTERMINAL_VAD_MODEL` (still sha-verified). Capabilities never download and
+never report the type ready when the runtime or model is missing; the download
+is bounded, abort-aware, sha-verified and atomically published. No audio is
+uploaded.
+
+Read regions with `analysis.get {view: "events", series:
+"speechActivity.speechRegions"}` using the same half-open source-seconds
+windows and cursors as the other series. Speech regions are acoustic model
+inferences, not semantic understanding: singing and speech-like sounds can be
+missed or falsely included, and non-speech intervals are not automatically
+deletable gaps.
 
 ### Reading durable analysis records
 
@@ -60,8 +96,8 @@ event; deduplicate by ID when combining windows. Pages are ordered by source
 timestamp, with original storage order breaking ties, and contain at most 256
 events (default 100). Omitted boundaries default to the record's analyzed
 range; requested windows must lie within it. Supported series are
-`audioSummary.onsets`, `audioSummary.silence`, `silence.silentRegions` and
-`beatGrid.beats`:
+`audioSummary.onsets`, `audioSummary.silence`, `silence.silentRegions`,
+`beatGrid.beats` and `speechActivity.speechRegions`:
 
 ```json
 {
@@ -116,14 +152,19 @@ perceptual confidence. Tempo may have half- or double-time ambiguity.
 Inspection frames are sparse samples and do not prove continuous motion,
 editing rhythm, or what a person heard. Audio measurements are anchors for
 review, not semantic speech detection or automatic edit decisions. The explicit
-`beatGrid` analysis returns inferred beats/BPM, not detected downbeats. For cloud video
+`beatGrid` analysis returns inferred beats/BPM, not detected downbeats. The
+explicit `speechActivity` analysis returns Silero speech-probability regions,
+not transcribed words or speaker identity. For cloud video
 review, see [Cloud video review](CLOUD-VIDEO-REVIEW.md).
 
 ## Scope and follow-up work
 
-`silence` is amplitude-based detection, not VAD. Audio analysis does not itself
+`silence` is amplitude-based detection, not VAD; `speechActivity` is the local
+Silero VAD view of speech presence. Audio analysis does not itself
 cut clips or duck background music. The existing `clip.setDucking` edit can
-consume supplied presence ranges/points; direct analysis-record-driven editing,
-VAD and new transcription/model backends remain planned. See the
+consume supplied presence ranges/points; direct analysis-record-driven editing
+(VAD-driven ducking and silence cutting) and new transcription/model backends
+remain planned. See the
 [audio TODO](AUDIO-TODO.md) for priorities and acceptance criteria, and the
-[completed execution record](AUDIO-PIPELINE-EXECUTION-PLAN.md) for A–C evidence.
+[completed execution record](AUDIO-PIPELINE-EXECUTION-PLAN.md) for A–C and
+AUD-01 evidence.

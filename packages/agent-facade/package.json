@@ -28,5 +28,8 @@
   "dependencies": {
     "@reelterminal/core": "workspace:*",
     "mediabunny": "^1.55.4"
+  },
+  "optionalDependencies": {
+    "onnxruntime-node": "1.30.0"
   }
 }

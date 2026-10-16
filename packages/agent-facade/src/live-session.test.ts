@@ -49,6 +49,7 @@ import { READ_ONLY_VERBS } from "./types";
 import type { AnalysisGetParams, JobStatusView, MediaImportResult } from "./types";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 import { resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
+import { setSpeechVadModelFactoryForTests } from "./speech-vad";
 
 const LIVE_AUDIO_TOOLCHAIN = await resolveToolFfmpeg();
 
@@ -2850,6 +2851,85 @@ describe("live local audio analysis parity", () => {
       });
       expect(tooLong).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS", message: expect.stringContaining("120 seconds") } });
     } finally {
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it("runs speechActivity with the shared Silero kernel path, compact status and paged regions", async () => {
+    // Hermetic: a deterministic amplitude-threshold stand-in replaces the
+    // onnxruntime session, so this test pins the live wiring, not the model.
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-vad-"));
+    const data = Buffer.alloc(16000 * 5 * 4);
+    for (const window of [{ from: 1, to: 2 }, { from: 3, to: 4 }]) {
+      for (let i = window.from * 16000; i < window.to * 16000; i++) {
+        data.writeFloatLE(0.5 * Math.sin(i * 0.07), i * 4);
+      }
+    }
+    const header = Buffer.alloc(44);
+    header.write("RIFF"); header.writeUInt32LE(36 + data.length, 4); header.write("WAVEfmt ", 8);
+    header.writeUInt32LE(16, 16); header.writeUInt16LE(3, 20); header.writeUInt16LE(1, 22);
+    header.writeUInt32LE(16000, 24); header.writeUInt32LE(16000 * 4, 28); header.writeUInt16LE(4, 32); header.writeUInt16LE(32, 34);
+    header.write("data", 36); header.writeUInt32LE(data.length, 40);
+    const sourcePath = path.join(mediaRoot, "vad.wav");
+    await writeFile(sourcePath, Buffer.concat([header, data]));
+    setSpeechVadModelFactoryForTests(async () => ({
+      async detect(chunk: Float32Array) {
+        let sum = 0;
+        for (const sample of chunk) sum += sample * sample;
+        return Math.sqrt(sum / chunk.length) > 0.02 ? 0.9 : 0.05;
+      },
+    }));
+    const importedStore = new FakeLiveStore();
+    const facade = liveFacade({ store: importedStore, mediaRoots: [mediaRoot] });
+    try {
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const vadParamsWithoutType = await facade["media.analyze_start"]({
+        mediaId: imported.value.mediaId,
+        analysisTypes: ["silence"],
+        vadParams: { threshold: 0.5 },
+      });
+      expect(vadParamsWithoutType).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
+      const started = await facade["media.analyze_start"]({
+        mediaId: imported.value.mediaId,
+        analysisTypes: ["speechActivity"],
+        vadParams: { threshold: 0.45 },
+      });
+      if (!started.ok) throw new Error(started.error.message);
+      const job = await waitForJob(facade, started.value.jobId, 15000);
+      expect(job).toMatchObject({ state: "done" });
+      const result = job.result;
+      if (!result || !("summary" in result)) throw new Error("speechActivity returned no analysis result");
+      const summary = result.summary as Record<string, any>;
+      expect(summary.speechActivity).toMatchObject({
+        coordinateSpace: "source",
+        regionCount: 2,
+        parameters: { threshold: 0.45, exitThreshold: 0.3 },
+      });
+      expect(summary.speechActivity).not.toHaveProperty("speechRegions");
+      const recordId = (summary.analysisRecord as { id: string }).id;
+      const query: AnalysisGetParams = { recordId, view: "events", series: "speechActivity.speechRegions", startSec: 0, endSec: 5, limit: 1 };
+      const livePage = await facade["analysis.get"](query);
+      if (!livePage.ok) throw new Error(livePage.error.message);
+      expect(livePage.value.events!.items).toHaveLength(1);
+      expect(livePage.value.events!.nextCursor).toBeTruthy();
+      const headless = createAgentFacade({ artifactRoot });
+      const headlessPage = await headless["analysis.get"](query);
+      expect(headlessPage).toEqual(livePage);
+      const record = await facade["analysis.get"]({ recordId });
+      expect(record).toMatchObject({
+        ok: true,
+        value: {
+          config: { vadParams: { threshold: 0.45 } },
+          provenance: expect.arrayContaining([
+            { kind: "local-measurement", provider: "local-silero-vad-onnx", analysisType: "speechActivity" },
+          ]),
+          inferences: expect.arrayContaining([expect.objectContaining({ source: "speechActivity" })]),
+        },
+      });
+    } finally {
+      setSpeechVadModelFactoryForTests(null);
       await facade.dispose();
       await rm(mediaRoot, { recursive: true, force: true });
     }

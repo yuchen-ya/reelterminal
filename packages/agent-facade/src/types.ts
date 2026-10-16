@@ -720,6 +720,7 @@ export const MEDIA_ANALYSIS_TYPES = [  "technicalQuality",
   "sceneCuts",
   "silence",
   "beatGrid",
+  "speechActivity",
   "speechTranscript",
   "loudness",
   "blackFrames",
@@ -744,6 +745,23 @@ export interface MediaSilenceAnalysisParams {
   readonly paddingSec?: number;
 }
 
+/**
+ * Tuning for the "speechActivity" analysis type (local Silero VAD). Defaults
+ * mirror Silero's reference VADIterator (enter 0.5, ≥0.25 s speech, ≥0.1 s
+ * closing silence, 30 ms padding); the exit threshold is fixed at
+ * threshold − 0.15 (hysteresis).
+ */
+export interface MediaSpeechVadParams {
+  /** Speech-enter probability threshold in [0.05, 0.95]. Default 0.5. */
+  readonly threshold?: number;
+  /** Minimum unpadded speech-region duration in seconds in [0, 5]. Default 0.25. */
+  readonly minSpeechSec?: number;
+  /** Minimum silence before a speech region closes, in seconds in [0, 10]. Default 0.1. */
+  readonly minSilenceSec?: number;
+  /** Seconds each region extends on both sides, clamped to the range, in [0, 1]. Default 0.03. */
+  readonly padSec?: number;
+}
+
 export interface MediaAnalyzeStartParams {
   /** Explicit consent to send this range to the configured Alibaba cloud service. */
   readonly cloudUpload?: boolean;
@@ -755,6 +773,8 @@ export interface MediaAnalyzeStartParams {
   readonly analysisTypes: readonly MediaAnalysisType[];
   /** Silence analysis tuning; valid only when analysisTypes includes "silence". Omitted fields keep the GUI-aligned defaults. */
   readonly silenceParams?: MediaSilenceAnalysisParams;
+  /** Speech-activity (Silero VAD) tuning; valid only when analysisTypes includes "speechActivity". Omitted fields keep Silero-reference defaults. */
+  readonly vadParams?: MediaSpeechVadParams;
   /**
    * Re-check linkage: the id of a previous analysis record. The new run uses
    * the same configuration discipline and its record links back via
@@ -2258,6 +2278,7 @@ export const ANALYSIS_EVENT_SERIES = [
   "audioSummary.silence",
   "silence.silentRegions",
   "beatGrid.beats",
+  "speechActivity.speechRegions",
 ] as const;
 
 export type AnalysisEventSeries = (typeof ANALYSIS_EVENT_SERIES)[number];

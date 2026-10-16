@@ -4,6 +4,7 @@ import type { AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioPro
 import { AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA } from "./verb-schemas";
 import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { AUDIO_LIMITS, analyzeBeatGrid, analyzeLocalAudio, analyzeSilence, audioAnalysisPreflight, resolveSilenceAnalysisParams } from "./audio-analysis";
+import { analyzeSpeechActivity, resolveSpeechVadParams, speechVadRuntimePreflight } from "./speech-vad";
 import { runVideoCandidateAnalyses, videoCandidatesPreflight, type VideoCandidateBundle } from "./video-candidates";
 import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
 import { probeVideoFacts } from "./media/frame-exact";
@@ -1653,23 +1654,33 @@ export class LiveFacadeSession {
       }
       const silenceParams = valid.analysisTypes.includes("silence")
         ? resolveSilenceAnalysisParams(valid.silenceParams) : undefined;
+      if (valid.vadParams !== undefined && !valid.analysisTypes.includes("speechActivity")) {
+        throw new FacadeError("INVALID_PARAMS", "vadParams apply only when analysisTypes includes \"speechActivity\"");
+      }
+      const vadParams = valid.analysisTypes.includes("speechActivity")
+        ? resolveSpeechVadParams(valid.vadParams) : undefined;
       const audioBackedTypes = valid.analysisTypes.filter(
-        (type) => type === "audioSummary" || type === "silence" || type === "beatGrid",
+        (type) => type === "audioSummary" || type === "silence" || type === "beatGrid" || type === "speechActivity",
       );
       if (audioBackedTypes.length > 0) {
         requireArtifactRoot(this.config.artifactRoot, "media.analyze_start audio analysis");
         const ready = await audioAnalysisPreflight();
         if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
+        if (valid.analysisTypes.includes("speechActivity")) {
+          // Runtime is required up front; a missing model downloads on first use.
+          const vadRuntime = await speechVadRuntimePreflight();
+          if (!vadRuntime.available) throw new FacadeError("UNSUPPORTED", vadRuntime.reason);
+        }
       }
       const unavailable = valid.analysisTypes.filter(
         (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview" && type !== "silence" && type !== "beatGrid" &&
-          type !== "sceneCuts" && type !== "blackFrames" && type !== "duplicateFrames",
+          type !== "speechActivity" && type !== "sceneCuts" && type !== "blackFrames" && type !== "duplicateFrames",
       );
       if (unavailable.length > 0) {
         throw new FacadeError(
           "UNSUPPORTED",
           `media.analyze_start: unavailable analysis types: ${unavailable.join(", ")}`,
-          { unavailableTypes: unavailable, availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid", "sceneCuts", "blackFrames", "duplicateFrames"] },
+          { unavailableTypes: unavailable, availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid", "speechActivity", "sceneCuts", "blackFrames", "duplicateFrames"] },
         );
       }
       const videoCandidateTypes = valid.analysisTypes.filter(
@@ -1695,13 +1706,14 @@ export class LiveFacadeSession {
       const endSec = valid.endSec ?? media.metadata.duration;
       if (!(endSec > startSec) || endSec > media.metadata.duration ||
           (audioBackedTypes.length > 0 && endSec - startSec > AUDIO_LIMITS.maxRangeSec)) {
-        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration; audioSummary, silence and beatGrid ranges are at most 120 seconds. Split longer sources into explicit ranges.");
+        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration; audioSummary, silence, beatGrid and speechActivity ranges are at most 120 seconds. Split longer sources into explicit ranges.");
       }
       const payload = {
         mediaId: valid.mediaId,
         analysisTypes: [...valid.analysisTypes].sort(),
         startSec: valid.startSec, endSec: valid.endSec, cloudUpload: valid.cloudUpload, reviewQuestion: valid.reviewQuestion,
         silenceParams,
+        vadParams,
       };
       const receipt = await this.replayLookup<{
         jobId: string;
@@ -1793,6 +1805,7 @@ export class LiveFacadeSession {
         valid.reviewQuestion,
         valid.recheckOfRecordId,
         silenceParams,
+        vadParams,
       );
       return ok<MediaAnalyzeStartResult>({
         ...ledgerValue,
@@ -3929,6 +3942,7 @@ export class LiveFacadeSession {
     reviewQuestion?: string,
     recheckOfRecordId?: string,
     silenceParams?: import("./types").MediaSilenceAnalysisParams,
+    vadParams?: import("./types").MediaSpeechVadParams,
   ): Promise<void> {
     let persistedRecordId: string | null = null;
     try {
@@ -3959,6 +3973,8 @@ export class LiveFacadeSession {
         ? await analyzeSilence(sourcePath, range, silenceParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .95 + percent * .025 : otherAudioRequested || analysisTypes.includes("audioSummary") ? .5 + percent * .25 : percent })) : undefined;
       const beatGrid = analysisTypes.includes("beatGrid")
         ? await analyzeBeatGrid(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .975 + percent * .025 : analysisTypes.includes("audioSummary") || analysisTypes.includes("silence") ? .75 + percent * .25 : percent })) : undefined;
+      const speechActivity = analysisTypes.includes("speechActivity")
+        ? await analyzeSpeechActivity(sourcePath, range, vadParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .99 + percent * .01 : analysisTypes.includes("audioSummary") || analysisTypes.includes("silence") || analysisTypes.includes("beatGrid") ? .875 + percent * .125 : percent })) : undefined;
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
       const videoCandidateTypes = analysisTypes.filter(
         (type) => type === "sceneCuts" || type === "blackFrames" || type === "duplicateFrames",
@@ -3991,6 +4007,7 @@ export class LiveFacadeSession {
         ...(audio ? { audioSummary: { ...audio, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         ...(silence ? { silence: { ...silence, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         ...(beatGrid ? { beatGrid: { ...beatGrid, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
+        ...(speechActivity ? { speechActivity: { ...speechActivity, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         technicalQuality: {
           mediaId,
           name,
@@ -4025,6 +4042,7 @@ export class LiveFacadeSession {
         ...(audio ? { audioSummary: compactAnalysisFacts("audioSummary", summary.audioSummary!) } : {}),
         ...(silence ? { silence: compactAnalysisFacts("silence", summary.silence!) } : {}),
         ...(beatGrid ? { beatGrid: compactAnalysisFacts("beatGrid", summary.beatGrid!) } : {}),
+        ...(speechActivity ? { speechActivity: compactAnalysisFacts("speechActivity", summary.speechActivity!) } : {}),
       };
       // Durable, traceable record: audio analysis requires artifactRoot so
       // full event facts remain readable; non-audio analyses can still return
@@ -4054,6 +4072,7 @@ export class LiveFacadeSession {
           cloudUpload: analysisTypes.includes("videoReview"),
           ...(reviewQuestion !== undefined ? { reviewQuestion } : {}),
           ...(silence ? { silenceParams: silence.parameters } : {}),
+          ...(speechActivity ? { vadParams: speechActivity.parameters } : {}),
         },
         provenance: [
           ...(analysisTypes.includes("technicalQuality")
@@ -4067,6 +4086,9 @@ export class LiveFacadeSession {
             : []),
           ...(analysisTypes.includes("beatGrid")
             ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-pcm-beat-engine", analysisType: "beatGrid" }]
+            : []),
+          ...(analysisTypes.includes("speechActivity")
+            ? [{ kind: "local-measurement" as const, provider: "local-silero-vad-onnx", analysisType: "speechActivity" }]
             : []),
           ...(analysisTypes.includes("sceneCuts")
             ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-scene-score", analysisType: "sceneCuts" }]
@@ -4084,6 +4106,7 @@ export class LiveFacadeSession {
           ...(audio ? [{ source: "audioSummary", facts: audio }] : []),
           ...(silence ? [{ source: "silence", facts: silence }] : []),
           ...(beatGrid ? [{ source: "beatGrid", facts: beatGrid }] : []),
+          ...(speechActivity ? [{ source: "speechActivity", facts: speechActivity }] : []),
           ...(candidates?.sceneCuts ? [{ source: "sceneCuts", facts: candidates.sceneCuts }] : []),
           ...(candidates?.blackFrames ? [{ source: "blackFrames", facts: candidates.blackFrames }] : []),
           ...(candidates?.duplicateFrames ? [{ source: "duplicateFrames", facts: candidates.duplicateFrames }] : []),
@@ -4094,6 +4117,9 @@ export class LiveFacadeSession {
             : []),
           ...(beatGrid
             ? [{ source: "beatGrid", note: "beats and bpm are analyzer inferences from energy periodicity, not ground truth; no downbeat detector is installed", bpm: beatGrid.bpm, confidence: beatGrid.confidence, beatCount: beatGrid.beatCount }]
+            : []),
+          ...(speechActivity
+            ? [{ source: "speechActivity", note: "speech regions are Silero model inferences from speech probability, not semantic understanding; non-speech gaps are not automatically deletable", regionCount: speechActivity.regionCount, totalSpeechDurationSec: speechActivity.totalSpeechDurationSec }]
             : []),
         ],
         recommendations: [],

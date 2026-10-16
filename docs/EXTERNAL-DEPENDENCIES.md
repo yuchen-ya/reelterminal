@@ -12,6 +12,7 @@ downloads and user-configured provider requests are described below.
 | Import, edit, save, export, local templates | Local application and files; no cloud backend required. |
 | Whisper captions | ONNX Community models downloaded directly from Hugging Face by Transformers.js; recognition runs locally. The existing model choices and browser cache remain. First-use download requires network access. |
 | Agent audio analysis and loudness normalization | Local native FFmpeg/ffprobe, resolved from `REELTERMINAL_FFMPEG_PATH` / `REELTERMINAL_FFPROBE_PATH` or PATH. Loudness work requires `loudnorm`. No model download or audio upload; derived WAV/provenance remain in persistent local media roots. See [Audio normalization](AUDIO-NORMALIZATION.md). |
+| Agent speech-activity analysis (VAD) | Silero VAD v5.1.2 (MIT, 2.2 MiB, sha-pinned) from the locked `snakers4/silero-vad` GitHub tag, downloaded once on first `speechActivity` analysis into `~/.reelterminal/models/`, or supplied via `REELTERMINAL_VAD_MODEL`. Inference runs locally through the optional `onnxruntime-node` package (MIT); no audio upload. Capabilities report unavailable until the runtime and pinned model are present. |
 | Person/face segmentation | Public Google model storage, unpkg and jsDelivr downloads; processing stays local. |
 | FFmpeg.wasm fallback | `unpkg.com/@ffmpeg/core@0.12.6`; downloads code/WASM, not user media. Native FFmpeg is supplied by the user on PATH. |
 | Fonts | Desktop packages local fonts. Web/Image/Studio Google Fonts requests and the core Three.js font download remain. |
@@ -56,11 +57,19 @@ remain local.
 
 ## Rights and release records
 
-Planned Silero/sherpa-onnx, SenseVoice, DeepFilterNet and other audio backends
-in [AUDIO-TODO.md](AUDIO-TODO.md) are not installed or enabled by batches A–C.
-Their model delivery, platform support, rights and network behavior must be
-verified and documented if implemented; the existing Whisper workflow above
-remains distinct.
+Silero VAD v5.1.2 (AUD-01) is implemented with the pinned weights above and
+the MIT-licensed `onnxruntime-node` package; its notices enter the generated
+third-party list at package-build time. Whether the packaged desktop
+installer actually loads the native runtime (electron-builder asar unpacking
+under pnpm) still needs a release-build verification before an installer is
+represented as VAD-capable; until then packaged apps honestly report the type
+unavailable when the runtime is absent.
+
+Planned SenseVoice, DeepFilterNet, speaker separation and other audio backends
+in [AUDIO-TODO.md](AUDIO-TODO.md) are not installed or enabled. Their model
+delivery, platform support, rights and network behavior must be verified and
+documented if implemented; the existing Whisper workflow above remains
+distinct.
 
 See [Asset rights review](ASSET-LICENSE-REVIEW.md). Removed sample footage and
 retired private mirrors are not default release dependencies. FFmpeg core

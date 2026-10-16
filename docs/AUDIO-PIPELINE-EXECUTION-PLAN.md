@@ -8,7 +8,7 @@
 
 用户授权协调会话安排其他 Codex 会话执行、测试、提交，并自行处理实施取舍。每个执行会话使用 gpt-6.1-sol / high，三个批次串行运行；执行会话内部可按需委派并发子智能体，子智能体遵守 AGENTS.md 的模型规则。
 
-所有会话使用 E:\1my_projects\reelterminal 这一 checkout，不创建 worktree，不操作用户正在打开的视频项目。仅提交本批改动，不 push、不发布、不打安装包。遵守仓库最简单充分实现原则，不引入未使用的框架。
+所有会话使用本仓库的这一 checkout，不创建 worktree，不操作用户正在打开的视频项目。仅提交本批改动，不 push、不发布、不打安装包。遵守仓库最简单充分实现原则，不引入未使用的框架。
 
 每批完成实现、针对真实行为的测试和适用的类型检查，检查 diff 后提交。最终报告提交 SHA、变更、验证命令及结果、已知限制。协调会话验收后才启动下一批，必要返工仍由原会话完成。
 
@@ -98,3 +98,18 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
   - `pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`：77 文件通过，2067 测试通过、12 项既有跳过；覆盖 audio-normalize、audio-analysis、analysis-audio-views、jobs 和 live/headless facade 回归；退出码 0。
   - `git diff --check`：成功。
 - 本机未执行 macOS/Linux；macOS 的原生临时目录别名回归与远端 CI 结果待协调会话审阅推送后验证，不能以本机通过替代。仅本批测试调用修复与此记录提交到本地，不 push、不发布、不打包、不操作用户 live 工程。本批修复已完成，没有将这两项错误移入后续待办。
+
+## AUD-01：本地 VAD 接入（2026-10-17，提交 `bc88fa8f`，待用户验收）
+
+按 [AUDIO-TODO.md](AUDIO-TODO.md) 推荐批次执行。运行时与模型锁定为单一组合：**Silero VAD v5.1.2 官方 ONNX 权重**（2327524 字节，sha256 `2623a2953f6ff3d2c1e61740c6cdb7168133479b267dfef114a4a3cc5bdd788f`，MIT，来源 `github.com/snakers4/silero-vad` tag v5.1.2）+ **onnxruntime-node 1.30.0**（MIT，`agent-facade` optionalDependency、`desktop` dependency，动态 import，缺失时如实报不可用）。未采用 sherpa-onnx：仅做 VAD 时其体积与原生依赖远超需要；后续若引入其 ASR/说话人能力再按 AUD-07/09 重新评测。
+
+- 新增 `speechActivity` 分析类型与 `speechActivity.speechRegions` 事件系列，完全复用 `media.analyze_start`、job 状态、analysis 记录、`analysis.get` 明细/分页与 recheck 机制，没有新任务协议。输入新增 `vadParams {threshold, minSpeechSec, minSilenceSec, padSec}`（默认对齐 Silero 参考 0.5/0.25s/0.1s/0.03s，退出阈值固定为 threshold−0.15），有效参数（含 exitThreshold）存入记录 config，桌面 recheck 透传。
+- 内核（`packages/agent-facade/src/speech-vad.ts`）：FFmpeg 解码 16 kHz 双声道 → 与 silence/BPM 相同的“逐采样取绝对值最大声道并保号”单声道混合（右声道独有语音可检出、反相声道不抵消）→ 512 样本（32 ms）分块推理并携带模型 state → 迟滞阈值 + 最短语音/静音时长 + 边缘 padding 的纯函数分段（`segmentsFromProbabilities`，可独立测试）→ 源时间秒区间。区间粒度与边界不确定度按 0.032 s 如实披露；末尾不足一块零填充、区间端点夹紧到分析范围；逐块检查取消。per-chunk 概率不持久化，合并区间即存储粒度，并在 limitations 中明确“非语音区间不等同可删除气口”。
+- 模型获取：`REELTERMINAL_VAD_MODEL` 指向本地副本（同样 sha 校验），否则首次使用时从锁定 GitHub tag 下载到 `~/.reelterminal/models/silero-vad-5.1.2/`（30 s 超时、4 次重定向上限、字节上限、sha+尺寸校验、临时文件原子发布，失败不留缓存）。capabilities 探测不下载：运行时缺失、模型缺失、sha 不符或建会话失败都报不可用并给出获取方式；`media.analyze_start` 只在 onnxruntime-node 缺失时启动前拒绝，模型缺失允许建任务并按上述路径获取。本机网络直连 GitHub 受限，实际验收用代理下载后经 sha 校验放入默认缓存。
+- 接入面：types/verb-schemas（含 corpus 用例）、session 与 live-session 共用内核的完整编排（校验、unavailable 列表、进度、summary/紧凑投影、provenance `local-silero-vad-onnx`、observations/inferences、config）、analysis-records（系列 + 紧凑省略 + vadParams）、jobs 投影、output-schemas（系列枚举、maxItems 5）、capabilities（含粒度、默认值、工作流与许可披露）、tool-catalog 与桌面 analysis-records-service recheck 透传。live/headless 由注入式假模型的 live 一致性测试钉住。
+- 桌面打包：tsup external 增加 `onnxruntime-node`，electron-builder asarUnpack 增加 `node_modules/onnxruntime-node/**`。**限制：未执行安装包构建验证**（pnpm symlink 下 electron-builder 对原生模块的复制/解包需 `--dir` 打包实测）；打包产物是否可加载该运行时待发布前验证，失败时打包应用会如实报 speechActivity 不可用。第三方清单在打包时由 `build:licenses` 重新生成。
+- 验证（Windows，Node 22.22.0、FFmpeg 8.1.1 full、真实模型经 sha 校验）：
+  - `pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`：79 文件、2106 通过、12 既有跳过。新增 `speech-vad.test.ts` 20 项：参数校验、分段纯函数（迟滞/最短时长/短块丢弃/夹紧）、模型路径与 sha/尺寸校验、下载机制（重定向、错 sha、404、取消均不留残留文件）、假模型 + 真实 FFmpeg 内核（左/右/反相、源偏移、120 s 上限、取消）、headless 会话（紧凑状态、记录持久化、系列分页 + cursor、config/provenance/inferences）、门控（artifactRoot、vadParams 归属、时长上限、不可用列表）。
+  - 真实模型验收（本机运行，CI 无模型时跳过并打印原因）：flite 合成人声 vs 粉噪、静音、440 Hz 纯音音乐、右声道独有人声。粉噪 max 概率 0.14、静音 0.04、纯音 0.03 均零区间；人声 mean 0.68 检出；1.5 s 前导静音 + 两句 flite + 2 s 停顿的混合样本首区间起点 1.76 s（误差 0.26 s，flite 软起音为主）、句间最大间隔 2.62 s、粒度 0.032 s；右声道独有人声正常检出。
+  - `pnpm --filter @reelterminal/desktop test:run src/main/analysis/analysis-records-service.test.ts src/main/live/live-session-host.test.ts src/main/live/task-ledger.test.ts src/live-mcp/index.test.ts --maxWorkers=2`：4 文件、43 通过；`pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2`：13 文件、667 通过、3 既有跳过。agent-facade、desktop、agent-transport、runtime-chromium、web 的 typecheck 均通过。
+- 限制与保留：范围仍限 120 s（AUD-11 另行处理长素材）；仅 16 kHz 输入、单/双声道经 strongest-sample 混合（>2 声道由 FFmpeg 先缩混为立体声）；VAD 是声学推断，唱歌/类人声可能误检漏检；per-chunk 概率不存储；安装包加载 onnxruntime-node 未验证；macOS/Linux 未在本机执行。AUD-01 勾选待用户验收后进行。

@@ -5,6 +5,7 @@ import { MAX_TRACK_FRAMES } from "./plugins/motion-tools";
 import { MAX_PATCH_PROPAGATE_FRAMES } from "./plugins/patch-propagation";
 import { opencvToolPreflight } from "./media/opencv-runner";
 import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
+import { speechVadPreflight } from "./speech-vad";
 import {
   AUDIO_NORMALIZE_MAX_INTEGRATED_DEVIATION_LU,
   AUDIO_NORMALIZE_MAX_TRUE_PEAK_OVERSHOOT_DBTP,
@@ -180,6 +181,7 @@ export async function buildCapabilities(
   ctx: CapabilityContext,
 ): Promise<Capabilities> {
   const audioReady = await audioAnalysisPreflight();
+  const speechVadReady = await speechVadPreflight();
   const videoReady = await videoReviewPreflight();
   const ffmpegReady = await ffmpegToolPreflight();
   const labelFont = await probeLabelFont();
@@ -584,6 +586,37 @@ export async function buildCapabilities(
                     : { frameFacts: "technicalQuality.frames is null without local ffmpeg/ffprobe (install on PATH or set REELTERMINAL_FFMPEG_PATH/REELTERMINAL_FFPROBE_PATH)" }),
                 },
               }
+            : type === "speechActivity"
+              ? !ctx.mediaRoots.length
+                ? {
+                    available: false,
+                    reason: "No media roots are configured, so the source file cannot be read for speech-activity analysis.",
+                    requires: "a configured media root containing the source",
+                  }
+                : noArtifactRoot
+                  ? { available: false, reason: "Audio analysis requires artifactRoot to persist the complete analysis record.", requires: "artifactRoot" }
+                : !audioReady.available
+                  ? { available: false, reason: audioReady.reason }
+                : !speechVadReady.available
+                  ? { available: false, reason: speechVadReady.reason, ...(speechVadReady.requires ? { requires: speechVadReady.requires } : {}) }
+                  : {
+                      available: true,
+                      details: {
+                        ...AUDIO_LIMITS,
+                        maxSourceFileBytes: 2 * 1024 * 1024 * 1024,
+                        agentAudioConsumption: false,
+                        provider: "local-silero-vad-onnx",
+                        model: speechVadReady.details.model,
+                        kernel: "Silero VAD v5.1.2 ONNX via onnxruntime-node — per-chunk speech probabilities (32 ms windows, 16 kHz, carried state), hysteresis thresholds, minimum durations and padding",
+                        fields: ["analysis.get events (speechRegions)", "regionCount", "totalSpeechDurationSec", "speechRatio", "parameters"],
+                        defaults: { threshold: 0.5, minSpeechSec: 0.25, minSilenceSec: 0.1, padSec: 0.03 },
+                        tuning: "media.analyze_start vadParams {threshold, minSpeechSec, minSilenceSec, padSec}",
+                        workflow: "page speechRegions with analysis.get view:'events'; regions are review evidence — pair them with clip.setDucking for music ducking or explicit edit decisions, never automatic deletion of non-speech gaps",
+                        granularitySec: 0.032,
+                        coordinateSpace: "source",
+                        changesProject: false,
+                      },
+                    }
             : type === "silence" || type === "beatGrid"
               ? !ctx.mediaRoots.length
                 ? {

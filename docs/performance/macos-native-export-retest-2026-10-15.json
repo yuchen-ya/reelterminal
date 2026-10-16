@@ -26,8 +26,8 @@
   "build": {
     "identity": {
       "source_head": "a8c6925cfa067a25e347db41ba7be050b5c4757d",
-      "package_root": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/mac-arm64/ReelTerminal.app",
-      "executable": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/mac-arm64/ReelTerminal.app/Contents/MacOS/ReelTerminal",
+      "package_root": "<LOCAL_PATH>",
+      "executable": "<LOCAL_PATH>",
       "binary": "Mach-O 64-bit executable arm64",
       "executable_sha256": "ca7e3290800255f5018160cff99cf6ecc58eae299c66148de1374a70e2715c83",
       "asar_sha256": "5c11ff60687d0f2de0dd7df999d9586fe3251e82654297165e8fd9f0117227a0",
@@ -85,22 +85,22 @@
     },
     "downloads": [
       {
-        "path": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/ReelTerminal-1.1.2-arm64.dmg",
+        "path": "<LOCAL_PATH>",
         "bytes": 259880481,
         "sha256": "48c1cf3a077d07b0056e1c864a72bcc9d16d671b7e2c445c5fc557419a3b56c0"
       },
       {
-        "path": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/ReelTerminal-1.1.2-arm64.dmg.blockmap",
+        "path": "<LOCAL_PATH>",
         "bytes": 273870,
         "sha256": "b65e8339509826f7b9cb7fb0038540c42bd0e7bcc2579f7276b28dd418595712"
       },
       {
-        "path": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/ReelTerminal-1.1.2-arm64.zip",
+        "path": "<LOCAL_PATH>",
         "bytes": 260495443,
         "sha256": "06a46732b62a81938eb943ac7fe9020be572d174d88d722e75268cd15429da45"
       },
       {
-        "path": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/ReelTerminal-1.1.2-arm64.zip.blockmap",
+        "path": "<LOCAL_PATH>",
         "bytes": 274744,
         "sha256": "74339d90e2adccc8f2dadd7e24fe1d0763069d3d8711b2c30d339fbf5ebc0de4"
       }
@@ -140,7 +140,7 @@
       "started_epoch": 1792047520.2032151,
       "finished_epoch": 1792047600.504829,
       "elapsed_seconds": 80.30161476135254,
-      "executable": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/mac-arm64/ReelTerminal.app/Contents/MacOS/ReelTerminal",
+      "executable": "<LOCAL_PATH>",
       "execution_mode": "native_package"
     },
     {
@@ -149,7 +149,7 @@
       "started_epoch": 1792047600.505457,
       "finished_epoch": 1792048158.66628,
       "elapsed_seconds": 558.1608231067657,
-      "executable": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/mac-arm64/ReelTerminal.app/Contents/MacOS/ReelTerminal",
+      "executable": "<LOCAL_PATH>",
       "execution_mode": "native_package"
     },
     {
@@ -158,7 +158,7 @@
       "started_epoch": 1792048158.6671062,
       "finished_epoch": 1792048159.459038,
       "elapsed_seconds": 0.7919318675994873,
-      "executable": "/Users/macbuke/my-project/reelterminal/apps/desktop/release/macos-1.1.2-export-cursors-fixed-2026-10-15/mac-arm64/ReelTerminal.app/Contents/MacOS/ReelTerminal",
+      "executable": "<LOCAL_PATH>",
       "execution_mode": "native_package"
     }
   ],

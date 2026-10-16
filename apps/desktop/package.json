@@ -44,6 +44,7 @@
     "electron-updater": "^6.8.9",
     "esbuild": "^0.28.1",
     "mediabunny": "^1.55.4",
+    "onnxruntime-node": "^1.30.0",
     "playwright-core": "^1.60.0",
     "zod": "^3.25.76"
   },

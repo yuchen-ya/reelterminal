@@ -366,11 +366,18 @@ export const MEDIA_SILENCE_PARAMS_SCHEMA: ObjectSchema = {
   paddingSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10, describe: "a finite number in [0, 10] seconds; default 0.1 matches the GUI silence-cut panel", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 10 } } },
 };
 
+export const MEDIA_SPEECH_VAD_PARAMS_SCHEMA: ObjectSchema = {
+  threshold: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.05 && v <= 0.95, describe: "speech-enter probability in [0.05, 0.95]; default 0.5; the exit threshold is fixed at threshold − 0.15 (Silero-reference hysteresis)", emits: { kind: "leaf", schema: { type: "number", minimum: 0.05, maximum: 0.95 } } },
+  minSpeechSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 5, describe: "minimum unpadded speech-region duration in [0, 5] seconds; default 0.25 (Silero reference)", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 5 } } },
+  minSilenceSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10, describe: "minimum silence before a speech region closes, in [0, 10] seconds; default 0.1 (Silero reference)", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 10 } } },
+  padSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1, describe: "seconds each region extends on both sides (clamped to the range), in [0, 1]; default 0.03 (Silero reference)", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } } },
+};
+
 export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
   cloudUpload: { check: (v) => typeof v === "boolean", describe: "must be true for videoReview: uploads the selected range to Alibaba", emits: { kind: "leaf", schema: { type: "boolean" } } },
   reviewQuestion: { check: (v) => typeof v === "string" && v.length <= 1000, describe: "optional video review focus, at most 1000 characters", emits: { kind: "leaf", schema: { type: "string", maxLength: 1000 } } },
   startSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0, describe: "nonnegative source seconds", emits: { kind: "leaf", schema: { type: "number", minimum: 0 } } },
-  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary/silence/beatGrid range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
+  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary/silence/beatGrid/speechActivity range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
   mediaId: {
     check: isNonEmptyString,
     describe: "a non-empty media-library id",
@@ -408,6 +415,15 @@ export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
       ),
     describe: "optional silence tuning {thresholdDb, minDurationSec, paddingSec}; valid only when analysisTypes includes \"silence\"; defaults match the GUI silence-cut panel (−40 dB, 0.5 s, 0.1 s)",
     emits: { kind: "object", schema: MEDIA_SILENCE_PARAMS_SCHEMA },
+  },
+  vadParams: {
+    check: (value) =>
+      value !== null && typeof value === "object" && !Array.isArray(value) &&
+      Object.entries(value).every(([key, val]) =>
+        key in MEDIA_SPEECH_VAD_PARAMS_SCHEMA && MEDIA_SPEECH_VAD_PARAMS_SCHEMA[key]!.check(val),
+      ),
+    describe: "optional speech-activity tuning {threshold, minSpeechSec, minSilenceSec, padSec}; valid only when analysisTypes includes \"speechActivity\"; defaults follow the Silero reference (0.5, 0.25 s, 0.1 s, 0.03 s)",
+    emits: { kind: "object", schema: MEDIA_SPEECH_VAD_PARAMS_SCHEMA },
   },
   expectedRevision: {
     check: isNonNegativeInteger,

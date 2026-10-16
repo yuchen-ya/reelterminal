@@ -7,6 +7,10 @@ asar: true
 asarUnpack:
   - dist/live-mcp/**
   - dist/aurora-host/**
+  # Native ONNX runtime for the Silero VAD speech-activity analysis. The main
+  # bundle keeps the require() external, so the packaged app loads the .node
+  # binary from node_modules at runtime.
+  - node_modules/onnxruntime-node/**
 directories:
   output: release
 # Update feed for electron-updater. Builds embed app-update.yml pointing at the

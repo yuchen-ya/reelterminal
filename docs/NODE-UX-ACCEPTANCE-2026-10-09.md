@@ -7,7 +7,7 @@
 - 仓库 HEAD：`5e4adc6`。检查范围为 `d903c78`、`f4154bb`、`4bf628f`、`aae1438`、`37cd278`、`ed5a133`、`5e4adc6`。
 - 实际运行本地 `apps/desktop/release/win-unpacked/ReelTerminal.exe`；包时间为 2026-10-09 16:42，live 手册版本为 1.4.0。未重新构建；这里报告该实际产物的行为，不以提交时间断言二进制与 HEAD 逐字节一致。
 - 主会话使用 computer-use 的原生鼠标、键盘、可访问树和截图。两个 `gpt-6-luna / xhigh` 子智能体分别通过 live CLI 完成导入、编排、版本、隔离试剪、审片和导出；主会话独占 GUI 输入。
-- 素材来自用户指定的 `C:\Users\Administrator\Desktop\照片素材`；原件未修改。没有云端审片或上传。
+- 素材来自用户指定的 `<LOCAL_PATH>`；原件未修改。没有云端审片或上传。
 - 外部证据目录：`E:\1Data\reelterminal\agent-workspace\jobs\2026-10-09-node-ux-user-acceptance\evidence`。两个工作流证据分别位于相邻的 `2026-10-09-user-workflow-a` 和 `2026-10-09-user-workflow-b`。
 - 退出偏好的自动留存/不留存测试使用外部独立 profile，避免给既有用户项目创建节点。测试结束已重新打开正常配置，当前为 A 的第二版、Agent 只读。
 
