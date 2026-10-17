@@ -13,7 +13,7 @@ const packageDir = path.resolve(
   "..",
 );
 const distModules = path.join(packageDir, "dist", "node_modules");
-const LINKED_PACKAGES = ["esbuild", "playwright-core", "mediabunny"];
+const LINKED_PACKAGES = ["esbuild", "playwright-core", "mediabunny", "onnxruntime-node"];
 
 for (const name of LINKED_PACKAGES) {
   const linkPath = path.join(distModules, name);
