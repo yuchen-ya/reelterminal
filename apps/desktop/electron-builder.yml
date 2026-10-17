@@ -31,6 +31,10 @@ files:
   - "!**/{.env,.env.*,.npmrc,.pypirc,.git-credentials}"
   - "!**/{.git,.aws,.ssh}{,/**}"
   - package.json
+  # The Silero VAD runtime only ever loads the packaged platform's NAPI
+  # binding; keep the other OS binaries out of the Windows distributable.
+  - "!node_modules/onnxruntime-node/bin/napi-v6/darwin{,/**}"
+  - "!node_modules/onnxruntime-node/bin/napi-v6/linux{,/**}"
 extraResources:
   - from: ../web/dist
     to: renderer
