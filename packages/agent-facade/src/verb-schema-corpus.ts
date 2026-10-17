@@ -322,6 +322,7 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "valid speech activity analysis", params: { mediaId: "m1", analysisTypes: ["speechActivity"], startSec: 0, endSec: 60 }, expectValid: true },
     { name: "valid speech activity tuning", params: { mediaId: "m1", analysisTypes: ["speechActivity"], vadParams: { threshold: 0.45, minSpeechSec: 0.3, minSilenceSec: 0.2, padSec: 0.05 } }, expectValid: true },
     { name: "vad threshold above range", params: { mediaId: "m1", analysisTypes: ["speechActivity"], vadParams: { threshold: 1.5 } }, expectValid: false },
+    { name: "vad threshold inside the hysteresis dead band", params: { mediaId: "m1", analysisTypes: ["speechActivity"], vadParams: { threshold: 0.1 } }, expectValid: false },
     { name: "vad unknown field", params: { mediaId: "m1", analysisTypes: ["speechActivity"], vadParams: { frameMs: 32 } }, expectValid: false },
     { name: "valid silence tuning", params: { mediaId: "m1", analysisTypes: ["silence"], silenceParams: { thresholdDb: -35, minDurationSec: 0.4, paddingSec: 0.2 } }, expectValid: true },
     { name: "silence tuning below range", params: { mediaId: "m1", analysisTypes: ["silence"], silenceParams: { thresholdDb: -200 } }, expectValid: false },

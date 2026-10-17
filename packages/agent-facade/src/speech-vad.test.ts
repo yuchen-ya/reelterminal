@@ -11,18 +11,23 @@ import {
   SILERO_VAD_MODEL,
   SPEECH_VAD_CHUNK_SEC,
   analyzeSpeechActivity,
+  clearSpeechVadPreflightCacheForTests,
   downloadVadModelForTests,
   resolveSpeechVadParams,
   segmentsFromProbabilities,
   setSpeechVadModelFactoryForTests,
+  setSpeechVadRuntimeLoaderForTests,
   speechVadModelPath,
   speechVadPreflight,
+  speechVadRuntimePreflight,
 } from "./speech-vad";
 import { createAgentFacade } from "./index";
 import type { VadInferenceModel } from "./speech-vad";
 
 afterEach(() => {
   setSpeechVadModelFactoryForTests(null);
+  setSpeechVadRuntimeLoaderForTests(null);
+  clearSpeechVadPreflightCacheForTests();
   delete process.env.REELTERMINAL_VAD_MODEL;
 });
 
@@ -65,7 +70,8 @@ describe("speechActivity parameter validation", () => {
   });
   it("rejects out-of-range and degenerate hysteresis tuning", () => {
     expect(() => resolveSpeechVadParams({ threshold: 0.99 })).toThrow("threshold");
-    expect(() => resolveSpeechVadParams({ threshold: 0.05 })).toThrow("exit threshold");
+    expect(() => resolveSpeechVadParams({ threshold: 0.05 })).toThrow("threshold");
+    expect(() => resolveSpeechVadParams({ threshold: 0.15 })).toThrow("threshold");
     expect(() => resolveSpeechVadParams({ minSpeechSec: 6 })).toThrow("minSpeechSec");
     expect(() => resolveSpeechVadParams({ minSilenceSec: -1 })).toThrow("minSilenceSec");
     expect(() => resolveSpeechVadParams({ padSec: 2 })).toThrow("padSec");
@@ -109,9 +115,41 @@ describe("speechActivity segmentation kernel", () => {
     const probs = new Array<number>(300).fill(0.2); // above exit, below enter
     expect(segmentsFromProbabilities(probs, params, range)).toEqual([]);
   });
+  it("merges padded regions so they never overlap or double-count the union", () => {
+    const probs = new Array<number>(125).fill(0.05);
+    for (let i = 0; i < probs.length; i += 2) probs[i] = 0.9;
+    const regions = segmentsFromProbabilities(
+      probs,
+      { threshold: 0.5, minSpeechSec: 0, minSilenceSec: 0, padSec: 0.2 },
+      { startSec: 0, endSec: 4 },
+    );
+    // The padding bridges every 32 ms pause, so the whole window is one
+    // region, not 63 overlapping ones.
+    expect(regions).toHaveLength(1);
+    const total = regions.reduce((sum, region) => sum + region.endSec - region.startSec, 0);
+    expect(total).toBeLessThanOrEqual(4 + 1e-9);
+  });
 });
 
 describe("speechActivity model management", () => {
+  it("distinguishes a missing runtime package from a broken load", async () => {
+    setSpeechVadRuntimeLoaderForTests(() => {
+      const error = new Error("Cannot find module 'onnxruntime-node'");
+      (error as NodeJS.ErrnoException).code = "MODULE_NOT_FOUND";
+      return Promise.reject(error);
+    });
+    const missing = await speechVadRuntimePreflight();
+    expect(missing).toMatchObject({ available: false });
+    if (!missing.available) expect(missing.reason).toContain("absent in this runtime");
+
+    setSpeechVadRuntimeLoaderForTests(() => Promise.reject(new Error("Dynamic require of \"worker_threads\" is not supported")));
+    const broken = await speechVadRuntimePreflight();
+    expect(broken).toMatchObject({ available: false });
+    if (!broken.available) {
+      expect(broken.reason).toContain("failed to load");
+      expect(broken.reason).toContain("worker_threads");
+    }
+  });
   it("honors REELTERMINAL_VAD_MODEL for the expected path", () => {
     const previous = process.env.REELTERMINAL_VAD_MODEL;
     try {
@@ -159,7 +197,13 @@ describe("speechActivity model management", () => {
 describe("speechActivity model download mechanics", () => {
   const modelBytes = Buffer.alloc(SILERO_VAD_MODEL.bytes, 7);
   let server: Server | null = null;
-  afterEach(async () => { await new Promise<void>((resolve) => server?.close(() => resolve())); });
+  afterEach(async () => {
+    if (server) {
+      server.closeAllConnections?.();
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+      server = null;
+    }
+  });
 
   function serve(handler: (url: string, respond: (status: number, body: Buffer | string, headers?: Record<string, string>) => void) => void): Promise<string> {
     return new Promise((resolveListen) => {
@@ -219,12 +263,48 @@ describe("speechActivity model download mechanics", () => {
     }
   });
   it("stops promptly when the analysis is cancelled", async () => {
+    let requests = 0;
     const root = await mkdtemp(join(tmpdir(), "rt-vad-dl-"));
     try {
-      const base = await serve((_url, respond) => respond(200, modelBytes));
+      const base = await serve((_url, respond) => { requests++; respond(200, modelBytes); });
       const controller = new AbortController();
       controller.abort();
-      await expect(downloadVadModelForTests(base, join(root, "silero_vad.onnx"), controller.signal)).rejects.toThrow();
+      await expect(downloadVadModelForTests(base, join(root, "silero_vad.onnx"), controller.signal)).rejects.toThrow("Cancelled");
+      expect(requests).toBe(0);
+      expect((await readdirSafe(root)).length).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("aborts an in-flight body and leaves no staging file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "rt-vad-dl-"));
+    let requestClosed = false;
+    let closedResolve!: () => void;
+    const closed = new Promise<void>((resolveClosed) => { closedResolve = resolveClosed; });
+    try {
+      server = createServer((request, response) => {
+        request.on("close", () => { requestClosed = true; closedResolve(); });
+        response.on("error", () => {});
+        response.writeHead(200, { "content-length": String(SILERO_VAD_MODEL.bytes) });
+        response.write(Buffer.alloc(1024));
+        // Never end: the client must abort the body.
+      });
+      await new Promise<void>((resolveListen) => server!.listen(0, "127.0.0.1", resolveListen));
+      const address = server.address() as { port: number };
+      const controller = new AbortController();
+      const destination = join(root, "silero_vad.onnx");
+      const pending = downloadVadModelForTests(`http://127.0.0.1:${address.port}/model`, destination, controller.signal);
+      setTimeout(() => controller.abort(), 50);
+      const started = Date.now();
+      await expect(pending).rejects.toThrow(/Cancelled|aborted|socket hang up/i);
+      expect(Date.now() - started).toBeLessThan(2000);
+      const closedInTime = await Promise.race([
+        closed.then(() => true),
+        new Promise<boolean>((resolveTimeout) => setTimeout(() => resolveTimeout(false), 1000)),
+      ]);
+      expect(closedInTime).toBe(true);
+      expect(requestClosed).toBe(true);
+      expect(await stat(destination).catch(() => null)).toBeNull();
       expect((await readdirSafe(root)).length).toBe(0);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -251,6 +331,7 @@ describe("speechActivity analysis kernel (fake model + real FFmpeg)", () => {
       const result = await analyzeSpeechActivity(path, { startSec: 0, endSec: 7 }, undefined, new AbortController().signal);
       expect(result.coordinateSpace).toBe("source");
       expect(result.analysisSampleRate).toBe(16000);
+      expect(result.audioStreamIndex).toBe(0);
       expect(result.parameters).toEqual({ threshold: 0.5, exitThreshold: 0.35, minSpeechSec: 0.25, minSilenceSec: 0.1, padSec: 0.03 });
       expect(result.model.name).toBe("silero-vad");
       expect(result.model.path).toBeNull(); // fake factory: no local file claim
@@ -281,6 +362,22 @@ describe("speechActivity analysis kernel (fake model + real FFmpeg)", () => {
       expect(result.parameters).toMatchObject({ threshold: 0.6, exitThreshold: 0.45, padSec: 0.1 });
       // Only the 3.0–3.5s window lies inside the analyzed [2, 5) range; the
       // 0.5s window clears the 0.25s minimum and survives as one region.
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20000);
+  it("clamps regions to decoded samples and discloses a short decode", async () => {
+    const root = await mkdtemp(join(tmpdir(), "rt-vad-kernel-"));
+    try {
+      const path = join(root, "speech.wav");
+      await writeFile(path, vadWav([{ startSec: 0.5, endSec: 1.5 }], 2));
+      setSpeechVadModelFactoryForTests(amplitudeFakeModel());
+      const result = await analyzeSpeechActivity(path, { startSec: 0, endSec: 3 }, undefined, new AbortController().signal);
+      expect(result.truncated).toBe(true);
+      expect(result.durationSec).toBeCloseTo(2, 2);
+      expect(result.speechRegions.at(-1)!.endSec).toBeLessThanOrEqual(2 + 1e-6);
+      expect(result.speechRatio).toBeLessThanOrEqual(1);
+      expect(result.limitations.join(" ")).toContain("regions cover only the decoded span");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

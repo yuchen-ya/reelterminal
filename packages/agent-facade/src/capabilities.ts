@@ -867,9 +867,9 @@ export async function buildCapabilities(
           recordDriven: {
             op: "clip.setDuckingFromAnalysis",
             input: "a speechActivity analysis record id (AUD-01) + the speech clip + the background clip + the same tuning fields",
-            mapping: "record speechRegions (source seconds) → speech-clip placement/trim/constant speed → timeline → background-clip-relative presenceRanges, all before the mutation starts; the applied op is reported as clip.setDucking",
-            supportedSpeechClips: "forward, constant speed, trimmed; reversed playback, speed curves (speedKeyframes) and freeze frames are rejected explicitly",
-            gates: "stale records (source changed/missing), records without speechActivity facts, records analyzing another media than the speech clip plays, and no-overlap placements are rejected; an existing volume envelope on the target requires existingEnvelope:\"replace\" — never silently overwritten",
+            mapping: "record speechRegions (source seconds) → shared core SpeedEngine (placement/trim/speed curve/reverse/freeze holds) → timeline → background-clip-relative presenceRanges, all before the mutation starts; the applied op is reported as clip.setDucking",
+            supportedSpeechClips: "any trimmed clip, including reverse playback, speed curves (speedKeyframes) and freeze frames; freeze holds whose source moment is speech are included",
+            gates: "stale records (source changed/missing), records without speechActivity facts, records analyzing another media than the speech clip plays, clips selecting another audio stream than the analyzed 0:a:0, and no-overlap placements are rejected; an existing volume envelope on the target requires existingEnvelope:\"replace\" — never silently overwritten",
           },
         },
       },

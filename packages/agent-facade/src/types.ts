@@ -752,7 +752,7 @@ export interface MediaSilenceAnalysisParams {
  * threshold − 0.15 (hysteresis).
  */
 export interface MediaSpeechVadParams {
-  /** Speech-enter probability threshold in [0.05, 0.95]. Default 0.5. */
+  /** Speech-enter probability threshold in (0.15, 0.95]. Default 0.5. */
   readonly threshold?: number;
   /** Minimum unpadded speech-region duration in seconds in [0, 5]. Default 0.25. */
   readonly minSpeechSec?: number;
@@ -1768,8 +1768,9 @@ export interface ClipSetDuckingOp {
 /**
  * clip.setDuckingFromAnalysis — AUD-02: drive clip.setDucking from a durable
  * speechActivity analysis record (AUD-01). The record's source-second speech
- * regions are mapped through the SPEECH clip's placement/trim/constant speed
- * onto the timeline, intersected with the ducked clip, and rewritten into a
+ * regions are mapped through the SPEECH clip's placement/trim and shared core
+ * SpeedEngine timing (speed curves, reverse, freeze holds) onto the timeline,
+ * intersected with the ducked clip, and rewritten into a
  * clip.setDucking presenceRanges op before any mutation starts (the applied
  * op is reported as clip.setDucking). Same tuning fields, shared keyframe
  * kernel, one edit.apply batch/undo unit, and the single volume-automation
@@ -1777,16 +1778,18 @@ export interface ClipSetDuckingOp {
  *
  * Honesty gates at enrich time: stale records (source changed or missing),
  * records without speechActivity facts, records analyzing another media than
- * the speech clip plays, and speech clips with reverse playback, speed curves
- * or freeze frames (non-linear source↔timeline mapping) are all rejected
- * explicitly. An existing volume envelope on the target is never silently
- * overwritten — existingEnvelope:"replace" must authorize it.
+ * the speech clip plays, and clips selecting another audio stream than the
+ * analyzed 0:a:0 are all rejected explicitly. Reverse playback, speed curves
+ * and freeze frames are mapped through the shared core SpeedEngine; freeze
+ * holds whose source moment is speech are included in the presence window.
+ * An existing volume envelope on the target is never silently overwritten —
+ * existingEnvelope:"replace" must authorize it.
  */
 export interface ClipSetDuckingFromAnalysisOp {
   readonly op: "clip.setDuckingFromAnalysis";
   /** The background clip that receives the ducking envelope (same target rules as clip.setDucking). */
   readonly clipId: string;
-  /** The clip playing the analyzed speech media; its placement/trim/speed define the time mapping. */
+  /** The clip playing the analyzed speech media; its placement/trim/speed/reverse/freeze timing defines the source→timeline mapping. */
   readonly speechClipId: string;
   /** analysis record id from a speechActivity run on the speech clip's own media. */
   readonly recordId: string;

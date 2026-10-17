@@ -52,17 +52,18 @@ export function resolveSpeechVadParams(params?: MediaSpeechVadParams) {
   const minSpeechSec = params?.minSpeechSec ?? DEFAULT_SPEECH_VAD_PARAMS.minSpeechSec;
   const minSilenceSec = params?.minSilenceSec ?? DEFAULT_SPEECH_VAD_PARAMS.minSilenceSec;
   const padSec = params?.padSec ?? DEFAULT_SPEECH_VAD_PARAMS.padSec;
-  if (!(Number.isFinite(threshold) && threshold >= 0.05 && threshold <= 0.95)) throw new FacadeError("INVALID_PARAMS", "vadParams.threshold must be a finite number in [0.05, 0.95]");
+  if (!(Number.isFinite(threshold) && threshold > 0.15 && threshold <= 0.95)) throw new FacadeError("INVALID_PARAMS", "vadParams.threshold must be a finite number in (0.15, 0.95] so the exit threshold (threshold − 0.15) stays positive");
   if (!(Number.isFinite(minSpeechSec) && minSpeechSec >= 0 && minSpeechSec <= 5)) throw new FacadeError("INVALID_PARAMS", "vadParams.minSpeechSec must be a finite number in [0, 5] seconds");
   if (!(Number.isFinite(minSilenceSec) && minSilenceSec >= 0 && minSilenceSec <= 10)) throw new FacadeError("INVALID_PARAMS", "vadParams.minSilenceSec must be a finite number in [0, 10] seconds");
   if (!(Number.isFinite(padSec) && padSec >= 0 && padSec <= 1)) throw new FacadeError("INVALID_PARAMS", "vadParams.padSec must be a finite number in [0, 1] seconds");
-  if (threshold - EXIT_THRESHOLD_OFFSET <= 0) throw new FacadeError("INVALID_PARAMS", "vadParams.threshold must exceed 0.15 so the exit threshold stays positive");
   return { threshold, minSpeechSec, minSilenceSec, padSec };
 }
 
 /** Chunk-level inference seam. Production uses the Silero ONNX session. */
 export interface VadInferenceModel {
   detect(chunk: Float32Array): Promise<number>;
+  /** Optional native-session cleanup; the test fake does not need it. */
+  dispose?(): Promise<void> | void;
 }
 
 let modelFactoryOverride: (() => Promise<VadInferenceModel>) | null = null;
@@ -72,22 +73,56 @@ export function setSpeechVadModelFactoryForTests(factory: (() => Promise<VadInfe
 }
 
 type OrtModule = typeof import("onnxruntime-node");
-let ortModule: OrtModule | null = null;
+interface OrtLoadFailure {
+  readonly code: string | null;
+  readonly message: string;
+  readonly missingPackage: boolean;
+}
+type OrtLoadState = { readonly module: OrtModule; readonly error: null } | { readonly module: null; readonly error: OrtLoadFailure };
+let ortLoadState: OrtLoadState | null = null;
+let ortLoaderOverride: (() => Promise<unknown>) | null = null;
 
-async function loadOrt(): Promise<OrtModule | null> {
-  if (ortModule) return ortModule;
+/** Test seam for distinguishing "optional package absent" from a broken load. */
+export function setSpeechVadRuntimeLoaderForTests(loader: (() => Promise<unknown>) | null): void {
+  ortLoaderOverride = loader;
+  ortLoadState = null;
+}
+
+async function loadOrtState(): Promise<OrtLoadState> {
+  if (ortLoadState) return ortLoadState;
   try {
-    ortModule = await import("onnxruntime-node") as OrtModule;
-    return ortModule;
-  } catch {
-    return null;
+    const loaded = (ortLoaderOverride ? await ortLoaderOverride() : await import("onnxruntime-node")) as OrtModule;
+    ortLoadState = { module: loaded, error: null };
+  } catch (error) {
+    const code = error !== null && typeof error === "object" && "code" in error
+      ? String((error as { code: unknown }).code)
+      : null;
+    ortLoadState = {
+      module: null,
+      error: {
+        code,
+        message: error instanceof Error ? error.message : String(error),
+        missingPackage: code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND",
+      },
+    };
   }
+  return ortLoadState;
 }
 
 /** Runtime-only probe: is onnxruntime-node loadable here? Never downloads. */
 export async function speechVadRuntimePreflight(): Promise<{ available: true } | { available: false; reason: string }> {
-  if (await loadOrt()) return { available: true };
-  return { available: false, reason: "Speech-activity analysis needs the optional onnxruntime-node package (install @reelterminal/agent-facade dependencies); it is absent in this runtime" };
+  const state = await loadOrtState();
+  if (state.module) return { available: true };
+  const failure = state.error!;
+  if (failure.missingPackage) {
+    return { available: false, reason: "Speech-activity analysis needs the optional onnxruntime-node package (install @reelterminal/agent-facade dependencies); it is absent in this runtime" };
+  }
+  // A real load failure must never masquerade as "optional dependency
+  // absent" (this is how a bad bundle used to be reported).
+  return {
+    available: false,
+    reason: `onnxruntime-node is installed but failed to load in this runtime (${failure.code ?? "load error"}: ${failure.message})`,
+  };
 }
 
 /** Where the model is expected. REELTERMINAL_VAD_MODEL wins when set. */
@@ -111,10 +146,12 @@ async function verifyModelFile(path: string): Promise<void> {
 
 /** Bounded, redirect-following download of the pinned model (first use only). */
 async function downloadVadModel(destination: string, signal: AbortSignal, urlOverride?: string): Promise<void> {
+  if (signal.aborted) throw new Error("Cancelled");
   const MAX_REDIRECTS = 4;
   const TIMEOUT_MS = 30000;
   const MAX_BYTES = SILERO_VAD_MODEL.bytes * 2;
   const fetchToBuffer = (url: string, redirects: number): Promise<Buffer> => new Promise((resolvePromise, rejectPromise) => {
+    if (signal.aborted) { rejectPromise(new Error("Cancelled")); return; }
     if (redirects < 0) { rejectPromise(new FacadeError("UNSUPPORTED", `Silero VAD model download exceeded ${MAX_REDIRECTS} redirects from ${urlOverride ?? SILERO_VAD_MODEL.url}`)); return; }
     // The pinned source is https; plain http only arises from the local-server
     // test override, so dispatch on the URL protocol.
@@ -143,6 +180,7 @@ async function downloadVadModel(destination: string, signal: AbortSignal, urlOve
     request.on("close", () => signal.removeEventListener("abort", abort));
   });
   const buffer = await fetchToBuffer(urlOverride ?? SILERO_VAD_MODEL.url, MAX_REDIRECTS);
+  if (signal.aborted) throw new Error("Cancelled");
   const digest = createHash("sha256").update(buffer).digest("hex");
   if (digest !== SILERO_VAD_MODEL.sha256 || buffer.length !== SILERO_VAD_MODEL.bytes) {
     throw new FacadeError("UNSUPPORTED", `Downloaded Silero VAD model does not match the pinned ${SILERO_VAD_MODEL.version} weights (${buffer.length} bytes, sha256 ${digest.slice(0, 12)}…); leaving cache empty`);
@@ -150,14 +188,29 @@ async function downloadVadModel(destination: string, signal: AbortSignal, urlOve
   await mkdir(dirname(destination), { recursive: true });
   const staging = `${destination}.${process.pid}.tmp`;
   await writeFile(staging, buffer);
-  try { await rename(staging, destination); } catch (error) {
+  if (signal.aborted) {
     await unlink(staging).catch(() => {});
+    throw new Error("Cancelled");
+  }
+  try {
+    await rename(staging, destination);
+  } catch (error) {
+    await unlink(staging).catch(() => {});
+    // A concurrent process may have published the same pinned bytes first;
+    // that is success, not a publish failure.
+    try {
+      await verifyModelFile(destination);
+      return;
+    } catch {
+      // Fall through to the original error.
+    }
     throw new FacadeError("UNSUPPORTED", `Silero VAD model could not be published to ${destination}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 /** Env override must exist and be pinned; the default cache downloads once. */
 async function ensureVadModel(signal: AbortSignal): Promise<string> {
+  if (signal.aborted) throw new Error("Cancelled");
   const path = speechVadModelPath();
   if (process.env.REELTERMINAL_VAD_MODEL) {
     await verifyModelFile(path);
@@ -178,25 +231,31 @@ export const downloadVadModelForTests =
   (url: string, destination: string, signal: AbortSignal) => downloadVadModel(destination, signal, url);
 
 async function createSileroModel(modelPath: string): Promise<VadInferenceModel> {
-  const ort = await loadOrt();
-  if (!ort) throw new FacadeError("UNSUPPORTED", "onnxruntime-node is not installed; speech-activity analysis is unavailable in this runtime");
+  const runtimeState = await loadOrtState();
+  if (!runtimeState.module) {
+    throw new FacadeError("UNSUPPORTED", `onnxruntime-node could not be loaded: ${runtimeState.error.message}`);
+  }
+  const ort = runtimeState.module;
   const session = await ort.InferenceSession.create(modelPath);
   const inputNames = [...session.inputNames].sort();
   const expected = ["input", "sr", "state"].sort().join(",");
   if (inputNames.join(",") !== expected) {
     throw new FacadeError("UNSUPPORTED", `Model at ${modelPath} does not expose the Silero v5 inputs (input/state/sr); refusing to guess its contract`);
   }
-  let state: import("onnxruntime-node").Tensor = new ort.Tensor("float32", new Float32Array(2 * 128), [2, 1, 128]);
+  let modelState: import("onnxruntime-node").Tensor = new ort.Tensor("float32", new Float32Array(2 * 128), [2, 1, 128]);
   const sr = new ort.Tensor("int64", BigInt64Array.from([BigInt(SPEECH_VAD_ANALYSIS_RATE)]), []);
   return {
     async detect(chunk) {
       const outputs = await session.run({
         input: new ort.Tensor("float32", chunk, [1, chunk.length]),
-        state,
+        state: modelState,
         sr,
       });
-      state = outputs.stateN!;
+      modelState = outputs.stateN!;
       return Number(outputs.output!.data[0]);
+    },
+    async dispose() {
+      await (session as unknown as { dispose?: () => Promise<void> }).dispose?.();
     },
   };
 }
@@ -237,21 +296,61 @@ export function segmentsFromProbabilities(
     }
   }
   if (inSpeech) closed.push({ startChunk, endChunk: lastActiveChunk + 1 });
-  return closed
+  const padded = closed
     .filter((region) => (region.endChunk - region.startChunk) * SPEECH_VAD_CHUNK_SEC >= params.minSpeechSec)
     .map((region) => ({
       startSec: Math.max(range.startSec, range.startSec + region.startChunk * SPEECH_VAD_CHUNK_SEC - params.padSec),
       endSec: Math.min(range.endSec, range.startSec + region.endChunk * SPEECH_VAD_CHUNK_SEC + params.padSec),
     }))
     .filter((region) => region.endSec > region.startSec);
+  // Padding can make adjacent regions overlap (padSec up to 1 s). Merge them
+  // before reporting so regions are disjoint and totals are a true union, not
+  // a double count.
+  return mergeSourceRanges(padded);
+}
+
+function mergeSourceRanges(
+  ranges: ReadonlyArray<{ startSec: number; endSec: number }>,
+): Array<{ startSec: number; endSec: number }> {
+  if (ranges.length === 0) return [];
+  const sorted = [...ranges].sort((left, right) => left.startSec - right.startSec);
+  const merged: Array<{ startSec: number; endSec: number }> = [{ ...sorted[0]! }];
+  for (const range of sorted.slice(1)) {
+    const last = merged[merged.length - 1]!;
+    if (range.startSec <= last.endSec + 1e-9) last.endSec = Math.max(last.endSec, range.endSec);
+    else merged.push({ ...range });
+  }
+  return merged;
+}
+
+type SpeechVadPreflightResult =
+  | { available: true; details: Record<string, unknown> }
+  | { available: false; reason: string; requires?: string };
+let preflightCache: { readonly key: string; readonly result: SpeechVadPreflightResult } | null = null;
+
+/** Test hook: the cache is keyed by path/size/mtime, but tests also swap failures. */
+export function clearSpeechVadPreflightCacheForTests(): void {
+  preflightCache = null;
 }
 
 /** Full capability probe for disclosure: runtime + model + a real session. Never downloads. */
-export async function speechVadPreflight(): Promise<{ available: true; details: Record<string, unknown> } | { available: false; reason: string; requires?: string }> {
+export async function speechVadPreflight(): Promise<SpeechVadPreflightResult> {
   const runtime = await speechVadRuntimePreflight();
-  if (!runtime.available) return runtime;
   const path = speechVadModelPath();
   const fileStat = await stat(path).catch(() => null);
+  const key = `${runtime.available ? "runtime" : "no-runtime"}|${path}|${fileStat?.size ?? 0}|${Math.round(fileStat?.mtimeMs ?? 0)}`;
+  if (preflightCache?.key === key) return preflightCache.result;
+  const result = await computeSpeechVadPreflight(runtime, path, fileStat);
+  preflightCache = { key, result };
+  return result;
+}
+
+async function computeSpeechVadPreflight(
+  runtime: Awaited<ReturnType<typeof speechVadRuntimePreflight>>,
+  path: string,
+  fileStat: Awaited<ReturnType<typeof stat>> | null,
+): Promise<SpeechVadPreflightResult> {
+  if (!runtime.available) return runtime;
   if (!fileStat?.isFile()) {
     return {
       available: false,
@@ -259,11 +358,14 @@ export async function speechVadPreflight(): Promise<{ available: true; details: 
       requires: `Silero VAD ${SILERO_VAD_MODEL.version} weights (${SILERO_VAD_MODEL.bytes} bytes, sha256 ${SILERO_VAD_MODEL.sha256})`,
     };
   }
+  let model: VadInferenceModel | null = null;
   try {
     await verifyModelFile(path);
-    await createSileroModel(path);
+    model = await createSileroModel(path);
   } catch (error) {
     return { available: false, reason: error instanceof Error ? error.message : String(error) };
+  } finally {
+    await model?.dispose?.();
   }
   return {
     available: true,
@@ -308,6 +410,8 @@ export interface SpeechActivityFacts {
   readonly endSec: number;
   readonly durationSec: number;
   readonly analysisSampleRate: number;
+  /** Audio stream decoded by this analysis; always the first stream (0:a:0). */
+  readonly audioStreamIndex: number;
   readonly parameters: { readonly threshold: number; readonly exitThreshold: number; readonly minSpeechSec: number; readonly minSilenceSec: number; readonly padSec: number };
   readonly speechRegions: readonly SpeechActivityRegion[];
   readonly regionCount: number;
@@ -335,6 +439,7 @@ export async function analyzeSpeechActivity(
 ): Promise<SpeechActivityFacts> {
   validateAudioRange(range);
   const resolved = resolveSpeechVadParams(params);
+  if (signal.aborted) throw new Error("Cancelled");
   const model = modelFactoryOverride ? await modelFactoryOverride() : await (async () => {
     const modelPath = await ensureVadModel(signal);
     return createSileroModel(modelPath);
@@ -355,29 +460,41 @@ export async function analyzeSpeechActivity(
     if (index % 64 === 0) progress(.4 + .6 * (index / Math.max(1, chunkCount)));
   }
   progress(1);
-  const regions = segmentsFromProbabilities(probabilities, resolved, range);
   const durationSec = pcm.length / SPEECH_VAD_ANALYSIS_RATE;
+  const decodedEndSec = range.startSec + durationSec;
+  // Never claim speech past the samples the decoder actually returned; a
+  // short decode is disclosed instead of padding a region into missing audio.
+  const analyzedEndSec = Math.min(range.endSec, decodedEndSec);
+  const truncated = range.endSec - decodedEndSec > SPEECH_VAD_CHUNK_SEC;
+  const regions = segmentsFromProbabilities(probabilities, resolved, { startSec: range.startSec, endSec: analyzedEndSec });
   const totalSpeechDurationSec = regions.reduce((sum, region) => sum + region.endSec - region.startSec, 0);
   return {
     coordinateSpace: "source" as const,
     ...range,
     durationSec,
     analysisSampleRate: SPEECH_VAD_ANALYSIS_RATE,
+    audioStreamIndex: 0,
     parameters: { ...resolved, exitThreshold: exitThresholdOf(resolved.threshold) },
     speechRegions: regions.map((region) => ({ ...region, durationSec: region.endSec - region.startSec })),
     regionCount: regions.length,
     totalSpeechDurationSec,
-    speechRatio: durationSec > 0 ? totalSpeechDurationSec / durationSec : 0,
-    truncated: false,
+    // Regions are merged and clamped to the decoded span, so this is a true
+    // union ratio; the clamp only absorbs floating-point noise.
+    speechRatio: durationSec > 0 ? Math.min(1, totalSpeechDurationSec / durationSec) : 0,
+    truncated,
     granularitySec: SPEECH_VAD_CHUNK_SEC,
     boundaryUncertaintySec: SPEECH_VAD_CHUNK_SEC,
     model: { ...SILERO_VAD_MODEL, path: modelFactoryOverride ? null : speechVadModelPath() },
-    algorithm: `Silero VAD ${SILERO_VAD_MODEL.version} ONNX via onnxruntime-node: per-chunk speech probabilities over ${SPEECH_VAD_CHUNK_SEC.toFixed(3)}s windows at 16 kHz with carried model state, hysteresis enter/exit thresholds (${resolved.threshold.toFixed(2)}/${exitThresholdOf(resolved.threshold).toFixed(2)}), minimum speech/silence durations and padding; FFmpeg-decoded strongest-absolute-sample mono mix`,
+    algorithm: `Silero VAD ${SILERO_VAD_MODEL.version} ONNX via onnxruntime-node: per-chunk speech probabilities over ${SPEECH_VAD_CHUNK_SEC.toFixed(3)}s windows at 16 kHz with carried model state, hysteresis enter/exit thresholds (${resolved.threshold.toFixed(2)}/${exitThresholdOf(resolved.threshold).toFixed(2)}), minimum speech/silence durations and padding; FFmpeg-decoded first audio stream (0:a:0), strongest-absolute-sample mono mix`,
     limitations: [
       "Speech regions are acoustic model inferences, not semantic understanding: singing, some music and speech-like sounds can be missed or falsely included.",
       "Non-speech intervals are not automatically deletable gaps; review before editing.",
-      "Region boundaries land on 32 ms chunk edges (plus the requested padding); the final partial chunk is zero-padded and region ends clamp to the analyzed range.",
+      "Region boundaries land on 32 ms chunk edges (plus the requested padding); the final partial chunk is zero-padded and region ends clamp to the decoded range.",
       "Per-chunk probabilities are not persisted; merged regions are the stored granularity.",
+      "Only the first audio stream (0:a:0) is analyzed; clips selecting another audio track are rejected by record-driven ducking.",
+      ...(truncated
+        ? [`The decoder returned ${durationSec.toFixed(3)} s for the requested ${(range.endSec - range.startSec).toFixed(3)} s range; regions cover only the decoded span.`]
+        : []),
       "Source seconds only; map through clip trim/offset/speed before editing. Results do not change gain, markers, playback, selection or project revision.",
     ],
   };

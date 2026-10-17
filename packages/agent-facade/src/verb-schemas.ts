@@ -368,7 +368,7 @@ export const MEDIA_SILENCE_PARAMS_SCHEMA: ObjectSchema = {
 };
 
 export const MEDIA_SPEECH_VAD_PARAMS_SCHEMA: ObjectSchema = {
-  threshold: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.05 && v <= 0.95, describe: "speech-enter probability in [0.05, 0.95]; default 0.5; the exit threshold is fixed at threshold − 0.15 (Silero-reference hysteresis)", emits: { kind: "leaf", schema: { type: "number", minimum: 0.05, maximum: 0.95 } } },
+  threshold: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0.15 && v <= 0.95, describe: "speech-enter probability in (0.15, 0.95]; default 0.5; the exit threshold is fixed at threshold − 0.15 (Silero-reference hysteresis)", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0.15, maximum: 0.95 } } },
   minSpeechSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 5, describe: "minimum unpadded speech-region duration in [0, 5] seconds; default 0.25 (Silero reference)", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 5 } } },
   minSilenceSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10, describe: "minimum silence before a speech region closes, in [0, 10] seconds; default 0.1 (Silero reference)", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 10 } } },
   padSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1, describe: "seconds each region extends on both sides (clamped to the range), in [0, 1]; default 0.03 (Silero reference)", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } } },

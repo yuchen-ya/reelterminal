@@ -45,17 +45,23 @@ is reported through capabilities and job results.
 `media.analyze_start` with `analysisTypes: ["speechActivity"]` runs Silero VAD
 v5.1.2 locally through the optional `onnxruntime-node` package — the same
 locked runtime and weights for live and headless sessions. Audio is decoded by
-the local FFmpeg path above into a 16 kHz strongest-absolute-sample mono mix
-(right-only speech survives; anti-phase channels cannot cancel), then scored
-in 512-sample (32 ms) chunks with carried model state.
+the local FFmpeg path above from the first audio stream (`0:a:0`) into a
+16 kHz strongest-absolute-sample mono mix (right-only speech survives;
+anti-phase channels cannot cancel), then scored in 512-sample (32 ms) chunks
+with carried model state.
 
 Regions are hysteresis-thresholded speech probabilities (enter `threshold`,
 exit `threshold − 0.15`), filtered by minimum speech/silence durations and
-padded, in original source seconds. Tuning mirrors the Silero reference and is
-adjustable via `vadParams {threshold, minSpeechSec, minSilenceSec, padSec}`
+padded, in original source seconds. Overlapping padded regions are merged, so
+regions are disjoint and `totalSpeechDurationSec`/`speechRatio` describe the
+actual union; a decode shorter than the requested range is reported as
+`truncated` with regions clamped to the decoded span. Tuning mirrors the
+Silero reference and is adjustable via
+`vadParams {threshold, minSpeechSec, minSilenceSec, padSec}`
 (defaults 0.5 / 0.25 s / 0.1 s / 0.03 s); the effective values (including the
-computed exit threshold) are persisted in the record config and replayed by
-GUI rechecks. Results report `granularitySec` and `boundaryUncertaintySec` of
+computed exit threshold) are persisted in the record config, while GUI
+rechecks replay the four input fields and recompute the exit threshold.
+Results report `granularitySec` and `boundaryUncertaintySec` of
 0.032: boundaries land on chunk edges plus the requested padding, and the
 final partial chunk is zero-padded with ends clamped to the analyzed range.
 
@@ -164,12 +170,13 @@ Silero VAD view of speech presence. Audio analysis reports evidence and never
 edits on its own. Speech-driven music ducking is now available as an explicit
 edit: `edit.apply` with op `clip.setDuckingFromAnalysis` consumes a
 `speechActivity` record id, maps its source-second regions through the speech
-clip's placement/trim/constant speed onto the ducked clip, and applies the
-same envelope the GUI ducking panel uses (one batch, one undo unit). Stale
-records, wrong-media records, reversed/speed-curved/frozen speech clips and
-no-overlap placements are rejected; an existing volume envelope requires
-`existingEnvelope:"replace"`. Direct analysis-record-driven silence cutting
-and new transcription/model backends remain planned. See the
+clip's placement/trim and shared core timing (speed curves, reverse playback
+and freeze holds) onto the ducked clip, and applies the same envelope the GUI
+ducking panel uses (one batch, one undo unit). Stale records, wrong-media or
+wrong-audio-stream records and no-overlap placements are rejected; an existing
+volume envelope requires `existingEnvelope:"replace"`. Direct
+analysis-record-driven silence cutting and new transcription/model backends
+remain planned. See the
 [audio TODO](AUDIO-TODO.md) for priorities and acceptance criteria, and the
 [completed execution record](AUDIO-PIPELINE-EXECUTION-PLAN.md) for A–C and
 AUD-01/AUD-02 evidence.

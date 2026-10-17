@@ -15,13 +15,19 @@ afterEach(async () => {
 async function fixture(
   cloudUpload = false,
   silenceParams?: AnalysisRecord["config"]["silenceParams"],
-  overrides: { observations?: readonly Record<string, unknown>[]; sourceRevision?: number } = {},
+  overrides: {
+    observations?: readonly Record<string, unknown>[];
+    sourceRevision?: number;
+    vadParams?: AnalysisRecord["config"]["vadParams"];
+  } = {},
 ) {
   const root = await mkdtemp(path.join(os.tmpdir(), "reelterminal-analysis-ui-"));
   dirs.push(root);
   const sourcePath = path.join(root, "source.mp4");
   await writeFile(sourcePath, "media");
   const sourceStat = await stat(sourcePath);
+  const vadParams = overrides.vadParams;
+  const localTypes = vadParams ? ["speechActivity"] : silenceParams ? ["silence"] : ["technicalQuality", "audioSummary"];
   const record = await saveAnalysisRecord(root, {
     projectId: "project-a",
     sourceRevision: overrides.sourceRevision ?? 1,
@@ -37,16 +43,17 @@ async function fixture(
     },
     analysisTypes: cloudUpload
       ? ["technicalQuality", "videoReview"]
-      : silenceParams ? ["silence"] : ["technicalQuality", "audioSummary"],
+      : localTypes,
     rangeSec: { startSec: 1, endSec: 3 },
     config: {
       analysisTypes: cloudUpload
         ? ["technicalQuality", "videoReview"]
-        : silenceParams ? ["silence"] : ["technicalQuality", "audioSummary"],
+        : localTypes,
       startSec: 1,
       endSec: 3,
       cloudUpload,
       ...(silenceParams ? { silenceParams } : {}),
+      ...(vadParams ? { vadParams } : {}),
       ...(cloudUpload ? { reviewQuestion: "Check sync" } : {}),
     },
     provenance: [],
@@ -129,6 +136,37 @@ describe("analysis records desktop service", () => {
       silenceParams,
       recheckOfRecordId: record.id,
     }));
+  });
+
+  it("rechecks speech activity with the input tuning only, not the derived exit threshold", async () => {
+    const stored = {
+      threshold: 0.45,
+      exitThreshold: 0.3,
+      minSpeechSec: 0.3,
+      minSilenceSec: 0.2,
+      padSec: 0.05,
+    };
+    const { root, record } = await fixture(false, undefined, { vadParams: stored });
+    const host = { isEnabled: true, callExternal: vi.fn().mockResolvedValue({ ok: true }) };
+    const service = createAnalysisRecordsService(root, host);
+
+    await service.recheck({ projectId: "project-a", recordId: record.id });
+
+    const call = host.callExternal.mock.calls[0] as unknown as [string, Record<string, unknown>];
+    expect(call[1]).toMatchObject({
+      mediaId: record.subject.mediaId,
+      analysisTypes: ["speechActivity"],
+      startSec: 1,
+      endSec: 3,
+      vadParams: {
+        threshold: 0.45,
+        minSpeechSec: 0.3,
+        minSilenceSec: 0.2,
+        padSec: 0.05,
+      },
+      recheckOfRecordId: record.id,
+    });
+    expect(call[1].vadParams).not.toHaveProperty("exitThreshold");
   });
 
   it("loads complete GUI audio records while job status stays compact", async () => {

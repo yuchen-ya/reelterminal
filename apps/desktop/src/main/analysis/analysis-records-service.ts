@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  analysisReplayParams,
   listAnalysisRecords,
   loadAnalysisRecord,
   type AnalysisRecordView,
@@ -119,13 +120,10 @@ export function createAnalysisRecordsService(
         };
       }
 
+      const replay = analysisReplayParams(record);
       const result = await host.callExternal("media.analyze_start", {
         mediaId: record.subject.mediaId,
-        analysisTypes: [...record.config.analysisTypes],
-        startSec: record.config.startSec,
-        endSec: record.config.endSec,
-        ...(record.config.silenceParams ? { silenceParams: record.config.silenceParams } : {}),
-        ...(record.config.vadParams ? { vadParams: record.config.vadParams } : {}),
+        ...replay,
         recheckOfRecordId: record.id,
         idempotencyKey: `analysis-gui-recheck-${randomUUID()}`,
         ...(usesCloud

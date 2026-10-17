@@ -71,12 +71,12 @@ describe("speechRegion → presence mapping kernel", () => {
     ]);
     // Source 5..9 maps to timeline 10..14; target-local = timeline − 8.
     expect(presence).toEqual([
-      { start: 3, end: 5 },
       { start: 2, end: 3 },
+      { start: 3, end: 5 },
     ]);
   });
   it("scales durations by constant speed and intersects the target window", () => {
-    const speech = makeClip({ id: "speech", startTime: 10, duration: 2, inPoint: 5, speed: 2 });
+    const speech = makeClip({ id: "speech", startTime: 10, duration: 2, inPoint: 5, outPoint: 9, speed: 2 });
     const target = makeClip({ id: "bgm", startTime: 11, duration: 3, inPoint: 0 });
     const presence = mapSpeechRegionsToPresenceRanges(speech, target, [{ startSec: 6, endSec: 9 }]);
     // Source 5..9 at 2x spans timeline 10..12; region 6..9 maps to 10.5..12,
@@ -89,22 +89,43 @@ describe("speechRegion → presence mapping kernel", () => {
     const target = makeClip({ id: "bgm", startTime: 0, duration: 10, inPoint: 0 });
     expect(mapSpeechRegionsToPresenceRanges(speech, target, [{ startSec: 6, endSec: 8 }])).toEqual([]);
   });
-  it("rejects reverse, speed curves, freeze frames and non-positive speed by name", () => {
+  it("maps reverse playback through the clip's mirrored source timeline", () => {
+    const speech = makeClip({ id: "speech", startTime: 10, duration: 4, inPoint: 5, reversed: true });
+    const target = makeClip({ id: "bgm", startTime: 8, duration: 20, inPoint: 0 });
+    // Relative source 0.5..1.5 mirrors to playback 3.5..2.5 → timeline
+    // 12.5..13.5, target-local 4.5..5.5.
+    expect(mapSpeechRegionsToPresenceRanges(speech, target, [{ startSec: 5.5, endSec: 6.5 }]))
+      .toEqual([{ start: 4.5, end: 5.5 }]);
+  });
+  it("maps speed curves through the shared core integral", () => {
+    const speech = makeClip({
+      id: "speech", startTime: 0, duration: 4 / 1.5, inPoint: 0, outPoint: 4, speed: 1,
+      speedKeyframes: [
+        { id: "k0", time: 0, speed: 1, easing: "linear" },
+        { id: "k1", time: 4, speed: 2, easing: "linear" },
+      ],
+    });
     const target = makeClip({ id: "bgm", startTime: 0, duration: 10, inPoint: 0 });
-    const regions = [{ startSec: 6, endSec: 8 }];
-    expect(() => mapSpeechRegionsToPresenceRanges(makeClip({ id: "s", startTime: 0, duration: 4, inPoint: 5, reversed: true }), target, regions))
-      .toThrow("reversed");
-    expect(() => mapSpeechRegionsToPresenceRanges(
-      makeClip({ id: "s", startTime: 0, duration: 4, inPoint: 5, speedKeyframes: [{ id: "k1", time: 0, speed: 1, easing: "linear" }] }),
-      target,
-      regions,
-    )).toThrow("speed curve");
-    expect(() => mapSpeechRegionsToPresenceRanges(
-      makeClip({ id: "s", startTime: 0, duration: 4, inPoint: 5, freezeFrames: [{ id: "f1" }] as never }),
-      target,
-      regions,
-    )).toThrow("freeze frames");
-    expect(() => mapSpeechRegionsToPresenceRanges(makeClip({ id: "s", startTime: 0, duration: 4, inPoint: 5, speed: 0 }), target, regions))
+    // Linear 1x→2x: playback for source 0..1 is ∫₀¹ ds/(1+0.25s) = 4·ln(1.25).
+    const presence = mapSpeechRegionsToPresenceRanges(speech, target, [{ startSec: 0, endSec: 1 }]);
+    expect(presence).toHaveLength(1);
+    expect(presence[0]!.start).toBeCloseTo(0, 5);
+    expect(presence[0]!.end).toBeCloseTo(4 * Math.log(1.25), 5);
+  });
+  it("includes the held interval when a freeze frame lands inside speech", () => {
+    const speech = makeClip({
+      id: "speech", startTime: 10, duration: 5, inPoint: 5, outPoint: 9,
+      freezeFrames: [{ id: "f1", clipId: "speech", sourceTime: 2, startTime: 2, duration: 1 }],
+    });
+    const target = makeClip({ id: "bgm", startTime: 8, duration: 20, inPoint: 0 });
+    // Relative source 1..2 reaches the freeze hold at playback 2..3; the
+    // presence window covers 1..3 (target-local 3..5).
+    expect(mapSpeechRegionsToPresenceRanges(speech, target, [{ startSec: 6, endSec: 7 }]))
+      .toEqual([{ start: 3, end: 5 }]);
+  });
+  it("still rejects a non-positive speed", () => {
+    const target = makeClip({ id: "bgm", startTime: 0, duration: 10, inPoint: 0 });
+    expect(() => mapSpeechRegionsToPresenceRanges(makeClip({ id: "s", startTime: 0, duration: 4, inPoint: 5, speed: 0 }), target, [{ startSec: 6, endSec: 8 }]))
       .toThrow("non-positive speed");
   });
 });
@@ -230,6 +251,23 @@ describe("clip.setDuckingFromAnalysis enrichment gates", () => {
     await expect(enrichDuckingFromAnalysisOps([op({ recordId: otherRecord })], artifactRoot, async () => await projectOf()))
       .rejects.toMatchObject({ code: "INVALID_PARAMS", message: expect.stringContaining("analyzed media") });
   });
+  it("rejects a speech clip selecting a different audio stream than the analyzed 0:a:0", async () => {
+    const project = await projectOf();
+    const speech = project.timeline.tracks.flatMap((track) => track.clips).find((clip) => clip.id === "speech")!;
+    const target = project.timeline.tracks.flatMap((track) => track.clips).find((clip) => clip.id === "bgm")!;
+    const audioTrackOne = {
+      ...project,
+      timeline: {
+        ...project.timeline,
+        tracks: [
+          { ...project.timeline.tracks.find((track) => track.clips.some((clip) => clip.id === "speech"))!, clips: [{ ...speech, audioTrackIndex: 1 }] },
+          { ...project.timeline.tracks.find((track) => track.clips.some((clip) => clip.id === "bgm"))!, clips: [target] },
+        ],
+      },
+    };
+    await expect(enrichDuckingFromAnalysisOps([op()], artifactRoot, async () => audioTrackOne))
+      .rejects.toMatchObject({ code: "UNSUPPORTED", message: expect.stringContaining("audioTrackIndex 1") });
+  });
   it("requires artifactRoot and a project", async () => {
     await expect(enrichDuckingFromAnalysisOps([op()], undefined, async () => await projectOf()))
       .rejects.toMatchObject({ code: "UNSUPPORTED", message: expect.stringContaining("artifactRoot") });
@@ -258,6 +296,7 @@ describe("clip.setDuckingFromAnalysis end-to-end (headless edit.apply)", () => {
   let root: string;
   let facade: ReturnType<typeof createAgentFacade>;
   let recordId: string;
+  let mediaId: string;
   const speechWavPath = () => join(root, "speech.wav");
 
   async function currentClips() {
@@ -286,6 +325,7 @@ describe("clip.setDuckingFromAnalysis end-to-end (headless edit.apply)", () => {
     await facade["project.create"]({ name: "AUD-02 e2e" });
     const imported = await facade["media.import"]({ path: speechWav });
     if (!imported.ok) throw new Error(imported.error.message);
+    mediaId = imported.value.mediaId;
     const seeded = await facade["edit.apply"]({
       ops: [
         { op: "track.add", trackType: "audio", trackId: "a1" },
@@ -361,6 +401,58 @@ describe("clip.setDuckingFromAnalysis end-to-end (headless edit.apply)", () => {
       ops: [{ op: "clip.setDuckingFromAnalysis", clipId: "bgm", speechClipId: "speech", recordId, ...TUNING }],
     });
     expect(again).toMatchObject({ ok: false, error: { code: "CONFLICT", message: expect.stringContaining("existingEnvelope") } });
+  });
+  it("creates the speech and background clips and ducks in the same batch", async () => {
+    const ops = [
+      { op: "track.add" as const, trackType: "audio" as const, trackId: "a3" },
+      { op: "clip.add" as const, trackId: "a3", mediaId, startTime: 10, duration: 4, inPoint: 5, outPoint: 9, clipId: "speech2" },
+      { op: "track.add" as const, trackType: "audio" as const, trackId: "a4" },
+      { op: "clip.add" as const, trackId: "a4", mediaId, startTime: 8, duration: 8, clipId: "bgm2" },
+      { op: "clip.setDuckingFromAnalysis" as const, clipId: "bgm2", speechClipId: "speech2", recordId, ...TUNING },
+    ];
+    const validated = await facade["edit.validate"]({ ops });
+    expect(validated).toMatchObject({ ok: true, value: { valid: true } });
+    if (!validated.ok) throw new Error(validated.error.message);
+    // The dry run reports the rewritten op, not the record-driven one.
+    expect(validated.value.normalizedOps[4]!.op).toBe("clip.setDucking");
+
+    const applied = await facade["edit.apply"]({ ops });
+    expect(applied).toMatchObject({ ok: true, value: { applied: [{ op: "track.add" }, { op: "clip.add" }, { op: "track.add" }, { op: "clip.add" }, { op: "clip.setDuckingFromAnalysis" }] } });
+    const clips = await currentClips();
+    const bgm = clips.find((clip) => clip.id === "bgm2")!;
+    const speech = clips.find((clip) => clip.id === "speech2")!;
+    expect(speech.startTime).toBe(10);
+    expect(bgm.automation?.volume?.length).toBeGreaterThan(0);
+    // Region 6..8 through speech 10..14 (inPoint 5) → 11..13; bgm starts at 8.
+    expect(Math.min(...bgm.automation!.volume!.map((point) => point.time))).toBeCloseTo(2.9, 5);
+  });
+  it("maps through an earlier clip.move in the same batch", async () => {
+    const applied = await facade["edit.apply"]({
+      ops: [
+        { op: "clip.move", clipId: "speech", startTime: 12 },
+        { op: "clip.setDuckingFromAnalysis", clipId: "bgm", speechClipId: "speech", recordId, ...TUNING },
+      ],
+    });
+    expect(applied).toMatchObject({ ok: true });
+    const clips = await currentClips();
+    const speech = clips.find((clip) => clip.id === "speech")!;
+    const bgm = clips.find((clip) => clip.id === "bgm")!;
+    expect(speech.startTime).toBe(12);
+    // Region 6..8 now maps to timeline 13..15 → target-relative 5..7; the
+    // stale pre-batch mapping would have produced 3..5.
+    const points = bgm.automation!.volume!;
+    expect(Math.min(...points.map((point) => point.time))).toBeGreaterThan(4.8);
+    const during = points.filter((point) => point.time >= 5 && point.time <= 7).map((point) => point.value);
+    expect(during.length).toBeGreaterThan(0);
+    expect(Math.min(...during)).toBeLessThan(1);
+  });
+  it("reports an unreadable record as a validation conflict instead of throwing", async () => {
+    const validated = await facade["edit.validate"]({
+      ops: [{ op: "clip.setDuckingFromAnalysis", clipId: "bgm", speechClipId: "speech", recordId: "analysis-00000000-0000-4000-8000-000000000000", ...TUNING }],
+    });
+    expect(validated).toMatchObject({ ok: true, value: { valid: false } });
+    if (!validated.ok) throw new Error(validated.error.message);
+    expect(validated.value.conflicts[0]).toMatchObject({ code: "NOT_FOUND", opIndex: 0 });
   });
   it("revision conflicts change nothing; explicit replace re-ducks", async () => {
     const first = await facade["edit.apply"]({

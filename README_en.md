@@ -53,11 +53,12 @@ Start with the problem you hear: Agent interfaces provide measurements and expli
 
 * **Uneven loudness between clips:** an Agent can measure LUFS, true peak, and loudness range (LRA), then use local FFmpeg two-pass loudness normalization to create and remeasure a new WAV. Each run covers at most 120 seconds and requires explicit import afterward; it never automatically replaces timeline clips. See [audio normalization](docs/AUDIO-NORMALIZATION.md) for parameters and limits.
 * **Long gaps in a voiceover:** an Agent can analyze silence using a level threshold, and the GUI can trim silence by threshold. Listen and preserve natural pauses; quiet audio does not necessarily mean nobody is speaking.
-* **Music masking speech:** GUI threshold-triggered ducking lowers music based on the source track’s level. Adjust reduction and recovery, then listen for speech clarity.
+* **Speech regions:** an Agent can return local Silero VAD speech-activity regions (the pinned ~2.2 MiB weights download on first use; audio never leaves the machine). Regions are acoustic inferences, and non-speech intervals are not automatically deletable gaps.
+* **Music masking speech:** an Agent can use `clip.setDuckingFromAnalysis` to read a speech-activity record and lower music across its source regions after mapping them through the speech clip's placement, trim, speed curve, reverse playback, or freeze holds; GUI threshold-triggered ducking remains available for manual adjustment and listening.
 * **Cuts that need to follow music:** an Agent can return BPM, beat positions, and confidence; the GUI provides beat-sync tools. Use detections as editing references and review the visual rhythm.
 * **Steady background noise:** basic GUI spectral noise reduction can help with relatively steady fan noise or hiss. Listen afterward to check for damage to speech.
 
-Analysis alone does not modify the timeline; GUI availability does not imply that every tool has an Agent command. See [material analysis](docs/MATERIAL-ANALYSIS.md) for interfaces and boundaries. VAD, voice separation, multitrack sync-offset estimation, and an automatic workflow connecting analysis results to edits remain [planned work](docs/AUDIO-TODO.md). Pronunciation, voice timbre, or delivery errors still need to be corrected at the generation source.
+Analysis alone does not modify the timeline; speech regions only drive ducking through an explicit edit (`clip.setDuckingFromAnalysis`) and never delete gaps or rearrange clips automatically. See [material analysis](docs/MATERIAL-ANALYSIS.md) for interfaces and boundaries. Voice separation, multitrack sync-offset estimation, and analysis-driven silence cutting remain [planned work](docs/AUDIO-TODO.md). Pronunciation, voice timbre, or delivery errors still need to be corrected at the generation source.
 
 ---
 

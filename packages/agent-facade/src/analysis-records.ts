@@ -109,6 +109,38 @@ export interface AnalysisRecordView extends AnalysisRecord {
   readonly recordPath: string;
 }
 
+/** The persisted request configuration, stripped of derived/effective fields,
+ * so it can be fed back to media.analyze_start unchanged. `config.vadParams`
+ * intentionally stores the derived exitThreshold for auditability; the input
+ * schema does not accept it. */
+export interface AnalysisReplayParams {
+  readonly analysisTypes: readonly string[];
+  readonly startSec: number;
+  readonly endSec: number;
+  readonly silenceParams?: Required<MediaSilenceAnalysisParams>;
+  readonly vadParams?: { readonly threshold: number; readonly minSpeechSec: number; readonly minSilenceSec: number; readonly padSec: number };
+}
+
+export function analysisReplayParams(record: AnalysisRecord): AnalysisReplayParams {
+  const vadParams = record.config.vadParams;
+  return {
+    analysisTypes: [...record.config.analysisTypes],
+    startSec: record.config.startSec,
+    endSec: record.config.endSec,
+    ...(record.config.silenceParams ? { silenceParams: record.config.silenceParams } : {}),
+    ...(vadParams
+      ? {
+          vadParams: {
+            threshold: vadParams.threshold,
+            minSpeechSec: vadParams.minSpeechSec,
+            minSilenceSec: vadParams.minSilenceSec,
+            padSec: vadParams.padSec,
+          },
+        }
+      : {}),
+  };
+}
+
 function recordsDir(artifactRoot: string): string {
   return resolvePath(artifactRoot, "analysis-records");
 }
