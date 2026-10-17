@@ -697,6 +697,22 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
     },
     {
+      name: "valid beat-snapped split",
+      params: { ops: [{ op: "clip.splitAtBeat", clipId: "c1", recordId: "analysis-1f0a4fd6d8f547c2b6bba7bd4f83b9a1", time: 12.5, maxShiftSec: 0.2 }] },
+      expectValid: true,
+    },
+    {
+      name: "beat-snapped split maxShiftSec is positive and bounded",
+      params: { ops: [{ op: "clip.splitAtBeat", clipId: "c1", recordId: "analysis-1f0a4fd6d8f547c2b6bba7bd4f83b9a1", time: 12.5, maxShiftSec: 0 }] },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: beat-snapped split recordId must be an analysis id",
+      params: { ops: [{ op: "clip.splitAtBeat", clipId: "c1", recordId: "rec-123", time: 12.5, maxShiftSec: 0.2 }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
       name: "valid clip.setBackgroundRemoval enable with defaults",
       params: { ops: [{ op: "clip.setBackgroundRemoval", clipId: "c1", enabled: true }] },
       expectValid: true,

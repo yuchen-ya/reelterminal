@@ -185,7 +185,16 @@ timing-identical A/V siblings of the same media are cut together so picture
 and sound stay in sync; ripple shifts later clips on each affected track
 only. Speed curves, freeze frames, non-zero `audioTrackIndex`, aligned
 siblings with divergent timing, subtitle cues that would desync and batches
-above `maxCutRegions` (default 24) are rejected before any mutation. New
+above `maxCutRegions` (default 24) are rejected before any mutation. Beat-
+snapped cut points are an explicit edit too: `edit.apply` with op
+`clip.splitAtBeat` takes a desired cut point plus an explicit `maxShiftSec`,
+snaps to the nearest `beatGrid` beat mapped through the clip timing, and
+applies as a plain `clip.split` (one batch, one undo unit). A request with
+no beat inside the allowed movement is rejected — never an unsnapped cut.
+Beats are grid-model beats, not downbeats: no downbeat detector is
+installed, the core engine's internal every-4th-beat heuristic is a
+periodicity assumption deliberately not reported, and the record's BPM may
+be half or double the true tempo. New
 transcription/model backends remain planned. See the
 [audio TODO](AUDIO-TODO.md) for priorities and acceptance criteria, and the
 [completed execution record](AUDIO-PIPELINE-EXECUTION-PLAN.md) for A–C and

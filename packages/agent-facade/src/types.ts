@@ -1218,6 +1218,7 @@ export const EDIT_OP_TYPES = [
   "clip.setDucking",
   "clip.setDuckingFromAnalysis",
   "clip.cutSilenceFromAnalysis",
+  "clip.splitAtBeat",
   "clip.setBackgroundRemoval",
   "svg.create",
   "svg.update",
@@ -1864,6 +1865,34 @@ export interface ClipSetDuckingFromAnalysisOp {
  * rejected because the core split/trim actions or the analyzed stream
  * cannot represent them.
  */
+/**
+ * clip.splitAtBeat — AUD-06: snap a cut point to the nearest beat of a
+ * durable beatGrid analysis record. The desired cut point (`time`, timeline
+ * seconds) moves at most `maxShiftSec` to the nearest record beat mapped
+ * through the clip's placement/trim/speed/reverse timing; the op is then
+ * rewritten into a plain clip.split BEFORE any mutation starts (the applied
+ * op is reported as clip.splitAtBeat). A request with no beat inside the
+ * allowed movement is rejected — the op never silently cuts unsnapped.
+ *
+ * Honesty: beats are grid-model beats from the shared core engine (same as
+ * the GUI beat-sync panel), not downbeats — no downbeat detector is
+ * installed and none is fabricated here. The record's BPM may be half or
+ * double the true tempo; verify the grid against the material. Speed
+ * curves, freeze frames, non-positive speed and non-zero audioTrackIndex
+ * are rejected.
+ */
+export interface ClipSplitAtBeatOp {
+  readonly op: "clip.splitAtBeat";
+  /** The clip to split. */
+  readonly clipId: string;
+  /** analysis record id from a beatGrid run on the clip's own media. */
+  readonly recordId: string;
+  /** Desired cut point, absolute timeline seconds (strictly inside the clip). */
+  readonly time: number;
+  /** Allowed movement to the nearest beat, seconds in (0, 5]. */
+  readonly maxShiftSec: number;
+}
+
 export interface ClipCutSilenceFromAnalysisOp {
   readonly op: "clip.cutSilenceFromAnalysis";
   /** The clip whose silences are cut (aligned timing-identical siblings are cut with it). */
@@ -2104,6 +2133,7 @@ export type EditOp =
   | ClipSetDuckingOp
   | ClipSetDuckingFromAnalysisOp
   | ClipCutSilenceFromAnalysisOp
+  | ClipSplitAtBeatOp
   | ClipSetBackgroundRemovalOp
   | ClipAddVideoEffectOp
   | WorkAssetCaptureOp

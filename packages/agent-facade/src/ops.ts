@@ -97,6 +97,7 @@ import {
   type ClipSetNoiseReductionOp,
   type ClipSetDuckingOp,
   type ClipCutSilenceFromAnalysisOp,
+  type ClipSplitAtBeatOp,
   type ClipSetDuckingFromAnalysisOp,
   type ClipSetBackgroundRemovalOp,
   type ClipAddVideoEffectOp,
@@ -2185,6 +2186,44 @@ export const CLIP_CUT_SILENCE_FROM_ANALYSIS_SCHEMA: ObjectSchema = {
   },
 };
 
+/**
+ * AUD-06: beat-snapped split. Shape validation only — record gates and the
+ * snap itself run in enrichSplitAtBeatOps at edit.apply/edit.validate time,
+ * which rewrite the op into a plain clip.split at the snapped time.
+ */
+export const CLIP_SPLIT_AT_BEAT_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "clip.splitAtBeat",
+    describe: '"clip.splitAtBeat"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.splitAtBeat" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string: the clip to split",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  recordId: {
+    check: (v) => typeof v === "string" && /^analysis-[0-9a-f-]{8,}$/i.test(v),
+    describe: "an analysis record id (\"analysis-<uuid>\") from a beatGrid run on the clip's own media",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  time: {
+    check: isNonNegativeNumber,
+    describe: "the desired cut point, absolute timeline seconds (strictly inside the clip)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  maxShiftSec: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 5,
+    describe: "allowed movement to the nearest beat, a finite number in (0, 5] (seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0, maximum: 5 } },
+  },
+};
+
 /** GUI sliders and the shared engine defaults bound these matte values. */
 const BACKGROUND_MODES = ["blur", "color", "image", "video", "transparent"] as const;
 
@@ -3059,6 +3098,16 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<ClipCutSilenceFromAnalysisOp>(
         raw,
         CLIP_CUT_SILENCE_FROM_ANALYSIS_SCHEMA,
+        label,
+      );
+    }
+    case "clip.splitAtBeat": {
+      // Shape validation only: record gates and the beat snap run in
+      // enrichSplitAtBeatOps at edit.apply/edit.validate time, before any
+      // mutation starts.
+      return validateObject<ClipSplitAtBeatOp>(
+        raw,
+        CLIP_SPLIT_AT_BEAT_SCHEMA,
         label,
       );
     }
@@ -5262,6 +5311,17 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       }
       return actions;
     }
+
+    case "clip.splitAtBeat":
+      // Unreachable through edit.apply/edit.validate, which run
+      // enrichSplitAtBeatOps (record load + staleness + media/mapping gates
+      // + the snap itself) before translation and rewrite the op into a
+      // plain clip.split at the snapped time. Guard the direct path
+      // honestly instead of guessing a translation.
+      throw new FacadeError(
+        "UNSUPPORTED",
+        "clip.splitAtBeat: this op must be enriched from its analysis record first — send it through edit.apply/edit.validate, which snap it to the nearest record beat and rewrite it into clip.split",
+      );
 
     case "clip.setDucking": {
       const clip = draft.timeline.tracks

@@ -3066,6 +3066,62 @@ describe("live local audio analysis parity", () => {
       await rm(mediaRoot, { recursive: true, force: true });
     }
   }, 30000);
+
+  it("applies beat-snapped splits (AUD-06) through the same enrichment", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-split-at-beat-"));
+    const sourcePath = await writeFloatWav(mediaRoot, 12, [1, 2, 3]);
+    const localStore = new FakeLiveStore();
+    const facade = liveFacade({ store: localStore, mediaRoots: [mediaRoot] });
+    try {
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const seeded = await facade["edit.apply"]({
+        ops: [
+          { op: "track.add", trackType: "audio", trackId: "music-lane" },
+          { op: "clip.add", trackId: "music-lane", mediaId: imported.value.mediaId, startTime: 10, duration: 4, inPoint: 5, outPoint: 9 },
+        ],
+      });
+      if (!seeded.ok) throw new Error(seeded.error.message);
+      const musicClipId = seeded.value.applied[1]?.createdIds?.[0];
+      if (!musicClipId) throw new Error("seed batch did not report the created clip id");
+
+      const fileStat = await stat(sourcePath);
+      const saved = await saveAnalysisRecord(artifactRoot, {
+        projectId: localStore.project.id,
+        sourceRevision: localStore.revision,
+        coordinateSpace: "source",
+        subject: { mediaId: imported.value.mediaId, name: "music.wav", sourcePath, sourceFingerprint: { size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) } },
+        analysisTypes: ["beatGrid"],
+        rangeSec: { startSec: 0, endSec: 12 },
+        config: { analysisTypes: ["beatGrid"], startSec: 0, endSec: 12, cloudUpload: false },
+        provenance: [{ kind: "local-measurement", provider: "local-ffmpeg-pcm-beat-engine", analysisType: "beatGrid" }],
+        observations: [{ source: "beatGrid", facts: { beats: [{ timeSec: 6, strength: 1, index: 0 }, { timeSec: 7, strength: 1, index: 1 }, { timeSec: 8, strength: 1, index: 2 }], beatCount: 3, bpm: 60, confidence: 0.9 } }],
+        inferences: [],
+        recommendations: [],
+        unknowns: [],
+        recheckOf: null,
+        cloudOpinion: null,
+      });
+
+      const applied = await facade["edit.apply"]({
+        ops: [{ op: "clip.splitAtBeat", clipId: musicClipId, recordId: saved.id, time: 12.3, maxShiftSec: 0.5 }],
+      });
+      expect(applied).toMatchObject({ ok: true, value: { replayed: false, applied: [{ op: "clip.splitAtBeat" }] } });
+      const lane = localStore.project.timeline.tracks.find((track) => track.id === "music-lane")!;
+      const pieces = [...lane.clips].sort((left, right) => left.startTime - right.startTime);
+      expect(pieces.map((clip) => [clip.startTime, clip.duration, clip.inPoint, clip.outPoint]))
+        .toEqual([[10, 2, 5, 7], [12, 2, 7, 9]]);
+
+      // No beat inside the allowed movement is an honest rejection.
+      const miss = await facade["edit.apply"]({
+        ops: [{ op: "clip.splitAtBeat", clipId: pieces[1]!.id, recordId: saved.id, time: 12.45, maxShiftSec: 0.3 }],
+      });
+      expect(miss).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS", message: expect.stringContaining("within maxShiftSec") } });
+    } finally {
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 30000);
 });
 
 describe("live audio normalization task lifecycle", () => {

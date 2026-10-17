@@ -147,6 +147,7 @@ describe("capabilities.get / session.describe", () => {
       "clip.setDucking",
       "clip.setDuckingFromAnalysis",
       "clip.cutSilenceFromAnalysis",
+      "clip.splitAtBeat",
       "clip.setBackgroundRemoval",
       "svg.create",
       "svg.update",
