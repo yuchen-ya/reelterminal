@@ -16,7 +16,7 @@ import { REQUIREMENTS_GET_SCHEMA, REQUIREMENTS_LIST_SCHEMA } from "./requirement
  * boundary superset filter, and the runtime validators remain the only
  * authority — a payload can be schema-valid and still fail INVALID_PARAMS.
  */
-import { ANALYSIS_EVENT_SERIES, EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES } from "./types";
+import { ANALYSIS_EVENT_SERIES, CAPABILITY_DOMAINS, EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES } from "./types";
 import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
 import { FONT_LIBRARY_LIMITS } from "./font-library";
 import { PRESET_LIBRARY_LIMITS } from "./preset-verbs";
@@ -123,6 +123,23 @@ import { WORKSPACE_VERB_SCHEMAS } from "./workspace-schemas";
 
 /** Param-less verbs validate against a closed empty schema. */
 export const EMPTY_PARAMS_SCHEMA: ObjectSchema = {};
+
+/**
+ * capabilities.get accepts an optional probe-domain filter (AUD-04). The
+ * filter only scopes which preflights run: probe-dependent statuses outside
+ * the requested domain are reported as not-probed (never available), and
+ * verbs keep their real pre-execution checks.
+ */
+export const CAPABILITIES_GET_SCHEMA: ObjectSchema = {
+  domain: {
+    check: oneOf(CAPABILITY_DOMAINS),
+    describe: `"audio", "video", "frames", "motion", "render" or "export"`,
+    emits: {
+      kind: "leaf",
+      schema: { enum: CAPABILITY_DOMAINS },
+    },
+  },
+};
 
 // Hardened settings subset: dimensions and audio layout must be positive
 // INTEGERS; frameRate is the one field that legitimately carries a fraction
@@ -2058,7 +2075,7 @@ export const VERB_PARAM_SCHEMAS: {
   readonly [verb: string]: ObjectSchema;
 } = {
   "session.describe": EMPTY_PARAMS_SCHEMA,
-  "capabilities.get": EMPTY_PARAMS_SCHEMA,
+  "capabilities.get": CAPABILITIES_GET_SCHEMA,
   "project.create": PROJECT_CREATE_SCHEMA,
   "project.open": PROJECT_OPEN_SCHEMA,
   "project.save": PROJECT_SAVE_SCHEMA,

@@ -21,6 +21,7 @@ import {
 import type { FacadeResult } from "./errors";
 import type {
   Capabilities,
+  CapabilitiesGetParams,
   EditApplyParams,
   EditApplyResult,
   EditorGetContextResult,
@@ -77,7 +78,9 @@ import { WORKSPACE_VERBS, type WorkspaceVerb } from "./workspace-library";
 
 export interface AgentFacade extends BundledToolBindings {
   readonly "session.describe": () => Promise<FacadeResult<SessionDescription>>;
-  readonly "capabilities.get": () => Promise<FacadeResult<Capabilities>>;
+  readonly "capabilities.get": (
+    params?: CapabilitiesGetParams,
+  ) => Promise<FacadeResult<Capabilities>>;
   readonly "project.create": (
     params?: ProjectCreateParams,
   ) => Promise<FacadeResult<ProjectCreateResult>>;
@@ -249,7 +252,7 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
   return withValidatedFacadeCalls({
     ...bindBundledTools(session, config, "headless"),
     "session.describe": () => session.sessionDescribe(),
-    "capabilities.get": () => session.capabilitiesGet(),
+    "capabilities.get": (params) => session.capabilitiesGet(params),
     "project.create": (params) => session.projectCreate(params),
     "project.open": (params) => session.projectOpen(params),
     "project.save": (params) => session.projectSave(params),

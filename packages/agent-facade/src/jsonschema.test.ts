@@ -15,7 +15,7 @@ import {
   EDIT_OP_SCHEMAS,
   MAX_EDIT_OPS_PER_BATCH,
 } from "./verb-schemas";
-import { EDIT_OP_TYPES, FACADE_VERBS } from "./types";
+import { CAPABILITY_DOMAINS, EDIT_OP_TYPES, FACADE_VERBS } from "./types";
 import { VERB_SCHEMA_CORPUS } from "./verb-schema-corpus";
 
 type Schema = Record<string, unknown>;
@@ -407,7 +407,6 @@ describe("emitted schema per-verb structure", () => {
   it("param-less verbs emit a closed empty object", () => {
     for (const verb of [
       "session.describe",
-      "capabilities.get",
       "project.get_state",
       "timeline.get",
       "editor.get_context",
@@ -418,6 +417,16 @@ describe("emitted schema per-verb structure", () => {
         properties: {},
       });
     }
+  });
+
+  it("capabilities.get emits the optional probe-domain filter enum", () => {
+    expect(EMITTED_VERB_JSON_SCHEMAS["capabilities.get"]).toEqual({
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        domain: { enum: CAPABILITY_DOMAINS },
+      },
+    });
   });
 
   it("live schema overrides cover save and canonical store-minted clip ids", () => {

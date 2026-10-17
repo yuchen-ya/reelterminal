@@ -258,6 +258,7 @@ import type { MaterialListResult } from "@reelterminal/core/material/types";
 import {
   isReadOnlyVerb,
   type Capabilities,
+  type CapabilitiesGetParams,
   type EditApplyParams,
   type EditApplyResult,
   type EditorGetContextResult,
@@ -704,9 +705,9 @@ export class LiveFacadeSession {
     }
   }
 
-  async capabilitiesGet(): Promise<FacadeResult<Capabilities>> {
+  async capabilitiesGet(params: CapabilitiesGetParams = {}): Promise<FacadeResult<Capabilities>> {
     try {
-      return ok(await buildCapabilities(this.capabilityContext()));
+      return ok(await buildCapabilities(this.capabilityContext(), params));
     } catch (error) {
       return toFailure<Capabilities>(error);
     }
@@ -4335,7 +4336,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     ...bindBundledTools(session, config, "live"),
     ...Object.fromEntries(WORKSPACE_VERBS.map((verb) => [verb, (params: Record<string, unknown> = {}) => session.workspaceCommand(verb, params)])) as Pick<LiveAgentFacade, WorkspaceVerb>,
     "session.describe": () => session.sessionDescribe(),
-    "capabilities.get": () => session.capabilitiesGet(),
+    "capabilities.get": (params) => session.capabilitiesGet(params),
     "project.create": (params) => session.projectCreate(params),
     "project.open": (params) => session.projectOpen(params),
     "project.save": (params) => session.projectSave(params),

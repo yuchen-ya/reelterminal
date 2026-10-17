@@ -50,6 +50,8 @@ import {
   FACADE_VERSION,
   MEDIA_ANALYSIS_TYPES,
   type Capabilities,
+  type CapabilitiesGetParams,
+  type CapabilityDomain,
   type CapabilityStatus,
   type FacadeVerb,
   type SessionDescription,
@@ -177,19 +179,45 @@ async function preflightOf(
   }
 }
 
+/**
+ * Status for a probe that a domain-filtered capabilities.get request scoped
+ * out. Never `available: true`; the reason says how to probe it for real.
+ * `domains` lists every domain whose request runs this probe (the shared
+ * ffmpeg tool preflight runs for video, frames and motion).
+ */
+function notProbed(...domains: readonly CapabilityDomain[]): CapabilityStatus {
+  return {
+    available: false,
+    probed: false,
+    reason:
+      `Not probed: this capabilities.get request scoped probing to other domains. ` +
+      `Re-run without the domain filter or with domain ${domains.map((domain) => `"${domain}"`).join(" or ")} to probe it for real.`,
+  };
+}
+
 export async function buildCapabilities(
   ctx: CapabilityContext,
+  request: CapabilitiesGetParams = {},
 ): Promise<Capabilities> {
-  const audioReady = await audioAnalysisPreflight();
-  const speechVadReady = await speechVadPreflight();
-  const videoReady = await videoReviewPreflight();
-  const ffmpegReady = await ffmpegToolPreflight();
-  const labelFont = await probeLabelFont();
-  const opencvReady = await opencvToolPreflight();
-  const [maskReady, propagateReady] = await Promise.all([
-    opencvToolPreflight(["mask_refine.py"]),
-    opencvToolPreflight(["propagate.py"]),
-  ]);
+  // AUD-04 domain filter: run only the requested domain's probes. The
+  // filter scopes probing only — config-derived gates (media/artifact
+  // roots, bridges) still apply, verbs keep their real pre-execution
+  // checks, and an unprobed status is never reported available.
+  const requestedDomain = request.domain;
+  const wants = (domain: CapabilityDomain): boolean => requestedDomain === undefined || requestedDomain === domain;
+  const wantsFfmpegTools = wants("video") || wants("frames") || wants("motion");
+  const audioReady: CapabilityStatus = wants("audio") ? await audioAnalysisPreflight() : notProbed("audio");
+  const speechVadReady: CapabilityStatus = wants("audio") ? await speechVadPreflight() : notProbed("audio");
+  const videoReady: CapabilityStatus = wants("video") ? await videoReviewPreflight() : notProbed("video");
+  const ffmpegReady: CapabilityStatus = wantsFfmpegTools ? await ffmpegToolPreflight() : notProbed("video", "frames", "motion");
+  const labelFont = wants("frames") ? await probeLabelFont() : null;
+  const opencvReady: CapabilityStatus = wants("motion") ? await opencvToolPreflight() : notProbed("motion");
+  const [maskReady, propagateReady]: [CapabilityStatus, CapabilityStatus] = wants("motion")
+    ? await Promise.all([
+        opencvToolPreflight(["mask_refine.py"]),
+        opencvToolPreflight(["propagate.py"]),
+      ])
+    : [notProbed("motion"), notProbed("motion")];
   const mediaImportAvailable = ctx.live
     ? ctx.live.mediaImportAvailable && ctx.mediaRoots.length > 0
     : ctx.mediaRoots.length > 0;
@@ -216,9 +244,11 @@ export async function buildCapabilities(
         }
       : status;
   const [previewRaw, exportRaw, verifyRaw] = await Promise.all([
-    preflightOf(ctx.renderProvider, UNAVAILABLE_NO_RENDER_PROVIDER),
-    preflightOf(ctx.exportProvider, UNAVAILABLE_NO_EXPORT_PROVIDER),
-    preflightOf(ctx.artifactVerifier, UNAVAILABLE_NO_VERIFIER),
+    wants("render") ? preflightOf(ctx.renderProvider, UNAVAILABLE_NO_RENDER_PROVIDER) : Promise.resolve(notProbed("render")),
+    // The export domain covers the whole delivery chain: export.start's
+    // encoder and verify.artifact's probe.
+    wants("export") ? preflightOf(ctx.exportProvider, UNAVAILABLE_NO_EXPORT_PROVIDER) : Promise.resolve(notProbed("export")),
+    wants("export") ? preflightOf(ctx.artifactVerifier, UNAVAILABLE_NO_VERIFIER) : Promise.resolve(notProbed("export")),
   ]);
   const preview = gateArtifactProducing(previewRaw, UNAVAILABLE_NO_RENDER_PROVIDER);
   const visualRaw = gateArtifactProducing(
@@ -248,6 +278,7 @@ export async function buildCapabilities(
         requires: "a configured media root for the output directory",
       };
     }
+    if (previewRaw.probed === false) return previewRaw;
     if (!previewRaw.available) {
       return {
         available: false,
@@ -495,12 +526,18 @@ export async function buildCapabilities(
           requires: "a live desktop session with the canonical GUI/Core history",
         },
     pluginTools: Object.fromEntries(PLUGIN_TOOLS.map((tool) => {
-      const missing = (tool.requires ?? []).filter((requirement) => requirement === "render" ? !previewRaw.available : requirement === "artifactRoot" ? noArtifactRoot : ctx.mediaRoots.length === 0);
-      return [tool.name, { available: missing.length === 0, ...(missing.length ? { reason: `Missing plugin prerequisites: ${missing.join(", ")}`, requires: missing.join(", ") } : {}), details: { effect: tool.effect, presentation: tool.presentation ?? "text" } }];
+      const requires = tool.requires ?? [];
+      const renderUnprobed = requires.includes("render") && previewRaw.probed === false;
+      const missing = requires.filter((requirement) => requirement === "render" ? !previewRaw.available : requirement === "artifactRoot" ? noArtifactRoot : ctx.mediaRoots.length === 0);
+      return [tool.name, { available: missing.length === 0, ...(missing.length ? { reason: renderUnprobed
+        ? `Render preflight was not probed in this request (capabilities.get domain filter); include the "render" domain or drop the filter to probe it.`
+        : `Missing plugin prerequisites: ${missing.join(", ")}`, requires: missing.join(", ") } : {}), ...(renderUnprobed ? { probed: false as const } : {}), details: { effect: tool.effect, presentation: tool.presentation ?? "text" } }];
     })),
     frameTools: {
       ffmpeg: ffmpegReady,
-      contactSheetLabelFont: { path: labelFont },
+      contactSheetLabelFont: wants("frames")
+        ? { path: labelFont }
+        : { path: null, probed: false as const },
       limits: {
         maxFramesPerExtract: MAX_EXTRACT_FRAMES,
         maxSheetCells: MAX_SHEET_CELLS,
@@ -510,7 +547,9 @@ export async function buildCapabilities(
     },
     motionTools: {
       opencv: opencvReady,
-      maskRefine: !maskReady.available || noArtifactRoot || ctx.mediaRoots.length === 0
+      maskRefine: maskReady.probed === false && !noArtifactRoot && ctx.mediaRoots.length > 0
+        ? maskReady
+        : !maskReady.available || noArtifactRoot || ctx.mediaRoots.length === 0
         ? { available: false, reason: !maskReady.available ? maskReady.reason : "Requires configured media and artifact roots" }
         : { available: true, details: {
             verb: "mask.refine",
@@ -518,7 +557,9 @@ export async function buildCapabilities(
             outputs: "grayscale alpha PNG and optional source overlay; candidate only, no timeline edits",
             limitations: "rectangle initialization is a segmentation proposal, not guaranteed character matting; inspect before adoption",
           } },
-      patchPropagate: !propagateReady.available || !ffmpegReady.available || noArtifactRoot || ctx.mediaRoots.length === 0
+      patchPropagate: propagateReady.probed === false && !noArtifactRoot && ctx.mediaRoots.length > 0
+        ? propagateReady
+        : !propagateReady.available || !ffmpegReady.available || noArtifactRoot || ctx.mediaRoots.length === 0
         ? { available: false, reason: !propagateReady.available ? propagateReady.reason : !ffmpegReady.available ? ffmpegReady.reason : "Requires configured media and artifact roots" }
         : { available: true, details: {
             verb: "patch.propagate",
@@ -572,7 +613,7 @@ export async function buildCapabilities(
               : noArtifactRoot
                 ? { available: false, reason: "Audio analysis requires artifactRoot to persist the complete analysis record.", requires: "artifactRoot" }
                 : !audioReady.available
-                  ? { available: false, reason: audioReady.reason }
+                  ? (audioReady.probed === false ? audioReady : { available: false, reason: audioReady.reason })
                   : { ...audioReady, details: { ...audioReady.details, ...AUDIO_LIMITS, maxSourceFileBytes: 2 * 1024 * 1024 * 1024, coordinateSpace: "source", changesProject: false, agentAudioConsumption: false, eventAccess: "Use analysis.get view:'events' for paged onset and silence details, and view:'waveform' for bounded waveform samples." } }
             : type === "technicalQuality" && ctx.mediaRoots.length > 0
             ? {
@@ -581,7 +622,9 @@ export async function buildCapabilities(
                   provider: "built-in-mediabunny-stat",
                   fields: ["containerMetadata", "duration", "geometry", "codec", "fileSize", "sourceFingerprint", "color"],
                   color: COLOR_POLICY_DISCLOSURE,
-                  ...(ffmpegReady.available
+                  ...(ffmpegReady.probed === false
+                    ? { frameFacts: "technicalQuality.frames detail was not probed in this request: the shared ffmpeg tool preflight was scoped out by the domain filter" }
+                    : ffmpegReady.available
                     ? { frameFacts: "technicalQuality.frames adds decoded/header frame count, time base and a bounded whole-stream PTS CFR/VFR verdict via local ffprobe; incomplete scans report unknown" }
                     : { frameFacts: "technicalQuality.frames is null without local ffmpeg/ffprobe (install on PATH or set REELTERMINAL_FFMPEG_PATH/REELTERMINAL_FFPROBE_PATH)" }),
                 },
@@ -596,9 +639,11 @@ export async function buildCapabilities(
                 : noArtifactRoot
                   ? { available: false, reason: "Audio analysis requires artifactRoot to persist the complete analysis record.", requires: "artifactRoot" }
                 : !audioReady.available
-                  ? { available: false, reason: audioReady.reason }
+                  ? (audioReady.probed === false ? audioReady : { available: false, reason: audioReady.reason })
                 : !speechVadReady.available
-                  ? { available: false, reason: speechVadReady.reason, ...(speechVadReady.requires ? { requires: speechVadReady.requires } : {}) }
+                  ? (speechVadReady.probed === false
+                    ? speechVadReady
+                    : { available: false, reason: speechVadReady.reason, ...(speechVadReady.requires ? { requires: speechVadReady.requires } : {}) })
                   : {
                       available: true,
                       details: {
@@ -606,7 +651,7 @@ export async function buildCapabilities(
                         maxSourceFileBytes: 2 * 1024 * 1024 * 1024,
                         agentAudioConsumption: false,
                         provider: "local-silero-vad-onnx",
-                        model: speechVadReady.details.model,
+                        model: speechVadReady.details?.model,
                         kernel: "Silero VAD v5.1.2 ONNX via onnxruntime-node — per-chunk speech probabilities (32 ms windows, 16 kHz, carried state), hysteresis thresholds, minimum durations and padding",
                         fields: ["analysis.get events (speechRegions)", "regionCount", "totalSpeechDurationSec", "speechRatio", "parameters"],
                         defaults: { threshold: 0.5, minSpeechSec: 0.25, minSilenceSec: 0.1, padSec: 0.03 },
@@ -627,7 +672,7 @@ export async function buildCapabilities(
                 : noArtifactRoot
                   ? { available: false, reason: "Audio analysis requires artifactRoot to persist the complete analysis record.", requires: "artifactRoot" }
                 : !audioReady.available
-                  ? { available: false, reason: audioReady.reason }
+                  ? (audioReady.probed === false ? audioReady : { available: false, reason: audioReady.reason })
                   : {
                       available: true,
                       details: type === "silence"
@@ -665,7 +710,7 @@ export async function buildCapabilities(
                     requires: "a configured media root containing the source",
                   }
                 : !ffmpegReady.available
-                  ? { available: false, reason: ffmpegReady.reason }
+                  ? (ffmpegReady.probed === false ? ffmpegReady : { available: false, reason: ffmpegReady.reason })
                   : {
                       available: true,
                       details: {
@@ -958,7 +1003,10 @@ export async function buildCapabilities(
     audioNormalize: {
       available: audioReady.available && mediaImportAvailable,
       ...(!audioReady.available
-        ? { reason: audioReady.reason ?? "Local FFmpeg loudnorm/ffprobe unavailable" }
+        ? {
+            reason: audioReady.reason ?? "Local FFmpeg loudnorm/ffprobe unavailable",
+            ...(audioReady.probed === false ? { probed: false as const } : {}),
+          }
         : !mediaImportAvailable ? { reason: "A media root and an operational media import bridge are required" } : {}),
       details: {
         command: "audio.process.normalize",

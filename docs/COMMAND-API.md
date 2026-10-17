@@ -79,8 +79,12 @@ Use `reelctl schema` for the command index and `reelctl schema <command>` for
 exact arguments. `reelctl schema --domain <domain>` filters the index by the
 command's leading name segment (`audio`, `media`, `edit`, ...); the filtered
 entries come from the same catalog and unknown domains are rejected with the
-available domain list. Scoped lazy capability probes for `capabilities.get`
-are still a [TODO item](AUDIO-TODO.md), not a supported parameter.
+available domain list. `capabilities.get` accepts an optional `domain`
+parameter (`audio`, `video`, `frames`, `motion`, `render`, `export`) that
+scopes probing to that domain: unrelated probes never start, and every
+probe-backed status outside the requested domain is reported as
+`probed: false`/not available rather than ready. Verbs keep their real
+pre-execution checks either way.
 
 ## MCP and headless sessions
 

@@ -250,12 +250,43 @@ export interface CapabilityStatus {
   /** What would be required to make it available (audit letter/seam). */
   readonly requires?: string;
   /**
+   * Present only when this status was NOT probed because the
+   * capabilities.get request scoped probing to another domain. A not-probed
+   * status is never `available: true`; re-run without the domain filter (or
+   * including this domain) to probe it.
+   */
+  readonly probed?: false;
+  /**
    * Machine-readable detail surfaced from the provider's live preflight
    * (e.g. export route, and for the explicitly forced video-only frames
    * route the `videoOnly`/`audio:"none"` markers — limitations are part of
    * the capability, never a footnote).
    */
   readonly details?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Capability probe domains. `capabilities.get` accepts one of these as an
+ * optional `domain` filter: only that domain's probes run, and every
+ * probe-dependent status outside it is reported as not-probed (never
+ * `available: true`). Without the filter all probes run as before. The
+ * filter only scopes probing; verbs keep their real pre-execution checks.
+ */
+export const CAPABILITY_DOMAINS = [
+  "audio",
+  "video",
+  "frames",
+  "motion",
+  "render",
+  "export",
+] as const;
+
+export type CapabilityDomain = (typeof CAPABILITY_DOMAINS)[number];
+
+/** Input of `capabilities.get`. */
+export interface CapabilitiesGetParams {
+  /** Restrict probing to one domain's probes; omit to probe everything. */
+  readonly domain?: CapabilityDomain;
 }
 
 export interface Capabilities {
@@ -336,7 +367,11 @@ export interface Capabilities {
    */
   readonly frameTools: {
     readonly ffmpeg: CapabilityStatus;
-    readonly contactSheetLabelFont: { readonly path: string | null };
+    readonly contactSheetLabelFont: {
+      readonly path: string | null;
+      /** Present when the frames domain's font probe was scoped out. */
+      readonly probed?: false;
+    };
     readonly limits: {
       readonly maxFramesPerExtract: number;
       readonly maxSheetCells: number;

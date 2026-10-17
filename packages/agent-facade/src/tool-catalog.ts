@@ -6,7 +6,7 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   session_describe:
     "Describe the facade session: contract, runtime, and live access/writer state when applicable.",
   capabilities_get:
-    "Report live provider capabilities and the recommended Agent workspace root/layout, with honest reasons when unavailable.",
+    "Report live provider capabilities and the recommended Agent workspace root/layout, with honest reasons when unavailable. An optional domain param (audio, video, frames, motion, render, export) scopes probing to that domain; other probe-backed statuses are reported as not-probed, never available.",
   project_create:
     "Create this session's single project (single-initialization lifecycle verb).",
   project_open:
@@ -146,7 +146,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "session.describe":
     "Describe this live collaboration session: runtime, independent access/writer state, available commands, and error codes.",
   "capabilities.get":
-    "Report live provider capabilities (preview, visual inspection, export, verify) with honest reasons when unavailable.",
+    "Report live provider capabilities (preview, visual inspection, export, verify) with honest reasons when unavailable. An optional domain param (audio, video, frames, motion, render, export) scopes probing to that domain; other probe-backed statuses are reported as not-probed, never available.",
   "project.create":
     "Create a durable project with its default workspace without switching the GUI view. Use the returned projectId/defaultWorkspaceId for subsequent explicit target commands.",
   "project.open":

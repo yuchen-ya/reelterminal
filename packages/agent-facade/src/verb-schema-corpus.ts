@@ -46,6 +46,10 @@ export const VERB_SCHEMA_CORPUS: Readonly<
   ],
   "capabilities.get": [
     { name: "no params is valid", params: {}, expectValid: true },
+    { name: "audio domain is valid", params: { domain: "audio" }, expectValid: true },
+    { name: "render domain is valid", params: { domain: "render" }, expectValid: true },
+    { name: "unknown domain", params: { domain: "nope" }, expectValid: false },
+    { name: "wrong type domain", params: { domain: 1 }, expectValid: false },
     { name: "unknown field", params: { force: true }, expectValid: false },
   ],
   "project.create": [

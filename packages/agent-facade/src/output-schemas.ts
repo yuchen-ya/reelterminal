@@ -259,6 +259,7 @@ const capabilityStatus = (): OutputSchemaNode =>
       reason: stringSchema(),
       requires: stringSchema(),
       details: openObject(),
+      probed: booleanSchema(),
     },
     ["available"],
   );

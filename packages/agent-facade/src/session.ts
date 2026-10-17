@@ -210,6 +210,7 @@ import type {
 } from "./live-store";
 import type {
   Capabilities,
+  CapabilitiesGetParams,
   EditApplyParams,
   EditApplyResult,
   EditorGetContextResult,
@@ -398,9 +399,9 @@ export class AgentFacadeSession {
     ));
   }
 
-  async capabilitiesGet(): Promise<FacadeResult<Capabilities>> {
+  async capabilitiesGet(params: CapabilitiesGetParams = {}): Promise<FacadeResult<Capabilities>> {
     try {
-      return ok(await buildCapabilities(this.capabilityContext()));
+      return ok(await buildCapabilities(this.capabilityContext(), params));
     } catch (error) {
       return toFailure<Capabilities>(error);
     }
