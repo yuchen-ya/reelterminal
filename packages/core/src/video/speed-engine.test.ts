@@ -37,6 +37,39 @@ describe("SpeedEngine", () => {
     expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, 8)).toBe(10);
   });
 
+  it("inverts source→playback for constant, reverse, curve and frozen clips", () => {
+    const cases = [
+      { id: "constant", inPoint: 2, outPoint: 6, speed: 2 } as Clip,
+      { id: "reverse", inPoint: 2, outPoint: 6, speed: 2, reversed: true } as Clip,
+      {
+        id: "curve", inPoint: 4, outPoint: 14,
+        speedKeyframes: [
+          { id: "a", time: 0, speed: 1, easing: "linear" },
+          { id: "b", time: 10, speed: 2, easing: "linear" },
+        ],
+      } as Clip,
+      {
+        id: "frozen", inPoint: 7, outPoint: 17, speed: 2,
+        freezeFrames: [
+          { id: "first", clipId: "frozen", sourceTime: 2, startTime: 1, duration: 2 },
+          { id: "second", clipId: "frozen", sourceTime: 6, startTime: 5, duration: 1 },
+        ],
+      } as Clip,
+      {
+        id: "reversefrozen", inPoint: 7, outPoint: 17, speed: 2, reversed: true,
+        freezeFrames: [{ id: "rf", clipId: "reversefrozen", sourceTime: 4, startTime: 2, duration: 1.5 }],
+      } as Clip,
+    ];
+    for (const clip of cases) {
+      speedEngine.loadClips([clip]);
+      const span = clip.outPoint - clip.inPoint;
+      for (const source of [0, 0.5, 1.7, 3, 5.5, 9.9, 10].filter((value) => value <= span)) {
+        const playback = speedEngine.getPlaybackTimeAtSourceTime(clip.id, source);
+        expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, playback), `${clip.id} source ${source} playback ${playback}`).toBeCloseTo(source, 3);
+      }
+    }
+  });
+
   it("uses one curved duration integral and handles reverse at both endpoints", () => {
     const clip = {
       id: "curve", inPoint: 4, outPoint: 14, reversed: true,

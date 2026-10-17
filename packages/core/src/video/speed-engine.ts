@@ -344,6 +344,59 @@ export class SpeedEngine {
     return null;
   }
 
+  /** Inverse of getSourceTimeAtPlaybackTime: clip-local playback seconds for
+   * a source offset (relative to inPoint), for forward and reverse clips and
+   * for speed curves. Freeze holds are inserted after their moving position;
+   * callers that need the held interval add freezeFrames explicitly. */
+  getPlaybackTimeAtSourceTime(clipId: string, sourceTime: number): number {
+    const data = this.clipSpeedData.get(clipId);
+    if (!data) return sourceTime;
+    const original = data.originalDuration;
+    const clampedSource = Math.max(0, Math.min(original, sourceTime));
+    const movingSource = data.reverse ? original - clampedSource : clampedSource;
+    const movingPlayback = data.keyframes.length > 0
+      ? this.playbackTimeForCumulativeSource(this.ensureIntegralTable(data), movingSource)
+      : (data.baseSpeed > 0 ? movingSource / data.baseSpeed : movingSource);
+    // Convert moving playback to absolute playback by inserting each hold that
+    // starts at or before it. freeze.startTime already includes prior holds,
+    // so its moving position is startTime - inserted.
+    let inserted = 0;
+    for (const freeze of data.freezeFrames) {
+      const movingStart = freeze.startTime - inserted;
+      if (movingPlayback < movingStart) break;
+      inserted += freeze.duration;
+    }
+    return movingPlayback + inserted;
+  }
+
+  /** Inverse of the cumulative table: moving playback time whose source time
+   * equals the query. Monotone because the table is strictly increasing. */
+  private playbackTimeForCumulativeSource(
+    cache: SpeedIntegralCache,
+    sourceTime: number,
+  ): number {
+    const { sampleTimes, cumulative } = cache;
+    const last = sampleTimes.length - 1;
+    if (sourceTime <= 0) return 0;
+    if (sourceTime >= sampleTimes[last]) return cache.movingDuration;
+    let lo = 0;
+    let hi = last;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (sampleTimes[mid] < sourceTime) lo = mid + 1;
+      else hi = mid;
+    }
+    const tLow = lo === 0 ? 0 : sampleTimes[lo - 1];
+    const fLow = lo === 0 ? 0 : cumulative[lo - 1];
+    const tHigh = sampleTimes[lo];
+    const fSpan = tHigh - tLow;
+    if (!(fSpan > 0)) return cumulative[lo];
+    return Math.min(
+      cache.movingDuration,
+      Math.max(0, fLow + ((sourceTime - tLow) / fSpan) * (cumulative[lo] - fLow)),
+    );
+  }
+
   /** Clip-local playback seconds -> source seconds relative to inPoint.
    * Freezes hold the specified source frame, then resume the moving-time mapping.
    * Reverse reflects the moving source offset; freeze sourceTime is already the
