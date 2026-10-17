@@ -1181,6 +1181,7 @@ export const EDIT_OP_TYPES = [
   "clip.setChromaKey",
   "clip.setNoiseReduction",
   "clip.setDucking",
+  "clip.setDuckingFromAnalysis",
   "clip.setBackgroundRemoval",
   "svg.create",
   "svg.update",
@@ -1765,6 +1766,45 @@ export interface ClipSetDuckingOp {
 }
 
 /**
+ * clip.setDuckingFromAnalysis — AUD-02: drive clip.setDucking from a durable
+ * speechActivity analysis record (AUD-01). The record's source-second speech
+ * regions are mapped through the SPEECH clip's placement/trim/constant speed
+ * onto the timeline, intersected with the ducked clip, and rewritten into a
+ * clip.setDucking presenceRanges op before any mutation starts (the applied
+ * op is reported as clip.setDucking). Same tuning fields, shared keyframe
+ * kernel, one edit.apply batch/undo unit, and the single volume-automation
+ * evaluation chain preview and export already share.
+ *
+ * Honesty gates at enrich time: stale records (source changed or missing),
+ * records without speechActivity facts, records analyzing another media than
+ * the speech clip plays, and speech clips with reverse playback, speed curves
+ * or freeze frames (non-linear source↔timeline mapping) are all rejected
+ * explicitly. An existing volume envelope on the target is never silently
+ * overwritten — existingEnvelope:"replace" must authorize it.
+ */
+export interface ClipSetDuckingFromAnalysisOp {
+  readonly op: "clip.setDuckingFromAnalysis";
+  /** The background clip that receives the ducking envelope (same target rules as clip.setDucking). */
+  readonly clipId: string;
+  /** The clip playing the analyzed speech media; its placement/trim/speed define the time mapping. */
+  readonly speechClipId: string;
+  /** analysis record id from a speechActivity run on the speech clip's own media. */
+  readonly recordId: string;
+  /** Voice level that triggers ducking, dB in [-60, 0]. */
+  readonly threshold: number;
+  /** How much the background is lowered, in [0, 1]. */
+  readonly reduction: number;
+  /** Attack time in seconds, [0, 1]. */
+  readonly attack: number;
+  /** Release time in seconds, [0, 2]. */
+  readonly release: number;
+  /** Minimum duck hold time in seconds, [0, 1]. */
+  readonly holdTime: number;
+  /** Policy when the target already has volume-automation points: "error" (default) rejects the batch; "replace" overwrites them explicitly. */
+  readonly existingEnvelope?: "error" | "replace";
+}
+
+/**
  * clip.setBackgroundRemoval — persist the person-segmentation matte settings
  * on ONE clip via the same core clip/setBackgroundRemoval action the GUI
  * Background Removal panel writes: undoable and saved with the project.
@@ -1986,6 +2026,7 @@ export type EditOp =
   | ClipSetChromaKeyOp
   | ClipSetNoiseReductionOp
   | ClipSetDuckingOp
+  | ClipSetDuckingFromAnalysisOp
   | ClipSetBackgroundRemovalOp
   | ClipAddVideoEffectOp
   | WorkAssetCaptureOp

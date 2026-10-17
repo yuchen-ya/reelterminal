@@ -645,6 +645,27 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
     },
     {
+      name: "valid record-driven ducking",
+      params: { ops: [{ op: "clip.setDuckingFromAnalysis", clipId: "c1", speechClipId: "c2", recordId: "analysis-1f0a4fd6d8f547c2b6bba7bd4f83b9a1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2 }] },
+      expectValid: true,
+    },
+    {
+      name: "record-driven ducking with explicit replace policy",
+      params: { ops: [{ op: "clip.setDuckingFromAnalysis", clipId: "c1", speechClipId: "c2", recordId: "analysis-1f0a4fd6d8f547c2b6bba7bd4f83b9a1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, existingEnvelope: "replace" }] },
+      expectValid: true,
+    },
+    {
+      name: "schema-valid but facade-rejected: record-driven ducking recordId must be an analysis id",
+      params: { ops: [{ op: "clip.setDuckingFromAnalysis", clipId: "c1", speechClipId: "c2", recordId: "rec-123", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2 }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "record-driven ducking envelope policy is closed",
+      params: { ops: [{ op: "clip.setDuckingFromAnalysis", clipId: "c1", speechClipId: "c2", recordId: "analysis-1f0a4fd6d8f547c2b6bba7bd4f83b9a1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, existingEnvelope: "merge" }] },
+      expectValid: false,
+    },
+    {
       name: "valid clip.setBackgroundRemoval enable with defaults",
       params: { ops: [{ op: "clip.setBackgroundRemoval", clipId: "c1", enabled: true }] },
       expectValid: true,

@@ -113,3 +113,17 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
   - 真实模型验收（本机运行，CI 无模型时跳过并打印原因）：flite 合成人声 vs 粉噪、静音、440 Hz 纯音音乐、右声道独有人声。粉噪 max 概率 0.14、静音 0.04、纯音 0.03 均零区间；人声 mean 0.68 检出；1.5 s 前导静音 + 两句 flite + 2 s 停顿的混合样本首区间起点 1.76 s（误差 0.26 s，flite 软起音为主）、句间最大间隔 2.62 s、粒度 0.032 s；右声道独有人声正常检出。
   - `pnpm --filter @reelterminal/desktop test:run src/main/analysis/analysis-records-service.test.ts src/main/live/live-session-host.test.ts src/main/live/task-ledger.test.ts src/live-mcp/index.test.ts --maxWorkers=2`：4 文件、43 通过；`pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2`：13 文件、667 通过、3 既有跳过。agent-facade、desktop、agent-transport、runtime-chromium、web 的 typecheck 均通过。
 - 限制与保留：范围仍限 120 s（AUD-11 另行处理长素材）；仅 16 kHz 输入、单/双声道经 strongest-sample 混合（>2 声道由 FFmpeg 先缩混为立体声）；VAD 是声学推断，唱歌/类人声可能误检漏检；per-chunk 概率不存储；安装包加载 onnxruntime-node 未验证；macOS/Linux 未在本机执行。AUD-01 勾选待用户验收后进行。
+
+## AUD-02：分析句柄驱动 ducking（2026-10-17，待用户验收）
+
+依赖 AUD-01 的 speechActivity 记录，新增编辑操作 **`clip.setDuckingFromAnalysis`**（edit.apply/edit.validate 批内），完全复用 `clip.setDucking` 与现有音量包络内核（核心 `audio/setDucking` 动作、`clip.automation.volume` 预览/导出共用求值链），未新建编辑协议。
+
+- 实现（`packages/agent-facade/src/ducking-from-analysis.ts` + ops/types/verb-schemas/session/live-session 接入）：新增异步预处理 `enrichDuckingFromAnalysisOps`，在**任何变更开始前**读取分析记录并把该操作重写为带 `presenceRanges` 的普通 `clip.setDucking`。live 与 headless 的 edit.apply/edit.validate 均接入（沿用 enrichMediaFileOps 先例），applied 回显两端一致报告调用方提交的原始操作名。
+- 时间映射（纯函数 `mapSpeechRegionsToPresenceRanges`，独立测试）：源秒区间 → 语音 clip 的 inPoint 锚点/startTime/恒定倍速 → 时间线 → 与被压 clip 窗口求交 → clip 相对秒 presenceRanges。首版仅支持正向、恒速、已裁剪的语音 clip；倒放（reversed）、变速曲线（speedKeyframes）、冻结帧（freezeFrames）与非正倍速按名显式拒绝（UNSUPPORTED），不给非线性映射兜底。
+- 诚实门控（enrich 时全部前置，整批零副作用失败）：记录缺失 NOT_FOUND；源文件已变更/缺失（staleness）CONFLICT——过期素材记录被拒绝；记录无 speechActivity 事实 UNSUPPORTED；记录分析的 media 与语音 clip 播放的 media 不符 INVALID_PARAMS；两 clip 查找；时间线无重叠 INVALID_PARAMS；目标 clip（经 resolveAudibleAudioTarget 解析的可闻目标）已有 volume 包络点时默认 CONFLICT，必须显式 `existingEnvelope:"replace"` 才覆盖——手工包络不被静默覆盖。
+- 原子性/撤销/幂等：沿用 edit.apply 既有机制——revision CAS 冲突无部分提交；同 idempotencyKey 重放不重复应用（重放 payload 记录原始 ops，与记录后续状态无关）；无 key 的重复请求因包络已存在而 CONFLICT，不叠加；`audio/setDucking` 核心逆操作一次恢复 volume 包络与面板快照两个域（核心 ActionExecutor/ActionHistory 回归钉住，与 GUI ducking 面板同一历史语义）。
+- 验证（Windows，同 AUD-01 环境）：
+  - `pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`：80 文件、2128 通过、12 既有跳过。新增 `ducking-from-analysis.test.ts` 13 项：映射纯函数（inPoint 锚定、恒速缩放、裁剪/目标窗求交、无重叠、四类显式拒绝）、enrich 门控（缺失/过期/无事实/错 media/无 artifactRoot/无项目/无重叠/包络冲突与 replace 授权）、headless 端到端（edit.validate 通过、applied 回显、包络在映射窗口内下沉且面板快照一致、幂等重放 revision 不动、无 key 重复 CONFLICT、CAS 冲突零变化、显式 replace 重压生效、核心逆操作一次恢复两个域）。
+  - live 一致性：live-session.test.ts 新增 live 记录驱动 ducking 回归（商店铸造 clip id、enrich 在 live 生效、包络与快照落地、未授权重压 CONFLICT）。schema/corpus/ajv 差分：corpus 新增 5 例（含 recordId 格式仅 facade 层校验的 schemaValid 标注）；capabilities 封闭操作集、output/tool-catalog/edit_apply 描述同步。
+  - `pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2`：13 文件、671 通过、3 既有跳过；`pnpm --filter @reelterminal/desktop test:run`（analysis-records-service/live-session-host/task-ledger/live-mcp）：4 文件、43 通过；agent-facade、desktop、agent-transport、runtime-chromium、web 的 typecheck 均通过。
+- 限制与保留：仅消费 speechActivity 记录（silence 记录可用现有 clip.setDucking presenceRanges 手动驱动）；语音 clip 限正向恒速；GUI 面板对该 op 的撤销走既有 audio/setDucking 逆操作（FakeLiveStore 的 undo 为计数桩，真实 GUI 撤销路径由核心逆操作测试与 GUI 面板既有回归覆盖）；记录区域数极大时可能触及核心 1000 点上限（如实失败，不截断）。AUD-02 勾选待用户验收后进行。

@@ -94,6 +94,7 @@ import {
   type ClipSetChromaKeyOp,
   type ClipSetNoiseReductionOp,
   type ClipSetDuckingOp,
+  type ClipSetDuckingFromAnalysisOp,
   type ClipSetBackgroundRemovalOp,
   type ClipAddVideoEffectOp,
   type ClipVideoEffectType,
@@ -2070,6 +2071,69 @@ export const CLIP_SET_DUCKING_SCHEMA: ObjectSchema = {
   },
 };
 
+/** AUD-02: record-driven ducking. Tuning mirrors clip.setDucking; the record/mapping gates run at enrich time. */
+export const CLIP_SET_DUCKING_FROM_ANALYSIS_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "clip.setDuckingFromAnalysis",
+    describe: '"clip.setDuckingFromAnalysis"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setDuckingFromAnalysis" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string: the background clip that receives the ducking envelope",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  speechClipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string: the clip playing the analyzed speech media (defines the source→timeline mapping)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  recordId: {
+    check: (v) => typeof v === "string" && /^analysis-[0-9a-f-]{8,}$/i.test(v),
+    describe: 'an analysis record id ("analysis-<uuid>") from a speechActivity run on the speech clip\'s own media',
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  threshold: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= -60 && v <= 0,
+    describe: "a finite number in [-60, 0] (dB)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: -60, maximum: 0 } },
+  },
+  reduction: {
+    check: isUnitRange,
+    describe: "a finite number in [0, 1]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  attack: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
+    describe: "a finite number in [0, 1] (seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  release: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 2,
+    describe: "a finite number in [0, 2] (seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 2 } },
+  },
+  holdTime: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
+    describe: "a finite number in [0, 1] (seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  existingEnvelope: {
+    check: (v) => v === "error" || v === "replace",
+    describe: 'policy when the target clip already has volume-automation points: "error" (default) rejects the batch, "replace" overwrites them explicitly',
+    emits: { kind: "leaf", schema: { enum: ["error", "replace"] } },
+  },
+};
+
 /** GUI sliders and the shared engine defaults bound these matte values. */
 const BACKGROUND_MODES = ["blur", "color", "image", "video", "transparent"] as const;
 
@@ -2924,6 +2988,17 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       }
       throw invalidParams(
         `${label}: ducking keyframes need a source — pass points (an AudioDucker.generateDuckingKeyframes product) or presenceRanges (speech-active windows on the trigger track, e.g. from a silence analysis complement)`,
+      );
+    }
+    case "clip.setDuckingFromAnalysis": {
+      // Shape validation only: the record staleness/media/mapping and
+      // envelope-conflict gates are I/O-bound and run in
+      // enrichDuckingFromAnalysisOps at edit.apply/edit.validate time, before
+      // any mutation starts.
+      return validateObject<ClipSetDuckingFromAnalysisOp>(
+        raw,
+        CLIP_SET_DUCKING_FROM_ANALYSIS_SCHEMA,
+        label,
       );
     }
     case "clip.setBackgroundRemoval": {
@@ -5034,6 +5109,17 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       }
       return actions;
     }
+
+    case "clip.setDuckingFromAnalysis":
+      // Unreachable through edit.apply/edit.validate, which run
+      // enrichDuckingFromAnalysisOps (record load + staleness + mapping +
+      // envelope-conflict gates) before translation and rewrite the op into
+      // a plain clip.setDucking. Guard the direct path honestly instead of
+      // guessing a translation.
+      throw new FacadeError(
+        "UNSUPPORTED",
+        "clip.setDuckingFromAnalysis: this op must be enriched from its analysis record first — send it through edit.apply/edit.validate, which rewrite it into clip.setDucking presenceRanges",
+      );
 
     case "clip.setDucking": {
       const clip = draft.timeline.tracks

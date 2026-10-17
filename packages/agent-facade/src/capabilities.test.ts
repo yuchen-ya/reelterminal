@@ -145,6 +145,7 @@ describe("capabilities.get / session.describe", () => {
       "clip.setChromaKey",
       "clip.setNoiseReduction",
       "clip.setDucking",
+      "clip.setDuckingFromAnalysis",
       "clip.setBackgroundRemoval",
       "svg.create",
       "svg.update",

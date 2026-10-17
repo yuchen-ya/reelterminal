@@ -131,6 +131,7 @@ import {
   withComparisonReference,
 } from "./reference-comparison";
 import { enrichMediaFileOps, opToCoreActions } from "./ops";
+import { enrichDuckingFromAnalysisOps } from "./ducking-from-analysis";
 import {
   projectStateView,
   timelineDurationSec,
@@ -807,22 +808,26 @@ export class LiveFacadeSession {
         EDIT_VALIDATE_SCHEMA,
         "edit.validate params",
       );
-      const ops = await enrichMediaFileOps(
-        validateEditOpList(valid.ops),
-        this.config.mediaRoots ?? [],
-        async (absPath: string) => {
-          const probed = await probeLocalMediaFile(absPath);
-          return {
-            durationSec: probed.durationSec, width: probed.width, height: probed.height,
-            frameRate: probed.frameRate, codec: probed.codec, fileSize: probed.fileSize,
-            mimeType: probed.mimeType, hasVideo: probed.hasVideo, hasAudio: probed.hasAudio,
-            sampleRate: 0, channels: 0,
-          };
-        },
-        async (absPath: string) => {
-          const fileStat = await stat(absPath);
-          return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
-        },
+      const ops = await enrichDuckingFromAnalysisOps(
+        await enrichMediaFileOps(
+          validateEditOpList(valid.ops),
+          this.config.mediaRoots ?? [],
+          async (absPath: string) => {
+            const probed = await probeLocalMediaFile(absPath);
+            return {
+              durationSec: probed.durationSec, width: probed.width, height: probed.height,
+              frameRate: probed.frameRate, codec: probed.codec, fileSize: probed.fileSize,
+              mimeType: probed.mimeType, hasVideo: probed.hasVideo, hasAudio: probed.hasAudio,
+              sampleRate: 0, channels: 0,
+            };
+          },
+          async (absPath: string) => {
+            const fileStat = await stat(absPath);
+            return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
+          },
+          async () => (await this.config.store.getState()).project,
+        ),
+        this.config.artifactRoot,
         async () => (await this.config.store.getState()).project,
       );
       assertValidEditBatch("edit.validate", ops);
@@ -1909,22 +1914,26 @@ export class LiveFacadeSession {
           { currentRevision: revision },
         );
       }
-      const enrichedOps = await enrichMediaFileOps(
-        ops,
-        this.config.mediaRoots ?? [],
-        async (absPath: string) => {
-          const probed = await probeLocalMediaFile(absPath);
-          return {
-            durationSec: probed.durationSec, width: probed.width, height: probed.height,
-            frameRate: probed.frameRate, codec: probed.codec, fileSize: probed.fileSize,
-            mimeType: probed.mimeType, hasVideo: probed.hasVideo, hasAudio: probed.hasAudio,
-            sampleRate: 0, channels: 0,
-          };
-        },
-        async (absPath: string) => {
-          const fileStat = await stat(absPath);
-          return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
-        },
+      const enrichedOps = await enrichDuckingFromAnalysisOps(
+        await enrichMediaFileOps(
+          ops,
+          this.config.mediaRoots ?? [],
+          async (absPath: string) => {
+            const probed = await probeLocalMediaFile(absPath);
+            return {
+              durationSec: probed.durationSec, width: probed.width, height: probed.height,
+              frameRate: probed.frameRate, codec: probed.codec, fileSize: probed.fileSize,
+              mimeType: probed.mimeType, hasVideo: probed.hasVideo, hasAudio: probed.hasAudio,
+              sampleRate: 0, channels: 0,
+            };
+          },
+          async (absPath: string) => {
+            const fileStat = await stat(absPath);
+            return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
+          },
+          async () => (await this.config.store.getState()).project,
+        ),
+        this.config.artifactRoot,
         async () => (await this.config.store.getState()).project,
       );
 

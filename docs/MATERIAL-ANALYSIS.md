@@ -160,11 +160,16 @@ review, see [Cloud video review](CLOUD-VIDEO-REVIEW.md).
 ## Scope and follow-up work
 
 `silence` is amplitude-based detection, not VAD; `speechActivity` is the local
-Silero VAD view of speech presence. Audio analysis does not itself
-cut clips or duck background music. The existing `clip.setDucking` edit can
-consume supplied presence ranges/points; direct analysis-record-driven editing
-(VAD-driven ducking and silence cutting) and new transcription/model backends
-remain planned. See the
+Silero VAD view of speech presence. Audio analysis reports evidence and never
+edits on its own. Speech-driven music ducking is now available as an explicit
+edit: `edit.apply` with op `clip.setDuckingFromAnalysis` consumes a
+`speechActivity` record id, maps its source-second regions through the speech
+clip's placement/trim/constant speed onto the ducked clip, and applies the
+same envelope the GUI ducking panel uses (one batch, one undo unit). Stale
+records, wrong-media records, reversed/speed-curved/frozen speech clips and
+no-overlap placements are rejected; an existing volume envelope requires
+`existingEnvelope:"replace"`. Direct analysis-record-driven silence cutting
+and new transcription/model backends remain planned. See the
 [audio TODO](AUDIO-TODO.md) for priorities and acceptance criteria, and the
 [completed execution record](AUDIO-PIPELINE-EXECUTION-PLAN.md) for A–C and
-AUD-01 evidence.
+AUD-01/AUD-02 evidence.

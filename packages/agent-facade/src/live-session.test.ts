@@ -49,6 +49,7 @@ import { READ_ONLY_VERBS } from "./types";
 import type { AnalysisGetParams, JobStatusView, MediaImportResult } from "./types";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 import { resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
+import { saveAnalysisRecord } from "./analysis-records";
 import { setSpeechVadModelFactoryForTests } from "./speech-vad";
 
 const LIVE_AUDIO_TOOLCHAIN = await resolveToolFfmpeg();
@@ -2912,8 +2913,9 @@ describe("live local audio analysis parity", () => {
       const query: AnalysisGetParams = { recordId, view: "events", series: "speechActivity.speechRegions", startSec: 0, endSec: 5, limit: 1 };
       const livePage = await facade["analysis.get"](query);
       if (!livePage.ok) throw new Error(livePage.error.message);
-      expect(livePage.value.events!.items).toHaveLength(1);
-      expect(livePage.value.events!.nextCursor).toBeTruthy();
+      const liveEvents = (livePage.value as import("./analysis-records").AnalysisAgentView).events!;
+      expect(liveEvents.items).toHaveLength(1);
+      expect(liveEvents.nextCursor).toBeTruthy();
       const headless = createAgentFacade({ artifactRoot });
       const headlessPage = await headless["analysis.get"](query);
       expect(headlessPage).toEqual(livePage);
@@ -2930,6 +2932,65 @@ describe("live local audio analysis parity", () => {
       });
     } finally {
       setSpeechVadModelFactoryForTests(null);
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it("applies record-driven ducking (AUD-02) through the same enrichment and shared kernel", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-ducking-"));
+    const sourcePath = await writeFloatWav(mediaRoot, 20, [6, 6.5, 7]);
+    const localStore = new FakeLiveStore();
+    const facade = liveFacade({ store: localStore, mediaRoots: [mediaRoot] });
+    try {
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      // Track ids may be explicit live; clip ids are minted by the store and
+      // reported per op in createdIds.
+      const seeded = await facade["edit.apply"]({
+        ops: [
+          { op: "track.add", trackType: "audio", trackId: "speech-lane" },
+          { op: "clip.add", trackId: "speech-lane", mediaId: imported.value.mediaId, startTime: 10, duration: 4, inPoint: 5, outPoint: 9 },
+          { op: "track.add", trackType: "audio", trackId: "bgm-lane" },
+          { op: "clip.add", trackId: "bgm-lane", mediaId: imported.value.mediaId, startTime: 8, duration: 8 },
+        ],
+      });
+      if (!seeded.ok) throw new Error(seeded.error.message);
+      const speechClipId = seeded.value.applied[1]?.createdIds?.[0];
+      const bgmClipId = seeded.value.applied[3]?.createdIds?.[0];
+      if (!speechClipId || !bgmClipId) throw new Error("seed batch did not report created clip ids");
+
+      const fileStat = await stat(sourcePath);
+      const saved = await saveAnalysisRecord(artifactRoot, {
+        projectId: localStore.project.id,
+        sourceRevision: localStore.revision,
+        coordinateSpace: "source",
+        subject: { mediaId: imported.value.mediaId, name: "speech.wav", sourcePath, sourceFingerprint: { size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) } },
+        analysisTypes: ["speechActivity"],
+        rangeSec: { startSec: 0, endSec: 20 },
+        config: { analysisTypes: ["speechActivity"], startSec: 0, endSec: 20, cloudUpload: false },
+        provenance: [{ kind: "local-measurement", provider: "local-silero-vad-onnx", analysisType: "speechActivity" }],
+        observations: [{ source: "speechActivity", facts: { speechRegions: [{ startSec: 6, endSec: 8, durationSec: 2 }], regionCount: 1 } }],
+        inferences: [],
+        recommendations: [],
+        unknowns: [],
+        recheckOf: null,
+        cloudOpinion: null,
+      });
+
+      const applied = await facade["edit.apply"]({
+        ops: [{ op: "clip.setDuckingFromAnalysis", clipId: bgmClipId, speechClipId, recordId: saved.id, threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2 }],
+      });
+      expect(applied).toMatchObject({ ok: true, value: { replayed: false, applied: [{ op: "clip.setDuckingFromAnalysis" }] } });
+      const bgm = localStore.project.timeline.tracks.flatMap((track) => track.clips).find((clip) => clip.id === bgmClipId)!;
+      expect(bgm.automation?.volume?.length).toBeGreaterThan(0);
+      expect(bgm.metadata?.audioDucking).toMatchObject({ enabled: true, reduction: 0.6 });
+      // Re-ducking without authorization conflicts — never a silent stack.
+      const again = await facade["edit.apply"]({
+        ops: [{ op: "clip.setDuckingFromAnalysis", clipId: bgmClipId, speechClipId, recordId: saved.id, threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2 }],
+      });
+      expect(again).toMatchObject({ ok: false, error: { code: "CONFLICT", message: expect.stringContaining("existingEnvelope") } });
+    } finally {
       await facade.dispose();
       await rm(mediaRoot, { recursive: true, force: true });
     }

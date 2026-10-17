@@ -611,7 +611,7 @@ export async function buildCapabilities(
                         fields: ["analysis.get events (speechRegions)", "regionCount", "totalSpeechDurationSec", "speechRatio", "parameters"],
                         defaults: { threshold: 0.5, minSpeechSec: 0.25, minSilenceSec: 0.1, padSec: 0.03 },
                         tuning: "media.analyze_start vadParams {threshold, minSpeechSec, minSilenceSec, padSec}",
-                        workflow: "page speechRegions with analysis.get view:'events'; regions are review evidence — pair them with clip.setDucking for music ducking or explicit edit decisions, never automatic deletion of non-speech gaps",
+                        workflow: "page speechRegions with analysis.get view:'events', then drive music ducking directly with edit.apply op clip.setDuckingFromAnalysis (record-driven, same gates); regions are review evidence — never automatic deletion of non-speech gaps",
                         granularitySec: 0.032,
                         coordinateSpace: "source",
                         changesProject: false,
@@ -864,6 +864,13 @@ export async function buildCapabilities(
             "persisted clip.automation.volume is evaluated by the shared core audio engine in both realtime preview and export render (resolveClipVolumeAutomation → applyVolumeAutomation) — one evaluation chain, no separate export path",
           guiParity:
             "same core action as the GUI ducking panel (AudioDuckingSection), which the store now also persists through; undo restores both the volume keyframes and the panel readback snapshot",
+          recordDriven: {
+            op: "clip.setDuckingFromAnalysis",
+            input: "a speechActivity analysis record id (AUD-01) + the speech clip + the background clip + the same tuning fields",
+            mapping: "record speechRegions (source seconds) → speech-clip placement/trim/constant speed → timeline → background-clip-relative presenceRanges, all before the mutation starts; the applied op is reported as clip.setDucking",
+            supportedSpeechClips: "forward, constant speed, trimmed; reversed playback, speed curves (speedKeyframes) and freeze frames are rejected explicitly",
+            gates: "stale records (source changed/missing), records without speechActivity facts, records analyzing another media than the speech clip plays, and no-overlap placements are rejected; an existing volume envelope on the target requires existingEnvelope:\"replace\" — never silently overwritten",
+          },
         },
       },
       backgroundRemoval: {

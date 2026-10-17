@@ -161,7 +161,7 @@ describe("speechActivity model download mechanics", () => {
   let server: Server | null = null;
   afterEach(async () => { await new Promise<void>((resolve) => server?.close(() => resolve())); });
 
-  function serve(handler: (url: string, respond: (status: number, body: Buffer | string, headers?: Record<string, string>) => void) => void, signal?: { persistent?: boolean }): Promise<string> {
+  function serve(handler: (url: string, respond: (status: number, body: Buffer | string, headers?: Record<string, string>) => void) => void): Promise<string> {
     return new Promise((resolveListen) => {
       server = createServer((request, response) => {
         const respond = (status: number, body: Buffer | string, headers: Record<string, string> = {}) => {
@@ -334,20 +334,23 @@ describe("speechActivity headless session integration", () => {
       const view = await facade["analysis.get"]({ recordId, view: "events", series: "speechActivity.speechRegions", startSec: 0, endSec: 5, limit: 1 });
       expect(view).toMatchObject({ ok: true });
       if (!view.ok) throw new Error(view.error.message);
-      expect(view.value.events!.totalMatched).toBe(2);
-      expect(view.value.events!.items).toHaveLength(1);
-      expect(view.value.events!.items[0]).toMatchObject({ startSec: expect.any(Number), endSec: expect.any(Number) });
-      expect(view.value.events!.nextCursor).toBeTruthy();
-      const secondPage = await facade["analysis.get"]({ recordId, view: "events", series: "speechActivity.speechRegions", startSec: 0, endSec: 5, limit: 1, cursor: view.value.events!.nextCursor! });
+      const events = (view.value as import("./analysis-records").AnalysisAgentView).events!;
+      expect(events.totalMatched).toBe(2);
+      expect(events.items).toHaveLength(1);
+      expect(events.items[0]).toMatchObject({ startSec: expect.any(Number), endSec: expect.any(Number) });
+      expect(events.nextCursor).toBeTruthy();
+      const secondPage = await facade["analysis.get"]({ recordId, view: "events", series: "speechActivity.speechRegions", startSec: 0, endSec: 5, limit: 1, cursor: events.nextCursor! });
       if (!secondPage.ok) throw new Error(secondPage.error.message);
-      expect(secondPage.value.events!.items).toHaveLength(1);
-      expect(secondPage.value.events!.nextCursor).toBeNull();
+      const secondEvents = (secondPage.value as import("./analysis-records").AnalysisAgentView).events!;
+      expect(secondEvents.items).toHaveLength(1);
+      expect(secondEvents.nextCursor).toBeNull();
       const record = await facade["analysis.get"]({ recordId });
       if (!record.ok) throw new Error(record.error.message);
-      expect(record.value.config.vadParams).toMatchObject({ threshold: 0.45 });
-      expect(record.value.provenance).toContainEqual(expect.objectContaining({ provider: "local-silero-vad-onnx", analysisType: "speechActivity" }));
-      expect(record.value.inferences).toContainEqual(expect.objectContaining({ source: "speechActivity" }));
-      const stored = JSON.parse(await readFile(record.value.recordPath, "utf8")) as { observations: Array<{ source: string; facts: { speechRegions?: unknown[] } }> };
+      const recordView = record.value as import("./analysis-records").AnalysisAgentView;
+      expect(recordView.config.vadParams).toMatchObject({ threshold: 0.45 });
+      expect(recordView.provenance).toContainEqual(expect.objectContaining({ provider: "local-silero-vad-onnx", analysisType: "speechActivity" }));
+      expect(recordView.inferences).toContainEqual(expect.objectContaining({ source: "speechActivity" }));
+      const stored = JSON.parse(await readFile(recordView.recordPath, "utf8")) as { observations: Array<{ source: string; facts: { speechRegions?: unknown[] } }> };
       const facts = stored.observations.find((observation) => observation.source === "speechActivity")!.facts;
       expect(facts.speechRegions).toHaveLength(2);
     } finally {

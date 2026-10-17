@@ -79,6 +79,7 @@ import {
   enrichMediaFileOps,
   opToCoreActions,
 } from "./ops";
+import { enrichDuckingFromAnalysisOps } from "./ducking-from-analysis";
 import {
   projectStateView,
   timelineDurationSec,
@@ -497,14 +498,18 @@ export class AgentFacadeSession {
         "edit.validate params",
       );
       if (!this.project) return this.noProject();
-      const ops = await enrichMediaFileOps(
-        validateEditOpList(valid.ops),
-        this.config.mediaRoots ?? [],
-        (absPath: string) => this.probeMediaForEnrichment(absPath),
-        async (absPath: string) => {
-          const fileStat = await stat(absPath);
-          return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
-        },
+      const ops = await enrichDuckingFromAnalysisOps(
+        await enrichMediaFileOps(
+          validateEditOpList(valid.ops),
+          this.config.mediaRoots ?? [],
+          (absPath: string) => this.probeMediaForEnrichment(absPath),
+          async (absPath: string) => {
+            const fileStat = await stat(absPath);
+            return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
+          },
+          async () => this.project,
+        ),
+        this.config.artifactRoot,
         async () => this.project,
       );
       assertValidEditBatch("edit.validate", ops);
@@ -1495,14 +1500,18 @@ export class AgentFacadeSession {
         });
       }
 
-      const enrichedOps = await enrichMediaFileOps(
-        ops,
-        this.config.mediaRoots ?? [],
-        (absPath: string) => this.probeMediaForEnrichment(absPath),
-        async (absPath: string) => {
-          const fileStat = await stat(absPath);
-          return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
-        },
+      const enrichedOps = await enrichDuckingFromAnalysisOps(
+        await enrichMediaFileOps(
+          ops,
+          this.config.mediaRoots ?? [],
+          (absPath: string) => this.probeMediaForEnrichment(absPath),
+          async (absPath: string) => {
+            const fileStat = await stat(absPath);
+            return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
+          },
+          async () => this.project,
+        ),
+        this.config.artifactRoot,
         async () => this.project,
       );
 
@@ -1535,7 +1544,10 @@ export class AgentFacadeSession {
             const created = diffCreatedIds(beforeIds, collectEntityIds(draft));
             applyClipIdOverride(op, draft, created);
             applied.push({
-              op: op.op,
+              // Report the op the caller submitted, not the enriched
+              // derivative (live parity: record-driven ducking applies as
+              // clip.setDucking internally but is reported by its request op).
+              op: ops[index]?.op ?? op.op,
               createdIds:
                 op.op === "clip.add" && op.clipId !== undefined && created.length > 0
                   ? [op.clipId]
