@@ -196,8 +196,9 @@ export function assertValidEditBatch(
  * Batch boundary in one call: every op against its closed schema, then the
  * cross-op constraints, then the non-empty rule — the zero-side-effect
  * ordering both sessions use before any enrichment, ledger lookup or store
- * access (edit.apply). edit.validate keeps its enrich-then-assert order and
- * calls the two pieces separately.
+ * access (edit.apply). edit.validate also asserts this boundary before its
+ * dry run; its I/O-bound record enrichment runs per op inside
+ * validateEditPlan so same-batch ordering is honored.
  */
 export function parseEditOps(
   verb: "edit.apply" | "edit.validate",

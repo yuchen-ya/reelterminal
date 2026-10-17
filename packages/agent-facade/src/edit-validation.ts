@@ -22,6 +22,17 @@ export interface ValidateEditPlanOptions {
   readonly expectedRevision?: number;
   readonly contextRevision?: number;
   readonly expectedContextRevision?: number;
+  /**
+   * Optional per-op rewrite against the sequential draft (record-driven
+   * ducking). It runs immediately before the op is translated, so earlier
+   * ops in the same dry-run batch are visible. Throwing aborts the dry run
+   * before anything is committed.
+   */
+  readonly prepareOp?: (
+    op: EditOp,
+    draft: Project,
+    opIndex: number,
+  ) => Promise<EditOp>;
 }
 
 function issue(error: unknown, opIndex?: number): EditValidationIssue {
@@ -87,30 +98,35 @@ export async function validateEditPlan(
 
   const draft = structuredClone(project);
   const executor = new ActionExecutor(new ActionHistory());
+  const normalizedOps: EditOp[] = [];
   if (conflicts.length === 0) {
     for (const [opIndex, op] of ops.entries()) {
       try {
+        const effectiveOp = options.prepareOp
+          ? await options.prepareOp(op, draft, opIndex)
+          : op;
+        normalizedOps.push(effectiveOp);
         const beforeIds = collectEntityIds(draft);
-        const replacementBefore = op.op === "media.replace"
+        const replacementBefore = effectiveOp.op === "media.replace"
           ? draft.timeline.tracks.flatMap((track) => track.clips.map((clip) => ({
               trackId: track.id, clipId: clip.id, mediaId: clip.mediaId,
               startTime: clip.startTime, duration: clip.duration, outPoint: clip.outPoint,
             })))
           : [];
-        const actions = opToCoreActions(op, draft);
+        const actions = opToCoreActions(effectiveOp, draft);
         for (const action of actions) {
           const result = await executor.execute(action, draft);
           if (!result.success) {
             throw new FacadeError(
               "ACTION_FAILED",
-              result.error?.message ?? `core rejected ${op.op}`,
+              result.error?.message ?? `core rejected ${effectiveOp.op}`,
               { coreCode: result.error?.code },
             );
           }
         }
         const created = diffCreatedIds(beforeIds, collectEntityIds(draft));
-        applyClipIdOverride(op, draft, created);
-        if (op.op === "media.replace") {
+        applyClipIdOverride(effectiveOp, draft, created);
+        if (effectiveOp.op === "media.replace") {
           const clips = draft.timeline.tracks.flatMap((track) => track.clips);
           const impacts = replacementBefore.flatMap((before) => {
             const after = clips.find((clip) => clip.id === before.clipId);
@@ -159,7 +175,7 @@ export async function validateEditPlan(
   }
   return {
     valid: conflicts.length === 0,
-    normalizedOps: structuredClone(ops),
+    normalizedOps: structuredClone(conflicts.length === 0 ? normalizedOps : ops),
     conflicts,
     warnings,
     affected,

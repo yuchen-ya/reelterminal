@@ -76,10 +76,10 @@ import {
   applyClipIdOverride,
   collectEntityIds,
   diffCreatedIds,
-  enrichMediaFileOps,
   opToCoreActions,
 } from "./ops";
-import { enrichDuckingFromAnalysisOps } from "./ducking-from-analysis";
+import { prepareEditOp, type PrepareEditOpOptions } from "./edit-op-preparation";
+import { buildAnalysisProgressPlan } from "./analysis-progress";
 import {
   projectStateView,
   timelineDurationSec,
@@ -247,6 +247,7 @@ import type {
   TimelineMapSourceTimesResult,
   EditValidateParams,
   EditValidateResult,
+  EditOp,
   HistoryGetParams,
   HistoryGetResult,
   HistoryControlParams,
@@ -498,21 +499,9 @@ export class AgentFacadeSession {
         "edit.validate params",
       );
       if (!this.project) return this.noProject();
-      const ops = await enrichDuckingFromAnalysisOps(
-        await enrichMediaFileOps(
-          validateEditOpList(valid.ops),
-          this.config.mediaRoots ?? [],
-          (absPath: string) => this.probeMediaForEnrichment(absPath),
-          async (absPath: string) => {
-            const fileStat = await stat(absPath);
-            return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
-          },
-          async () => this.project,
-        ),
-        this.config.artifactRoot,
-        async () => this.project,
-      );
+      const ops = validateEditOpList(valid.ops);
       assertValidEditBatch("edit.validate", ops);
+      const preparation = this.editOpPreparation("edit.validate");
       return ok(
         await validateEditPlan(this.project, ops, {
           mode: "headless",
@@ -523,6 +512,11 @@ export class AgentFacadeSession {
           ...(valid.expectedContextRevision !== undefined
             ? { expectedContextRevision: valid.expectedContextRevision }
             : {}),
+          // Dry-run against the same sequential draft the real apply uses, so
+          // file/record enrichment sees earlier ops instead of a pre-batch
+          // snapshot.
+          prepareOp: (op: EditOp, draft, opIndex) =>
+            prepareEditOp(op, draft, opIndex, preparation),
         }),
       );
     });
@@ -1461,6 +1455,19 @@ export class AgentFacadeSession {
     });
   }
 
+  private editOpPreparation(verb: "edit.apply" | "edit.validate"): PrepareEditOpOptions {
+    return {
+      mediaRoots: this.config.mediaRoots ?? [],
+      artifactRoot: this.config.artifactRoot,
+      probeFile: (absPath: string) => this.probeMediaForEnrichment(absPath),
+      statFile: async (absPath: string) => {
+        const fileStat = await stat(absPath);
+        return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
+      },
+      verb,
+    };
+  }
+
   async editApply(
     params: EditApplyParams,
   ): Promise<FacadeResult<EditApplyResult>> {
@@ -1500,20 +1507,10 @@ export class AgentFacadeSession {
         });
       }
 
-      const enrichedOps = await enrichDuckingFromAnalysisOps(
-        await enrichMediaFileOps(
-          ops,
-          this.config.mediaRoots ?? [],
-          (absPath: string) => this.probeMediaForEnrichment(absPath),
-          async (absPath: string) => {
-            const fileStat = await stat(absPath);
-            return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
-          },
-          async () => this.project,
-        ),
-        this.config.artifactRoot,
-        async () => this.project,
-      );
+      // File-backed ops and record-driven ducking are prepared per op against
+      // the SAME sequential draft the op is applied to, so earlier ops in this
+      // batch (clip.add/move/trim, media.relink) are already visible.
+      const preparation = this.editOpPreparation("edit.apply");
 
       const outcome = await this.commitMutation<EditApplyPayload>({
         verb: "edit.apply",
@@ -1524,7 +1521,8 @@ export class AgentFacadeSession {
           // undo machinery, and a discarded draft leaves no history behind.
           const executor = new ActionExecutor(new ActionHistory());
           const applied: OpApplied[] = [];
-          for (const [index, op] of enrichedOps.entries()) {
+          for (const [index, submitted] of ops.entries()) {
+            const op = await prepareEditOp(submitted, draft, index, preparation);
             const beforeIds = collectEntityIds(draft);
             const actions = opToCoreActions(op, draft);
             for (const action of actions) {
@@ -1547,7 +1545,7 @@ export class AgentFacadeSession {
               // Report the op the caller submitted, not the enriched
               // derivative (live parity: record-driven ducking applies as
               // clip.setDucking internally but is reported by its request op).
-              op: ops[index]?.op ?? op.op,
+              op: submitted.op,
               createdIds:
                 op.op === "clip.add" && op.clipId !== undefined && created.length > 0
                   ? [op.clipId]
@@ -2857,18 +2855,18 @@ export class AgentFacadeSession {
         this.jobs.markCancelled(jobId);
         return;
       }
+      const progressPlan = buildAnalysisProgressPlan(analysisTypes);
       this.jobs.markProgress(jobId, { phase: "preparing", percent: .1 });
       const video = analysisTypes.includes("videoReview")
-        ? await reviewVideo(sourcePath, range, this.config.artifactRoot!, controller.signal, reviewQuestion, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: .1 + percent * .7 })) : undefined;
-      const otherAudioRequested = analysisTypes.includes("silence") || analysisTypes.includes("beatGrid");
+        ? await reviewVideo(sourcePath, range, this.config.artifactRoot!, controller.signal, reviewQuestion, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("videoReview", percent) })) : undefined;
       const audio = analysisTypes.includes("audioSummary")
-        ? await analyzeLocalAudio(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .8 + percent * .15 : otherAudioRequested ? percent * .5 : percent })) : undefined;
+        ? await analyzeLocalAudio(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("audioSummary", percent) })) : undefined;
       const silence = analysisTypes.includes("silence")
-        ? await analyzeSilence(sourcePath, range, silenceParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .95 + percent * .025 : otherAudioRequested || analysisTypes.includes("audioSummary") ? .5 + percent * .25 : percent })) : undefined;
+        ? await analyzeSilence(sourcePath, range, silenceParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("silence", percent) })) : undefined;
       const beatGrid = analysisTypes.includes("beatGrid")
-        ? await analyzeBeatGrid(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .975 + percent * .025 : analysisTypes.includes("audioSummary") || analysisTypes.includes("silence") ? .75 + percent * .25 : percent })) : undefined;
+        ? await analyzeBeatGrid(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("beatGrid", percent) })) : undefined;
       const speechActivity = analysisTypes.includes("speechActivity")
-        ? await analyzeSpeechActivity(sourcePath, range, vadParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .99 + percent * .01 : analysisTypes.includes("audioSummary") || analysisTypes.includes("silence") || analysisTypes.includes("beatGrid") ? .875 + percent * .125 : percent })) : undefined;
+        ? await analyzeSpeechActivity(sourcePath, range, vadParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("speechActivity", percent) })) : undefined;
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
       const videoCandidateTypes = analysisTypes.filter(
         (type) => type === "sceneCuts" || type === "blackFrames" || type === "duplicateFrames",
@@ -2877,7 +2875,7 @@ export class AgentFacadeSession {
       if (videoCandidateTypes.length > 0) {
         const binaries = await resolveToolFfmpeg();
         if (!binaries) throw new FacadeError("UNSUPPORTED", "Local video candidate analysis needs ffmpeg/ffprobe on PATH (or REELTERMINAL_FFMPEG_PATH / REELTERMINAL_FFPROBE_PATH)");
-        candidates = await runVideoCandidateAnalyses(binaries, sourcePath, range, analysisTypes, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: .5 + percent * .4 }));
+        candidates = await runVideoCandidateAnalyses(binaries, sourcePath, range, analysisTypes, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("candidates", percent) }));
       }
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
       // Frame-exact technical facts: reuse the candidate run's probe, or

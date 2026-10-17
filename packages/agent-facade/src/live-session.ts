@@ -130,8 +130,9 @@ import {
   validateComparisonRange,
   withComparisonReference,
 } from "./reference-comparison";
-import { enrichMediaFileOps, opToCoreActions } from "./ops";
-import { enrichDuckingFromAnalysisOps } from "./ducking-from-analysis";
+import { opToCoreActions } from "./ops";
+import { prepareEditOp, type PrepareEditOpOptions } from "./edit-op-preparation";
+import { buildAnalysisProgressPlan } from "./analysis-progress";
 import {
   projectStateView,
   timelineDurationSec,
@@ -293,6 +294,7 @@ import {
   type TimelineMapSourceTimesResult,
   type EditValidateParams,
   type EditValidateResult,
+  type EditOp,
   type HistoryGetParams,
   type HistoryGetResult,
   type HistoryControlParams,
@@ -799,6 +801,27 @@ export class LiveFacadeSession {
     });
   }
 
+  private editOpPreparation(verb: "edit.apply" | "edit.validate"): PrepareEditOpOptions {
+    return {
+      mediaRoots: this.config.mediaRoots ?? [],
+      artifactRoot: this.config.artifactRoot,
+      probeFile: async (absPath: string) => {
+        const probed = await probeLocalMediaFile(absPath);
+        return {
+          durationSec: probed.durationSec, width: probed.width, height: probed.height,
+          frameRate: probed.frameRate, codec: probed.codec, fileSize: probed.fileSize,
+          mimeType: probed.mimeType, hasVideo: probed.hasVideo, hasAudio: probed.hasAudio,
+          sampleRate: 0, channels: 0,
+        };
+      },
+      statFile: async (absPath: string) => {
+        const fileStat = await stat(absPath);
+        return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
+      },
+      verb,
+    };
+  }
+
   async editValidate(
     params: EditValidateParams,
   ): Promise<FacadeResult<EditValidateResult>> {
@@ -808,33 +831,13 @@ export class LiveFacadeSession {
         EDIT_VALIDATE_SCHEMA,
         "edit.validate params",
       );
-      const ops = await enrichDuckingFromAnalysisOps(
-        await enrichMediaFileOps(
-          validateEditOpList(valid.ops),
-          this.config.mediaRoots ?? [],
-          async (absPath: string) => {
-            const probed = await probeLocalMediaFile(absPath);
-            return {
-              durationSec: probed.durationSec, width: probed.width, height: probed.height,
-              frameRate: probed.frameRate, codec: probed.codec, fileSize: probed.fileSize,
-              mimeType: probed.mimeType, hasVideo: probed.hasVideo, hasAudio: probed.hasAudio,
-              sampleRate: 0, channels: 0,
-            };
-          },
-          async (absPath: string) => {
-            const fileStat = await stat(absPath);
-            return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
-          },
-          async () => (await this.config.store.getState()).project,
-        ),
-        this.config.artifactRoot,
-        async () => (await this.config.store.getState()).project,
-      );
+      const ops = validateEditOpList(valid.ops);
       assertValidEditBatch("edit.validate", ops);
       const [state, context] = await Promise.all([
         this.config.store.getState(),
         this.config.store.getContext(),
       ]);
+      const preparation = this.editOpPreparation("edit.validate");
       return ok(
         await validateEditPlan(state.project, ops, {
           mode: "live",
@@ -846,6 +849,9 @@ export class LiveFacadeSession {
           ...(valid.expectedContextRevision !== undefined
             ? { expectedContextRevision: valid.expectedContextRevision }
             : {}),
+          // Dry-run against the same sequential draft the real apply uses.
+          prepareOp: (op: EditOp, draft, opIndex) =>
+            prepareEditOp(op, draft, opIndex, preparation),
         }),
       );
     });
@@ -1914,34 +1920,11 @@ export class LiveFacadeSession {
           { currentRevision: revision },
         );
       }
-      const enrichedOps = await enrichDuckingFromAnalysisOps(
-        await enrichMediaFileOps(
-          ops,
-          this.config.mediaRoots ?? [],
-          async (absPath: string) => {
-            const probed = await probeLocalMediaFile(absPath);
-            return {
-              durationSec: probed.durationSec, width: probed.width, height: probed.height,
-              frameRate: probed.frameRate, codec: probed.codec, fileSize: probed.fileSize,
-              mimeType: probed.mimeType, hasVideo: probed.hasVideo, hasAudio: probed.hasAudio,
-              sampleRate: 0, channels: 0,
-            };
-          },
-          async (absPath: string) => {
-            const fileStat = await stat(absPath);
-            return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
-          },
-          async () => (await this.config.store.getState()).project,
-        ),
-        this.config.artifactRoot,
-        async () => (await this.config.store.getState()).project,
-      );
-
       // Caller-assigned clip ids cannot be honored live: the canonical
       // store applies the core action stream and core mints clip ids
       // (headless renames inside its private draft transaction; there is no
       // draft here). Reject honestly rather than silently ignoring the id.
-      for (const [index, op] of enrichedOps.entries()) {
+      for (const [index, op] of ops.entries()) {
         if (op.op === "clip.add" && op.clipId !== undefined) {
           throw new FacadeError(
             "INVALID_PARAMS",
@@ -1957,6 +1940,7 @@ export class LiveFacadeSession {
       // resolve sequentially and a doomed batch never reaches the store.
       const draft = structuredClone(snapshot);
       const executor = new ActionExecutor(new ActionHistory());
+      const preparation = this.editOpPreparation("edit.apply");
       const actions: Action[] = [];
       // Per op: either ONE implicit lane id (text.create/svg.create) or EVERY
       // lane the op's translator emitted (workAsset.instantiate multi
@@ -1966,7 +1950,10 @@ export class LiveFacadeSession {
       // Per op: how many clips the op minted (workAsset.instantiate multi
       // expands to one clip per member); undefined = exactly one.
       const opClipCounts: Array<number | undefined> = [];
-      for (const [index, op] of enrichedOps.entries()) {
+      for (const [index, submitted] of ops.entries()) {
+        // Prepare against the draft that already contains earlier ops in this
+        // batch (file-backed ops + record-driven ducking).
+        const op = await prepareEditOp(submitted, draft, index, preparation);
         // text.create/svg.create with no explicit track imply their lane;
         // when that lane is missing, the translator prepends one track/add
         // whose id partitionCreatedIds must pin for THIS op (an explicit
@@ -3972,18 +3959,18 @@ export class LiveFacadeSession {
         this.jobs.markCancelled(jobId);
         return;
       }
+      const progressPlan = buildAnalysisProgressPlan(analysisTypes);
       this.jobs.markProgress(jobId, { phase: "preparing", percent: .1 });
       const video = analysisTypes.includes("videoReview")
-        ? await reviewVideo(sourcePath, range, this.config.artifactRoot!, controller.signal, reviewQuestion, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: .1 + percent * .7 })) : undefined;
-      const otherAudioRequested = analysisTypes.includes("silence") || analysisTypes.includes("beatGrid");
+        ? await reviewVideo(sourcePath, range, this.config.artifactRoot!, controller.signal, reviewQuestion, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("videoReview", percent) })) : undefined;
       const audio = analysisTypes.includes("audioSummary")
-        ? await analyzeLocalAudio(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .8 + percent * .15 : otherAudioRequested ? percent * .5 : percent })) : undefined;
+        ? await analyzeLocalAudio(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("audioSummary", percent) })) : undefined;
       const silence = analysisTypes.includes("silence")
-        ? await analyzeSilence(sourcePath, range, silenceParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .95 + percent * .025 : otherAudioRequested || analysisTypes.includes("audioSummary") ? .5 + percent * .25 : percent })) : undefined;
+        ? await analyzeSilence(sourcePath, range, silenceParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("silence", percent) })) : undefined;
       const beatGrid = analysisTypes.includes("beatGrid")
-        ? await analyzeBeatGrid(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .975 + percent * .025 : analysisTypes.includes("audioSummary") || analysisTypes.includes("silence") ? .75 + percent * .25 : percent })) : undefined;
+        ? await analyzeBeatGrid(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("beatGrid", percent) })) : undefined;
       const speechActivity = analysisTypes.includes("speechActivity")
-        ? await analyzeSpeechActivity(sourcePath, range, vadParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .99 + percent * .01 : analysisTypes.includes("audioSummary") || analysisTypes.includes("silence") || analysisTypes.includes("beatGrid") ? .875 + percent * .125 : percent })) : undefined;
+        ? await analyzeSpeechActivity(sourcePath, range, vadParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("speechActivity", percent) })) : undefined;
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
       const videoCandidateTypes = analysisTypes.filter(
         (type) => type === "sceneCuts" || type === "blackFrames" || type === "duplicateFrames",
@@ -3992,7 +3979,7 @@ export class LiveFacadeSession {
       if (videoCandidateTypes.length > 0) {
         const binaries = await resolveToolFfmpeg();
         if (!binaries) throw new FacadeError("UNSUPPORTED", "Local video candidate analysis needs ffmpeg/ffprobe on PATH (or REELTERMINAL_FFMPEG_PATH / REELTERMINAL_FFPROBE_PATH)");
-        candidates = await runVideoCandidateAnalyses(binaries, sourcePath, range, analysisTypes, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: .5 + percent * .4 }));
+        candidates = await runVideoCandidateAnalyses(binaries, sourcePath, range, analysisTypes, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("candidates", percent) }));
       }
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
       let frameFacts: Awaited<ReturnType<typeof probeVideoFacts>> | null = candidates?.facts ?? null;

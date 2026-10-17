@@ -2990,6 +2990,18 @@ describe("live local audio analysis parity", () => {
         ops: [{ op: "clip.setDuckingFromAnalysis", clipId: bgmClipId, speechClipId, recordId: saved.id, threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2 }],
       });
       expect(again).toMatchObject({ ok: false, error: { code: "CONFLICT", message: expect.stringContaining("existingEnvelope") } });
+
+      // Same-batch placement: the move earlier in this batch must feed the
+      // source→timeline mapping (stale mapping would duck at 2.9..5.3).
+      const moved = await facade["edit.apply"]({
+        ops: [
+          { op: "clip.move", clipId: speechClipId, startTime: 12 },
+          { op: "clip.setDuckingFromAnalysis", clipId: bgmClipId, speechClipId, recordId: saved.id, threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, existingEnvelope: "replace" },
+        ],
+      });
+      expect(moved).toMatchObject({ ok: true });
+      const movedBgm = localStore.project.timeline.tracks.flatMap((track) => track.clips).find((clip) => clip.id === bgmClipId)!;
+      expect(Math.min(...movedBgm.automation!.volume!.map((point) => point.time))).toBeGreaterThan(4.8);
     } finally {
       await facade.dispose();
       await rm(mediaRoot, { recursive: true, force: true });
