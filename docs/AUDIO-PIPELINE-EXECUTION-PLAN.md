@@ -127,3 +127,5 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
   - live 一致性：live-session.test.ts 新增 live 记录驱动 ducking 回归（商店铸造 clip id、enrich 在 live 生效、包络与快照落地、未授权重压 CONFLICT）。schema/corpus/ajv 差分：corpus 新增 5 例（含 recordId 格式仅 facade 层校验的 schemaValid 标注）；capabilities 封闭操作集、output/tool-catalog/edit_apply 描述同步。
   - `pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2`：13 文件、671 通过、3 既有跳过；`pnpm --filter @reelterminal/desktop test:run`（analysis-records-service/live-session-host/task-ledger/live-mcp）：4 文件、43 通过；agent-facade、desktop、agent-transport、runtime-chromium、web 的 typecheck 均通过。
 - 限制与保留：仅消费 speechActivity 记录（silence 记录可用现有 clip.setDucking presenceRanges 手动驱动）；语音 clip 限正向恒速；GUI 面板对该 op 的撤销走既有 audio/setDucking 逆操作（FakeLiveStore 的 undo 为计数桩，真实 GUI 撤销路径由核心逆操作测试与 GUI 面板既有回归覆盖）；记录区域数极大时可能触及核心 1000 点上限（如实失败，不截断）。AUD-02 勾选待用户验收后进行。
+
+> 2026-10-17 复审补充：上述“正向恒速”限制已扩展。`mapSpeechRegionsToPresenceRanges` 现通过核心 `SpeedEngine` 的源→播放时间逆映射支持变速曲线、倒放与冻结帧（冻结保持段若其源帧属于语音区间也纳入 ducking 窗口），并新增 `audioTrackIndex` 非 0 的显式拒绝。记录 config 的 `exitThreshold` 由 GUI 重检时剥离后再回放。另有同批次逐 op 预处理、CLI onnxruntime 外部化、平台/架构打包裁剪与进度单调性修复，验证见本轮 1.2.2 复审记录。
