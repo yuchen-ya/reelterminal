@@ -128,4 +128,42 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
   - `pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2`：13 文件、671 通过、3 既有跳过；`pnpm --filter @reelterminal/desktop test:run`（analysis-records-service/live-session-host/task-ledger/live-mcp）：4 文件、43 通过；agent-facade、desktop、agent-transport、runtime-chromium、web 的 typecheck 均通过。
 - 限制与保留：仅消费 speechActivity 记录（silence 记录可用现有 clip.setDucking presenceRanges 手动驱动）；语音 clip 限正向恒速；GUI 面板对该 op 的撤销走既有 audio/setDucking 逆操作（FakeLiveStore 的 undo 为计数桩，真实 GUI 撤销路径由核心逆操作测试与 GUI 面板既有回归覆盖）；记录区域数极大时可能触及核心 1000 点上限（如实失败，不截断）。AUD-02 勾选待用户验收后进行。
 
+## AUD-03：Schema 按领域筛选（2026-10-18，提交 `4e5c09dc`，待用户验收）
+
+`reelctl schema --domain <domain>`（或 `--domain=<domain>`）在既有 `reelctl schema` 索引与 `reelctl schema <command>` 精确查询之上增加领域筛选。领域归属定义为 catalog 命令名的首个点号前段（`audio.process.normalize` → `audio`），筛选在客户端对同一份 `GET /v1/catalog` 结果进行，不复制任何 schema 定义、不新增 facade verb、不改服务器协议。
+
+- 行为：默认索引追加 `domains` 字段列出全部可用领域；筛选输出 `{ ok, domain, domains, commands }`，命令投影与未筛选索引一致；未知领域以 `INVALID_PARAMS`（exit 2）报错并列出可用领域；`--domain` 与命令名同时给出、重复给出或缺值均为调用错误；单命令 `schema <command>` 与 `help <command>` 输出保持逐字节不变。
+- 同步：REELCTL_HELP 与 `docs/COMMAND-API.md` 更新为实际命令（此前该文件明确声明此能力为 TODO，不允许提前写成可运行命令，现已按实际接口改写）。
+- 验证（Windows）：`pnpm --filter @reelterminal/desktop test:run src/reelctl/`：2 文件 31 测试通过（新增领域筛选 5 项：筛选、`--domain=` 形式、未筛选索引列领域、未知领域报错含可用列表、单命令精确与互斥拒绝）；desktop `typecheck` 通过。此前 schema 分支无单测，本次新增测试不与既有钉冲突。
+
+## AUD-04：Capabilities 按领域懒探测（2026-10-18，提交 `7aa89f2b`，待用户验收）
+
+`capabilities.get` 新增可选 `domain` 参数（封闭枚举 `audio`、`video`、`frames`、`motion`、`render`、`export`，live/headless 一致）。先过滤请求领域，再只运行该领域所需探测；无参数调用行为与输出逐字段不变。
+
+- 探测归属：audio = loudnorm ffmpeg 探测 + Silero VAD 探测；video = videoReview 云审探测 + 共享 ffmpeg 工具探测；frames = ffmpeg 工具探测 + 标签字体探测；motion = 三组 OpenCV 探测 + 共享 ffmpeg；render = RenderProvider preflight；export 域覆盖整条交付链（ExportProvider + ArtifactVerifier）。共享的 ffmpeg 工具探测按上述三域任一请求触发，未探测说明列出全部触发领域。
+- 三态区分：未探测状态为 `available:false` + `probed:false` + 说明如何真实探测的 reason（`CapabilityStatus` 新增可选 `probed?: false`，输出 schema 同步）；不可用仍为 `available:false` + reason；可用为 `available:true`。配置型门槛（mediaRoots/artifactRoot/桥接）不依赖探测，照常先行。`frameTools.contactSheetLabelFont` 未探测时为 `{ path: null, probed: false }`；`pluginTools` 依赖 render 的条目未探测时不标可用；`textOverlay.pixelRendering` 未探测即 false，绝不宣称像素渲染。
+- 执行前真实检查保留：verbs 的 pre-execution preflight（analyze_start、audio.process.normalize、OpenCV worker 等）不变；`session.describe` 内部仍全量构建。corpus/jsonschema/CLI/工具描述同步；`docs/COMMAND-API.md` 的"仍为 TODO"句改为实际参数。
+- 验证（Windows）：新增 `capabilities-domains.test.ts` 7 项（vi.hoisted 部分模拟探测模块）：audio 查询只触发 audio 探测、未探测状态含 `probed:false` 且绝不 available、被请求领域无 probed 标记、video/motion 查询的探测集合与共享 ffmpeg、无过滤全量探测且无任何 probed 标记、未知领域在任何探测启动前 INVALID_PARAMS。`pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`：82 文件 2159 通过、12 既有跳过；agent-transport 679 通过、3 跳过；desktop live 相关 4 文件 44 通过；facade/desktop/transport typecheck 通过。
+- 限制：单次请求只接受一个 domain（多领域可分次查询）；探测缓存策略不变（ffmpeg 解析与字体为进程级缓存，loudnorm/云审/OpenCV 每次真实重跑，这正是懒探测的收益点）。
+
+## AUD-05：分析句柄驱动静音剪辑（2026-10-18，提交 `f0bc9255`，待用户验收）
+
+新增编辑操作 **`clip.cutSilenceFromAnalysis`**（edit.apply/edit.validate 批内），消费 silence 分析记录，完全复用现有切片与淡化能力：翻译器展开为核心 `clip/split` + `clip/rippleDelete`（+ `audio/setFade` 边缘防护）——与 GUI 静音切割面板同一组动作，一次 edit.apply 批次 = 一个撤销单元。未新建编辑协议；`applied` 按调用方提交的原始操作名回报。
+
+- 计划先于变更（`silence-cut-from-analysis.ts`）：enrich 在任何变更开始前读取记录并把该操作改写为携带 `cuts` 计划的同名操作，翻译器按计划展开；计划纯函数（映射/过滤）独立测试。窗口按时间降序处理（与 GUI 相同顺序），保证后续切割的绝对时间不受先前 ripple 影响；split 右片 id 由核心新导出的 `splitPieceClipId(actionId)` 确定性推导，翻译器可在同一序列内引用。
+- 明确的范围决策：`minSilenceSec` 之下区间保留为停顿（默认沿用记录自身的过滤）；`paddingSec` 在每刀两端保留余量（默认 0）；`fadeSec`（默认 0.01 s，上限 0.05）在保留片段的切割边缘做音频增益淡化——`clip.fade` 仅作用于音频引擎增益，画面不受影响；对齐且时序全同的同媒体 A/V 兄弟片段一并切割（音画同步），时序不同的对齐兄弟明确拒绝而非错位；ripple 遵循 `clip/rippleDelete` 语义（仅同轨后续左移，他轨不动）；字幕为绝对时间实体且无移动动作，首刀之后仍有结束时间的字幕使整批 UNSUPPORTED；变速曲线/冻结帧（核心 split/trim 本就拒绝）、非正倍速、`audioTrackIndex≠0`、记录过期/媒体不符/无 silence 事实、策略后无可切区间、超过 `maxCutRegions`（默认 24、上限 64）全部前置拒绝，整批零副作用。
+- 验证（Windows）：新增 `silence-cut-from-analysis.test.ts` 23 项：映射内核（inPoint 锚定、恒速、倒放镜像、退化丢弃）、停顿/留白策略、计划门控（曲线/冻结/非正速、needsFades）、enrich 全部门控、headless 端到端（片段背靠背 2+2+2、源区间 5..7/9..11/13..15、片段淡化、幂等重放、同批 clip.move 先行生效、CAS 冲突零变化、核心逆操作一次完整还原单片段及 fade）；live-session.test.ts 新增 live 回归（FakeLiveStore 铸造 clip id、片段/淡化/源区间一致、无 key 重复为诚实 nothing-to-cut 拒绝）。`pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`：84 文件全过（含 capabilities 封闭 op 集钉更新）；core actions 226 通过；facade/core/web typecheck 与 desktop/transport 回归通过。
+- 限制：交叉淡化未定义（TODO 另行定义重叠区间后才做）；ripple 不联动字幕与其他非对齐轨道（按明确语义执行并披露）；whole-clip 静音会整段删除该 clip（含兄弟）；`edit.validate` 的 `normalizedOps` 展示携带计划的原操作，调用方可预检。
+
+## AUD-06：节拍吸附及强拍评估（2026-10-18，提交 `f292e212`，待用户验收）
+
+新增编辑操作 **`clip.splitAtBeat`**（edit.apply/edit.validate 批内）：给定期望切点 `time`（时间线秒）与显式允许移动 `maxShiftSec`（0 < x ≤ 5），吸附到最近 beatGrid 记录节拍（经 SpeedEngine 映射 clip 的摆放/裁剪/恒速/倒放时序）后改写为普通 `clip.split` 再进入既有翻译路径；`applied` 按提交的操作名回报；核心 merge 逆操作一次还原。
+
+- 未引入新检测器：节拍即现有共享核心 BeatDetectionEngine 输出（GUI 节拍同步面板同源）；容差内无节拍为 INVALID_PARAMS 明确拒绝，绝不静默按未吸附时间切割；吸附后落在片段边界同样拒绝；记录过期/媒体不符/`audioTrackIndex≠0`/变速曲线/冻结帧/非正倍速/切点不在片段内全部前置拒绝。
+- 强拍评估结论（未伪造 downbeat）：核心引擎内部的 every-4th-beat 逻辑是周期假设而非检测，继续不作为 beatGrid 结果暴露；capabilities 披露改写为明确说明该点；BPM 半/倍速歧义在能力文案、操作 describe、拒绝消息与 MATERIAL-ANALYSIS 中保持披露。GUI 节拍标记的 `index%4` 视觉分组属用户显式选择的周期切割，不属于 agent 路径能力，未改动。
+- 验证（Windows）：新增 `beat-split-from-analysis.test.ts` 13 项：吸附内核（最近优先、容差外 null、倒放镜像、恒速缩放）、enrich 门控（缺失/过期/错媒体/曲线/容差未命中/越界/缺 artifactRoot 与项目）、headless 端到端（validate 展示吸附后的 clip.split、切分 10..12/12..14 与源区间、幂等重放、同批 clip.move 先行、CAS 零变化、merge 一次还原）；live-session.test.ts 新增 live 回归（吸附切分与容差未命中拒绝）。corpus 新增 3 例（含 recordId 仅 facade 层校验的 schemaValid 钉）。
+- 限制：仅支持切点吸附（clip.split）；`clip.move` 等其他定位操作未加 snap 参数；吸附不区分节拍强度（最近者优先，不按 strength 加权）。
+
+> 2026-10-18 全批验证（Windows，Node 22.x）：`pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2` 84 文件 2213 通过、12 既有跳过；`pnpm --filter @reelterminal/core test:run --maxWorkers=2` 182 文件 1723 通过、20 既有跳过；`pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2` 687 通过、3 跳过；desktop 定向（live-session-host/task-ledger/analysis-records-service/live-mcp/reelctl）75 通过；仓库级 `pnpm typecheck` 通过；`git diff --check` 通过。未访问用户 live API、未打开用户工程、未 push、未发布、未打安装包。
+
 > 2026-10-17 复审补充：上述“正向恒速”限制已扩展。`mapSpeechRegionsToPresenceRanges` 现通过核心 `SpeedEngine` 的源→播放时间逆映射支持变速曲线、倒放与冻结帧（冻结保持段若其源帧属于语音区间也纳入 ducking 窗口），并新增 `audioTrackIndex` 非 0 的显式拒绝。记录 config 的 `exitThreshold` 由 GUI 重检时剥离后再回放。另有同批次逐 op 预处理、CLI onnxruntime 外部化、平台/架构打包裁剪与进度单调性修复，验证见本轮 1.2.2 复审记录。
