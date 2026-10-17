@@ -76,8 +76,11 @@ target tolerances and the 120-second/48 kHz limits are documented in
 [AUDIO-NORMALIZATION.md](AUDIO-NORMALIZATION.md).
 
 Use `reelctl schema` for the command index and `reelctl schema <command>` for
-exact arguments. Domain-filtered schemas and scoped lazy capability probes are
-still [TODO items](AUDIO-TODO.md), not supported flags promised by this guide.
+exact arguments. `reelctl schema --domain <domain>` filters the index by the
+command's leading name segment (`audio`, `media`, `edit`, ...); the filtered
+entries come from the same catalog and unknown domains are rejected with the
+available domain list. Scoped lazy capability probes for `capabilities.get`
+are still a [TODO item](AUDIO-TODO.md), not a supported parameter.
 
 ## MCP and headless sessions
 

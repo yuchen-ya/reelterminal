@@ -259,3 +259,68 @@ describe("reelctl output contracts", () => {
     });
   });
 });
+
+describe("reelctl schema domain filtering", () => {
+  const catalogCommands = [
+    entry("audio.process.normalize", "audio_process_normalize"),
+    entry("audio.process.register", "audio_process_register"),
+    entry("media.import", "media_import"),
+    entry("edit.apply", "edit_apply", "idempotent"),
+    entry("capabilities.get", "capabilities_get"),
+  ];
+
+  it("filters the schema index by a catalog domain", async () => {
+    const api = makeClient(catalogCommands);
+    const stdout: string[] = [];
+    await expect(runReelctl(["schema", "--domain", "audio"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    const payload = JSON.parse(stdout[0]!) as { ok: boolean; domain: string; domains: string[]; commands: { name: string }[] };
+    expect(payload.ok).toBe(true);
+    expect(payload.domain).toBe("audio");
+    expect(payload.domains).toEqual(["audio", "capabilities", "edit", "media"]);
+    expect(payload.commands.map((command) => command.name)).toEqual(["audio.process.normalize", "audio.process.register"]);
+    expect(api.catalog).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports the --domain=name form", async () => {
+    const api = makeClient(catalogCommands);
+    const stdout: string[] = [];
+    await expect(runReelctl(["schema", "--domain=media"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    const payload = JSON.parse(stdout[0]!) as { domain: string; commands: { name: string }[] };
+    expect(payload.domain).toBe("media");
+    expect(payload.commands.map((command) => command.name)).toEqual(["media.import"]);
+  });
+
+  it("lists domains on the unfiltered index", async () => {
+    const api = makeClient(catalogCommands);
+    const stdout: string[] = [];
+    await expect(runReelctl(["schema"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    const payload = JSON.parse(stdout[0]!) as { domains: string[]; commands: { name: string }[] };
+    expect(payload.domains).toEqual(["audio", "capabilities", "edit", "media"]);
+    expect(payload.commands).toHaveLength(5);
+  });
+
+  it("rejects an unknown domain with the available domains", async () => {
+    const api = makeClient(catalogCommands);
+    let failure: unknown;
+    try {
+      await runReelctl(["schema", "--domain", "nope"], { client: api });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({ kind: "args", exitCode: 2 });
+    expect((failure as LiveCliError).message).toContain("Unknown schema domain \"nope\"");
+    expect((failure as LiveCliError).message).toContain("audio, capabilities, edit, media");
+  });
+
+  it("keeps single-command schema exact and refuses combining name with --domain", async () => {
+    const api = makeClient(catalogCommands);
+    const stdout: string[] = [];
+    await expect(runReelctl(["schema", "audio.process.normalize"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    expect(JSON.parse(stdout[0]!)).toMatchObject({ ok: true, command: { name: "audio.process.normalize" } });
+    await expect(runReelctl(["schema", "--domain", "audio", "media.import"], { client: api }))
+      .rejects.toMatchObject({ kind: "args", exitCode: 2 });
+    await expect(runReelctl(["schema", "--domain"], { client: api })).rejects.toMatchObject({ kind: "args", exitCode: 2 });
+    await expect(runReelctl(["schema", "--domain", "audio", "--domain", "media"], { client: api }))
+      .rejects.toMatchObject({ kind: "args", exitCode: 2 });
+  });
+});

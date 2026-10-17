@@ -374,6 +374,7 @@ Usage:
   reelctl export start --file request.json
   reelctl job status --job-id <id> | wait <id> [--timeout-ms 1800000] | cancel --job-id <id>
   reelctl schema <command>
+  reelctl schema --domain <domain>
   reelctl call <command> [--file request.json | --stdin] [--name value ...]
   reelctl mcp serve
 
@@ -387,6 +388,9 @@ Long synchronous commands (frames extract, patch apply, ...) accept
 30 s or REELTERMINAL_REQUEST_TIMEOUT_MS. For 'job wait' the same flag sets
 the wait deadline instead.
 Use reelctl schema <command> or reelctl help <command> for exact arguments.
+reelctl schema --domain <domain> filters the command index by the command's
+leading name segment (audio, media, edit, ...); results come from the same
+catalog and unknown domains are rejected with the available domain list.
 normalize.json supplies mediaId, audioStream, startSec/endSec, targetLufs,
 truePeakDbtp, loudnessRangeLu, sampleRate:48000, channels:1|2, and idempotencyKey;
 register.json supplies the completed jobId and current expectedRevision.

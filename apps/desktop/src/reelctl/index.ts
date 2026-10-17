@@ -7,6 +7,7 @@ import {
   LiveCommandClient,
   catalogCommand,
   hasSchemaProperty,
+  type CommandCatalog,
   type CommandCatalogEntry,
   type FacadeResult,
 } from "./client";
@@ -75,6 +76,40 @@ function commandNameFromText(text: string): string {
     "patch apply": "patch.apply",
   };
   return known[text] ?? text;
+}
+
+/**
+ * A schema domain is the leading dotted segment of a catalog command name
+ * (the "audio" of "audio.process.normalize"), so filtered results always come
+ * from the same catalog instead of a copied definition.
+ */
+function catalogDomains(catalog: CommandCatalog): string[] {
+  return [...new Set(catalog.commands.map((command) => command.name.split(".")[0]!))].sort();
+}
+
+function splitSchemaDomainFlag(tokens: readonly string[]): { readonly domain?: string; readonly rest: readonly string[] } {
+  const rest: string[] = [];
+  let domain: string | undefined;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    if (token !== "--domain" && !token.startsWith("--domain=")) {
+      rest.push(token);
+      continue;
+    }
+    if (domain !== undefined) throw new LiveCliError("pass --domain at most once for reelctl schema", "args", 2);
+    if (token === "--domain") {
+      const value = tokens[index + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new LiveCliError("--domain needs a domain name, for example --domain audio", "args", 2);
+      }
+      domain = value;
+      index += 1;
+    } else {
+      domain = token.slice("--domain=".length);
+      if (domain === "") throw new LiveCliError("--domain needs a domain name, for example --domain audio", "args", 2);
+    }
+  }
+  return domain === undefined ? { rest } : { domain, rest };
 }
 
 function printLine(value: string): void {
@@ -283,12 +318,34 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
   }
 
   if (argv[0] === "schema" || argv[0] === "help" && argv.length > 1) {
-    const text = argv.slice(1).join(" ").trim();
+    const { domain, rest } = argv[0] === "schema"
+      ? splitSchemaDomainFlag(argv.slice(1))
+      : { rest: argv.slice(1) } as { domain?: string; rest: readonly string[] };
+    const text = rest.join(" ").trim();
     if (argv[0] === "schema") {
+      if (domain !== undefined && text) {
+        throw new LiveCliError("choose either a command name or --domain for reelctl schema, not both", "args", 2);
+      }
       const catalog = await client.catalog();
+      const domains = catalogDomains(catalog);
+      if (domain !== undefined) {
+        if (!domains.includes(domain)) {
+          throw new LiveCliError(`Unknown schema domain "${domain}". Available domains: ${domains.join(", ")}`, "args", 2);
+        }
+        output(JSON.stringify({
+          ok: true,
+          domain,
+          domains,
+          commands: catalog.commands
+            .filter((command) => command.name.split(".")[0] === domain)
+            .map(({ name, toolName, description, effects, retry }) => ({ name, toolName, description, effects, retry })),
+        }));
+        return 0;
+      }
       if (!text) {
         output(JSON.stringify({
           ok: true,
+          domains,
           commands: catalog.commands.map(({ name, toolName, description, effects, retry }) => ({ name, toolName, description, effects, retry })),
         }));
         return 0;
