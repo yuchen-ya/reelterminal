@@ -25,7 +25,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:licenses": "node --test scripts/build-third-party-notices.node-test.mjs",
+    "test:licenses": "node --test scripts/build-third-party-notices.node-test.mjs scripts/prune-onnx-runtime.node-test.mjs",
     "test:e2e": "vitest run --config e2e/vitest.config.ts",
     "test:perf:counts": "tsc --noEmit --project e2e/performance/tsconfig.json && vitest run --config e2e/performance/vitest.counts.config.ts && node --test ../../scripts/performance/*.node-test.mjs",
     "test:perf:quick": "node ../../scripts/performance/run.mjs --suite quick",

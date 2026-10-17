@@ -59,11 +59,13 @@ remain local.
 
 Silero VAD v5.1.2 (AUD-01) is implemented with the pinned weights above and
 the MIT-licensed `onnxruntime-node` package; its notices enter the generated
-third-party list at package-build time. The 1.2.2 Windows build packages the
-runtime correctly (JS and `onnxruntime-common` inside `app.asar`, the win32
-NAPI binding unpacked beside it, darwin/linux binaries pruned); macOS/Linux
-installers still need the same check on their own platforms before they are
-represented as VAD-capable.
+third-party list at package-build time. The 1.2.2 Windows x64 build packages
+the runtime correctly (`onnxruntime-node` and `onnxruntime-common` unpacked in
+`app.asar.unpacked`, the win32/x64 NAPI binding beside them, other OS and
+unused arch binaries pruned). The macOS and Linux configurations keep their
+own platform binary and prune the non-target arch after pack instead of
+applying the Windows-only prune, but those installers still need the same load
+check on their own platforms before they are represented as VAD-capable.
 
 Planned SenseVoice, DeepFilterNet, speaker separation and other audio backends
 in [AUDIO-TODO.md](AUDIO-TODO.md) are not installed or enabled. Their model

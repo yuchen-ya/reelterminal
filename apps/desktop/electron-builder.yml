@@ -9,8 +9,13 @@ asarUnpack:
   - dist/aurora-host/**
   # Native ONNX runtime for the Silero VAD speech-activity analysis. The main
   # bundle keeps the require() external, so the packaged app loads the .node
-  # binary from node_modules at runtime.
+  # binary from node_modules at runtime; the JS dependency is unpacked too so
+  # unpacked entry points can resolve it from the same real directory.
   - node_modules/onnxruntime-node/**
+  - node_modules/onnxruntime-common/**
+# Keep only the target platform/arch binaries (mac builds arm64+x64 together,
+# so config-level pruning alone would ship both trees in every installer).
+afterPack: scripts/prune-onnx-runtime.mjs
 directories:
   output: release
 # Update feed for electron-updater. Builds embed app-update.yml pointing at the
@@ -31,10 +36,8 @@ files:
   - "!**/{.env,.env.*,.npmrc,.pypirc,.git-credentials}"
   - "!**/{.git,.aws,.ssh}{,/**}"
   - package.json
-  # The Silero VAD runtime only ever loads the packaged platform's NAPI
-  # binding; keep the other OS binaries out of the Windows distributable.
-  - "!node_modules/onnxruntime-node/bin/napi-v6/darwin{,/**}"
-  - "!node_modules/onnxruntime-node/bin/napi-v6/linux{,/**}"
+  # ONNX runtime binaries are pruned per target/arch in the platform sections
+  # below: the packaged app only ever loads its own platform+arch binding.
 extraResources:
   - from: ../web/dist
     to: renderer
@@ -71,6 +74,11 @@ extraFiles:
   - from: resources/bin/reelterminal-live-mcp.cmd
     to: reelterminal-live-mcp.cmd
 mac:
+  files:
+    # Keep only the darwin bindings. The mac targets ship arm64 and x64, so
+    # both darwin trees stay; other OS binaries would never be loaded.
+    - "!node_modules/onnxruntime-node/bin/napi-v6/win32{,/**}"
+    - "!node_modules/onnxruntime-node/bin/napi-v6/linux{,/**}"
   extraResources:
     - from: resources/aurora
       to: aurora
@@ -90,6 +98,12 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
   notarize: true
 win:
+  files:
+    # Windows x64 only: drop the other OS trees and the unused win32/arm64
+    # binding (~69 MB unpacked) from every installer.
+    - "!node_modules/onnxruntime-node/bin/napi-v6/darwin{,/**}"
+    - "!node_modules/onnxruntime-node/bin/napi-v6/linux{,/**}"
+    - "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64{,/**}"
   extraResources:
     - from: resources/aurora
       to: aurora
@@ -111,6 +125,12 @@ nsis:
   # app. Default remains "keep everything user-owned".
   include: build/installer.nsh
 linux:
+  files:
+    # Linux x64 only: keep the x64 binding, drop the other OS trees and the
+    # unused linux/arm64 binding.
+    - "!node_modules/onnxruntime-node/bin/napi-v6/win32{,/**}"
+    - "!node_modules/onnxruntime-node/bin/napi-v6/darwin{,/**}"
+    - "!node_modules/onnxruntime-node/bin/napi-v6/linux/arm64{,/**}"
   extraResources:
     - from: resources/aurora
       to: aurora
