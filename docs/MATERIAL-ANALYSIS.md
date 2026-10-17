@@ -174,9 +174,19 @@ clip's placement/trim and shared core timing (speed curves, reverse playback
 and freeze holds) onto the ducked clip, and applies the same envelope the GUI
 ducking panel uses (one batch, one undo unit). Stale records, wrong-media or
 wrong-audio-stream records and no-overlap placements are rejected; an existing
-volume envelope requires `existingEnvelope:"replace"`. Direct
-analysis-record-driven silence cutting and new transcription/model backends
-remain planned. See the
+volume envelope requires `existingEnvelope:"replace"`. Analysis-record-driven
+silence cutting is likewise an explicit edit: `edit.apply` with op
+`clip.cutSilenceFromAnalysis` consumes a `silence` record id and expands into
+the same split/ripple actions the GUI silence-cut panel emits (one batch, one
+undo unit). Regions shorter than `minSilenceSec` stay as kept pauses,
+`paddingSec` keeps extra audio on both cut edges, and `fadeSec` (default
+0.01 s, audio-gain only) protects cut points against clicks. Aligned
+timing-identical A/V siblings of the same media are cut together so picture
+and sound stay in sync; ripple shifts later clips on each affected track
+only. Speed curves, freeze frames, non-zero `audioTrackIndex`, aligned
+siblings with divergent timing, subtitle cues that would desync and batches
+above `maxCutRegions` (default 24) are rejected before any mutation. New
+transcription/model backends remain planned. See the
 [audio TODO](AUDIO-TODO.md) for priorities and acceptance criteria, and the
 [completed execution record](AUDIO-PIPELINE-EXECUTION-PLAN.md) for A–C and
 AUD-01/AUD-02 evidence.

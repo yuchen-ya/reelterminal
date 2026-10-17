@@ -63,6 +63,16 @@ import { beginPerfOperation, endPerfOperation, failPerfOperation, runMeasured, w
 
 type ExecutableTimelineAction = TimelineAction & Pick<Action, "id">;
 
+/**
+ * Deterministic id of the right-hand piece a `clip/split` action mints.
+ * Derived from the action id so callers that compose split into a longer
+ * action sequence (e.g. the facade's record-driven silence cutting) can
+ * reference the new piece in a later action of the SAME sequence.
+ */
+export function splitPieceClipId(actionId: string): string {
+  return `clip-${actionId}-split`;
+}
+
 export class ActionExecutor {
   private validator: ActionValidator;
   private history: ActionHistory;
@@ -1364,7 +1374,7 @@ export class ActionExecutor {
 
           const clip2 = {
             ...clip,
-            id: `clip-${action.id}-split`,
+            id: splitPieceClipId(action.id),
             startTime: splitTime,
             duration: clip.duration - splitOffset,
             ...(clip.reversed

@@ -671,6 +671,32 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
     },
     {
+      name: "valid record-driven silence cut with defaults",
+      params: { ops: [{ op: "clip.cutSilenceFromAnalysis", clipId: "c1", recordId: "analysis-1f0a4fd6d8f547c2b6bba7bd4f83b9a1" }] },
+      expectValid: true,
+    },
+    {
+      name: "valid record-driven silence cut with full policy",
+      params: { ops: [{ op: "clip.cutSilenceFromAnalysis", clipId: "c1", recordId: "analysis-1f0a4fd6d8f547c2b6bba7bd4f83b9a1", minSilenceSec: 0.8, paddingSec: 0.05, fadeSec: 0.02, maxCutRegions: 8 }] },
+      expectValid: true,
+    },
+    {
+      name: "record-driven silence cut fadeSec is bounded",
+      params: { ops: [{ op: "clip.cutSilenceFromAnalysis", clipId: "c1", recordId: "analysis-1f0a4fd6d8f547c2b6bba7bd4f83b9a1", fadeSec: 0.5 }] },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: record-driven silence cut recordId must be an analysis id",
+      params: { ops: [{ op: "clip.cutSilenceFromAnalysis", clipId: "c1", recordId: "rec-123" }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "record-driven silence cut maxCutRegions is bounded",
+      params: { ops: [{ op: "clip.cutSilenceFromAnalysis", clipId: "c1", recordId: "analysis-1f0a4fd6d8f547c2b6bba7bd4f83b9a1", maxCutRegions: 65 }] },
+      expectValid: false,
+    },
+    {
       name: "valid clip.setBackgroundRemoval enable with defaults",
       params: { ops: [{ op: "clip.setBackgroundRemoval", clipId: "c1", enabled: true }] },
       expectValid: true,

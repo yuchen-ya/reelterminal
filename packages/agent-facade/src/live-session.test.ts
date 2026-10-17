@@ -3007,6 +3007,65 @@ describe("live local audio analysis parity", () => {
       await rm(mediaRoot, { recursive: true, force: true });
     }
   }, 30000);
+
+  it("applies record-driven silence cutting (AUD-05) through the same enrichment and expansion", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-cut-silence-"));
+    const sourcePath = await writeFloatWav(mediaRoot, 20, [6, 6.5, 7]);
+    const localStore = new FakeLiveStore();
+    const facade = liveFacade({ store: localStore, mediaRoots: [mediaRoot] });
+    try {
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const seeded = await facade["edit.apply"]({
+        ops: [
+          { op: "track.add", trackType: "audio", trackId: "voice-lane" },
+          { op: "clip.add", trackId: "voice-lane", mediaId: imported.value.mediaId, startTime: 10, duration: 10, inPoint: 5, outPoint: 15 },
+        ],
+      });
+      if (!seeded.ok) throw new Error(seeded.error.message);
+      const voiceClipId = seeded.value.applied[1]?.createdIds?.[0];
+      if (!voiceClipId) throw new Error("seed batch did not report the created clip id");
+
+      const fileStat = await stat(sourcePath);
+      const saved = await saveAnalysisRecord(artifactRoot, {
+        projectId: localStore.project.id,
+        sourceRevision: localStore.revision,
+        coordinateSpace: "source",
+        subject: { mediaId: imported.value.mediaId, name: "voice.wav", sourcePath, sourceFingerprint: { size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) } },
+        analysisTypes: ["silence"],
+        rangeSec: { startSec: 0, endSec: 20 },
+        config: { analysisTypes: ["silence"], startSec: 0, endSec: 20, cloudUpload: false, silenceParams: { thresholdDb: -40, minDurationSec: 0.5, paddingSec: 0.1 } },
+        provenance: [{ kind: "local-measurement", provider: "local-ffmpeg-pcm-silence-kernel", analysisType: "silence" }],
+        observations: [{ source: "silence", facts: { silentRegions: [{ startSec: 7, endSec: 9, durationSec: 2 }, { startSec: 11, endSec: 13, durationSec: 2 }], regionCount: 2 } }],
+        inferences: [],
+        recommendations: [],
+        unknowns: [],
+        recheckOf: null,
+        cloudOpinion: null,
+      });
+
+      const applied = await facade["edit.apply"]({
+        ops: [{ op: "clip.cutSilenceFromAnalysis", clipId: voiceClipId, recordId: saved.id }],
+      });
+      expect(applied).toMatchObject({ ok: true, value: { replayed: false, applied: [{ op: "clip.cutSilenceFromAnalysis" }] } });
+      const lane = localStore.project.timeline.tracks.find((track) => track.id === "voice-lane")!;
+      const fragments = [...lane.clips].sort((left, right) => left.startTime - right.startTime);
+      expect(fragments.map((clip) => [clip.startTime, clip.duration])).toEqual([[10, 2], [12, 2], [14, 2]]);
+      expect(fragments[1]!.fade).toMatchObject({ fadeIn: 0.01, fadeOut: 0.01 });
+      expect(fragments.map((clip) => [clip.inPoint, clip.outPoint])).toEqual([[5, 7], [9, 11], [13, 15]]);
+
+      // The original clip id survives as the leading fragment (5..7 s
+      // source); the record's regions no longer overlap it, so a keyless
+      // repeat is an honest nothing-to-cut rejection, never a second cut.
+      const again = await facade["edit.apply"]({
+        ops: [{ op: "clip.cutSilenceFromAnalysis", clipId: voiceClipId, recordId: saved.id }],
+      });
+      expect(again).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS", message: expect.stringContaining("nothing to cut") } });
+    } finally {
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 30000);
 });
 
 describe("live audio normalization task lifecycle", () => {

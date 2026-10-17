@@ -9,6 +9,7 @@
 import type { Project } from "@reelterminal/core/types/project";
 
 import { enrichDuckingFromAnalysisOps } from "./ducking-from-analysis";
+import { enrichCutSilenceOps } from "./silence-cut-from-analysis";
 import { enrichMediaFileOps } from "./ops";
 import type { EditOp } from "./types";
 
@@ -58,6 +59,14 @@ export async function prepareEditOp(
   }
   if (prepared.op === "clip.setDuckingFromAnalysis") {
     prepared = (await enrichDuckingFromAnalysisOps(
+      [prepared],
+      options.artifactRoot,
+      async () => draft,
+      { opIndexBase: opIndex, verb: options.verb },
+    ))[0]!;
+  }
+  if (prepared.op === "clip.cutSilenceFromAnalysis") {
+    prepared = (await enrichCutSilenceOps(
       [prepared],
       options.artifactRoot,
       async () => draft,

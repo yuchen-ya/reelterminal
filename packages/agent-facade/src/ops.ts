@@ -1,4 +1,5 @@
 import { verifyReplacementFrames } from "./media/strict-replacement";
+import { EDGE_EPS, type PreparedCutSilenceFromAnalysisOp } from "./silence-cut-from-analysis";
 import { validateMediaProduction } from "@reelterminal/core/types/media-production";
 import type { MediaSetProductionOp } from "./types";
 /**
@@ -14,6 +15,7 @@ import { DEFAULT_PROJECT_MARKER_COLOR } from "@reelterminal/core/types/project";
 import type { Clip, Transform, Transition } from "@reelterminal/core/types/timeline";
 import { EASING_TYPES } from "@reelterminal/core/types/timeline";
 import { TransitionEngine } from "@reelterminal/core/video/transition-engine";
+import { splitPieceClipId } from "@reelterminal/core/actions/action-executor";
 import type { TextClip } from "@reelterminal/core/text/types";
 import { parseSRT } from "@reelterminal/core/text/subtitle-engine";
 import {
@@ -94,6 +96,7 @@ import {
   type ClipSetChromaKeyOp,
   type ClipSetNoiseReductionOp,
   type ClipSetDuckingOp,
+  type ClipCutSilenceFromAnalysisOp,
   type ClipSetDuckingFromAnalysisOp,
   type ClipSetBackgroundRemovalOp,
   type ClipAddVideoEffectOp,
@@ -2134,6 +2137,54 @@ export const CLIP_SET_DUCKING_FROM_ANALYSIS_SCHEMA: ObjectSchema = {
   },
 };
 
+/**
+ * AUD-05: record-driven silence cutting. Shape validation only — record
+ * staleness/media/mapping, linked-sibling and subtitle gates run in
+ * enrichCutSilenceOps at edit.apply/edit.validate time; the ops.ts
+ * translator then expands the attached plan into split/rippleDelete/fade
+ * actions.
+ */
+export const CLIP_CUT_SILENCE_FROM_ANALYSIS_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "clip.cutSilenceFromAnalysis",
+    describe: '"clip.cutSilenceFromAnalysis"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.cutSilenceFromAnalysis" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string: the clip whose silences are cut (timing-identical aligned siblings are cut with it)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  recordId: {
+    check: (v) => typeof v === "string" && /^analysis-[0-9a-f-]{8,}$/i.test(v),
+    describe: "an analysis record id (\"analysis-<uuid>\") from a silence run on the clip's own media",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  minSilenceSec: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 600,
+    describe: "a finite number in [0, 600] (seconds): regions shorter than this stay as kept pauses",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 600 } },
+  },
+  paddingSec: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10,
+    describe: "a finite number in [0, 10] (seconds): extra audio kept on both edges of each cut",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 10 } },
+  },
+  fadeSec: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 0.05,
+    describe: "a finite number in [0, 0.05] (seconds): audio fade at cut edges of retained fragments",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 0.05 } },
+  },
+  maxCutRegions: {
+    check: (v) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 64,
+    describe: "an integer in [1, 64]: cap on surviving cut regions",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: 64 } },
+  },
+};
+
 /** GUI sliders and the shared engine defaults bound these matte values. */
 const BACKGROUND_MODES = ["blur", "color", "image", "video", "transparent"] as const;
 
@@ -2998,6 +3049,16 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<ClipSetDuckingFromAnalysisOp>(
         raw,
         CLIP_SET_DUCKING_FROM_ANALYSIS_SCHEMA,
+        label,
+      );
+    }
+    case "clip.cutSilenceFromAnalysis": {
+      // Shape validation only: record gates and the cut plan run in
+      // enrichCutSilenceOps at edit.apply/edit.validate time, before any
+      // mutation starts.
+      return validateObject<ClipCutSilenceFromAnalysisOp>(
+        raw,
+        CLIP_CUT_SILENCE_FROM_ANALYSIS_SCHEMA,
         label,
       );
     }
@@ -5120,6 +5181,87 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         "UNSUPPORTED",
         "clip.setDuckingFromAnalysis: this op must be enriched from its analysis record first — send it through edit.apply/edit.validate, which rewrite it into clip.setDucking presenceRanges",
       );
+
+    case "clip.cutSilenceFromAnalysis": {
+      // AUD-05: expand the plan attached by enrichCutSilenceOps into the
+      // same core actions the GUI silence-cut panel emits — split +
+      // rippleDelete (+ audio/setFade edge protection). Windows are
+      // processed LATEST-FIRST per clip so earlier windows keep their
+      // absolute timeline positions (the GUI bridge uses the same order).
+      // Split piece ids are deterministic (splitPieceClipId), so a later
+      // action in this same sequence can reference the piece the previous
+      // split created.
+      const prepared = op as PreparedCutSilenceFromAnalysisOp;
+      const plan = prepared.cuts;
+      if (!plan) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "clip.cutSilenceFromAnalysis: this op must be planned from its analysis record first — send it through edit.apply/edit.validate, which attach the concrete cut plan before translation",
+        );
+      }
+      const actions: Action[] = [];
+      for (const entry of plan.entries) {
+        const clip = draft.timeline.tracks
+          .flatMap((track) => track.clips)
+          .find((candidate) => candidate.id === entry.clipId);
+        if (!clip) {
+          throw new FacadeError("NOT_FOUND", `clip.cutSilenceFromAnalysis: clip "${entry.clipId}" not found`, { clipId: entry.clipId });
+        }
+        if ((clip.speedKeyframes?.length ?? 0) > 0 || (clip.freezeFrames?.length ?? 0) > 0) {
+          throw new FacadeError(
+            "UNSUPPORTED",
+            `clip.cutSilenceFromAnalysis: clip "${entry.clipId}" uses speed curves or freeze frames — the core split action rejects those timings`,
+            { clipId: entry.clipId },
+          );
+        }
+        const clipStart = clip.startTime;
+        const clipEnd = clip.startTime + clip.duration;
+        const fade = (clipId: string, side: "fadeIn" | "fadeOut") => {
+          if (!plan.needsFades) return;
+          actions.push(makeAction(
+            "audio/setFade",
+            side === "fadeIn" ? { clipId, fadeIn: plan.fadeSec } : { clipId, fadeOut: plan.fadeSec },
+          ));
+        };
+        for (const window of [...entry.windows].sort((left, right) => right.startSec - left.startSec)) {
+          const leading = window.startSec <= clipStart + EDGE_EPS;
+          const trailing = window.endSec >= clipEnd - EDGE_EPS;
+          if (leading && trailing) {
+            // The silence covers the whole clip: remove it outright.
+            actions.push(makeAction("clip/rippleDelete", { clipId: entry.clipId }));
+            break;
+          }
+          if (leading) {
+            // Leading silence: the retained tail is the split piece; delete
+            // the (silent) original, which ripples the tail left.
+            const splitEnd = makeAction("clip/split", { clipId: entry.clipId, time: window.endSec });
+            actions.push(splitEnd);
+            fade(splitPieceClipId(splitEnd.id), "fadeIn");
+            actions.push(makeAction("clip/rippleDelete", { clipId: entry.clipId }));
+            break;
+          }
+          if (trailing) {
+            // Trailing silence: split it off and ripple it away.
+            const splitStart = makeAction("clip/split", { clipId: entry.clipId, time: window.startSec });
+            actions.push(splitStart);
+            actions.push(makeAction("clip/rippleDelete", { clipId: splitPieceClipId(splitStart.id) }));
+            fade(entry.clipId, "fadeOut");
+            continue;
+          }
+          // Middle silence: split at end (tail piece = retained), split at
+          // start (middle piece = silence), ripple the silence away. Fades
+          // land on the retained edges while the piece ids are known.
+          const splitEnd = makeAction("clip/split", { clipId: entry.clipId, time: window.endSec });
+          actions.push(splitEnd);
+          fade(splitPieceClipId(splitEnd.id), "fadeIn");
+          const splitStart = makeAction("clip/split", { clipId: entry.clipId, time: window.startSec });
+          actions.push(splitStart);
+          actions.push(makeAction("clip/rippleDelete", { clipId: splitPieceClipId(splitStart.id) }));
+          fade(entry.clipId, "fadeOut");
+        }
+      }
+      return actions;
+    }
 
     case "clip.setDucking": {
       const clip = draft.timeline.tracks

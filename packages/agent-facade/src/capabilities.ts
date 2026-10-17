@@ -685,7 +685,7 @@ export async function buildCapabilities(
                             fields: ["analysis.get events (silentRegions)", "totalSilenceDurationSec", "parameters"],
                             defaults: { thresholdDb: -40, minDurationSec: 0.5, paddingSec: 0.1 },
                             tuning: "media.analyze_start silenceParams {thresholdDb, minDurationSec, paddingSec}",
-                            workflow: "page silentRegions with analysis.get view:'events', then cut those source-time ranges with clip.split + clip.rippleDelete ops in one edit.apply batch (one undo unit)",
+                            workflow: "page silentRegions with analysis.get view:'events', then cut them record-driven with the clip.cutSilenceFromAnalysis op (one edit.apply batch/undo unit: kept pauses below minSilenceSec, paddingSec edge keep, fadeSec click protection, aligned timing-identical A/V siblings cut together, per-track ripple; speed curves/freeze frames, non-zero audioTrackIndex and desyncing subtitles are rejected) — or drive clip.split + clip.rippleDelete manually for other placements",
                             coordinateSpace: "source",
                             changesProject: false,
                           }

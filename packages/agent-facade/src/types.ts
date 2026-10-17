@@ -1217,6 +1217,7 @@ export const EDIT_OP_TYPES = [
   "clip.setNoiseReduction",
   "clip.setDucking",
   "clip.setDuckingFromAnalysis",
+  "clip.cutSilenceFromAnalysis",
   "clip.setBackgroundRemoval",
   "svg.create",
   "svg.update",
@@ -1843,6 +1844,43 @@ export interface ClipSetDuckingFromAnalysisOp {
 }
 
 /**
+ * clip.cutSilenceFromAnalysis — AUD-05: cut the silences of a clip from a
+ * durable silence analysis record. The record's source-second silent
+ * regions are mapped through the clip's placement/trim/speed/reverse timing
+ * onto the timeline, and the full cut plan (split + rippleDelete + edge
+ * fades, the same core actions the GUI silence-cut panel emits) is computed
+ * BEFORE any mutation starts, then applied as one edit.apply batch/undo
+ * unit. Regions below minSilenceSec stay as kept pauses; paddingSec keeps
+ * extra audio on both cut edges; fadeSec protects cut points against clicks
+ * (clip.fade is audio-gain only, so picture is untouched).
+ *
+ * Scope decisions made explicit: timing-identical aligned A/V siblings of
+ * the same media are cut identically (picture stays in sync; an aligned
+ * sibling with different timing is rejected, never desynced); ripple follows
+ * clip/rippleDelete semantics (later clips on each affected track shift
+ * left; other tracks stay); subtitle cues that would desync (ending after
+ * the first cut) reject the batch — the facade cannot shift them. Speed
+ * curves, freeze frames, non-positive speed and audioTrackIndex != 0 are
+ * rejected because the core split/trim actions or the analyzed stream
+ * cannot represent them.
+ */
+export interface ClipCutSilenceFromAnalysisOp {
+  readonly op: "clip.cutSilenceFromAnalysis";
+  /** The clip whose silences are cut (aligned timing-identical siblings are cut with it). */
+  readonly clipId: string;
+  /** analysis record id from a silence run on the clip's own media. */
+  readonly recordId: string;
+  /** Regions shorter than this (source seconds) stay as kept pauses. Default: cut every region the record kept. */
+  readonly minSilenceSec?: number;
+  /** Keep this much extra audio on both edges of each cut (source seconds). Default 0. */
+  readonly paddingSec?: number;
+  /** Audio fade at cut edges of retained fragments, seconds [0, 0.05]. Default 0.01. */
+  readonly fadeSec?: number;
+  /** Cap on surviving cut regions per op, [1, 64]. Default 24. */
+  readonly maxCutRegions?: number;
+}
+
+/**
  * clip.setBackgroundRemoval — persist the person-segmentation matte settings
  * on ONE clip via the same core clip/setBackgroundRemoval action the GUI
  * Background Removal panel writes: undoable and saved with the project.
@@ -2065,6 +2103,7 @@ export type EditOp =
   | ClipSetNoiseReductionOp
   | ClipSetDuckingOp
   | ClipSetDuckingFromAnalysisOp
+  | ClipCutSilenceFromAnalysisOp
   | ClipSetBackgroundRemovalOp
   | ClipAddVideoEffectOp
   | WorkAssetCaptureOp
