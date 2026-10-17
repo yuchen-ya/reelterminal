@@ -114,7 +114,7 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
   - `pnpm --filter @reelterminal/desktop test:run src/main/analysis/analysis-records-service.test.ts src/main/live/live-session-host.test.ts src/main/live/task-ledger.test.ts src/live-mcp/index.test.ts --maxWorkers=2`：4 文件、43 通过；`pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2`：13 文件、667 通过、3 既有跳过。agent-facade、desktop、agent-transport、runtime-chromium、web 的 typecheck 均通过。
 - 限制与保留：范围仍限 120 s（AUD-11 另行处理长素材）；仅 16 kHz 输入、单/双声道经 strongest-sample 混合（>2 声道由 FFmpeg 先缩混为立体声）；VAD 是声学推断，唱歌/类人声可能误检漏检；per-chunk 概率不存储；安装包加载 onnxruntime-node 未验证；macOS/Linux 未在本机执行。AUD-01 勾选待用户验收后进行。
 
-## AUD-02：分析句柄驱动 ducking（2026-10-17，待用户验收）
+## AUD-02：分析句柄驱动 ducking（2026-10-17，提交 `0c91fcff`，待用户验收）
 
 依赖 AUD-01 的 speechActivity 记录，新增编辑操作 **`clip.setDuckingFromAnalysis`**（edit.apply/edit.validate 批内），完全复用 `clip.setDucking` 与现有音量包络内核（核心 `audio/setDucking` 动作、`clip.automation.volume` 预览/导出共用求值链），未新建编辑协议。
 
