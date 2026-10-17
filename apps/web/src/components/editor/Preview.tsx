@@ -801,6 +801,22 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     canvasFillColorRef.current = canvasFillColor;
   }, [canvasFillColor]);
 
+  // Project pixel dimensions for text/subtitle layout. The preview canvas is
+  // downscaled from these, and the text renderers need the original size so
+  // project-pixel font sizes stay proportional (same contract as the export
+  // path passing settings.width/height). Kept in a ref so the big render
+  // callbacks stay stable across settings changes.
+  const projectLayoutSizeRef = useRef({
+    width: settings.width,
+    height: settings.height,
+  });
+  useEffect(() => {
+    projectLayoutSizeRef.current = {
+      width: settings.width,
+      height: settings.height,
+    };
+  }, [settings.width, settings.height]);
+
   // Keep a ref to allTextClips for use in playback effect
   const allTextClipsRef = useRef(allTextClips);
   useEffect(() => {
@@ -1353,6 +1369,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
               subjectFrame,
               isPlaying,
               subjectStreamId,
+              projectLayoutSizeRef.current,
             );
           }
         }
@@ -2643,6 +2660,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                 subjectFrame,
                 isPlaying,
                 getBehindSubjectStreamId(timelineTracks, time),
+                projectLayoutSizeRef.current,
               );
 
               hasRenderedFrame = true;
@@ -2661,6 +2679,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             canvas.width,
             canvas.height,
             time,
+            projectLayoutSizeRef.current,
           );
         }
       }
@@ -2938,6 +2957,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
               null,
               isPlaying,
               getBehindSubjectStreamId(timelineTracks, time),
+              projectLayoutSizeRef.current,
             );
             if (!isCurrent()) return;
           }
@@ -2953,6 +2973,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           fallbackCanvas.width,
           fallbackCanvas.height,
           time,
+          projectLayoutSizeRef.current,
         );
       }
 
@@ -3688,6 +3709,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                 canvas.width,
                 canvas.height,
                 currentPlayhead,
+                projectLayoutSizeRef.current,
               );
             }
 
@@ -3795,6 +3817,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
               canvas.width,
               canvas.height,
               currentPlayhead,
+              projectLayoutSizeRef.current,
             );
           }
 
@@ -4055,6 +4078,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             canvas.width,
             canvas.height,
             currentPlayhead,
+            projectLayoutSizeRef.current,
           );
         }
 
@@ -5169,6 +5193,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                           timelineTracksRef.current,
                           currentPlayhead,
                         ),
+                        projectLayoutSizeRef.current,
                       );
                     }
                   } finally {
@@ -5185,6 +5210,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                       canvas.width,
                       canvas.height,
                       currentPlayhead,
+                      projectLayoutSizeRef.current,
                     );
                   }
 
@@ -5542,6 +5568,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                         canvas.width,
                         canvas.height,
                         currentPlayhead,
+                        projectLayoutSizeRef.current,
                       );
                       const prepared = await preparePreviewFrame(
                         textClip.id,
@@ -5656,6 +5683,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                         timelineTracksRef.current,
                         currentPlayhead,
                       ),
+                      projectLayoutSizeRef.current,
                     );
                   }
                 }
@@ -5678,6 +5706,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                 canvas.width,
                 canvas.height,
                 currentPlayhead,
+                projectLayoutSizeRef.current,
               );
             }
 
@@ -5709,6 +5738,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                 canvas.width,
                 canvas.height,
                 currentPlayhead,
+                projectLayoutSizeRef.current,
               );
             }
 

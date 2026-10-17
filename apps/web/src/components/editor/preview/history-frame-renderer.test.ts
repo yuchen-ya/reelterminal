@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project, Track } from "@reelterminal/core";
+import { titleEngine, type TextClip } from "@reelterminal/core";
 import type { ProjectNodeRecord } from "../../../services/workspace-manager";
 import type { HistoryFrameRendererOptions } from "./history-frame-renderer";
 
@@ -210,6 +211,79 @@ describe("history frame renderer", () => {
     expect(canvas.height).toBe(240);
     expect(video.currentTime).toBe(2.5);
     expect(calls.drawImage.some((args) => args[0] === video)).toBe(true);
+    renderer.dispose();
+  });
+
+  it("lays 4K snapshot text out in the snapshot's project pixels", async () => {
+    const textTrack: Track = {
+      id: "tt1",
+      type: "text",
+      name: "T1",
+      locked: false,
+      hidden: false,
+      muted: false,
+      solo: false,
+      transitions: [],
+      clips: [],
+    } as Track;
+    const textClip: TextClip = {
+      id: "tc1",
+      trackId: "tt1",
+      startTime: 0,
+      duration: 10,
+      text: "4K snapshot title",
+      style: {
+        fontFamily: "Inter",
+        fontSize: 164,
+        fontWeight: 700,
+        fontStyle: "normal",
+        color: "#ffffff",
+        textAlign: "center",
+        verticalAlign: "middle",
+        lineHeight: 1.2,
+        letterSpacing: 0,
+      },
+      transform: {
+        position: { x: 0.5, y: 0.5 },
+        scale: { x: 1, y: 1 },
+        rotation: 0,
+        anchor: { x: 0.5, y: 0.5 },
+        opacity: 1,
+      },
+      keyframes: [],
+    };
+    const project = projectFixture({ tracks: [textTrack] });
+    const mutableProject = project as unknown as Record<string, unknown>;
+    mutableProject.settings = {
+      width: 3840,
+      height: 2160,
+      frameRate: 30,
+      sampleRate: 48000,
+      channels: 2,
+    };
+    mutableProject.textClips = [textClip];
+    const renderText = vi.spyOn(titleEngine, "renderText").mockReturnValue({
+      canvas: document.createElement("canvas"),
+      width: 3840,
+      height: 2160,
+      textMetrics: { width: 100, height: 40, lines: [] },
+    });
+
+    const renderer = await createHistoryFrameRenderer(
+      "p1",
+      nodeFixture(project),
+      rendererOptions(fakeVideo(), { created: [], revoked: [] as string[] }),
+    );
+    const canvas = recordingCanvas(recordingContext().ctx);
+
+    await expect(renderer.renderAt(1, canvas)).resolves.toBe("frame");
+    expect(renderText).toHaveBeenCalledWith(
+      textClip,
+      3840,
+      2160,
+      1,
+      { width: 3840, height: 2160 },
+    );
     renderer.dispose();
   });
 

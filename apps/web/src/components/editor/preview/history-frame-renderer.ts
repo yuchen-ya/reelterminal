@@ -445,13 +445,30 @@ export async function createHistoryFrameRenderer(
             (project.textClips ?? []).filter((clip) => clip.trackId === track.id),
             time,
           )) {
-            renderTextClipToCanvas(ctx, textClip, canvas.width, canvas.height, time);
+            renderTextClipToCanvas(
+              ctx,
+              textClip,
+              canvas.width,
+              canvas.height,
+              time,
+              // The snapshot canvas is project-sized, but pass the layout
+              // size explicitly so a future canvas downscale cannot silently
+              // rescale snapshot text.
+              { width, height },
+            );
           }
         }
       }
 
       for (const subtitle of getActiveSubtitles(project.timeline.subtitles, time)) {
-        renderSubtitleToCanvas(ctx, subtitle, canvas.width, canvas.height, time);
+        renderSubtitleToCanvas(
+          ctx,
+          subtitle,
+          canvas.width,
+          canvas.height,
+          time,
+          { width, height },
+        );
       }
 
       return "frame";

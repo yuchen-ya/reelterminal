@@ -695,6 +695,10 @@ export const renderTextClipWithSubjectMask = async (
   subjectFrame: ImageBitmap | null,
   realtime = true,
   streamId = "editor:text-behind-subject:canvas",
+  layoutSize: { width: number; height: number } = {
+    width: canvasWidth,
+    height: canvasHeight,
+  },
 ): Promise<void> => {
   let subjectMask: SegmentationResult | null = null;
   if (textClip.behindSubject && subjectFrame) {
@@ -725,6 +729,7 @@ export const renderTextClipWithSubjectMask = async (
           canvasWidth,
           canvasHeight,
           time,
+          layoutSize,
         ),
     );
 

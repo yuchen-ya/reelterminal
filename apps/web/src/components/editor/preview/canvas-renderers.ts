@@ -548,6 +548,10 @@ export const renderTextClipToCanvas = (
   canvasWidth: number,
   canvasHeight: number,
   time: number,
+  layoutSize: { width: number; height: number } = {
+    width: canvasWidth,
+    height: canvasHeight,
+  },
 ): void => {
   const clipLocalTime = time - textClip.startTime;
   const animatedState = textAnimationEngine.getAnimatedState(
@@ -635,12 +639,16 @@ export const renderTextClipToCanvas = (
   // Use the same title renderer as export. Keeping one 2D text path is
   // essential for shader fidelity: Paper fills, animated glyph shaders,
   // masking, shadows, and per-character animation must produce the same
-  // pixels on the editor stage and in the encoded video.
+  // pixels on the editor stage and in the encoded video. layoutSize carries
+  // the project dimensions so project-pixel font sizes stay proportional
+  // when the preview canvas is downscaled; the export path passes
+  // settings.width/height through the same parameter.
   const rendered = titleEngine.renderText(
     textClip,
     canvasWidth,
     canvasHeight,
     clipLocalTime,
+    layoutSize,
   );
   ctx.drawImage(rendered.canvas, 0, 0, canvasWidth, canvasHeight);
 };
@@ -1494,6 +1502,10 @@ export const renderSubtitleToCanvas = (
   canvasWidth: number,
   canvasHeight: number,
   currentTime?: number,
+  layoutSize: { width: number; height: number } = {
+    width: canvasWidth,
+    height: canvasHeight,
+  },
 ): void => {
   const { text, animationStyle, words } = subtitle;
   if (!text || text.trim().length === 0) return;
@@ -1503,9 +1515,16 @@ export const renderSubtitleToCanvas = (
   const time = currentTime ?? subtitle.startTime;
 
   if (hasAnimation) {
-    renderAnimatedSubtitle(ctx, subtitle, canvasWidth, canvasHeight, time);
+    renderAnimatedSubtitle(
+      ctx,
+      subtitle,
+      canvasWidth,
+      canvasHeight,
+      time,
+      layoutSize,
+    );
   } else {
-    renderStaticSubtitle(ctx, subtitle, canvasWidth, canvasHeight);
+    renderStaticSubtitle(ctx, subtitle, canvasWidth, canvasHeight, layoutSize);
   }
 };
 
@@ -1514,10 +1533,18 @@ const renderStaticSubtitle = (
   subtitle: Subtitle,
   canvasWidth: number,
   canvasHeight: number,
+  layoutSize: { width: number; height: number },
 ): void => {
   const { text, style } = subtitle;
 
   ctx.save();
+
+  // Subtitle styles live in project pixels. Scale the context so the rest
+  // of the layout runs in layout space and rasterizes into the (possibly
+  // downscaled) preview canvas — the same contract as the export renderer.
+  ctx.scale(canvasWidth / layoutSize.width, canvasHeight / layoutSize.height);
+  canvasWidth = layoutSize.width;
+  canvasHeight = layoutSize.height;
 
   const fontSize = style?.fontSize || 24;
   const fontFamily = style?.fontFamily || "Inter";
@@ -1572,6 +1599,7 @@ const renderAnimatedSubtitle = (
   canvasWidth: number,
   canvasHeight: number,
   currentTime: number,
+  layoutSize: { width: number; height: number },
 ): void => {
   const frame = renderAnimatedCaption(subtitle, currentTime);
 
@@ -1580,6 +1608,13 @@ const renderAnimatedSubtitle = (
   }
 
   ctx.save();
+
+  // Same project-pixel layout contract as the static subtitle path: the
+  // caption engine emits fontSize-relative offsets, which stay correct in
+  // layout space while the context scale handles the raster downscale.
+  ctx.scale(canvasWidth / layoutSize.width, canvasHeight / layoutSize.height);
+  canvasWidth = layoutSize.width;
+  canvasHeight = layoutSize.height;
 
   const style = subtitle.style;
   const fontSize = style?.fontSize || 24;
