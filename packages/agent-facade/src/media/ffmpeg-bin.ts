@@ -9,6 +9,7 @@
  * command injection. The same discipline as runtime-chromium's ffmpeg.ts,
  * kept self-contained because the facade must not depend on a runtime package.
  */
+import { readAudioEnvironment } from "./audio-environment-config";
 import { spawn } from "node:child_process";
 import { delimiter } from "node:path";
 import { stat } from "node:fs/promises";
@@ -182,11 +183,23 @@ let cached: Promise<FfmpegBinaries | null> | null = null;
  * when either is missing — callers turn that into an honest UNSUPPORTED
  * error and an unavailable capabilities entry, never a guess.
  */
+let cachedConfigKey = "";
+export function clearToolFfmpegCache(): void {
+  cached = null;
+  cachedVersion = null;
+}
+
 export function resolveToolFfmpeg(): Promise<FfmpegBinaries | null> {
+  const config = readAudioEnvironment();
+  const ffmpegPath = config.ffmpeg ?? process.env.REELTERMINAL_FFMPEG_PATH;
+  const ffprobePath = config.ffprobe ?? process.env.REELTERMINAL_FFPROBE_PATH;
+  const key = JSON.stringify([ffmpegPath, ffprobePath, process.env.PATH]);
+  if (key !== cachedConfigKey) { cached = null; cachedVersion = null; cachedConfigKey = key; }
+
   cached ??= (async () => {
     const [ffmpeg, ffprobe] = await Promise.all([
-      resolveOne("ffmpeg", process.env.REELTERMINAL_FFMPEG_PATH),
-      resolveOne("ffprobe", process.env.REELTERMINAL_FFPROBE_PATH),
+      resolveOne("ffmpeg", ffmpegPath),
+      resolveOne("ffprobe", ffprobePath),
     ]);
     if (!ffmpeg || !ffprobe) return null;
     return { ffmpeg, ffprobe };
@@ -202,7 +215,8 @@ let cachedVersion: Promise<string> | null = null;
  * audio cache keys; resolves to "unavailable"/"unknown" instead of throwing so
  * a probe hiccup never fails a job that does not need the version.
  */
-export function resolveFfmpegVersion(): Promise<string> {
+export async function resolveFfmpegVersion(): Promise<string> {
+  await resolveToolFfmpeg();
   cachedVersion ??= (async () => {
     const binaries = await resolveToolFfmpeg();
     if (!binaries) return "unavailable";

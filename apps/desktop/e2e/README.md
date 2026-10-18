@@ -16,6 +16,14 @@ The other live specs cover context, media import, previews, shared history,
 renderer lifecycle, security and catalog compatibility. Conversation/work-mode
 specs are retired with their implementation.
 
+`instruction-library-environment.e2e.ts` covers compact instruction chips, copying
+through the personal library, and the settings-to-Agent prompt. It uses a private
+audio configuration file. `local-captions.e2e.ts` is opt-in with
+`REELTERMINAL_CAPTION_E2E_CONFIG` pointing to a verified audio configuration and
+`REELTERMINAL_CAPTION_E2E_WAV` to a local speech fixture. It imports the fixture
+into an isolated project, generates captions through the real UI and model,
+then verifies a single undo removes the captions while preserving source audio.
+
 Requires the built desktop renderer/main, Electron, and (for pixel/export specs)
 Chromium plus ffmpeg/ffprobe. Run specs selectively using the separate
 `e2e/vitest.config.ts`. Test fixture files stay in isolated run directories;

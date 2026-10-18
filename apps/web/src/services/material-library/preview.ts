@@ -72,6 +72,7 @@ async function objectUrlForMedia(
 export async function loadMaterialPreview(
   record: MaterialRecord,
 ): Promise<PreviewSource> {
+  if (record.kind === "instruction") return { kind: "text", value: record.prompt };
   if (record.kind === "link") {
     return { kind: "link", url: record.url };
   }

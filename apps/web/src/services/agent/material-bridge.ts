@@ -319,6 +319,7 @@ function patchFromBridge(
       ? { organizeStatus: raw.organizeStatus }
       : {}),
     ...(isString(raw.description) ? { description: raw.description } : {}),
+    ...(isString(raw.prompt) ? { prompt: raw.prompt } : {}),
   };
 }
 

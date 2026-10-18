@@ -9,6 +9,8 @@ import type {
   DesktopLiveEventsApi,
 } from "@reelterminal/agent-facade/desktop-protocol";
 
+import type { AudioEnvironmentReport } from "@reelterminal/agent-facade/media/audio-environment";
+import type { TranscriptSegment } from "@reelterminal/agent-facade/speech-transcript";
 export {};
 
 export interface OpenReelHardwareInfo {
@@ -301,6 +303,8 @@ export interface OpenReelAnalysisJobStatus {
 interface ReelTerminalDesktopBridge {
       platform: "desktop";
       publicOrigin: string;
+      audioEnvironment?: { check(): Promise<AudioEnvironmentReport> };
+      captions?: { transcribe(id: string, samples: Float32Array, language: string): Promise<TranscriptSegment[]>; cancel(id: string): Promise<void> };
       probeHardware(): Promise<OpenReelHardwareInfo>;
       onMenuAction(cb: (id: string) => void): () => void;
       fs: {

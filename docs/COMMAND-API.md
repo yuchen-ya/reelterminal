@@ -13,6 +13,60 @@ privately and must not print or log it.
 
 ## CLI
 
+### Application audio environment (offline)
+
+Settings → Models & environment and the desktop Auto Captions tool can copy a
+configuration prompt containing this installation's absolute CLI command.
+These local commands do not read an endpoint descriptor, require an open project,
+or grant Agent editing access:
+
+```powershell
+reelctl environment get
+reelctl environment set --file audio-config.json
+reelctl environment check
+reelctl environment test --file speech.wav --duration 5 --language auto
+```
+
+`get` returns the saved configuration and supported fields. `set` replaces the
+whole configuration atomically: read it first and preserve unrelated fields.
+Supported fields are `python`, `separationPython`, `senseVoiceModelDir`,
+`speakerModelDir`, `demucsCache`, `vadModel`, `ffmpeg`, and `ffprobe`; each value
+must be an absolute path. An empty object clears the saved overrides. The file
+lives at `~/.reelterminal/audio-environment.json`, independently of project files;
+`REELTERMINAL_AUDIO_CONFIG` redirects it for isolated testing. Saved fields take
+precedence over legacy environment variables. Changes apply without restarting.
+
+`check` verifies dependency imports, pinned model weights, a real VAD session and
+FFmpeg availability, without downloading anything. Its `components` manifest
+lists validated package versions, model sources, expected weights and space
+requirements. `ready` describes subtitle readiness; optional speaker/separation
+diagnostics are also returned. Exit code 3 means the requested readiness check
+did not pass. `test` actually transcribes up to 120 seconds of a supplied local
+speech file, returns sentence-level text and timing, and never edits a project.
+A successful dependency check is not transcription acceptance: inspect the test
+output against the speech. Obtain user consent before downloading missing models
+or dependencies, and reuse existing environments where possible.
+
+The desktop subtitle UI processes the selected audio stream and visible clip
+range, divides long audio into contiguous chunks of at most 120 seconds (preferring
+quiet boundaries), and writes a fresh editable caption track in one undo batch.
+It preserves existing captions. Cancellation, inference failure, and changed
+source/project identity prevent partial publication. Constant forward speed is
+supported; reverse playback and speed keyframes are rejected. SenseVoice timing
+comes from external VAD sentence boundaries, not word alignment. Browser Whisper
+remains an explicit alternative engine. Jobs survive panel navigation, not app
+restart.
+
+### Instruction presets
+
+The user-level material library accepts `kind: "instruction"` with `title` and
+`prompt` (maximum 80 and 2000 characters). Library edits use record revisions and
+library undo. Adding an instruction to a project copies its text with a fresh ID;
+it does not create a live link or carry project-local references into the preset.
+Project instruction edits, enable/disable, removal and ordering use project undo.
+`material.attach` remains the media/segment import operation; project instruction
+edits use the existing collaboration-instruction edit operation.
+
 `media.import` reports `video`, `audio`, or `image` in its result schema.
 `reelctl preview frame` is the CLI alias of `preview.render_frame`; use the
 catalog's command name when querying its schema.

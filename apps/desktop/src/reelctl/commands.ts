@@ -345,6 +345,12 @@ export function commandHelp(entry: CommandCatalogEntry): string {
 
 export const REELCTL_HELP = `reelctl — operate projects and workspaces in ReelTerminal
 
+Application audio configuration (offline; no live access required):
+  environment get
+  environment set --file config.json   Replace configuration; use get first
+  environment check                   Verify runtime, models, VAD and FFmpeg
+  environment test --file speech.wav --duration 5 [--language auto]
+
 Usage:
   reelctl status
   reelctl context [--compact]

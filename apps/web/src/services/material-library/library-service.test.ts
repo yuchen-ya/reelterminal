@@ -86,6 +86,19 @@ describe("MaterialLibraryService", () => {
     service = new MaterialLibraryService(storage);
   });
 
+  it("persists instruction edits with CAS and library-scoped undo", async () => {
+    const created = await service.create({ kind: "instruction", title: "Preview", prompt: "Show a sample" }, "user");
+    if (!created.ok) throw new Error(created.message);
+    const record = created.value.material;
+    const updated = await service.update(record.id, { prompt: "Compare two samples" }, "user", record.revision);
+    expect(updated.ok).toBe(true);
+    expect((await service.update(record.id, { prompt: "Stale draft" }, "user", record.revision)).ok).toBe(false);
+    const reloaded = new MaterialLibraryService(storage);
+    expect(await reloaded.get(record.id)).toMatchObject({ ok: true, value: { prompt: "Compare two samples" } });
+    expect((await reloaded.undo(undefined, "user")).ok).toBe(true);
+    expect(await reloaded.get(record.id)).toMatchObject({ ok: true, value: { prompt: "Show a sample" } });
+  });
+
   async function seedMedia(): Promise<MaterialRecord> {
     const result = await service.create(
       {

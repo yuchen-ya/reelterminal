@@ -31,6 +31,8 @@ import { attachMaterialToProject } from "../../../services/material-library/atta
 import { useMaterialLibraryStore } from "../../../stores/material-library-store";
 import { useProjectStore } from "../../../stores/project-store";
 import { toast } from "../../../stores/notification-store";
+import { InstructionFields } from "./InstructionFields";
+import { addLibraryInstruction } from "../../../services/material-library/instructions";
 import { MaterialPreview } from "./MaterialPreview";
 import { MaterialSegmentDialog } from "./MaterialSegmentDialog";
 
@@ -54,6 +56,7 @@ export function MaterialDetailDialog() {
   const [record, setRecord] = useState<MaterialRecord | null>(null);
   const [draft, setDraft] = useState<{
     title: string;
+    prompt: string;
     tags: string;
     userNotes: string;
     aiSummary: string;
@@ -70,6 +73,7 @@ export function MaterialDetailDialog() {
     setRecord(result.value);
     setDraft({
       title: result.value.title,
+      prompt: result.value.kind === "instruction" ? result.value.prompt : "",
       tags: result.value.tags.join(", "),
       userNotes: result.value.userNotes,
       aiSummary: result.value.aiSummary,
@@ -92,6 +96,7 @@ export function MaterialDetailDialog() {
     setBusy(true);
     const patch: MaterialUpdatePatch = {
       title: draft.title.trim() || record.title,
+      ...(record.kind === "instruction" ? { prompt: draft.prompt } : {}),
       tags: draft.tags
         .split(",")
         .map((tag) => tag.trim())
@@ -126,6 +131,12 @@ export function MaterialDetailDialog() {
   const attach = async () => {
     if (!record) return;
     setBusy(true);
+    if (record.kind === "instruction") {
+      try { await addLibraryInstruction(useProjectStore, record); toast.success(t("material.attached"), record.title); }
+      catch (error) { toast.error(t("material.attachFailed"), String(error)); }
+      finally { setBusy(false); }
+      return;
+    }
     const result = await attachMaterialToProject({
       materialId: record.id,
       actor: "user",
@@ -235,6 +246,7 @@ export function MaterialDetailDialog() {
               <ToolcraftLayoutContent className="flex flex-col gap-4">
                 <MaterialPreview record={record} />
 
+                {record.kind === "instruction" ? <InstructionFields title={draft.title} description={draft.prompt} onChange={value => setDraft({ ...draft, title: value.title, prompt: value.description })} /> : (
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[12px] font-medium text-fg-2">
                     {t("material.title")}
@@ -247,6 +259,7 @@ export function MaterialDetailDialog() {
                     className="rounded-[9px] border border-border bg-bg px-3 py-2 text-[13px] text-fg outline-none focus:border-accent"
                   />
                 </label>
+                )}
 
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[12px] font-medium text-fg-2">
@@ -401,7 +414,7 @@ export function MaterialDetailDialog() {
                 ) : null}
               </ToolcraftLayoutContent>
               <ToolcraftLayoutFooter className="flex flex-wrap items-center gap-2">
-                {(record.kind === "media" || record.kind === "segment") && hasOpenProject ? (
+                {(record.kind === "media" || record.kind === "segment" || record.kind === "instruction") && hasOpenProject ? (
                   <button
                     type="button"
                     disabled={busy}
@@ -411,7 +424,7 @@ export function MaterialDetailDialog() {
                     <FolderOpen size={13} aria-hidden />
                     {record.kind === "segment"
                       ? t("material.attachSegment")
-                      : t("material.attachMedia")}
+                      : t(record.kind === "instruction" ? "collaborationInstructions.addToProject" : "material.attachMedia")}
                   </button>
                 ) : null}
                 {record.kind === "media" && record.mediaType !== "image" ? (

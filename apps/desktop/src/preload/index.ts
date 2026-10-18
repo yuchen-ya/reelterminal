@@ -20,6 +20,11 @@ const api = {
   // Desktop has no hosted editor configured. URL builders reject this empty
   // value instead of producing unusable fragment-only sharing links.
   publicOrigin: "",
+  audioEnvironment: { check: () => ipcRenderer.invoke(CHANNELS.audioEnvironmentCheck) },
+  captions: {
+    transcribe: (id: string, samples: Float32Array, language: string) => ipcRenderer.invoke(CHANNELS.captionTranscribe, { id, samples, language }),
+    cancel: (id: string) => ipcRenderer.invoke(CHANNELS.captionCancel, { id }),
+  },
   probeHardware: () => ipcRenderer.invoke(CHANNELS.probeHardware, undefined),
   onMenuAction: (cb: (id: string) => void) => {
     const handler = (_event: unknown, id: string) => cb(id);

@@ -38,6 +38,8 @@ import { attachMaterialToProject } from "../../../services/material-library/atta
 import { useMaterialLibraryStore } from "../../../stores/material-library-store";
 import { useProjectStore } from "../../../stores/project-store";
 import { toast } from "../../../stores/notification-store";
+import { InstructionLibraryPicker } from "./InstructionLibraryPicker";
+import { addLibraryInstruction } from "../../../services/material-library/instructions";
 import { MaterialDetailDialog } from "./MaterialDetailDialog";
 
 const KIND_CHIPS: ReadonlyArray<{ value: MaterialKind | "all"; labelKey: string }> = [
@@ -46,6 +48,7 @@ const KIND_CHIPS: ReadonlyArray<{ value: MaterialKind | "all"; labelKey: string 
   { value: "segment", labelKey: "material.kind.segment" },
   { value: "link", labelKey: "material.kind.link" },
   { value: "method", labelKey: "material.kind.method" },
+  { value: "instruction", labelKey: "material.kind.instruction" },
 ];
 
 function formatTime(iso: string): string {
@@ -63,6 +66,7 @@ function formatTime(iso: string): string {
 
 function RecordIcon({ record }: { readonly record: MaterialRecord }) {
   if (record.kind === "link") return <Link2 size={15} aria-hidden />;
+  if (record.kind === "instruction") return <SlidersHorizontal size={15} aria-hidden />;
   if (record.kind === "method") return <Sparkles size={15} aria-hidden />;
   if (record.kind === "segment") return <Scissors size={15} aria-hidden />;
   if (record.mediaType === "audio") return <Music size={15} aria-hidden />;
@@ -80,6 +84,7 @@ export function MaterialLibraryPanel() {
   const [batchTag, setBatchTag] = useState("");
   const [addLinkOpen, setAddLinkOpen] = useState(false);
   const [addLinkValue, setAddLinkValue] = useState("");
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [addMethodOpen, setAddMethodOpen] = useState(false);
   const [addMethodValue, setAddMethodValue] = useState({ skillName: "", prompt: "", steps: "" });
   const [busy, setBusy] = useState(false);
@@ -271,12 +276,17 @@ export function MaterialLibraryPanel() {
   const attachRecords = async (records: readonly MaterialRecord[]) => {
     const attachable = records.filter(
       (item) =>
-        item.kind === "media" || item.kind === "segment",
+        item.kind === "media" || item.kind === "segment" || item.kind === "instruction",
     );
     if (attachable.length === 0) return;
     setBusy(true);
     let attached = 0;
     for (const record of attachable) {
+      if (record.kind === "instruction") {
+        try { await addLibraryInstruction(useProjectStore, record); attached += 1; }
+        catch (error) { toast.error(t("material.attachFailed"), String(error)); }
+        continue;
+      }
       const result = await attachMaterialToProject({
         materialId: record.id,
         actor: "user",
@@ -323,6 +333,7 @@ export function MaterialLibraryPanel() {
             variant: "ghost", isDisabled: busy, className: "asset-browser-button asset-browser-button-primary" }} items={[
               { label: t("material.addMedia"), icon: <FileVideo size={14} />, onClick: () => fileInputRef.current?.click() },
               { label: t("material.addLink"), icon: <Link2 size={14} />, onClick: () => setAddLinkOpen(true) },
+              { label: t("material.kind.instruction"), icon: <SlidersHorizontal size={14} />, onClick: () => setInstructionsOpen(true) },
               { label: t("material.addMethod"), icon: <Sparkles size={14} />, onClick: () => setAddMethodOpen(true) },
             ]} />
           <button type="button" aria-label={t("assetBrowser.select")} title={t("assetBrowser.select")}
@@ -408,7 +419,7 @@ export function MaterialLibraryPanel() {
       </div>
       {store.selectedIds.length > 0 && <div className="asset-batch-bar">
         <span>{t("material.selected", { count: store.selectedIds.length })}</span>
-        {hasOpenProject && <button type="button" disabled={busy || !store.items.some((item) => store.selectedIds.includes(item.id) && (item.kind === "media" || item.kind === "segment"))}
+        {hasOpenProject && <button type="button" disabled={busy || !store.items.some((item) => store.selectedIds.includes(item.id) && (item.kind === "media" || item.kind === "segment" || item.kind === "instruction"))}
           aria-label={t("material.attachToProject")} title={t("material.attachToProject")} className="asset-browser-button asset-browser-button-icon"
           onClick={() => void attachRecords(store.items.filter((item) => store.selectedIds.includes(item.id)))}><Plus size={14} aria-hidden /></button>}
         <DropdownMenu alignment="start" size="sm" button={{ label: t("assetBrowser.organize"), variant: "ghost", isDisabled: busy, className: "asset-browser-button" }} items={[
@@ -450,7 +461,7 @@ export function MaterialLibraryPanel() {
             {store.items.map((record) => {
               const selected = store.selectedIds.includes(record.id);
               const fileStatus = record.kind === "media" || record.kind === "segment" ? store.fileStatuses[record.id] : undefined;
-              const attachable = record.kind === "media" || record.kind === "segment";
+              const attachable = record.kind === "media" || record.kind === "segment" || record.kind === "instruction";
               return (
                 <article key={record.id} data-material-id={record.id} data-selected={selected} className="asset-material-card">
                   {(selecting || store.selectedIds.length > 0) && <input type="checkbox" checked={selected}
@@ -506,6 +517,7 @@ export function MaterialLibraryPanel() {
         />
       ) : null}
 
+      {instructionsOpen && createPortal(<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"><section role="dialog" aria-label={t("material.kind.instruction")} className="max-h-[80vh] w-[480px] overflow-auto rounded border border-border bg-bg p-4"><div className="mb-3 flex justify-between"><h3>{t("material.kind.instruction")}</h3><button aria-label={t("Close dialog")} onClick={() => setInstructionsOpen(false)}>×</button></div><InstructionLibraryPicker onSelect={record => { setInstructionsOpen(false); store.openDetail(record.id); }} /></section></div>, document.body)}
       {/* add method dialog */}
       {addMethodOpen ? createPortal(
         <div className="reelterminal-desktop fixed inset-0 z-[var(--z-dialog)]" onClick={() => setAddMethodOpen(false)}>

@@ -1,4 +1,7 @@
 export const CHANNELS = {
+  audioEnvironmentCheck: "reelterminal:audioEnvironment:check",
+  captionTranscribe: "reelterminal:caption:transcribe",
+  captionCancel: "reelterminal:caption:cancel",
   probeHardware: "reelterminal:probeHardware",
   projectTaskStates: "reelterminal:projectLibrary:taskStates",
   // Menu action relay (main → renderer).

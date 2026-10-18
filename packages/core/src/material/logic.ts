@@ -1,3 +1,4 @@
+import { COLLABORATION_INSTRUCTION_LIMITS as instructionLimits } from "../types/collaboration-instruction";
 /**
  * Pure logic for the user-level material library: record construction,
  * validation, search/filter/pagination, update patching, and the
@@ -217,6 +218,11 @@ export function validateMaterialBuildInput(
       }
       break;
     }
+    case "instruction": {
+      if (!input.title?.trim() || input.title.length > instructionLimits.title) issues.push({ field: "title", message: "instruction title must contain 1–80 characters" });
+      if (typeof input.prompt !== "string" || !input.prompt.trim() || input.prompt.length > instructionLimits.description || /【[^】]+】/.test(input.prompt)) issues.push({ field: "prompt", message: "instruction prompt must contain 1–2000 characters without placeholders" });
+      break;
+    }
     case "method": {
       if (typeof input.prompt !== "string" || !input.prompt.trim()) {
         issues.push({
@@ -251,6 +257,8 @@ function defaultTitleForKind(input: MaterialBuildInput): string {
         return input.url || "Untitled link";
       }
     }
+    case "instruction":
+      return "Untitled instruction";
     case "method":
       return input.skillName?.trim() || "Untitled method";
   }
@@ -319,6 +327,8 @@ export function buildMaterialRecord(input: MaterialBuildInput): MaterialRecord {
           ? { description: sanitizeMaterialText(input.description) }
           : {}),
       };
+    case "instruction":
+      return { ...base, kind: "instruction", prompt: sanitizeMaterialText(input.prompt) };
     case "method":
       return {
         ...base,
@@ -351,6 +361,7 @@ export function buildMaterialRecord(input: MaterialBuildInput): MaterialRecord {
 
 /** Fields updatable after creation. `userNotes` is UI-only (see below). */
 export interface MaterialUpdatePatch {
+  readonly prompt?: string;
   readonly title?: string;
   readonly aiSummary?: string;
   readonly tags?: readonly string[];
@@ -375,6 +386,9 @@ export function validateMaterialUpdatePatch(
   patch: MaterialUpdatePatch,
 ): MaterialUpdateConflict[] {
   const conflicts: MaterialUpdateConflict[] = [];
+  if (patch.prompt !== undefined && (record.kind !== "instruction" || typeof patch.prompt !== "string" || !patch.prompt.trim())) {
+    conflicts.push({ field: "prompt", message: "instruction prompt must be non-empty" });
+  }
   if (
     patch.title !== undefined &&
     (typeof patch.title !== "string" || patch.title.trim().length === 0)
@@ -389,6 +403,9 @@ export function validateMaterialUpdatePatch(
       field: "description",
       message: "description is only updatable on link materials",
     });
+  }
+  if (record.kind === "instruction") {
+    conflicts.push(...validateMaterialBuildInput({ kind: "instruction", actor: "user", title: patch.title ?? record.title, prompt: patch.prompt ?? record.prompt }));
   }
   return conflicts;
 }
@@ -444,6 +461,9 @@ export function applyMaterialUpdate(
     const updated = rest as Extract<MaterialRecord, { kind: "link" }>;
     return description ? { ...updated, description } : updated;
   }
+  if (record.kind === "instruction" && patch.prompt !== undefined) {
+    return { ...next, kind: "instruction", prompt: sanitizeMaterialText(patch.prompt) };
+  }
   return next;
 }
 
@@ -467,6 +487,9 @@ export function materialSearchText(record: MaterialRecord): string {
       break;
     case "link":
       parts.push(record.url, record.description ?? "");
+      break;
+    case "instruction":
+      parts.push(record.prompt);
       break;
     case "method":
       parts.push(
@@ -679,7 +702,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 export function normalizeMaterialRecord(raw: unknown): MaterialRecord | null {
   if (!isPlainObject(raw)) return null;
   const kind = raw.kind;
-  if (kind !== "media" && kind !== "segment" && kind !== "link" && kind !== "method") {
+  if (kind !== "media" && kind !== "segment" && kind !== "link" && kind !== "method" && kind !== "instruction") {
     return null;
   }
   const id = typeof raw.id === "string" ? raw.id : "";
@@ -792,6 +815,9 @@ export function normalizeMaterialRecord(raw: unknown): MaterialRecord | null {
         ...(typeof raw.description === "string" ? { description: raw.description } : {}),
       };
     }
+    case "instruction":
+      return typeof raw.prompt === "string" && validateMaterialBuildInput({ kind: "instruction", actor: "user", title: base.title, prompt: raw.prompt }).length === 0
+        ? { ...base, kind: "instruction", prompt: raw.prompt } : null;
     case "method": {
       const prompt = typeof raw.prompt === "string" ? raw.prompt : "";
       if (!prompt) return null;

@@ -11,7 +11,7 @@ import {
   SILERO_VAD_MODEL,
   SPEECH_VAD_CHUNK_SEC,
   analyzeSpeechActivity,
-  clearSpeechVadPreflightCacheForTests,
+  clearSpeechVadPreflightCache,
   downloadVadModelForTests,
   resolveSpeechVadParams,
   segmentsFromProbabilities,
@@ -27,7 +27,7 @@ import type { VadInferenceModel } from "./speech-vad";
 afterEach(() => {
   setSpeechVadModelFactoryForTests(null);
   setSpeechVadRuntimeLoaderForTests(null);
-  clearSpeechVadPreflightCacheForTests();
+  clearSpeechVadPreflightCache();
   delete process.env.REELTERMINAL_VAD_MODEL;
 });
 

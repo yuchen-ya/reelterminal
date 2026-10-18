@@ -864,7 +864,11 @@
     "skillNamePlaceholder": "Skill name (optional)",
     "promptPlaceholder": "The reusable prompt / recipe",
     "stepsPlaceholder": "Steps, one per line (optional)",
-    "methodHint": "Saving stores the text for reuse — it never installs a skill or executes the prompt."
+    "methodHint": "Saving stores the text for reuse — it never installs a skill or executes the prompt.",
+    "kind.instruction": "Collaboration instruction",
+    "instructionSearch": "Search instructions",
+    "builtinInstructions": "Built-in presets",
+    "copyInstruction": "Copy instruction"
   },
   "clipContextMenu": {
     "videoClip": "Video Clip",
@@ -1132,10 +1136,10 @@
   "collaborationInstructions": {
     "title": "Collaboration instructions",
     "tasks": "Tasks",
-    "emptyTitle": "Make collaboration feel like you",
+    "emptyTitle": "No collaboration instructions",
     "emptyDescription": "Add habits you want the Agent to follow in this project. Start with one, or leave this empty.",
-    "fromPresets": "Add from presets",
-    "writeOwn": "Write your own",
+    "fromPresets": "Add from library",
+    "writeOwn": "New instruction",
     "enabledCount": "{{count}} enabled · This project",
     "add": "Add",
     "back": "Back",
@@ -1153,7 +1157,7 @@
     "cancel": "Cancel",
     "delete": "Delete instruction",
     "toggle": "Enable {{title}}",
-    "saved": "Saved · Available on the Agent’s next read",
+    "saved": "Saved",
     "scope": "This project only · Added by you",
     "historyLabel": "Edit collaboration instructions",
     "required": "Enter a title and detailed instruction.",
@@ -1198,6 +1202,44 @@
         "title": "Use a specific animation skill",
         "description": "For code animation, use 【skill name or path】. Reference 【asset and range, plus the qualities to borrow】 for visual direction. The skill handles implementation; the reference informs design."
       }
+    },
+    "saveLibrary": "Save to library",
+    "details": "Details",
+    "moveEarlier": "Move earlier",
+    "moveLater": "Move later"
+  },
+  "audioEnvironment": {
+    "title": "Models & environment",
+    "captions": "Automatic captions",
+    "hint": "Copy the setup prompt for your Agent, then run the check again.",
+    "copy": "Copy setup prompt",
+    "copied": "Copied",
+    "check": "Check again",
+    "checking": "Checking…",
+    "ready": "Ready",
+    "missing": "Configuration required",
+    "advanced": "Advanced diagnostics",
+    "desktopOnly": "Local environment configuration is available in the desktop app.",
+    "settings": "Settings",
+    "range": "Selected clip · visible range",
+    "audioStream": "Audio stream",
+    "streamIndex": "Stream index (starting at 0)",
+    "generate": "Generate captions",
+    "captionHint": "Sentence-level timing. Adds a new caption track; existing captions are preserved. Undo removes the entire generated batch.",
+    "browserEngine": "Browser Whisper (alternative engine)",
+    "languages": {
+      "auto": "Detect automatically",
+      "zh": "Chinese",
+      "en": "English",
+      "yue": "Cantonese",
+      "ja": "Japanese",
+      "ko": "Korean"
+    },
+    "job": {
+      "running": "Generating captions",
+      "done": "Captions added · undo available",
+      "cancelled": "Caption generation cancelled",
+      "error": "Caption generation failed"
     }
   }
 }

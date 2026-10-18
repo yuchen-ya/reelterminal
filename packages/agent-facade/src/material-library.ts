@@ -87,6 +87,7 @@ export interface MaterialCreateParams {
 
 /** One item of material.batch_update. Mirrors MaterialUpdateParams fields. */
 export interface MaterialBatchUpdateItem {
+  readonly prompt?: string;
   readonly id: string;
   readonly title?: string;
   readonly aiSummary?: string;

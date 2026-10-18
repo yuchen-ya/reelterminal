@@ -1,3 +1,4 @@
+import { LocalCaptionPanel } from "./LocalCaptionPanel";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   SUBTITLE_STYLE_PRESETS,
@@ -162,7 +163,7 @@ const ModelDownloadFailureBlock: React.FC<{
   );
 };
 
-export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
+export const BrowserAutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
   clipId,
   maxWordsPerLine = 5,
 }) => {
@@ -640,4 +641,10 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
   );
 };
 
+export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = props => {
+  const { t } = useTranslation();
+  const [showBrowser, setShowBrowser] = useState(false);
+  if (!window.reelterminal?.captions) return <BrowserAutoCaptionPanel {...props} />;
+  return <div className="space-y-4"><LocalCaptionPanel clipId={props.clipId} /><details onToggle={event => setShowBrowser(event.currentTarget.open)}><summary className="cursor-pointer text-xs text-fg-3">{t("audioEnvironment.browserEngine")}</summary>{showBrowser && <BrowserAutoCaptionPanel {...props} />}</details></div>;
+};
 export default AutoCaptionPanel;

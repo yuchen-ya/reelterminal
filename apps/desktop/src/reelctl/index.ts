@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { runEnvironment } from "./environment";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -307,6 +308,11 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h" || argv[0] === "help" && argv.length === 1) {
     output(REELCTL_HELP);
     return 0;
+  }
+  if (argv[0] === "environment") {
+    const value = await runEnvironment(argv.slice(1));
+    output(JSON.stringify({ ok: true, value }));
+    return "ready" in value && !value.ready ? 3 : 0;
   }
   const client = options.client ?? new LiveCommandClient();
 

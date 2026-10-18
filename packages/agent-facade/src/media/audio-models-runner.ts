@@ -16,6 +16,7 @@
  * fails the task without publishing any asset. The worker never mutates the
  * project or media roots.
  */
+import { readAudioEnvironment } from "./audio-environment-config";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -120,9 +121,10 @@ async function findOnPath(name: string): Promise<string | null> {
 async function candidateInterpreters(task?: unknown): Promise<InterpreterCandidate[]> {
   const candidates: InterpreterCandidate[] = [];
   const explicit = task === "separate"
-    ? process.env.REELTERMINAL_SEPARATION_PYTHON ?? process.env.REELTERMINAL_AUDIO_MODELS_PYTHON ?? process.env.REELTERMINAL_PYTHON_PATH
-    : process.env.REELTERMINAL_AUDIO_MODELS_PYTHON ?? process.env.REELTERMINAL_PYTHON_PATH;
+    ? readAudioEnvironment().separationPython ?? process.env.REELTERMINAL_SEPARATION_PYTHON ?? readAudioEnvironment().python ?? process.env.REELTERMINAL_AUDIO_MODELS_PYTHON ?? process.env.REELTERMINAL_PYTHON_PATH
+    : readAudioEnvironment().python ?? process.env.REELTERMINAL_AUDIO_MODELS_PYTHON ?? process.env.REELTERMINAL_PYTHON_PATH;
   if (explicit && explicit.length > 0) candidates.push({ python: explicit });
+  if (explicit) return candidates;
   for (const name of ["python3", "python"]) {
     const onPath = await findOnPath(name);
     if (onPath) candidates.push({ python: onPath });
@@ -164,7 +166,7 @@ export function setAudioModelsProbeForTests(probe: (() => Promise<ProbeState["re
   probeCache = null;
 }
 
-export function clearAudioModelsProbeCacheForTests(): void {
+export function clearAudioModelsProbeCache(): void {
   probeCache = null;
 }
 
@@ -177,21 +179,21 @@ export function audioModelsCacheDir(): string {
 
 /** The exact local SenseVoice directory; env override must still match the pinned weights. */
 export function senseVoiceModelDir(): string {
-  const override = process.env.REELTERMINAL_SENSEVOICE_MODEL_DIR;
+  const override = readAudioEnvironment().senseVoiceModelDir ?? process.env.REELTERMINAL_SENSEVOICE_MODEL_DIR;
   if (override && override.length > 0) return override;
   return join(audioModelsCacheDir(), "models", "iic", "SenseVoiceSmall");
 }
 
 /** The exact local CAM++ directory; env override must still match the pinned weights. */
 export function speakerDiarizationModelDir(): string {
-  const override = process.env.REELTERMINAL_CAMPP_SV_MODEL_DIR;
+  const override = readAudioEnvironment().speakerModelDir ?? process.env.REELTERMINAL_CAMPP_SV_MODEL_DIR;
   if (override && override.length > 0) return override;
   return join(audioModelsCacheDir(), "models", "iic", "speech_campplus_sv_zh-cn_16k-common");
 }
 
 /** Hugging Face cache root used for the optional Demucs weights. */
 export function demucsCacheDir(): string {
-  const override = process.env.REELTERMINAL_DEMUCS_CACHE;
+  const override = readAudioEnvironment().demucsCache ?? process.env.REELTERMINAL_DEMUCS_CACHE;
   if (override && override.length > 0) return override;
   return join(homedir(), ".reelterminal", "models", "demucs");
 }
@@ -334,7 +336,7 @@ export async function demucsModelStatus(): Promise<PinnedAudioModelStatus> {
 }
 
 /** Clear the sha caches after tests change a model path or file. */
-export function clearSenseVoiceModelStatusCacheForTests(): void {
+export function clearAudioModelStatusCache(): void {
   modelStatusCaches.clear();
 }
 

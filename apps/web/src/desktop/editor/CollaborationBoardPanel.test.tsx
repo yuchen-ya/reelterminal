@@ -1,3 +1,6 @@
+import { addLibraryInstruction } from "../../services/material-library/instructions";
+import { buildMaterialRecord } from "@reelterminal/core";
+import { MaterialLibraryService, setMaterialLibraryServiceForTests } from "../../services/material-library/library-service";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createProjectStore } from "../../stores/project-store";
@@ -7,7 +10,14 @@ import { CollaborationBoardPanel } from "./CollaborationBoardPanel";
 import type { MediaItem } from "@reelterminal/core";
 
 const createStore = () => createProjectStore({ initialProject: createEmptyProject("Board"), isForeground: false });
-beforeEach(() => useUIStore.setState({ boardOpenRequest: 0, modalData: null }));
+beforeEach(() => {
+  useUIStore.setState({ boardOpenRequest: 0, modalData: null });
+  const records = new Map<string, unknown>();
+  setMaterialLibraryServiceForTests(new MaterialLibraryService({
+    loadAllMaterials: async () => [...records.values()], loadJournal: async () => [], loadBlob: async () => null,
+    commit: async change => { for (const record of change.materialUpserts ?? []) records.set(record.id, record); for (const id of change.materialDeletes ?? []) records.delete(id); },
+  }));
+});
 
 describe("collaboration board", () => {
   it("starts empty, saves a preset only explicitly, preserves a draft across tabs and supports disable/delete/undo", async () => {
@@ -15,7 +25,8 @@ describe("collaboration board", () => {
     render(<CollaborationBoardPanel store={store} active onClose={() => {}} />);
     expect(screen.getByRole("tab", { name: "Collaboration instructions" })).toHaveAttribute("aria-selected", "true");
     expect(store.getState().project.collaborationInstructions).toBeUndefined();
-    fireEvent.click(screen.getByRole("button", { name: "Add from presets" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add from library" }));
+    fireEvent.click(screen.getByText("Built-in presets"));
     fireEvent.click(screen.getByRole("button", { name: /Guide me visually/ }));
     expect(store.getState().project.collaborationInstructions).toBeUndefined();
     fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Show me a prototype" } });
@@ -23,10 +34,12 @@ describe("collaboration board", () => {
     expect(screen.getByRole("button", { name: "New requirement" })).toBeVisible();
     fireEvent.click(screen.getByRole("tab", { name: "Collaboration instructions" }));
     expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Show me a prototype");
+    fireEvent.click(screen.getByRole("button", { name: "Save to library" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add to project" })).toBeVisible());
     fireEvent.click(screen.getByRole("button", { name: "Add to project" }));
     await waitFor(() => expect(store.getState().project.collaborationInstructions?.items).toHaveLength(1));
     const saved = store.getState().project.collaborationInstructions!.items[0];
-    expect(saved.presetId).toBe("visual");
+    expect(saved.description).toContain("direction");
     expect(store.getState().project.requirements).toBeUndefined();
     fireEvent.click(screen.getByRole("button", { name: "Show me a prototype" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Unpublished draft" } });
@@ -41,6 +54,25 @@ describe("collaboration board", () => {
     await waitFor(() => expect(store.getState().project.collaborationInstructions?.items).toEqual([]));
     await act(() => store.getState().undo());
     expect(store.getState().project.collaborationInstructions?.items[0].title).toBe(saved.title);
+  });
+
+  it("reorders compact chips by drag and supports context-menu removal with undo", async () => {
+    const store = createStore();
+    for (const title of ["First", "Second"]) await addLibraryInstruction(store, buildMaterialRecord({ kind: "instruction", actor: "user", title, prompt: `${title} instruction` }));
+    render(<CollaborationBoardPanel store={store} active onClose={() => {}} />);
+    const first = screen.getByRole("button", { name: "First" });
+    const second = screen.getByRole("button", { name: "Second" });
+    fireEvent.dragStart(first.parentElement!);
+    fireEvent.dragOver(second.parentElement!);
+    fireEvent.drop(second.parentElement!);
+    await waitFor(() => expect(store.getState().project.collaborationInstructions?.items.map(item => item.title)).toEqual(["Second", "First"]));
+    await act(() => store.getState().undo());
+    expect(store.getState().project.collaborationInstructions?.items.map(item => item.title)).toEqual(["First", "Second"]);
+    fireEvent.contextMenu(first);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete instruction" }));
+    await waitFor(() => expect(store.getState().project.collaborationInstructions?.items).toHaveLength(1));
+    await act(() => store.getState().undo());
+    expect(store.getState().project.collaborationInstructions?.items).toHaveLength(2);
   });
 
   it("routes task requests and pending reviews to the original task page", async () => {
@@ -58,9 +90,10 @@ describe("collaboration board", () => {
   it("does not publish incomplete tool presets", () => {
     const store = createStore();
     render(<CollaborationBoardPanel store={store} active onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Add from presets" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add from library" }));
+    fireEvent.click(screen.getByText("Built-in presets"));
     fireEvent.click(screen.getByRole("button", { name: /Prefer a specific tool/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Add to project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save to library" }));
     expect(screen.getByRole("alert")).toHaveTextContent("placeholders");
     expect(store.getState().project.collaborationInstructions).toBeUndefined();
   });
@@ -72,7 +105,7 @@ describe("collaboration board", () => {
       mediaLibrary: { items: [{ id: "reference-media", name: "Motion reference", type: "video" } as MediaItem] },
     } }));
     render(<CollaborationBoardPanel store={store} active onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Write your own" }));
+    fireEvent.click(screen.getByRole("button", { name: "New instruction" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Explain visually" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Detailed instruction" }), { target: { value: "Use the reference's visual continuity." } });
     fireEvent.click(screen.getByText(/Reference assets and ranges/));

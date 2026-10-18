@@ -14,6 +14,7 @@
  * the same local FFmpeg subprocess path as the other audio kernels, and only
  * scalar probabilities and merged regions are kept.
  */
+import { readAudioEnvironment } from "./media/audio-environment-config";
 import { createHash } from "node:crypto";
 import { get as httpGet } from "node:http";
 import { get as httpsGet } from "node:https";
@@ -127,7 +128,7 @@ export async function speechVadRuntimePreflight(): Promise<{ available: true } |
 
 /** Where the model is expected. REELTERMINAL_VAD_MODEL wins when set. */
 export function speechVadModelPath(): string {
-  const override = process.env.REELTERMINAL_VAD_MODEL;
+  const override = (readAudioEnvironment().vadModel ?? process.env.REELTERMINAL_VAD_MODEL);
   if (override) return resolve(override);
   return join(homedir(), ".reelterminal", "models", `${SILERO_VAD_MODEL.name}-${SILERO_VAD_MODEL.version}`, SILERO_VAD_MODEL.file);
 }
@@ -212,7 +213,7 @@ async function downloadVadModel(destination: string, signal: AbortSignal, urlOve
 async function ensureVadModel(signal: AbortSignal): Promise<string> {
   if (signal.aborted) throw new Error("Cancelled");
   const path = speechVadModelPath();
-  if (process.env.REELTERMINAL_VAD_MODEL) {
+  if ((readAudioEnvironment().vadModel ?? process.env.REELTERMINAL_VAD_MODEL)) {
     await verifyModelFile(path);
     return path;
   }
@@ -329,7 +330,7 @@ type SpeechVadPreflightResult =
 let preflightCache: { readonly key: string; readonly result: SpeechVadPreflightResult } | null = null;
 
 /** Test hook: the cache is keyed by path/size/mtime, but tests also swap failures. */
-export function clearSpeechVadPreflightCacheForTests(): void {
+export function clearSpeechVadPreflightCache(): void {
   preflightCache = null;
 }
 

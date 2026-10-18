@@ -1,5 +1,12 @@
 # ReelTerminal external Agent guide
 
+For local audio environment setup, use the prompt from Settings → Models &
+environment. `reelctl environment get|set|check|test` works without an open project
+or Agent write access. Preserve existing configuration, reuse installed models,
+and verify actual transcription after dependency checks. See
+[application audio configuration](COMMAND-API.md#application-audio-environment-offline).
+Do not open or modify a production project just to test a model environment.
+
 The first time you allow editing in each app launch, a notification appears at
 the top right. Click it to copy a startup prompt for your external Agent. It
 includes this installation's absolute CLI command, the Agent workspace, and

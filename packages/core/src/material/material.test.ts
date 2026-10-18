@@ -354,3 +354,17 @@ describe("normalizeMaterialRecord", () => {
     ).toBeNull();
   });
 });
+
+
+describe("instruction materials", () => {
+  it("round-trips and searches instruction text, and validates reusable instruction limits", () => {
+    const input = { kind: "instruction", actor: "user", title: "Preview", prompt: "Show a prototype" } as const;
+    const record = buildMaterialRecord(input);
+    expect(normalizeMaterialRecord(JSON.parse(JSON.stringify(record)))).toEqual(record);
+    expect(matchesMaterialQuery(record, "prototype")).toBe(true);
+    expect(applyMaterialUpdate(record, { prompt: "Use a short sample" }, "user")).toHaveProperty("prompt", "Use a short sample");
+    expect(() => buildMaterialRecord({ ...input, title: "x".repeat(81) })).toThrow();
+    expect(() => applyMaterialUpdate(record, { prompt: "" }, "user")).toThrow();
+    expect(() => applyMaterialUpdate(record, { prompt: "x".repeat(2001) }, "user")).toThrow();
+  });
+});

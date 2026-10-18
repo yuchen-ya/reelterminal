@@ -8,7 +8,7 @@ import {
 } from "../i18n";
 import { autoSaveManager } from "../services/auto-save";
 
-export type SettingsTab = "general" | "saving" | "storage";
+export type SettingsTab = "general" | "saving" | "storage" | "models";
 
 /**
  * What should happen to version nodes when the app closes (docs/

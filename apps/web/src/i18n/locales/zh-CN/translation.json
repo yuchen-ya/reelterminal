@@ -864,7 +864,11 @@
     "skillNamePlaceholder": "skill 名称(可选)",
     "promptPlaceholder": "可复用的提示词 / 步骤",
     "stepsPlaceholder": "步骤,每行一条(可选)",
-    "methodHint": "保存只是存储文本以便复用 — 不会安装 skill,也不会执行提示词。"
+    "methodHint": "保存只是存储文本以便复用 — 不会安装 skill,也不会执行提示词。",
+    "kind.instruction": "协作指令",
+    "instructionSearch": "搜索指令",
+    "builtinInstructions": "内置预设",
+    "copyInstruction": "复制指令"
   },
   "clipContextMenu": {
     "videoClip": "视频片段",
@@ -1132,10 +1136,10 @@
   "collaborationInstructions": {
     "title": "协作指令",
     "tasks": "任务",
-    "emptyTitle": "让协作慢慢贴近你",
+    "emptyTitle": "暂无协作指令",
     "emptyDescription": "添加希望 Agent 在这个项目中遵循的习惯。从一条开始，也可以暂时留空。",
-    "fromPresets": "从预设添加",
-    "writeOwn": "自己写一条",
+    "fromPresets": "从素材库添加",
+    "writeOwn": "新建指令",
     "enabledCount": "{{count}} 条启用 · 仅当前项目",
     "add": "添加",
     "back": "返回",
@@ -1153,7 +1157,7 @@
     "cancel": "取消",
     "delete": "删除指令",
     "toggle": "启用 {{title}}",
-    "saved": "已保存 · Agent 下次读取可获取",
+    "saved": "已保存",
     "scope": "仅当前项目生效 · 由你选择添加",
     "historyLabel": "修改协作指令",
     "required": "请填写标题和详细说明。",
@@ -1163,11 +1167,11 @@
     "saveFailed": "保存协作指令失败。",
     "presets": {
       "visual": {
-        "title": "通过可视化引导我",
+        "title": "可视化沟通",
         "description": "当我对整体方向不满意或难以描述偏好时，先提供少量有明显差异的关键画面或短动态原型，每轮围绕一个问题让我比较。确定方向后再扩展制作。"
       },
       "explain": {
-        "title": "用画面变化解释内容",
+        "title": "用画面解释",
         "description": "让图形的生成、连接、变化和对比承担主要解释；文字用于标注与强调，避免主要依赖连续的静态大字卡片讲解。"
       },
       "sample": {
@@ -1175,29 +1179,67 @@
         "description": "涉及整体风格、结构或动画语言调整时，先完成有代表性的小段，让我判断方向，再扩展制作。"
       },
       "compare": {
-        "title": "给我可比较的方案",
+        "title": "比较方案",
         "description": "对同一内容提供少量候选，说明主要差异，每轮集中解决一个设计问题。让我通过选择和指认表达偏好。"
       },
       "preserve": {
-        "title": "保留我已认可的部分",
+        "title": "保留已认可部分",
         "description": "后续修改继承已经认可的设计，缩小调整范围；如需改变已认可的部分，先说明原因和影响。"
       },
       "review": {
-        "title": "在项目内审阅",
+        "title": "项目内审阅",
         "description": "编辑结果优先在当前时间线中定位和预览；仅在我要求文件交付时导出整片。必要的中间动画素材渲染不受此条限制。"
       },
       "resources": {
-        "title": "先查已有素材与方法",
+        "title": "复用已有素材",
         "description": "规划时先查看相关项目素材及个人素材库，复用适合当前任务的资源和方法。工具可用性应实际检查，不根据记录直接假定。"
       },
       "tool": {
-        "title": "优先使用指定工具",
+        "title": "指定工具",
         "description": "需要【填写用途，如生成概念图】时，优先使用【填写工具，如本地 Moss-Image】。先确认可用性；不适用或不可用时说明原因，再提出替代方案。"
       },
       "skill": {
-        "title": "代码动画使用指定 skill",
+        "title": "指定动画 skill",
         "description": "制作代码动画时使用【填写 skill 名称或路径】。视觉表达参考【填写素材与片段，并说明借鉴的特点】；工具负责实现，参考作品用于设计方向。"
       }
+    },
+    "saveLibrary": "存入素材库",
+    "details": "详情",
+    "moveEarlier": "前移",
+    "moveLater": "后移"
+  },
+  "audioEnvironment": {
+    "title": "模型与环境",
+    "captions": "自动字幕",
+    "hint": "复制提示词交给 Agent 配置，完成后重新检测。",
+    "copy": "复制配置提示词",
+    "copied": "已复制",
+    "check": "重新检测",
+    "checking": "检测中…",
+    "ready": "已就绪",
+    "missing": "需要配置",
+    "advanced": "高级诊断",
+    "desktopOnly": "本地环境配置需在桌面应用中使用。",
+    "settings": "设置",
+    "range": "所选片段 · 可见部分",
+    "audioStream": "音轨选择",
+    "streamIndex": "音轨序号（从 0 开始）",
+    "generate": "生成字幕",
+    "captionHint": "句级时间定位。生成到新字幕轨道，保留已有字幕；可一次撤销。",
+    "browserEngine": "浏览器 Whisper（备用引擎）",
+    "languages": {
+      "auto": "自动识别",
+      "zh": "中文",
+      "en": "英语",
+      "yue": "粤语",
+      "ja": "日语",
+      "ko": "韩语"
+    },
+    "job": {
+      "running": "正在生成字幕",
+      "done": "字幕已添加 · 可撤销",
+      "cancelled": "已取消字幕生成",
+      "error": "字幕生成失败"
     }
   }
 }

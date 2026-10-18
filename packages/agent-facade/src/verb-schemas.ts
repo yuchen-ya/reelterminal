@@ -1525,7 +1525,7 @@ const materialStepsField = (value: unknown): value is string[] =>
 export const MATERIAL_LIST_SCHEMA: ObjectSchema = {
   kind: {
     check: (v) => (MATERIAL_KINDS as readonly unknown[]).includes(v),
-    describe: '"media" | "segment" | "link" | "method"',
+    describe: '"media" | "segment" | "link" | "method" | "instruction"',
     emits: { kind: "leaf", schema: { enum: MATERIAL_KINDS } },
   },
   status: {
@@ -1572,7 +1572,7 @@ export const MATERIAL_GET_SCHEMA: ObjectSchema = {
 export const MATERIAL_CREATE_SCHEMA: ObjectSchema = {
   kind: {
     check: (v) => (MATERIAL_KINDS as readonly unknown[]).includes(v),
-    describe: '"media" | "segment" | "link" | "method"',
+    describe: '"media" | "segment" | "link" | "method" | "instruction"',
     required: true,
     emits: { kind: "leaf", schema: { enum: MATERIAL_KINDS } },
   },
@@ -1705,6 +1705,11 @@ export const MATERIAL_BATCH_UPDATE_ITEM_SCHEMA: ObjectSchema = {
     check: (v) => v === "inbox" || v === "organized",
     describe: '"inbox" | "organized"',
     emits: { kind: "leaf", schema: { enum: ["inbox", "organized"] } },
+  },
+  prompt: {
+    check: (v) => typeof v === "string" && v.trim().length > 0 && v.length <= 2000,
+    describe: "instruction prompt (1–2000 characters)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: 2000 } },
   },
   description: {
     check: (v) => typeof v === "string" && v.length <= MAX_MATERIAL_TEXT_LENGTH,

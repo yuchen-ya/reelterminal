@@ -22,7 +22,7 @@
 /** Current record format version persisted in IndexedDB. */
 export const MATERIAL_LIBRARY_SCHEMA_VERSION = 2;
 
-export type MaterialKind = "media" | "segment" | "link" | "method";
+export type MaterialKind = "media" | "segment" | "link" | "method" | "instruction";
 export type MaterialMediaType = "video" | "audio" | "image";
 export type MaterialOrganizeStatus = "inbox" | "organized";
 export type MaterialActor = "user" | "agent";
@@ -35,6 +35,7 @@ export const MATERIAL_KINDS: readonly MaterialKind[] = [
   "segment",
   "link",
   "method",
+  "instruction",
 ];
 
 export const MATERIAL_MEDIA_TYPES: readonly MaterialMediaType[] = [
@@ -176,11 +177,17 @@ export interface MethodMaterialRecord extends MaterialRecordBase {
   readonly inputs?: readonly string[];
 }
 
+export interface InstructionMaterialRecord extends MaterialRecordBase {
+  readonly kind: "instruction";
+  readonly prompt: string;
+}
+
 export type MaterialRecord =
   | MediaMaterialRecord
   | SegmentMaterialRecord
   | LinkMaterialRecord
-  | MethodMaterialRecord;
+  | MethodMaterialRecord
+  | InstructionMaterialRecord;
 
 /* ------------------------------------------------------------------ */
 /* Journal (library-scoped undo, independent of project history)       */

@@ -107,7 +107,7 @@ export function MaterialPreview({ record, compact }: MaterialPreviewProps) {
           }}
         >
           {copied ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
-          {copied ? t("material.copied") : t("material.copyMethod")}
+          {copied ? t("material.copied") : t(record.kind === "instruction" ? "material.copyInstruction" : "material.copyMethod")}
         </button>
       </div>
     );

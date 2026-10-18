@@ -5,25 +5,25 @@ import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from
 import { ToolcraftSegmentedControl } from "@reelterminal/ui";
 import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent } from "@reelterminal/ui";
 import { useSettingsStore } from "../../../stores/settings-store";
+import { AudioEnvironmentPanel } from "./AudioEnvironmentPanel";
 import { GeneralPanel } from "./GeneralPanel";
 import { SavingPanel } from "./SavingPanel";
 import { StoragePanel } from "./StoragePanel";
 import { KeyboardShortcutsPanel } from "./KeyboardShortcutsPanel";
 
-type SettingsPanelId = "general" | "saving" | "storage" | "shortcuts";
+type SettingsPanelId = "general" | "saving" | "storage" | "shortcuts" | "models";
 
 export const SettingsDialog: React.FC = () => {
   const { t } = useTranslation();
-  const { settingsOpen, closeSettings } = useSettingsStore();
+  const { settingsOpen, settingsTab, closeSettings } = useSettingsStore();
   const [activePanel, setActivePanel] = useState<SettingsPanelId>("general");
 
-  // Every open starts on the General panel so the dialog reads the same way
-  // for users who never visit the shortcuts tab.
+  // Contextual entry points (such as captions) open the relevant settings panel.
   useEffect(() => {
     if (settingsOpen) {
-      setActivePanel("general");
+      setActivePanel(settingsTab);
     }
-  }, [settingsOpen]);
+  }, [settingsOpen, settingsTab]);
 
   return (
     <Dialog
@@ -50,13 +50,14 @@ export const SettingsDialog: React.FC = () => {
                 value={activePanel}
                 onChange={setActivePanel}
                 options={[
+                  { value: "models", label: t("audioEnvironment.title") },
                   { value: "general", label: t("settingsDialog.general") },
                   { value: "saving", label: t("settingsDialog.savingTab") },
                   { value: "storage", label: t("settingsDialog.storage") },
                   { value: "shortcuts", label: t("settingsDialog.shortcuts") },
                 ]}
               />
-              {activePanel === "general" ? (
+              {activePanel === "models" ? <AudioEnvironmentPanel /> : activePanel === "general" ? (
                 <GeneralPanel />
               ) : activePanel === "saving" ? (
                 <SavingPanel />
