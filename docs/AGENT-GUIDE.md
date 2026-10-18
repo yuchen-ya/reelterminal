@@ -60,8 +60,10 @@ start the job, inspect the remeasured result, then explicitly register the
 derived asset in the original project/workspace. Registration does not replace
 clips. Keep generated WAV/provenance files as persistent project media, separate
 from disposable analysis caches. Check the running catalog/capabilities rather
-than assuming a published package matches current source. Planned VAD, model
-backends and analysis-driven edits are tracked in [AUDIO-TODO.md](AUDIO-TODO.md).
+than assuming a published package matches current source. Local VAD
+(`speechActivity`), record-driven ducking, silence cutting and beat-snapped
+splits are implemented; remaining model backends and analysis-driven work are
+tracked in [AUDIO-TODO.md](AUDIO-TODO.md).
 
 ## MCP compatibility
 

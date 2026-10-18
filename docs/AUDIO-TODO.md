@@ -1,8 +1,10 @@
 # 音频工具链 TODO
 
-更新：2026-10-17。本文件是音频后续工作的统一待办入口；勾选项表示已经实现并验收，未勾选项不是当前产品能力。这里只留存任务，不自动启动实现或下载模型。
+更新：2026-10-18。本文件是音频后续工作的统一待办入口；勾选项表示已经实现并验收，未勾选项不是当前产品能力。这里只留存任务，不自动启动实现或下载模型。
 
 > 2026-10-18：AUD-03～AUD-06 已按本文件验收口径实现并完成本地验证，勾选同样待用户验收后进行。执行记录、提交与验证证据见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md)对应各节：AUD-03 `reelctl schema --domain`（提交 `4e5c09dc`，同一 catalog 客户端筛选，未知领域报错并列出可用领域）；AUD-04 `capabilities.get` 可选 `domain` 参数（提交 `7aa89f2b`，音频查询不再启动视频/模型/OpenCV 探测，未探测状态带 `probed:false` 且绝不标 ready）；AUD-05 `clip.cutSilenceFromAnalysis` 编辑操作（提交 `f0bc9255`，分析记录驱动 split/ripple/边缘淡化，联动对齐兄弟片段、逐轨 ripple，字幕失步与不支持映射前置拒绝）；AUD-06 `clip.splitAtBeat` 编辑操作（提交 `f292e212`，显式容差吸附最近 beatGrid 节拍，容差内无节拍明确拒绝，不伪造 downbeat）。
+
+> 2026-10-18 复审修复（提交 `3f714ea9`）：AUD-04 的 `motionTools.align`/`track` 在 motion 域未请求时补齐 `probed:false`，与文档的三态契约一致；AUD-06 的 `clip.splitAtBeat` 只接受裁剪源范围 `(inPoint, outPoint)` 内的节拍，范围外节拍不再被 clamp 成片段边缘候选，距离并列时选时间线更早者；AUD-05 的 leading/trailing/whole-clip 翻译分支补了真实 `edit.apply` 回归。验证与提交细节见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md)复审修复节；勾选仍待用户验收。
 
 > 2026-10-17：AUD-01 已按推荐批次实现并完成本地验证（提交 `40ce355b`：Silero VAD v5.1.2 + onnxruntime-node 1.30.0，锁版本、锁 sha，复用现有分析任务与记录协议），执行记录与量化验收证据见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md) AUD-01 一节；勾选待用户验收后进行。AUD-02 同日实现完毕并完成本地验证（提交 `0c91fcff`，新增 `clip.setDuckingFromAnalysis` 编辑操作，记录驱动映射 + 既有 setDucking/包络内核，全部门控与撤销/幂等回归见执行记录 AUD-02 一节），勾选同样待验收。下一步为 AUD-05 或独立排期的 AUD-03/04。
 

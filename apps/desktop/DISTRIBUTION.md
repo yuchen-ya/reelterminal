@@ -1,14 +1,12 @@
 # Desktop distribution
 
-## Version 1.2.0
+## Version 1.2.2
 
-The 1.2.0 candidate is an unsigned Windows x64 installer and portable ZIP.
-Publication status and available assets are shown on Releases. One hosted Flow A
-drag failure remains unattributed; see the
-[validation record](../../docs/performance/windows-1.2.0-release-validation-2026-10-15.md).
-No macOS 1.2.0 package is attached to this release. Historical macOS 1.1.2
-results do not qualify a new Mac package. See [release notes](../../docs/RELEASE-1.2.0.md)
-for the evidence scope and remaining limitations.
+This checkout builds version 1.2.2 as an unsigned Windows x64 installer and
+portable ZIP. Publication status and available assets are shown on Releases.
+The current audio batch (AUD-01–AUD-06) is recorded in the
+[audio execution plan](../../docs/AUDIO-PIPELINE-EXECUTION-PLAN.md); packaging
+does not by itself add functional acceptance beyond those records.
 
 A release build must use a clean, frozen source commit and an independent output
 directory; do not rename an older package to a new version. For example:
@@ -16,7 +14,7 @@ directory; do not rename an older package to a new version. For example:
 ```bash
 pnpm install --frozen-lockfile
 pnpm build:wasm
-pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.2.0-<short-sha>
+pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.2.2-<short-sha>
 ```
 
 Verify the packaged app version and `dist/performance-build.json` source SHA,

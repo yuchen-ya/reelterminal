@@ -189,7 +189,10 @@ no-op with `ok: true`.
   otherwise it reports `[overlayId]`. Read `applied[i].createdIds` by op —
   there is no guessed `results[].clipId` field.
 - **Honest capabilities**: `capabilities.get` reports what this runtime
-  actually has, per capability, from live provider preflights. The independent
+  actually has, per capability, from live provider preflights. An optional
+  `domain` parameter (`audio`, `video`, `frames`, `motion`, `render`,
+  `export`) scopes probing to that domain; probe-backed statuses outside it
+  report `probed: false` and are never available. The independent
   provider interfaces (`RenderProvider`, `ExportProvider`, and
   `ArtifactVerifier` in `src/providers.ts`) do not imply one another. A capability is
   available only when the facade ships the verb AND the provider's real

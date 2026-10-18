@@ -167,3 +167,10 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
 > 2026-10-18 全批验证（Windows，Node 22.x）：`pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2` 84 文件 2213 通过、12 既有跳过；`pnpm --filter @reelterminal/core test:run --maxWorkers=2` 182 文件 1723 通过、20 既有跳过；`pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2` 687 通过、3 跳过；desktop 定向（live-session-host/task-ledger/analysis-records-service/live-mcp/reelctl）75 通过；仓库级 `pnpm typecheck` 通过；`git diff --check` 通过。未访问用户 live API、未打开用户工程、未 push、未发布、未打安装包。
 
 > 2026-10-17 复审补充：上述“正向恒速”限制已扩展。`mapSpeechRegionsToPresenceRanges` 现通过核心 `SpeedEngine` 的源→播放时间逆映射支持变速曲线、倒放与冻结帧（冻结保持段若其源帧属于语音区间也纳入 ducking 窗口），并新增 `audioTrackIndex` 非 0 的显式拒绝。记录 config 的 `exitThreshold` 由 GUI 重检时剥离后再回放。另有同批次逐 op 预处理、CLI onnxruntime 外部化、平台/架构打包裁剪与进度单调性修复，验证见本轮 1.2.2 复审记录。
+
+## 2026-10-18 验收复审修复（提交 `3f714ea9`）
+
+- AUD-04：`motionTools.align` / `track` 在 motion 域未请求时补齐 `probed:false`，与 `maskRefine` / `patchPropagate` 的三态披露一致；新增 frames / render / export 域探测回归。
+- AUD-06：`findSnappedSplitTime` 只接受严格位于裁剪源范围 `(inPoint, outPoint)` 内的节拍，不再把范围外节拍 clamp 到片段边缘；距离并列时按时间线更早者选择（倒放一致）。新增范围外节拍、倒放并列、冻结帧与 `audioTrackIndex≠0` 回归，避免容差内有真实节拍却被边缘假候选拒绝。
+- AUD-05：新增 leading / trailing / whole-clip 翻译分支的真实 `edit.apply` 回归；`types.ts` 的 AUD-05 JSDoc 归位。
+- 验证（Windows，Node 22.x）：`pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2` 84 文件 2222 通过、12 跳过；agent-facade typecheck 通过；`git diff --check` 通过。修复前复审另跑过 core action-executor 71 通过、desktop 定向 44 通过、agent-transport 687 通过、facade 2213 通过（见上一条全批验证）。未访问用户 live API、未打开用户工程、未 push、未发布。

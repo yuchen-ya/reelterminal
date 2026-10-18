@@ -188,9 +188,10 @@ siblings with divergent timing, subtitle cues that would desync and batches
 above `maxCutRegions` (default 24) are rejected before any mutation. Beat-
 snapped cut points are an explicit edit too: `edit.apply` with op
 `clip.splitAtBeat` takes a desired cut point plus an explicit `maxShiftSec`,
-snaps to the nearest `beatGrid` beat mapped through the clip timing, and
-applies as a plain `clip.split` (one batch, one undo unit). A request with
-no beat inside the allowed movement is rejected — never an unsnapped cut.
+snaps to the nearest `beatGrid` beat strictly inside the clip's trimmed source
+span (mapped through the clip timing, earlier timeline beat on a tie), and
+applies as a plain `clip.split` (one batch, one undo unit). A request with no
+candidate beat within `maxShiftSec` is rejected — never an unsnapped cut.
 Beats are grid-model beats, not downbeats: no downbeat detector is
 installed, the core engine's internal every-4th-beat heuristic is a
 periodicity assumption deliberately not reported, and the record's BPM may
