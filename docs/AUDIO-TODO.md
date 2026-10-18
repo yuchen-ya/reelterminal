@@ -10,6 +10,8 @@
 
 > 2026-10-18：AUD-08 的 FFmpeg 分级档已实现并完成本地验证（提交 `40c41e00`）：新增 `audio.process.denoise`（`light`/`strong` afftdn + 可选 adeclick），**实测并补偿**链的固定 1200 样本延迟（白噪声探针互相关，输出再与源互相关验证对齐），保留持久衍生资产、复测响度、取消清理与 `audio.process.register` 注册路径；动态处理刻意不包含。**DeepFilterNet3 档未接入**（需先决定 torchaudio/ONNX/rust 运行时），能力与文档不做宣称。执行记录见 AUD-08 一节；勾选待用户验收。
 
+> 2026-10-18：AUD-07 已按用户确认的“可选 Python sidecar”路线实现并完成本地验证（提交 `cd31816c`）：新增 `speechTranscript` 分析类型与 `subtitle.importTranscript` 编辑操作；统一可选组件进程协议（显式解释器、JSON-lines 进度、每任务进程隔离、取消杀进程、崩溃/超时/非法输出失败）、SenseVoice 版本/权重锁定与 936 MB 下载前体积披露、显式 `allowModelDownload` 同意；时间戳来自既有 Silero VAD 句级分段（模型无原生时间戳），情绪/事件为片段级标签、不伪造置信度。真实模型链路（中文样本）与全链路字幕导入通过。**托管安装器未实现**，普通用户仍需自备 Python 环境；AUD-09 未实现。执行记录见 AUD-07 一节；勾选待用户验收。
+
 > 2026-10-18 复审修复（提交 `3f714ea9`）：AUD-04 的 `motionTools.align`/`track` 在 motion 域未请求时补齐 `probed:false`，与文档的三态契约一致；AUD-06 的 `clip.splitAtBeat` 只接受裁剪源范围 `(inPoint, outPoint)` 内的节拍，范围外节拍不再被 clamp 成片段边缘候选，距离并列时选时间线更早者；AUD-05 的 leading/trailing/whole-clip 翻译分支补了真实 `edit.apply` 回归。验证与提交细节见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md)复审修复节；勾选仍待用户验收。
 
 > 2026-10-17：AUD-01 已按推荐批次实现并完成本地验证（提交 `40ce355b`：Silero VAD v5.1.2 + onnxruntime-node 1.30.0，锁版本、锁 sha，复用现有分析任务与记录协议），执行记录与量化验收证据见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md) AUD-01 一节；勾选待用户验收后进行。AUD-02 同日实现完毕并完成本地验证（提交 `0c91fcff`，新增 `clip.setDuckingFromAnalysis` 编辑操作，记录驱动映射 + 既有 setDucking/包络内核，全部门控与撤销/幂等回归见执行记录 AUD-02 一节），勾选同样待验收。下一步为 AUD-05 或独立排期的 AUD-03/04。

@@ -12,6 +12,8 @@ downloads and user-configured provider requests are described below.
 | Import, edit, save, export, local templates | Local application and files; no cloud backend required. |
 | Whisper captions | ONNX Community models downloaded directly from Hugging Face by Transformers.js; recognition runs locally. The existing model choices and browser cache remain. First-use download requires network access. |
 | Agent audio analysis and loudness normalization | Local native FFmpeg/ffprobe, resolved from `REELTERMINAL_FFMPEG_PATH` / `REELTERMINAL_FFPROBE_PATH` or PATH. Loudness work requires `loudnorm`. No model download or audio upload; derived WAV/provenance remain in persistent local media roots. See [Audio normalization](AUDIO-NORMALIZATION.md). |
+| Agent denoise and sync-offset analysis | Local native FFmpeg/ffprobe only (`afftdn`/`adeclick`/GCC-PHAT); no model download and no audio upload. See [Audio denoise](AUDIO-DENOISE.md) and [Material analysis](MATERIAL-ANALYSIS.md). |
+| Agent speech transcription (`speechTranscript`) | Optional Python runtime (explicit `REELTERMINAL_AUDIO_MODELS_PYTHON`; the app never runs pip). After explicit `transcriptParams.allowModelDownload:true`, funasr/modelscope downloads the pinned SenseVoice-Small weights (936 291 369 bytes, sha256-pinned, Apache-2.0) from ModelScope into `~/.reelterminal/models/modelscope` (or `REELTERMINAL_MODELSCOPE_CACHE`); a local copy can be supplied with `REELTERMINAL_SENSEVOICE_MODEL_DIR`. Recognition runs locally; no audio is uploaded. Missing runtime/model is reported unavailable with the download/disk requirement. See [Audio transcript](AUDIO-TRANSCRIPT.md). |
 | Agent speech-activity analysis (VAD) | Silero VAD v5.1.2 (MIT, 2.2 MiB, sha-pinned) from the locked `snakers4/silero-vad` GitHub tag, downloaded once on first `speechActivity` analysis into `~/.reelterminal/models/`, or supplied via `REELTERMINAL_VAD_MODEL`. Inference runs locally through the optional `onnxruntime-node` package (MIT); no audio upload. Capabilities report unavailable until the runtime and pinned model are present. |
 | Person/face segmentation | Public Google model storage, unpkg and jsDelivr downloads; processing stays local. |
 | FFmpeg.wasm fallback | `unpkg.com/@ffmpeg/core@0.12.6`; downloads code/WASM, not user media. Native FFmpeg is supplied by the user on PATH. |
@@ -38,6 +40,9 @@ in user projects contact their chosen hosts when loaded.
 | `VITE_REELTERMINAL_FFMPEG_CORE_URL` | Overrides the public FFmpeg core download base. | Package CDN |
 | `VITE_REELTERMINAL_VIDSTAB_MT_URL`, `VITE_REELTERMINAL_VIDSTAB_ST_URL` | Supply the appropriate licensed core for the browser's thread mode. | Empty / disabled |
 | `DASHSCOPE_API_KEY` | Enables the user's optional Agent video review provider. Explicit upload authorization is still required. | Unavailable |
+| `REELTERMINAL_AUDIO_MODELS_PYTHON` | Explicit Python interpreter for optional audio models (SenseVoice speech transcript). The app never installs packages. | Unset / unavailable |
+| `REELTERMINAL_SENSEVOICE_MODEL_DIR` | Local pinned SenseVoice-Small directory; bypasses the ModelScope download but is still sha-verified. | `~/.reelterminal/models/modelscope/models/iic/SenseVoiceSmall` |
+| `REELTERMINAL_MODELSCOPE_CACHE` | ModelScope cache used when a consented download runs. | `~/.reelterminal/models/modelscope` |
 | `REELTERMINAL_QWEN_BASE_URL` | Selects an approved Alibaba review endpoint. | Alibaba DashScope |
 | `REELTERMINAL_CRASH_ENDPOINT` | Enables minimal desktop crash reports to a deployment-owned HTTPS endpoint. | Off |
 
