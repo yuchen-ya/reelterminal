@@ -26,6 +26,7 @@
 - [`AUDIO-NORMALIZATION.md`](AUDIO-NORMALIZATION.md) — local two-pass loudness processing, remeasurement and explicit derived-asset registration.
 - [`AUDIO-DENOISE.md`](AUDIO-DENOISE.md) — tiered local FFmpeg denoise, measured delay compensation, alignment verification and derived-asset lifecycle.
 - [`AUDIO-TRANSCRIPT.md`](AUDIO-TRANSCRIPT.md) — optional local SenseVoice transcription, external-VAD timestamps, model consent and record-driven subtitle import.
+- [`AUDIO-SEPARATION-DIARIZATION.md`](AUDIO-SEPARATION-DIARIZATION.md) — anonymous CAM++ speaker clustering and optional Demucs vocal/instrumental separation, timing and limits.
 - [`AUDIO-SPEED.md`](AUDIO-SPEED.md) — audio speed behavior and rendering limits.
 - [`MEDIA-REVIEW-WORKFLOWS.md`](MEDIA-REVIEW-WORKFLOWS.md) — reference comparison and media
   replacement workflows.
@@ -59,7 +60,7 @@
 
 ## Historical acceptance records
 
-- [`AUDIO-PIPELINE-EXECUTION-PLAN.md`](AUDIO-PIPELINE-EXECUTION-PLAN.md) — completed audio batches A–C plus the AUD-01–AUD-08 and AUD-10 records (Silero VAD, record-driven ducking, domain-filtered schema/capabilities, silence cutting, beat-snapped splits, tiered denoise, SenseVoice transcript/subtitles, sync offsets), commits and validation evidence.
+- [`AUDIO-PIPELINE-EXECUTION-PLAN.md`](AUDIO-PIPELINE-EXECUTION-PLAN.md) — completed audio batches A–C plus the AUD-01–AUD-10 records (Silero VAD, record-driven ducking, domain-filtered schema/capabilities, silence cutting, beat-snapped splits, tiered denoise, SenseVoice transcript/subtitles, speaker diarization, Demucs separation, sync offsets), commits and validation evidence.
 
 Dated records are kept as evidence and are not overwritten by newer rounds.
 Treat them as history, not current specs; the current specs are the documents

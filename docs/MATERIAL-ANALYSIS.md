@@ -29,8 +29,9 @@ loudness range, bounded waveform levels, silence intervals, and onset
 candidates. It does not upload audio or modify the project.
 
 Audio analysis (`audioSummary`, `silence`, `beatGrid`, `speechActivity`,
-`syncOffset`) requires `artifactRoot`. Without it, capabilities report these
-types unavailable and the start request is rejected before creating a job.
+`speechTranscript`, `speakerDiarization`, `syncOffset`) requires `artifactRoot`.
+Without it, capabilities report these types unavailable and the start request
+is rejected before creating a job.
 `job.status` returns audio counts and scalar measurements plus
 `summary.analysisRecord.id`; use that ID to read details. Restored jobs and
 batch checkpoints use the same compact audio view.
@@ -80,6 +81,19 @@ windows and cursors as the other series. Speech regions are acoustic model
 inferences, not semantic understanding: singing and speech-like sounds can be
 missed or falsely included, and non-speech intervals are not automatically
 deletable gaps.
+
+### Anonymous speaker diarization
+
+`media.analyze_start` with `analysisTypes: ["speakerDiarization"]` reuses the
+Silero VAD sentence segments and clusters CAM++ speaker-verification embeddings
+by cosine similarity (`diarizationParams {threshold, maxSpeakers,
+allowModelDownload}`, defaults 0.7 / 8). Labels are **anonymous clusters**
+(`speaker-1`, `speaker-2`, …) — never real identities. Overlapping speech is
+not separated, and segment boundaries remain external VAD boundaries. The
+pinned ~28 MB CAM++ model is only downloaded after explicit consent; missing
+runtime/model is reported honestly. Page results with `analysis.get
+{view:"events", series:"speakerDiarization.segments"}`. See
+[Speaker diarization and separation](AUDIO-SEPARATION-DIARIZATION.md).
 
 ### Sync offset between two media
 

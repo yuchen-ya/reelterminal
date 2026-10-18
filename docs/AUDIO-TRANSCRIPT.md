@@ -64,7 +64,7 @@
 
 ## 限制
 
-- **AUD-09 未实现**：本轮只验证并接入了 SenseVoice 一条真实模型链路；说话人聚类/分离仍待下一轮，复用本文件描述的同一进程契约。能力不会宣称它们可用。
+- **AUD-09 已接入**（同一进程契约）：`speakerDiarization`（CAM++ 匿名聚类）与 `audio.process.separate`（Demucs）见 [AUDIO-SEPARATION-DIARIZATION.md](AUDIO-SEPARATION-DIARIZATION.md)；环境音分类（PANNs）仍未实现。
 - Python 环境、模型和 CUDA 驱动由用户负责；托管安装、下载进度细分与磁盘预检执行尚未完成。
 - 仅前 120 秒；仅第一条音频流（0:a:0）；只处理 SenseVoice 支持的语种（auto/zh/en/yue/ja/ko）。
 - 时间戳是 VAD 句级，不是词级；标签是片段级；无置信度。
