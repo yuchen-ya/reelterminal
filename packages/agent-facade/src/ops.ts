@@ -1,5 +1,6 @@
 import { verifyReplacementFrames } from "./media/strict-replacement";
 import { EDGE_EPS, type PreparedCutSilenceFromAnalysisOp } from "./silence-cut-from-analysis";
+import type { PreparedSubtitleImportTranscriptOp } from "./subtitle-import-transcript";
 import { validateMediaProduction } from "@reelterminal/core/types/media-production";
 import type { MediaSetProductionOp } from "./types";
 /**
@@ -98,6 +99,7 @@ import {
   type ClipSetDuckingOp,
   type ClipCutSilenceFromAnalysisOp,
   type ClipSplitAtBeatOp,
+  type SubtitleImportTranscriptOp,
   type ClipSetDuckingFromAnalysisOp,
   type ClipSetBackgroundRemovalOp,
   type ClipAddVideoEffectOp,
@@ -1370,6 +1372,37 @@ export const SUBTITLE_IMPORT_SRT_SCHEMA: ObjectSchema = {
     describe: "non-empty SRT text of at most 256 KiB",
     required: true,
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+/**
+ * AUD-07: record-driven subtitle import. Shape validation only — record,
+ * staleness, media, cue-count and mapping gates run in
+ * enrichSubtitleImportTranscriptOps before translation.
+ */
+export const SUBTITLE_IMPORT_TRANSCRIPT_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "subtitle.importTranscript",
+    describe: '"subtitle.importTranscript"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "subtitle.importTranscript" } },
+  },
+  recordId: {
+    check: (v) => typeof v === "string" && /^analysis-[0-9a-f-]{8,}$/i.test(v),
+    describe: "an analysis record id (\"analysis-<uuid>\") from a speechTranscript run on the clip's own media",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "the clip whose placement/trim/speed/reverse/freeze timing maps the transcript onto the timeline",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  maxCues: {
+    check: (v) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 500,
+    describe: "an integer in [1, 500]: generated cue cap; default 500",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: 500 } },
   },
 };
 
@@ -3101,6 +3134,15 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         label,
       );
     }
+    case "subtitle.importTranscript": {
+      // Shape validation only; record/mapping gates run in
+      // enrichSubtitleImportTranscriptOps before any mutation starts.
+      return validateObject<SubtitleImportTranscriptOp>(
+        raw,
+        SUBTITLE_IMPORT_TRANSCRIPT_SCHEMA,
+        label,
+      );
+    }
     case "clip.splitAtBeat": {
       // Shape validation only: record gates and the beat snap run in
       // enrichSplitAtBeatOps at edit.apply/edit.validate time, before any
@@ -3320,6 +3362,11 @@ export function validateEditBatch(ops: readonly EditOp[]): void {
   if (ops.filter((op) => op.op === "subtitle.importSrt").length > 1) {
     throw invalidParams(
       "edit batch may contain at most one subtitle.importSrt op; combine the SRT cues into one document",
+    );
+  }
+  if (ops.filter((op) => op.op === "subtitle.importTranscript").length > 1) {
+    throw invalidParams(
+      "edit batch may contain at most one subtitle.importTranscript op; combine the transcript cues into one import",
     );
   }
 }
@@ -4838,6 +4885,25 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           subtitles: [
             ...(draft.timeline.subtitles ?? []).map((subtitle) => ({ ...subtitle })),
             ...parsed.subtitles.map((subtitle) => ({ ...subtitle })),
+          ],
+        }),
+      ];
+    }
+
+    case "subtitle.importTranscript": {
+      const prepared = op as PreparedSubtitleImportTranscriptOp;
+      const cues = prepared.cues;
+      if (!cues) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "subtitle.importTranscript: this op must be mapped from its analysis record first — send it through edit.apply/edit.validate, which attach the concrete cues before translation",
+        );
+      }
+      return [
+        makeAction("subtitle/setAll", {
+          subtitles: [
+            ...(draft.timeline.subtitles ?? []).map((subtitle) => ({ ...subtitle })),
+            ...cues.map((cue) => ({ ...cue, style: { ...cue.style } })),
           ],
         }),
       ];

@@ -474,7 +474,9 @@ describe("speechActivity headless session integration", () => {
         .toMatchObject({ ok: false, error: { code: "INVALID_PARAMS", message: expect.stringContaining("source duration") } });
       const unavailable = await facade["media.analyze_start"]({ mediaId: rangeImport.value.mediaId, analysisTypes: ["speechTranscript"] });
       expect(unavailable).toMatchObject({ ok: false, error: { code: "UNSUPPORTED" } });
-      if (!unavailable.ok) expect(JSON.stringify(unavailable.error.details)).toContain("speechActivity");
+      // speechTranscript is implemented now, so this gate is the optional
+      // Python runtime or the pinned model — never an "unavailable type" list.
+      if (!unavailable.ok) expect(unavailable.error.message).toMatch(/audio-model|Python|funasr|SenseVoice/i);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

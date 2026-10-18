@@ -837,21 +837,38 @@ export interface MediaSyncOffsetParams {
   readonly windowSec?: number;
 }
 
+/**
+ * Tuning for the "speechTranscript" analysis type (AUD-07): local SenseVoice
+ * Small over externally detected VAD segments. Timestamps are the VAD's
+ * sentence-level boundaries, never ASR-native word times. A missing model is
+ * only downloaded after explicit `allowModelDownload: true` consent.
+ */
+export interface MediaTranscriptParams {
+  /** Expected language hint; "auto" lets SenseVoice detect it. Default "auto". */
+  readonly language?: "auto" | "zh" | "en" | "yue" | "ja" | "ko";
+  /** Inverse text normalization (numbers etc.); default true. */
+  readonly useItn?: boolean;
+  /** Explicit consent to download the pinned 936 MB model on first use. Default false. */
+  readonly allowModelDownload?: boolean;
+}
+
 export interface MediaAnalyzeStartParams {
   /** Explicit consent to send this range to the configured Alibaba cloud service. */
   readonly cloudUpload?: boolean;
   readonly reviewQuestion?: string;
-  /** Original media seconds; audioSummary/silence/beatGrid maximum 120s, videoReview explicit range maximum 20s. */
+  /** Original media seconds; audioSummary/silence/beatGrid/speechActivity/speechTranscript/syncOffset maximum 120s, videoReview explicit range maximum 20s. */
   readonly startSec?: number;
   readonly endSec?: number;
   readonly mediaId: string;
   readonly analysisTypes: readonly MediaAnalysisType[];
   /** Silence analysis tuning; valid only when analysisTypes includes "silence". Omitted fields keep the GUI-aligned defaults. */
   readonly silenceParams?: MediaSilenceAnalysisParams;
-  /** Speech-activity (Silero VAD) tuning; valid only when analysisTypes includes "speechActivity". Omitted fields keep Silero-reference defaults. */
+  /** Speech-activity (Silero VAD) tuning; valid when analysisTypes includes "speechActivity" or "speechTranscript". Omitted fields keep Silero-reference defaults. */
   readonly vadParams?: MediaSpeechVadParams;
   /** Sync-offset tuning; valid only when analysisTypes includes "syncOffset". The reference media is required. */
   readonly syncOffsetParams?: MediaSyncOffsetParams;
+  /** Local SenseVoice transcript tuning; valid only when analysisTypes includes "speechTranscript". */
+  readonly transcriptParams?: MediaTranscriptParams;
   /**
    * Re-check linkage: the id of a previous analysis record. The new run uses
    * the same configuration discipline and its record links back via
@@ -1246,6 +1263,7 @@ export const EDIT_OP_TYPES = [
   "requirement.update",
   "track.update",
   "subtitle.importSrt",
+  "subtitle.importTranscript",
   "clip.setColorGrade",
   "clip.setKeyframes",
   "clip.applyReframe",
@@ -1661,6 +1679,24 @@ export interface SubtitleImportSrtOp {
   readonly op: "subtitle.importSrt";
   /** Inline SRT text, capped at 256 KiB and 500 cues. */
   readonly srtContent: string;
+}
+
+/**
+ * subtitle.importTranscript — record-driven subtitle import (AUD-07). Reads a
+ * speechTranscript analysis record and maps its VAD-segment text through the
+ * named clip's placement/trim/speed/reverse/freeze timing onto the timeline,
+ * then reuses the same core subtitle/setAll action as subtitle.importSrt
+ * (one edit batch = one undo unit). The record, staleness, media, cue-count
+ * and empty-text gates run before any mutation.
+ */
+export interface SubtitleImportTranscriptOp {
+  readonly op: "subtitle.importTranscript";
+  /** analysis record id from a speechTranscript run on the clip's own media. */
+  readonly recordId: string;
+  /** The clip whose source timing maps transcript segments onto the timeline. */
+  readonly clipId: string;
+  /** Cap on generated cues, [1, 500]. Default 500 (the SRT import limit). */
+  readonly maxCues?: number;
 }
 
 export interface ClipSetColorGradeOp {
@@ -2161,6 +2197,7 @@ export type EditOp =
   | MarkerRemoveOp
   | RequirementUpdateOp
   | SubtitleImportSrtOp
+  | SubtitleImportTranscriptOp
   | ClipSetColorGradeOp
   | ClipSetKeyframesOp
   | ClipApplyReframeOp
@@ -2469,6 +2506,7 @@ export const ANALYSIS_EVENT_SERIES = [
   "silence.silentRegions",
   "beatGrid.beats",
   "speechActivity.speechRegions",
+  "speechTranscript.segments",
 ] as const;
 
 export type AnalysisEventSeries = (typeof ANALYSIS_EVENT_SERIES)[number];

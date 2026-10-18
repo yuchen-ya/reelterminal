@@ -51,6 +51,8 @@ import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 import { resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
 import { saveAnalysisRecord } from "./analysis-records";
 import { setSpeechVadModelFactoryForTests } from "./speech-vad";
+import { setSpeechTranscriptModelForTests, setTranscriptModelReadyForTests } from "./speech-transcript";
+import { setAudioModelsProbeForTests } from "./media/audio-models-runner";
 
 const LIVE_AUDIO_TOOLCHAIN = await resolveToolFfmpeg();
 
@@ -2988,6 +2990,78 @@ describe("live local audio analysis parity", () => {
       await rm(mediaRoot, { recursive: true, force: true });
     }
   }, 60000);
+
+  it("runs speechTranscript through the optional model seam and imports subtitles live", async () => {
+    setSpeechVadModelFactoryForTests(async () => ({
+      async detect(chunk: Float32Array) {
+        let sum = 0;
+        for (const sample of chunk) sum += sample * sample;
+        return Math.sqrt(sum / chunk.length) > 0.02 ? 0.9 : 0.05;
+      },
+    }));
+    setAudioModelsProbeForTests(async () => ({
+      available: true,
+      details: {
+        python: "/fake/python",
+        pythonVersion: "3.10.19",
+        scriptDir: "/fake/python",
+        packages: { funasr: true, modelscope: true, torch: true, soundfile: true, numpy: true },
+        versions: { funasr: "1.3.1" },
+      },
+    }));
+    setTranscriptModelReadyForTests(async () => null);
+    setSpeechTranscriptModelForTests(async (request) => ({
+      texts: request.segments.map((_segment, index) => `<|zh|><|HAPPY|>第${index + 1}句`),
+      model: "iic/SenseVoiceSmall",
+      device: "cpu",
+      loadSeconds: 0.1,
+      inferenceSeconds: 0.1,
+    }));
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-transcript-"));
+    const sourcePath = await writeNoisyToneWav(mediaRoot, "speech.wav", 5);
+    const facade = liveFacade({ store: new FakeLiveStore(), mediaRoots: [mediaRoot] });
+    try {
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const started = await facade["media.analyze_start"]({
+        mediaId: imported.value.mediaId,
+        analysisTypes: ["speechTranscript"],
+        startSec: 0,
+        endSec: 5,
+        transcriptParams: { language: "zh" },
+      });
+      if (!started.ok) throw new Error(started.error.message);
+      const job = await waitForJob(facade, started.value.jobId, 20000);
+      expect(job).toMatchObject({ state: "done" });
+      const result = job.result;
+      if (!result || !("summary" in result)) throw new Error("transcript returned no analysis result");
+      const summary = result.summary as Record<string, any>;
+      expect(summary.speechTranscript).toMatchObject({ timestampSource: "external-vad-silero", segmentCount: expect.any(Number) });
+      expect(summary.speechTranscript).not.toHaveProperty("segments");
+      const recordId = (summary.analysisRecord as { id: string }).id;
+      const events = await facade["analysis.get"]({ recordId, view: "events", series: "speechTranscript.segments", startSec: 0, endSec: 5, limit: 10 });
+      if (!events.ok) throw new Error(events.error.message);
+      expect((events.value as import("./analysis-records").AnalysisAgentView).events!.items.length).toBe(summary.speechTranscript.segmentCount);
+      const seeded = await facade["edit.apply"]({ ops: [
+        { op: "track.add", trackType: "audio", trackId: "a1" },
+        { op: "clip.add", trackId: "a1", mediaId: imported.value.mediaId, startTime: 0, duration: 5, inPoint: 0, outPoint: 5 },
+      ] });
+      if (!seeded.ok) throw new Error(seeded.error.message);
+      const clipId = seeded.value.applied[1]!.createdIds[0]!;
+      const applied = await facade["edit.apply"]({ ops: [{ op: "subtitle.importTranscript", recordId, clipId }] });
+      if (!applied.ok) throw new Error(applied.error.message);
+      const timeline = await facade["timeline.get"]();
+      if (!timeline.ok) throw new Error(timeline.error.message);
+      expect(timeline.value.subtitles.length).toBe(summary.speechTranscript.segmentCount);
+    } finally {
+      setSpeechVadModelFactoryForTests(null);
+      setSpeechTranscriptModelForTests(null);
+      setTranscriptModelReadyForTests(null);
+      setAudioModelsProbeForTests(null);
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 40000);
 
   it("runs speechActivity with the shared Silero kernel path, compact status and paged regions", async () => {
     // Hermetic: a deterministic amplitude-threshold stand-in replaces the

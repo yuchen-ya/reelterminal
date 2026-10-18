@@ -71,6 +71,13 @@ export interface AnalysisRecord {
     readonly vadParams?: { readonly threshold: number; readonly exitThreshold: number; readonly minSpeechSec: number; readonly minSilenceSec: number; readonly padSec: number };
     /** Effective sync-offset tuning, including defaults; absent on historical records. */
     readonly syncOffsetParams?: { readonly referenceMediaId: string; readonly referenceStartSec: number; readonly searchRangeSec: number; readonly windowSec: number; readonly guardSec: number };
+    /** Effective transcript tuning and the external-VAD segmentation it used; absent on historical records. */
+    readonly transcriptParams?: {
+      readonly language: string;
+      readonly useItn: boolean;
+      readonly allowModelDownload: boolean;
+      readonly vadParams: { readonly threshold: number; readonly exitThreshold: number; readonly minSpeechSec: number; readonly minSilenceSec: number; readonly padSec: number };
+    };
   };
   readonly provenance: readonly {
     readonly kind: AnalysisProvenance;
@@ -122,6 +129,7 @@ export interface AnalysisReplayParams {
   readonly silenceParams?: Required<MediaSilenceAnalysisParams>;
   readonly vadParams?: { readonly threshold: number; readonly minSpeechSec: number; readonly minSilenceSec: number; readonly padSec: number };
   readonly syncOffsetParams?: { readonly referenceMediaId: string; readonly referenceStartSec: number; readonly searchRangeSec: number; readonly windowSec: number };
+  readonly transcriptParams?: { readonly language: string; readonly useItn: boolean; readonly allowModelDownload: boolean };
 }
 
 export function analysisReplayParams(record: AnalysisRecord): AnalysisReplayParams {
@@ -148,6 +156,15 @@ export function analysisReplayParams(record: AnalysisRecord): AnalysisReplayPara
             referenceStartSec: record.config.syncOffsetParams.referenceStartSec,
             searchRangeSec: record.config.syncOffsetParams.searchRangeSec,
             windowSec: record.config.syncOffsetParams.windowSec,
+          },
+        }
+      : {}),
+    ...(record.config.transcriptParams
+      ? {
+          transcriptParams: {
+            language: record.config.transcriptParams.language,
+            useItn: record.config.transcriptParams.useItn,
+            allowModelDownload: record.config.transcriptParams.allowModelDownload,
           },
         }
       : {}),
@@ -248,6 +265,7 @@ const AUDIO_SERIES = {
   "silence.silentRegions": { source: "silence", field: "silentRegions", count: "regionCount" },
   "beatGrid.beats": { source: "beatGrid", field: "beats", count: "beatCount" },
   "speechActivity.speechRegions": { source: "speechActivity", field: "speechRegions", count: "regionCount" },
+  "speechTranscript.segments": { source: "speechTranscript", field: "segments", count: "segmentCount" },
 } as const;
 type AudioSeries = keyof typeof AUDIO_SERIES;
 
@@ -255,7 +273,8 @@ type AudioSeries = keyof typeof AUDIO_SERIES;
 export function compactAnalysisFacts(source: string, facts: Record<string, unknown>): Record<string, unknown> {
   const omitted = source === "audioSummary" ? ["waveform", "onsets", "silence"]
     : source === "silence" ? ["silentRegions"] : source === "beatGrid" ? ["beats"]
-    : source === "speechActivity" ? ["speechRegions"] : [];
+    : source === "speechActivity" ? ["speechRegions"]
+    : source === "speechTranscript" ? ["segments"] : [];
   return Object.fromEntries(Object.entries(facts).filter(([key]) => !omitted.includes(key)));
 }
 

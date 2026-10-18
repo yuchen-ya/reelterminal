@@ -82,6 +82,7 @@ import {
   TRANSITION_REMOVE_SCHEMA,
   TRANSITION_UPDATE_SCHEMA,
   SUBTITLE_IMPORT_SRT_SCHEMA,
+  SUBTITLE_IMPORT_TRANSCRIPT_SCHEMA,
   CLIP_SET_COLOR_GRADE_SCHEMA,
   REFERENCE_SET_COMPARISON_SCHEMA,
   REFERENCE_CLEAR_COMPARISON_SCHEMA,
@@ -454,6 +455,12 @@ export const MEDIA_SPEECH_VAD_PARAMS_SCHEMA: ObjectSchema = {
   padSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1, describe: "seconds each region extends on both sides (clamped to the range), in [0, 1]; default 0.03 (Silero reference)", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } } },
 };
 
+export const MEDIA_TRANSCRIPT_PARAMS_SCHEMA: ObjectSchema = {
+  language: { check: (v) => typeof v === "string" && ["auto", "zh", "en", "yue", "ja", "ko"].includes(v), describe: 'language hint: "auto" | "zh" | "en" | "yue" | "ja" | "ko"; default "auto"', emits: { kind: "leaf", schema: { enum: ["auto", "zh", "en", "yue", "ja", "ko"] } } },
+  useItn: { check: (v) => typeof v === "boolean", describe: "inverse text normalization; default true", emits: { kind: "leaf", schema: { type: "boolean" } } },
+  allowModelDownload: { check: (v) => typeof v === "boolean", describe: "explicit consent to download the pinned 936 MB SenseVoice model on first use; default false", emits: { kind: "leaf", schema: { type: "boolean" } } },
+};
+
 export const MEDIA_SYNC_OFFSET_PARAMS_SCHEMA: ObjectSchema = {
   referenceMediaId: { check: isNonEmptyString, describe: "media-library id of the reference signal (required)", required: true, emits: { kind: "leaf", schema: { type: "string", minLength: 1 } } },
   referenceStartSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0, describe: "reference source seconds where the comparison starts; default 0", emits: { kind: "leaf", schema: { type: "number", minimum: 0 } } },
@@ -465,7 +472,7 @@ export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
   cloudUpload: { check: (v) => typeof v === "boolean", describe: "must be true for videoReview: uploads the selected range to Alibaba", emits: { kind: "leaf", schema: { type: "boolean" } } },
   reviewQuestion: { check: (v) => typeof v === "string" && v.length <= 1000, describe: "optional video review focus, at most 1000 characters", emits: { kind: "leaf", schema: { type: "string", maxLength: 1000 } } },
   startSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0, describe: "nonnegative source seconds", emits: { kind: "leaf", schema: { type: "number", minimum: 0 } } },
-  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary/silence/beatGrid/speechActivity/syncOffset range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
+  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary/silence/beatGrid/speechActivity/speechTranscript/syncOffset range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
   mediaId: {
     check: isNonEmptyString,
     describe: "a non-empty media-library id",
@@ -512,6 +519,15 @@ export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
       ),
     describe: "optional speech-activity tuning {threshold, minSpeechSec, minSilenceSec, padSec}; valid only when analysisTypes includes \"speechActivity\"; defaults follow the Silero reference (0.5, 0.25 s, 0.1 s, 0.03 s)",
     emits: { kind: "object", schema: MEDIA_SPEECH_VAD_PARAMS_SCHEMA },
+  },
+  transcriptParams: {
+    check: (value) =>
+      value !== null && typeof value === "object" && !Array.isArray(value) &&
+      Object.entries(value).every(([key, val]) =>
+        key in MEDIA_TRANSCRIPT_PARAMS_SCHEMA && MEDIA_TRANSCRIPT_PARAMS_SCHEMA[key]!.check(val),
+      ),
+    describe: "optional local SenseVoice transcript tuning {language, useItn, allowModelDownload}; valid only when analysisTypes includes \"speechTranscript\"; model download needs explicit allowModelDownload:true",
+    emits: { kind: "object", schema: MEDIA_TRANSCRIPT_PARAMS_SCHEMA },
   },
   syncOffsetParams: {
     check: (value) =>
@@ -814,6 +830,7 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "marker.remove": MARKER_REMOVE_SCHEMA,
   "requirement.update": REQUIREMENT_UPDATE_SCHEMA,
   "subtitle.importSrt": SUBTITLE_IMPORT_SRT_SCHEMA,
+  "subtitle.importTranscript": SUBTITLE_IMPORT_TRANSCRIPT_SCHEMA,
   "clip.setColorGrade": CLIP_SET_COLOR_GRADE_SCHEMA,
   "clip.setKeyframes": CLIP_SET_KEYFRAMES_SCHEMA,
   "clip.applyReframe": CLIP_APPLY_REFRAME_SCHEMA,

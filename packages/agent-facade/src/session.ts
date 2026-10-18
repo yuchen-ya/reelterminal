@@ -6,6 +6,8 @@ import { AUDIO_PROCESS_DENOISE_SCHEMA, AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PRO
 import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { analyzeLocalAudio, analyzeSilence, analyzeBeatGrid, audioAnalysisPreflight, resolveSilenceAnalysisParams, AUDIO_LIMITS } from "./audio-analysis";
 import { analyzeSpeechActivity, resolveSpeechVadParams, speechVadRuntimePreflight } from "./speech-vad";
+import { transcribeSpeechRegions, resolveTranscriptParams, assertTranscriptModelReady, type ResolvedTranscriptParams } from "./speech-transcript";
+import { probeAudioModelsRuntime } from "./media/audio-models-runner";
 import { analyzeSyncOffset, resolveSyncOffsetParams, SYNC_OFFSET_ANALYSIS_RATE, type ResolvedSyncOffsetParams, type SyncOffsetReference } from "./sync-offset";
 import { runVideoCandidateAnalyses, videoCandidatesPreflight, type VideoCandidateBundle } from "./video-candidates";
 import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
@@ -1352,18 +1354,40 @@ export class AgentFacadeSession {
       }
       const silenceParams = valid.analysisTypes.includes("silence")
         ? resolveSilenceAnalysisParams(valid.silenceParams) : undefined;
-      if (valid.vadParams !== undefined && !valid.analysisTypes.includes("speechActivity")) {
-        throw new FacadeError("INVALID_PARAMS", "vadParams apply only when analysisTypes includes \"speechActivity\"");
+      if (valid.vadParams !== undefined && !valid.analysisTypes.includes("speechActivity") && !valid.analysisTypes.includes("speechTranscript")) {
+        throw new FacadeError("INVALID_PARAMS", "vadParams apply only when analysisTypes includes \"speechActivity\" or \"speechTranscript\"");
       }
-      const vadParams = valid.analysisTypes.includes("speechActivity")
+      const vadParams = valid.analysisTypes.includes("speechActivity") || valid.analysisTypes.includes("speechTranscript")
         ? resolveSpeechVadParams(valid.vadParams) : undefined;
+      if (valid.transcriptParams !== undefined && !valid.analysisTypes.includes("speechTranscript")) {
+        throw new FacadeError("INVALID_PARAMS", "transcriptParams apply only when analysisTypes includes \"speechTranscript\"");
+      }
+      const transcriptParams = valid.analysisTypes.includes("speechTranscript")
+        ? resolveTranscriptParams(valid.transcriptParams) : undefined;
       if (valid.syncOffsetParams !== undefined && !valid.analysisTypes.includes("syncOffset")) {
         throw new FacadeError("INVALID_PARAMS", "syncOffsetParams apply only when analysisTypes includes \"syncOffset\"");
       }
       const syncOffsetParams = valid.analysisTypes.includes("syncOffset")
         ? resolveSyncOffsetParams(valid.syncOffsetParams) : undefined;
+      // Reject unknown analysis types BEFORE any runtime/model probe so a
+      // mixed unsupported request reports the unavailable-type list instead of
+      // an unrelated optional-runtime failure.
+      const unavailable = valid.analysisTypes.filter(
+        (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview" && type !== "silence" && type !== "beatGrid" &&
+          type !== "speechActivity" && type !== "speechTranscript" && type !== "syncOffset" && type !== "sceneCuts" && type !== "blackFrames" && type !== "duplicateFrames",
+      );
+      if (unavailable.length > 0) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          `media.analyze_start: unavailable analysis types: ${unavailable.join(", ")}`,
+          {
+            unavailableTypes: unavailable,
+            availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid", "speechActivity", "speechTranscript", "syncOffset", "sceneCuts", "blackFrames", "duplicateFrames"],
+          },
+        );
+      }
       const audioBackedTypes = valid.analysisTypes.filter(
-        (type) => type === "audioSummary" || type === "silence" || type === "beatGrid" || type === "speechActivity" || type === "syncOffset",
+        (type) => type === "audioSummary" || type === "silence" || type === "beatGrid" || type === "speechActivity" || type === "speechTranscript" || type === "syncOffset",
       );
       if (audioBackedTypes.length > 0) {
         requireArtifactRoot(this.config.artifactRoot, "media.analyze_start audio analysis");
@@ -1375,6 +1399,12 @@ export class AgentFacadeSession {
           const vadRuntime = await speechVadRuntimePreflight();
           if (!vadRuntime.available) throw new FacadeError("UNSUPPORTED", vadRuntime.reason);
         }
+        if (valid.analysisTypes.includes("speechTranscript")) {
+          const vadRuntime = await speechVadRuntimePreflight();
+          if (!vadRuntime.available) throw new FacadeError("UNSUPPORTED", vadRuntime.reason);
+          const models = await probeAudioModelsRuntime();
+          if (!models.available) throw new FacadeError("UNSUPPORTED", models.reason);
+        }
       }
       const videoCandidateTypes = valid.analysisTypes.filter(
         (type) => type === "sceneCuts" || type === "blackFrames" || type === "duplicateFrames",
@@ -1383,20 +1413,8 @@ export class AgentFacadeSession {
         const ready = await videoCandidatesPreflight();
         if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       }
-      const unavailable = valid.analysisTypes.filter(
-        (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview" && type !== "silence" && type !== "beatGrid" &&
-          type !== "speechActivity" && type !== "syncOffset" && type !== "sceneCuts" && type !== "blackFrames" && type !== "duplicateFrames",
-      );
-      if (unavailable.length > 0) {
-        throw new FacadeError(
-          "UNSUPPORTED",
-          `media.analyze_start: unavailable analysis types: ${unavailable.join(", ")}`,
-          {
-            unavailableTypes: unavailable,
-            availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid", "speechActivity", "syncOffset", "sceneCuts", "blackFrames", "duplicateFrames"],
-          },
-        );
-      }
+      let transcriptModelDir: string | null | undefined;
+      if (transcriptParams) transcriptModelDir = await assertTranscriptModelReady(transcriptParams);
       const media = this.project.mediaLibrary.items.find(
         (item) => item.id === valid.mediaId,
       );
@@ -1421,6 +1439,7 @@ export class AgentFacadeSession {
         silenceParams,
         vadParams,
         syncOffsetParams,
+        transcriptParams,
       };
       const prior = this.beginMutation<{
         jobId: string;
@@ -1527,6 +1546,8 @@ export class AgentFacadeSession {
         vadParams,
         syncOffsetParams,
         syncReference,
+        transcriptParams,
+        transcriptModelDir,
       );
       return ok<MediaAnalyzeStartResult>({
         ...ledgerValue,
@@ -2919,6 +2940,8 @@ export class AgentFacadeSession {
     vadParams?: import("./types").MediaSpeechVadParams,
     syncOffsetParams?: ResolvedSyncOffsetParams,
     syncReference?: SyncOffsetReference,
+    transcriptParams?: ResolvedTranscriptParams,
+    transcriptModelDir?: string | null,
   ): Promise<void> {
     let persistedRecordId: string | null = null;
     try {
@@ -2949,8 +2972,29 @@ export class AgentFacadeSession {
         ? await analyzeSilence(sourcePath, range, silenceParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("silence", percent) })) : undefined;
       const beatGrid = analysisTypes.includes("beatGrid")
         ? await analyzeBeatGrid(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("beatGrid", percent) })) : undefined;
-      const speechActivity = analysisTypes.includes("speechActivity")
-        ? await analyzeSpeechActivity(sourcePath, range, vadParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("speechActivity", percent) })) : undefined;
+      const wantsSpeechActivity = analysisTypes.includes("speechActivity");
+      const wantsTranscript = analysisTypes.includes("speechTranscript");
+      const speechActivity = wantsSpeechActivity || wantsTranscript
+        ? await analyzeSpeechActivity(sourcePath, range, vadParams, controller.signal, (percent) => this.jobs.markProgress(jobId, {
+            phase: "rendering",
+            percent: wantsSpeechActivity
+              ? progressPlan.percent("speechActivity", percent)
+              : progressPlan.percent("speechTranscript", percent * 0.2),
+          })) : undefined;
+      const speechTranscript = wantsTranscript
+        ? await transcribeSpeechRegions(
+            sourcePath,
+            range,
+            speechActivity!.speechRegions,
+            transcriptParams!,
+            resolveSpeechVadParams(vadParams),
+            transcriptModelDir ?? null,
+            controller.signal,
+            (percent) => this.jobs.markProgress(jobId, {
+              phase: "rendering",
+              percent: progressPlan.percent("speechTranscript", (wantsSpeechActivity ? 0 : 0.2) + (wantsSpeechActivity ? 1 : 0.8) * percent),
+            }),
+          ) : undefined;
       const syncOffset = analysisTypes.includes("syncOffset")
         ? await analyzeSyncOffset(sourcePath, range, syncReference!.path, syncOffsetParams!, syncReference!, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("syncOffset", percent) })) : undefined;
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
@@ -2990,6 +3034,7 @@ export class AgentFacadeSession {
         ...(silence ? { silence: { ...silence, mediaId, sourceFingerprint } } : {}),
         ...(beatGrid ? { beatGrid: { ...beatGrid, mediaId, sourceFingerprint } } : {}),
         ...(speechActivity ? { speechActivity: { ...speechActivity, mediaId, sourceFingerprint } } : {}),
+        ...(speechTranscript ? { speechTranscript: { ...speechTranscript, mediaId, sourceFingerprint } } : {}),
         ...(syncOffset ? { syncOffset: { ...syncOffset, mediaId, sourceFingerprint } } : {}),
         technicalQuality: {
           mediaId,
@@ -3028,6 +3073,7 @@ export class AgentFacadeSession {
         ...(silence ? { silence: compactAnalysisFacts("silence", summary.silence!) } : {}),
         ...(beatGrid ? { beatGrid: compactAnalysisFacts("beatGrid", summary.beatGrid!) } : {}),
         ...(speechActivity ? { speechActivity: compactAnalysisFacts("speechActivity", summary.speechActivity!) } : {}),
+        ...(speechTranscript ? { speechTranscript: compactAnalysisFacts("speechTranscript", summary.speechTranscript!) } : {}),
         ...(syncOffset ? { syncOffset: compactAnalysisFacts("syncOffset", summary.syncOffset!) } : {}),
       };
       // Durable, traceable record: audio analysis requires artifactRoot so
@@ -3058,6 +3104,7 @@ export class AgentFacadeSession {
           cloudUpload: analysisTypes.includes("videoReview"),
           ...(silence ? { silenceParams: silence.parameters } : {}),
           ...(speechActivity ? { vadParams: speechActivity.parameters } : {}),
+          ...(speechTranscript ? { transcriptParams: speechTranscript.parameters } : {}),
           ...(syncOffset ? { syncOffsetParams: syncOffset.parameters } : {}),
           ...(reviewQuestion !== undefined ? { reviewQuestion } : {}),
         },
@@ -3076,6 +3123,9 @@ export class AgentFacadeSession {
             : []),
           ...(analysisTypes.includes("speechActivity")
             ? [{ kind: "local-measurement" as const, provider: "local-silero-vad-onnx", analysisType: "speechActivity" }]
+            : []),
+          ...(analysisTypes.includes("speechTranscript")
+            ? [{ kind: "local-measurement" as const, provider: "local-sensevoice-funasr-python", analysisType: "speechTranscript" }]
             : []),
           ...(analysisTypes.includes("syncOffset")
             ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-pcm-gcc-phat", analysisType: "syncOffset" }]
@@ -3097,6 +3147,7 @@ export class AgentFacadeSession {
           ...(silence ? [{ source: "silence", facts: silence }] : []),
           ...(beatGrid ? [{ source: "beatGrid", facts: beatGrid }] : []),
           ...(speechActivity ? [{ source: "speechActivity", facts: speechActivity }] : []),
+          ...(speechTranscript ? [{ source: "speechTranscript", facts: speechTranscript }] : []),
           ...(syncOffset ? [{ source: "syncOffset", facts: syncOffset }] : []),
           ...(candidates?.sceneCuts ? [{ source: "sceneCuts", facts: candidates.sceneCuts }] : []),
           ...(candidates?.blackFrames ? [{ source: "blackFrames", facts: candidates.blackFrames }] : []),
@@ -3112,6 +3163,9 @@ export class AgentFacadeSession {
           ...(speechActivity
             ? [{ source: "speechActivity", note: "speech regions are Silero model inferences from speech probability, not semantic understanding; non-speech gaps are not automatically deletable", regionCount: speechActivity.regionCount, totalSpeechDurationSec: speechActivity.totalSpeechDurationSec }]
             : []),
+          ...(speechTranscript
+            ? [{ source: "speechTranscript", note: "transcript text/emotion/event tags are SenseVoice model output; timestamps come from the external Silero VAD sentence segmentation, not word-level ASR timing; emotion/event labels are segment-level, not precise intervals", segmentCount: speechTranscript.segmentCount, languageCounts: speechTranscript.languageCounts }]
+            : []),
           ...(syncOffset
             ? [{ source: "syncOffset", note: "GCC-PHAT correlation statistics, not a calibrated confidence; a positive offset means the target lags the reference; clock drift is reported, never silently corrected", verdict: syncOffset.verdict, offsetSec: syncOffset.offsetSec, prominenceDb: syncOffset.peaks.prominenceDb, marginToSecondPeakDb: syncOffset.peaks.marginToSecondPeakDb, driftDetected: syncOffset.drift.detected }]
             : []),
@@ -3126,6 +3180,13 @@ export class AgentFacadeSession {
           ] : []),
           ...(analysisTypes.includes("beatGrid")
             ? [{ field: "beatGrid.downbeats", note: "No downbeat detector is installed; beatGrid results intentionally omit downbeats" }]
+            : []),
+          ...(analysisTypes.includes("speechTranscript")
+            ? [
+                { field: "speechTranscript.wordTimestamps", note: "SenseVoice-Small emits no timestamps; stored segment boundaries are external Silero VAD sentence boundaries" },
+                { field: "speechTranscript.confidence", note: "The model returns no confidence; no confidence value is fabricated" },
+                { field: "speechTranscript.modelRevision", note: "The pinned model file is sha-verified, but the upstream repository may publish newer revisions under the same name" },
+              ]
             : []),
         ],
         recheckOf: recheckTarget ? recheckTarget.id : null,

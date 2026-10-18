@@ -31,7 +31,7 @@ export type ProcessedAudioArtifact = NormalizeAudioArtifact | DenoiseAudioArtifa
 function compactAnalysisJobResult(result: AnalysisJobResult): AnalysisJobResult {
   const summary: Record<string, unknown> = {};
   for (const [source, value] of Object.entries(result.summary)) {
-    const projected = (source === "audioSummary" || source === "silence" || source === "beatGrid" || source === "speechActivity") &&
+    const projected = (source === "audioSummary" || source === "silence" || source === "beatGrid" || source === "speechActivity" || source === "speechTranscript") &&
       value !== null && typeof value === "object" && !Array.isArray(value)
       ? compactAnalysisFacts(source, value as Record<string, unknown>)
       : value;

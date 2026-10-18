@@ -12,6 +12,7 @@ export type AnalysisProgressStage =
   | "silence"
   | "beatGrid"
   | "speechActivity"
+  | "speechTranscript"
   | "syncOffset"
   | "candidates";
 
@@ -35,6 +36,7 @@ const ORDER: readonly AnalysisProgressStage[] = [
   "silence",
   "beatGrid",
   "speechActivity",
+  "speechTranscript",
   "syncOffset",
   "candidates",
 ];
@@ -45,6 +47,7 @@ const WEIGHTS: Readonly<Record<AnalysisProgressStage, number>> = {
   silence: 1,
   beatGrid: 1,
   speechActivity: 1,
+  speechTranscript: 3,
   syncOffset: 1,
   candidates: 2,
 };
@@ -56,6 +59,7 @@ function presentStages(analysisTypes: readonly string[]): StageSpec[] {
   if (analysisTypes.includes("silence")) present.add("silence");
   if (analysisTypes.includes("beatGrid")) present.add("beatGrid");
   if (analysisTypes.includes("speechActivity")) present.add("speechActivity");
+  if (analysisTypes.includes("speechTranscript")) present.add("speechTranscript");
   if (analysisTypes.includes("syncOffset")) present.add("syncOffset");
   if (analysisTypes.some((type) => type === "sceneCuts" || type === "blackFrames" || type === "duplicateFrames")) {
     present.add("candidates");

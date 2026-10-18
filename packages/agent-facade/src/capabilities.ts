@@ -6,6 +6,7 @@ import { MAX_PATCH_PROPAGATE_FRAMES } from "./plugins/patch-propagation";
 import { opencvToolPreflight } from "./media/opencv-runner";
 import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
 import { speechVadPreflight } from "./speech-vad";
+import { AUDIO_MODEL_COMPONENTS, SENSEVOICE_MODEL, probeAudioModelsRuntime, senseVoiceModelPresence } from "./media/audio-models-runner";
 import {
   AUDIO_NORMALIZE_MAX_INTEGRATED_DEVIATION_LU,
   AUDIO_NORMALIZE_MAX_TRUE_PEAK_OVERSHOOT_DBTP,
@@ -209,6 +210,14 @@ export async function buildCapabilities(
   const wantsFfmpegTools = wants("video") || wants("frames") || wants("motion");
   const audioReady: CapabilityStatus = wants("audio") ? await audioAnalysisPreflight() : notProbed("audio");
   const speechVadReady: CapabilityStatus = wants("audio") ? await speechVadPreflight() : notProbed("audio");
+  const audioModelsReady = wants("audio")
+    ? await probeAudioModelsRuntime().then(
+        (result) => result.available
+          ? { available: true as const, details: result.details }
+          : { available: false as const, reason: result.reason },
+      )
+    : { available: false as const, probed: false as const, reason: "The optional audio-model runtime was not probed because the audio domain was not requested." };
+  const senseVoicePresence = wants("audio") ? await senseVoiceModelPresence() : null;
   const videoReady: CapabilityStatus = wants("video") ? await videoReviewPreflight() : notProbed("video");
   const ffmpegReady: CapabilityStatus = wantsFfmpegTools ? await ffmpegToolPreflight() : notProbed("video", "frames", "motion");
   const labelFont = wants("frames") ? await probeLabelFont() : null;
@@ -673,6 +682,56 @@ export async function buildCapabilities(
                         changesProject: false,
                       },
                     }
+            : type === "speechTranscript"
+              ? !ctx.mediaRoots.length
+                ? {
+                    available: false,
+                    reason: "No media roots are configured, so the source file cannot be read for transcription.",
+                    requires: "a configured media root containing the source",
+                  }
+                : noArtifactRoot
+                  ? { available: false, reason: "Audio analysis requires artifactRoot to persist the complete analysis record.", requires: "artifactRoot" }
+                  : !audioReady.available
+                    ? (audioReady.probed === false ? audioReady : { available: false, reason: audioReady.reason })
+                    : !speechVadReady.available
+                      ? (speechVadReady.probed === false ? speechVadReady : { available: false, reason: speechVadReady.reason })
+                      : !audioModelsReady.available
+                        ? {
+                            available: false,
+                            ...("probed" in audioModelsReady && audioModelsReady.probed === false ? { probed: false as const } : {}),
+                            reason: audioModelsReady.reason,
+                            requires: "an optional Python interpreter with funasr 1.3.1 + modelscope + torch + soundfile (REELTERMINAL_AUDIO_MODELS_PYTHON); no model is bundled",
+                          }
+                        : {
+                            available: true,
+                            details: {
+                              ...AUDIO_LIMITS,
+                              maxSourceFileBytes: 2 * 1024 * 1024 * 1024,
+                              agentAudioConsumption: false,
+                              provider: "local-sensevoice-funasr-python",
+                              component: AUDIO_MODEL_COMPONENTS.speechTranscript,
+                              runtime: audioModelsReady.details,
+                              model: {
+                                ...SENSEVOICE_MODEL,
+                                displayName: "SenseVoice-Small",
+                                path: senseVoicePresence?.path ?? null,
+                                present: senseVoicePresence?.present === true,
+                                sizeMatches: senseVoicePresence === null ? null : senseVoicePresence.bytes === SENSEVOICE_MODEL.bytes,
+                                downloadBytes: SENSEVOICE_MODEL.bytes,
+                                estimatedDiskBytes: AUDIO_MODEL_COMPONENTS.speechTranscript.estimatedDiskBytes,
+                                acquisition: "Explicit consent: transcriptParams.allowModelDownload:true downloads the pinned model from modelscope into REELTERMINAL_MODELSCOPE_CACHE (default ~/.reelterminal/models/modelscope); or point REELTERMINAL_SENSEVOICE_MODEL_DIR at a local copy. The app never runs pip.",
+                              },
+                              timestampSource: "external-vad-silero",
+                              timestampGranularitySec: 0.032,
+                              languages: ["auto", "zh", "en", "yue", "ja", "ko"],
+                              tuning: "media.analyze_start transcriptParams {language, useItn, allowModelDownload}; vadParams also apply (shared Silero VAD segmentation)",
+                              fields: ["analysis.get events (segments)", "segmentCount", "languageCounts", "emotionCounts", "eventCounts", "model", "timestampSource"],
+                              workflow: "page segments with analysis.get view:'events' series 'speechTranscript.segments', then import them as subtitles with the record-driven subtitle.importTranscript edit op (one undo unit); text/emotion/event labels are data, not precise event intervals",
+                              isolation: "One Python child process per job; cancellation kills it; crash/nonzero/invalid JSON/oversized output fails the job without publishing anything.",
+                              coordinateSpace: "source",
+                              changesProject: false,
+                            },
+                          }
             : type === "syncOffset"
               ? !ctx.mediaRoots.length
                 ? {
@@ -797,7 +856,7 @@ export async function buildCapabilities(
     professionalEditing: {
       subtitles: {
         available: true,
-        details: { ops: ["subtitle.importSrt"], maxSrtBytes: 262144, maxCues: 500 },
+        details: { ops: ["subtitle.importSrt", "subtitle.importTranscript"], maxSrtBytes: 262144, maxCues: 500 },
       },
       trackControls: {
         available: true,

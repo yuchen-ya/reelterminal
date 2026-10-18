@@ -937,11 +937,12 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
         "silence.silentRegions",
         "beatGrid.beats",
         "speechActivity.speechRegions",
+        "speechTranscript.segments",
       ]),
       totalCount: nullable(integerSchema(0)),
       storedCount: integerSchema(0),
       complete: booleanSchema(),
-    }, ["series", "totalCount", "storedCount", "complete"]), { maxItems: 5 }),
+    }, ["series", "totalCount", "storedCount", "complete"]), { maxItems: 6 }),
     events: objectSchema({
       series: enumSchema([
         "audioSummary.onsets",
@@ -949,6 +950,7 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
         "silence.silentRegions",
         "beatGrid.beats",
         "speechActivity.speechRegions",
+        "speechTranscript.segments",
       ]),
       window: objectSchema({ startSec: numberSchema(0), endSec: numberSchema(0) }, ["startSec", "endSec"]),
       limit: integerSchema(1, 256),

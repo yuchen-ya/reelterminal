@@ -133,6 +133,7 @@ describe("capabilities.get / session.describe", () => {
       "requirement.update",
       "track.update",
       "subtitle.importSrt",
+      "subtitle.importTranscript",
       "clip.setColorGrade",
       "clip.setKeyframes",
       "clip.applyReframe",
