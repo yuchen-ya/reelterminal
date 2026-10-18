@@ -123,6 +123,10 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "no params is valid", params: {}, expectValid: true },
     { name: "unknown field", params: { summary: true }, expectValid: false },
   ],
+  "collaboration.instructions.get": [
+    { name: "read enabled instructions", params: {}, expectValid: true },
+    { name: "reject writes", params: { instructions: [] }, expectValid: false },
+  ],
   "requirements.list": [
     { name: "all statuses", params: {}, expectValid: true },
     { name: "ready filter", params: { status: "ready" }, expectValid: true },
@@ -269,7 +273,7 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "start must be non-negative", params: { mediaId: "m1", audioStream: 0, startSec: -1, endSec: 1, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 10, sampleRate: 48000, channels: 2, idempotencyKey: "n1" }, expectValid: false },
     { name: "end must be positive", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 0, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 10, sampleRate: 48000, channels: 2, idempotencyKey: "n1" }, expectValid: false },
     { name: "end must follow start", params: { mediaId: "m1", audioStream: 0, startSec: 2, endSec: 2, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 10, sampleRate: 48000, channels: 2, idempotencyKey: "n1" }, schemaValid: true, expectValid: false },
-    { name: "source range maximum is 120 seconds", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 120.1, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 10, sampleRate: 48000, channels: 2, idempotencyKey: "n1" }, schemaValid: true, expectValid: false },
+    { name: "source range maximum is 3600 seconds", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 3600.1, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 10, sampleRate: 48000, channels: 2, idempotencyKey: "n1" }, schemaValid: true, expectValid: false },
     { name: "target loudness below supported bounds", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 1, targetLufs: -71, truePeakDbtp: -1, loudnessRangeLu: 10, sampleRate: 48000, channels: 2, idempotencyKey: "n1" }, expectValid: false },
     { name: "true peak above supported bounds", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 1, targetLufs: -16, truePeakDbtp: 0.1, loudnessRangeLu: 10, sampleRate: 48000, channels: 2, idempotencyKey: "n1" }, expectValid: false },
     { name: "loudness range below supported bounds", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 1, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 0.9, sampleRate: 48000, channels: 2, idempotencyKey: "n1" }, expectValid: false },

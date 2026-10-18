@@ -9,7 +9,7 @@ import type { ProductPerformanceCaptureApi } from "../../../../web/src/performan
 import type { PerfStopReply } from "../../../src/shared/performance-contract";
 import { createPerformanceFixture, performanceFixtureManifestSha256 } from "../../performance/fixtures";
 import { launchApp, type LaunchedApp } from "../launch";
-import { connectExternalAgent, type ExternalAgent } from "../mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "../cli-client";
 import { ARTIFACTS_DIR } from "../paths";
 import { enableAgentSessionViaUI } from "../ui";
 import { installProbe, prepareProfile, waitForMarker, type PerformanceRunOptions } from "./driver";
@@ -93,7 +93,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
     agent = await connectExternalAgent(launched.endpointFile);
     const target = { projectId: fixture.projectId!, workspaceId: fixture.workspaceId! };
     const read = async () => {
-      const reply = await agent!.callTool<TimelineState>("timeline_get", target, { timeoutMs: options.operationTimeoutMs });
+      const reply = await agent!.callCommand<TimelineState>("timeline.get", target, { timeoutMs: options.operationTimeoutMs });
       if (!reply.ok) throw new Error(`resource timeline read failed: ${reply.error?.code}`);
       revision = reply.value!.revision;
       return reply.value!;
@@ -106,7 +106,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
     await page.mouse.click(rulerBox.x + 3 * clipBox.width / clip.duration, rulerBox.y + rulerBox.height / 2);
     const currentMarker = { ...fixture, targetMarker: { ...fixture.targetMarker!, rgb: [210, 75, 75] as const } };
     const verifyPlayhead = async () => {
-      const context = await agent!.callTool<{ playheadSeconds: number }>("editor_get_context", target, { timeoutMs: options.operationTimeoutMs });
+      const context = await agent!.callCommand<{ playheadSeconds: number }>("editor.get_context", target, { timeoutMs: options.operationTimeoutMs });
       if (!context.ok || Math.abs(context.value!.playheadSeconds - 3) > 0.06) throw new Error("resource history preview did not preserve the editing playhead");
     };
     const stateMatches = async (time: number) => {
@@ -181,7 +181,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
       const saturated = await saturateHistory(
         () => page.evaluate(async () => (await (globalThis as ResourceGlobal).__reelterminalPerformanceCapture.readResources()).history),
         async (index) => {
-          const moved = await agent!.callTool<{ revision: number }>("edit_apply", { ...target, expectedRevision: revision, ops: [{ op: "clip.move", clipId: clip.id, startTime: index % 2 === 0 ? clip.startTime + 0.5 : clip.startTime }] }, { timeoutMs: options.operationTimeoutMs });
+          const moved = await agent!.callCommand<{ revision: number }>("edit.apply", { ...target, expectedRevision: revision, ops: [{ op: "clip.move", clipId: clip.id, startTime: index % 2 === 0 ? clip.startTime + 0.5 : clip.startTime }] }, { timeoutMs: options.operationTimeoutMs });
           if (!moved.ok || moved.value!.revision !== revision + 1) throw new Error("history warmup edit did not commit one revision");
           revision = moved.value!.revision;
           if (index % 100 === 0) console.info("PERFORMANCE_HISTORY_WARMUP", { edits: index + 1 });
@@ -192,7 +192,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
       // Restore the fixed start using another real edit if warmup ended offset.
       const state = await read();
       if (state.tracks.flatMap(track => track.clips)[0]!.startTime !== clip.startTime) {
-        const restored = await agent.callTool<{ revision: number }>("edit_apply", { ...target, expectedRevision: revision, ops: [{ op: "clip.move", clipId: clip.id, startTime: clip.startTime }] }, { timeoutMs: options.operationTimeoutMs });
+        const restored = await agent.callCommand<{ revision: number }>("edit.apply", { ...target, expectedRevision: revision, ops: [{ op: "clip.move", clipId: clip.id, startTime: clip.startTime }] }, { timeoutMs: options.operationTimeoutMs });
         if (!restored.ok) throw new Error("history warmup final edit failed");
         revision = restored.value!.revision;
       }
@@ -220,12 +220,12 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
       activeCapture = true;
       const beforeTime = rounds % 2 === 0 ? clip.startTime : clip.startTime + 0.5;
       const afterTime = rounds % 2 === 0 ? clip.startTime + 0.5 : clip.startTime;
-      const moved = await agent.callTool<{ revision: number }>("edit_apply", { ...target, expectedRevision: revision, ops: [{ op: "clip.move", clipId: clip.id, startTime: afterTime }] }, { timeoutMs: options.operationTimeoutMs });
+      const moved = await agent.callCommand<{ revision: number }>("edit.apply", { ...target, expectedRevision: revision, ops: [{ op: "clip.move", clipId: clip.id, startTime: afterTime }] }, { timeoutMs: options.operationTimeoutMs });
       if (!moved.ok || moved.value!.revision !== revision + 1) throw new Error("soak edit did not commit one revision");
       revision = moved.value!.revision;
       await stateMatches(afterTime);
       for (const action of ["undo", "redo"] as const) {
-        const reply = await agent.callTool<{ revision: number }>("history_control", { ...target, action, expectedRevision: revision, idempotencyKey: `${runId}-${rounds}-${action}` }, { timeoutMs: options.operationTimeoutMs });
+        const reply = await agent.callCommand<{ revision: number }>("history.control", { ...target, action, expectedRevision: revision, idempotencyKey: `${runId}-${rounds}-${action}` }, { timeoutMs: options.operationTimeoutMs });
         if (!reply.ok || reply.value!.revision !== revision + 1) throw new Error(`soak ${action} failed: ${reply.error?.code ?? `revision ${revision} -> ${reply.value!.revision}`}`);
         revision = reply.value!.revision;
         await stateMatches(action === "undo" ? beforeTime : afterTime);

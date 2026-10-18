@@ -23,7 +23,13 @@ export async function runAudioNormalizationTask(
     if (controller.signal.aborted) return;
     jobs.markRunning(jobId);
     if (jobs.get(jobId)?.state !== "running") return;
-    artifact = await produceNormalizedAudio({ ...input, signal: controller.signal, artifactId: jobId });
+    // AUD-11: per-pass -progress parsing surfaces real progress for long ranges.
+    artifact = await produceNormalizedAudio({
+      ...input,
+      signal: controller.signal,
+      artifactId: jobId,
+      progress: (percent) => jobs.markProgress(jobId, { phase: "rendering", percent }),
+    });
     if (!controller.signal.aborted) jobs.markAudioProcessDone(jobId, artifact);
     if (jobs.get(jobId)?.state === "done") artifact = undefined;
   } catch (error) {

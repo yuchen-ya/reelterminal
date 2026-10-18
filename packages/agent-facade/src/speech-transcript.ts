@@ -244,7 +244,10 @@ export async function transcribeSpeechRegions(
     const model = transcribeModelOverride ?? transcribeWithPythonWorker;
     const response = await model({
       wavPath,
-      segments: clipped,
+      segments: clipped.map((segment) => ({
+        startSec: segment.startSec - range.startSec,
+        endSec: segment.endSec - range.startSec,
+      })),
       language: params.language,
       useItn: params.useItn,
       modelDir,

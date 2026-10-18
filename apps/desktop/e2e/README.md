@@ -1,4 +1,4 @@
-# Desktop CLI / MCP end-to-end acceptance
+# Desktop CLI end-to-end acceptance
 
 Build with `pnpm --filter @reelterminal/desktop build`, then run
 `pnpm --filter @reelterminal/desktop test:e2e`.
@@ -6,11 +6,11 @@ Build with `pnpm --filter @reelterminal/desktop build`, then run
 The harness launches a real Electron app with an isolated user-data directory
 and private endpoint path. It never uses the user's live endpoint or prints its
 token. Human actions use real Playwright mouse/keyboard input. Agent actions use
-independent reelctl processes or the shipped stdio MCP adapter, both forwarding
+independent reelctl processes forwarding
 to the desktop Command API. No conversation adapter or Agent login is involved.
 
-`reelctl.e2e.ts` verifies separate CLI processes see the same project as MCP,
-a CLI edit appears in the GUI, replay across transports creates no duplicate,
+`reelctl.e2e.ts` verifies separate CLI processes see the same project,
+a CLI edit appears in the GUI, replay across processes creates no duplicate,
 shared undo restores the edit, and stale revisions fail without changes.
 The other live specs cover context, media import, previews, shared history,
 renderer lifecycle, security and catalog compatibility. Conversation/work-mode

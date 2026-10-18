@@ -244,7 +244,7 @@ unchanged: `videoReview` still requires the explicit `cloudUpload: true`
 after user authorization; local analysis types never upload anything.
 
 Read durable analysis records through `analysis.list` and `analysis.get` in
-the CLI or MCP client. Observations, inferences, recommendations, unknowns,
+the CLI client. Observations, inferences, recommendations, unknowns,
 and cloud opinion remain separate fields. The current desktop collaboration
 bar exposes Agent Access and the Board; it has no standalone Analysis panel.
 

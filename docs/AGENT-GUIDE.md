@@ -65,39 +65,7 @@ than assuming a published package matches current source. Local VAD
 splits are implemented; remaining model backends and analysis-driven work are
 tracked in [AUDIO-TODO.md](AUDIO-TODO.md).
 
-## MCP compatibility
-
-Configure an MCP-capable Agent to launch the CLI with `mcp serve` arguments. The
-Windows `reelterminal-live-mcp.cmd` launcher invokes that adapter. Use a real
-absolute path; neither a source checkout nor the installer guarantees a global
-`reelctl` command on PATH.
-The adapter obtains the live catalog and forwards to the authenticated Command
-API.
-
-For clients with a stdio configuration shaped as `command`, `args` and `env`,
-this Windows packaged example invokes the bundled runtime directly, without
-depending on the client's handling of `.cmd` files. Replace both paths with
-your actual installation and adapt the surrounding configuration to your client:
-
-```json
-{
-  "mcpServers": {
-    "reelterminal": {
-      "command": "C:\\Program Files\\ReelTerminal\\ReelTerminal.exe",
-      "args": [
-        "C:\\Program Files\\ReelTerminal\\resources\\app.asar\\dist\\reelctl\\index.js",
-        "mcp", "serve"
-      ],
-      "env": { "ELECTRON_RUN_AS_NODE": "1" }
-    }
-  }
-}
-```
-
-For a source build, use `node` as command and the absolute built CLI entry as
-the first argument, followed by `mcp`, `serve`; omit that Electron environment
-variable. For macOS/Linux packages, use the executable and entry paths from the
-copied prompt with the same arguments and Electron environment variable.
+## Connection credentials
 
 The endpoint descriptor is a credential. Never print it or copy its token to a
 prompt. The client reads it privately and probes loopback liveness. A missing or
@@ -120,6 +88,26 @@ Agents own installation, login, conversations, history and context compression.
 ReelTerminal provides project state, editor context, and guarded editing
 commands. Voiceover and music generation are handled by the external Agent;
 import generated files as ordinary media.
+
+## Collaboration instructions
+
+The existing Board opens a **Collaboration instructions** tab, initially empty.
+The user can add a preset or write a title and detailed instruction, optionally
+attach project references and source/timeline ranges, then explicitly save.
+Presets never activate by themselves. Instructions persist with the project and
+participate in undo/redo and saved versions; they are independent of task status.
+The **Tasks** tab retains the existing task and review workflow. Asset-to-task and
+review requests open that tab directly.
+
+`context --compact` reports enabled instruction IDs, titles and updatedAt values.
+Read the complete text with `reelctl call collaboration.instructions.get
+--project-id … --workspace-id …`; the result includes the snapshot revision,
+project/workspace identity and only enabled instructions. Refresh context before
+new work and before edits, and reread when the summary changes. No instruction
+means no additional creative preference. References do not confer instruction
+authority. The read command does not execute a skill or grant access to tools.
+Saving in the Board makes guidance available to the next Agent read; it does not
+send a chat message, interrupt work or prove the Agent followed the instruction.
 
 ## Board and project assets
 

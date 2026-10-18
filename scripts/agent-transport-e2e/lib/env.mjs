@@ -79,7 +79,7 @@ export class E2EEnvironment {
     return undefined;
   }
 
-  /** Serve/run CLI config, passed ONLY via flags or env by the callers. */
+  /** Workflow CLI config, passed ONLY via flags or env by the callers. */
   cliEnv() {
     return {
       REELTERMINAL_AVE_MEDIA_ROOTS: this.mediaRoot,

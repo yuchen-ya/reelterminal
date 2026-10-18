@@ -130,15 +130,14 @@ async function candidateInterpreters(task?: unknown): Promise<InterpreterCandida
   return candidates;
 }
 
-async function resolveScript(): Promise<string | null> {
+export async function resolveAudioModelsScript(moduleDir = fileURLToPath(new URL(".", import.meta.url))): Promise<string | null> {
   const override = process.env.REELTERMINAL_AUDIO_MODELS_SCRIPT_DIR;
   if (override && override.length > 0) {
     const candidate = join(override, "audio_models.py");
     if ((await stat(candidate).catch(() => null))?.isFile()) return candidate;
   }
-  const moduleDir = fileURLToPath(new URL(".", import.meta.url));
   for (const relative of ["../python", "../../python", "../../../python", "../../agent-facade/python"]) {
-    const candidate = join(moduleDir, relative, "audio_models.py");
+    const candidate = join(moduleDir, relative, "audio_models.py").replace(/([\\/])app\.asar([\\/])/, "$1app.asar.unpacked$2");
     if ((await stat(candidate).catch(() => null))?.isFile()) return candidate;
   }
   return null;
@@ -406,6 +405,7 @@ export async function runAudioModelProcess(
     });
     const lines = createInterface({ input: child.stdout });
     lines.on("line", (line) => {
+      if (settled) return;
       stdoutBytes += Buffer.byteLength(line) + 1;
       if (stdoutBytes > MAX_STDOUT_BYTES) {
         stop("Local audio-model task exceeded its output limit");
@@ -418,6 +418,10 @@ export async function runAudioModelProcess(
         event = JSON.parse(trimmed) as WorkerEvent;
       } catch {
         stop(`Local audio-model worker produced invalid JSON: ${trimmed.slice(0, 200)}`);
+        return;
+      }
+      if (event === null || typeof event !== "object" || terminal !== null) {
+        stop("Local audio-model worker produced an invalid or duplicate terminal event");
         return;
       }
       if (event.event === "progress") {
@@ -433,20 +437,23 @@ export async function runAudioModelProcess(
       }
       if (event.event === "done") {
         terminal = { result: event.result };
-        if (event.result === null || typeof event.result !== "object") {
+        if (event.result === null || typeof event.result !== "object" || Array.isArray(event.result)) {
           stop("Local audio-model worker returned no result object");
           return;
         }
-        finish(null, event.result as Record<string, unknown>);
         return;
       }
       stop(`Local audio-model worker produced an unknown event: ${String(event.event)}`);
     });
     child.on("close", (code) => {
       if (settled) return;
+      if (code === 0 && terminal?.result) {
+        finish(null, terminal.result as Record<string, unknown>);
+        return;
+      }
       finish(new FacadeError(
         "JOB_FAILED",
-        `Local audio-model worker exited (code ${String(code)}) without a terminal event${stderrTail.trim() ? `: ${stderrTail.trim().slice(-1500)}` : ""}`,
+        `Local audio-model worker exited (code ${String(code)}) ${terminal ? "after a terminal event" : "without a terminal event"}${stderrTail.trim() ? `: ${stderrTail.trim().slice(-1500)}` : ""}`,
         { stderrTail: stderrTail.slice(-4000) },
       ));
     });
@@ -470,7 +477,15 @@ export async function runAudioModelTask(
 ): Promise<Record<string, unknown>> {
   const runtime = await probeAudioModelsRuntime(requiredAudioModelPackages(request.task), request.task);
   if (!runtime.available) throw new FacadeError("UNSUPPORTED", runtime.reason);
-  return runAudioModelProcess(runtime.details.python, join(runtime.details.scriptDir, "audio_models.py"), request, options);
+  const expectedModel = request.task === "transcribe" ? SENSEVOICE_MODEL
+    : request.task === "diarize" ? SPEAKER_DIARIZATION_MODEL
+      : request.task === "separate" ? DEMUCS_MODEL : undefined;
+  const modelWeightPath = request.task === "separate" ? (await demucsModelPresence()).path : undefined;
+  return runAudioModelProcess(runtime.details.python, join(runtime.details.scriptDir, "audio_models.py"), {
+    ...request,
+    ...(expectedModel ? { expectedModel } : {}),
+    ...(modelWeightPath ? { modelWeightPath } : {}),
+  }, options);
 }
 
 /** Probe once per process: interpreter + script + import availability. */
@@ -481,7 +496,7 @@ export async function probeAudioModelsRuntime(
   { available: true; details: AudioModelProbeResult } | { available: false; reason: string }
 > {
   if (probeOverride) return probeOverride();
-  const script = await resolveScript();
+  const script = await resolveAudioModelsScript();
   if (!script) {
     return { available: false, reason: "the audio-model worker script audio_models.py was not found beside this build — set REELTERMINAL_AUDIO_MODELS_SCRIPT_DIR or restore packages/agent-facade/python" };
   }

@@ -1,7 +1,7 @@
 /**
- * Per-step machine checks shared by BOTH paths (run + mcp). Each function
+ * Per-step machine checks for the workflow CLI. Each function
  * returns an array of checks for Recorder.step(); values are the extracted
- * FacadeResult values, so the same contract assertions run over both paths.
+ * FacadeResult values, so assertions validate the observable command results.
  */
 import path from "node:path";
 
@@ -34,9 +34,9 @@ export function discoverChecks(describeValue, capsValue) {
   const verbs = describeValue?.verbs ?? [];
   const codes = describeValue?.errorCodes ?? [];
   return [
-    eq("session_describe contract is facade-slice-2", describeValue?.contractVersion, WORDINGS.contractVersion),
-    eq("session_describe reports exactly 14 verbs", verbs.length, 14, `verbs=${JSON.stringify(verbs)}`),
-    eq("session_describe reports exactly 8 error codes", codes.length, 8, `codes=${JSON.stringify(codes)}`),
+    eq("session.describe reports the current contract", describeValue?.contractVersion, WORDINGS.contractVersion),
+    truthy("session.describe advertises workflow commands", ["project.create", "project.open", "project.save", "media.import", "edit.apply", "preview.render_frame", "export.start", "job.status", "verify.artifact"].every((verb) => verbs.includes(verb)), `verbs=${JSON.stringify(verbs)}`),
+    truthy("session.describe advertises domain errors", ["CONFLICT", "INVALID_PARAMS", "NOT_FOUND", "UNSUPPORTED"].every((code) => codes.includes(code)), `codes=${JSON.stringify(codes)}`),
     truthy("capabilities_get: mediaImport.available", capsValue?.mediaImport?.available),
     truthy("capabilities_get: preview.available", capsValue?.preview?.available),
     truthy(

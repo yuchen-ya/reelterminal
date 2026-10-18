@@ -473,6 +473,8 @@ function stubArtifactVerifier(seenPaths: string[]): ArtifactVerifier {
   };
 }
 
+class ImportFailedError extends Error {}
+
 /** Poll job.status until the job reaches a terminal state (or time out). */
 async function waitForJob(
   facade: LiveAgentFacade,
@@ -682,6 +684,29 @@ describe("internal writer status snapshot", () => {
   });
 });
 
+
+describe("user-authored collaboration instructions", () => {
+  it("reads only enabled guidance in read-only mode and refreshes after human changes", async () => {
+    const facade = liveFacade({ access: "read-only" });
+    const empty = await facade["collaboration.instructions.get"]();
+    expect(empty.ok && empty.value.instructions).toEqual([]);
+    const instruction = { id: "guide-1", title: "Visual guidance", description: "Show prototypes", enabled: true, createdAt: 1, updatedAt: 1 };
+    store.project = { ...store.project, collaborationInstructions: { items: [instruction, { ...instruction, id: "off", enabled: false }] } };
+    store.revision++;
+    const result = await facade["collaboration.instructions.get"]();
+    expect(result.ok && result.value).toEqual({ revision: 1, projectId: store.project.id, workspaceId: "workspace-live-1", instructions: [instruction] });
+    const context = await facade["editor.get_context"]();
+    expect(context.ok && context.value.collaborationInstructions).toEqual({ enabledCount: 1, items: [{ id: "guide-1", title: "Visual guidance", updatedAt: 1 }] });
+    store.project = { ...store.project, collaborationInstructions: { items: [] } };
+    store.revision++;
+    const removed = await facade["collaboration.instructions.get"]();
+    expect(removed.ok && removed.value.instructions).toEqual([]);
+    expect((await facade["collaboration.instructions.get"]({ instructions: [] } as never)).ok).toBe(false);
+    expect(store.batches).toHaveLength(0);
+    await facade.dispose();
+  });
+});
+
 describe("editor.get_context and visual.inspect read verbs", () => {
   it("live: reports the real editor context and identity (contextAvailable true)", async () => {
     store.setContext({
@@ -711,6 +736,7 @@ describe("editor.get_context and visual.inspect read verbs", () => {
       canvasPoint: { x: 0.5, y: 0.85 },
       references: {},
       requirements: { ready: 0, inProgress: 0, ids: [] },
+      collaborationInstructions: { enabledCount: 0, items: [] },
       identity: {
         projectId: store.project.id,
         projectName: "Live Demo",
@@ -2789,11 +2815,11 @@ describe("live local audio analysis parity", () => {
       if (!caps.ok) throw new Error(caps.error.message);
       expect(caps.value.mediaAnalysis.types.silence).toMatchObject({
         available: true,
-        details: { maxRangeSec: 120, maxConcurrentPerSession: 2, maxEventsPerPage: 256, coordinateSpace: "source" },
+        details: { maxRangeSec: 3600, maxModelRangeSec: 120, maxConcurrentPerSession: 2, maxEventsPerPage: 256, coordinateSpace: "source" },
       });
       expect(caps.value.mediaAnalysis.types.beatGrid).toMatchObject({
         available: true,
-        details: { maxRangeSec: 120, maxConcurrentPerSession: 2, maxEventsPerPage: 256, coordinateSpace: "source" },
+        details: { maxRangeSec: 3600, maxModelRangeSec: 120, maxConcurrentPerSession: 2, maxEventsPerPage: 256, coordinateSpace: "source" },
       });
 
       const imported = await facade["media.import"]({ path: sourcePath });
@@ -2878,14 +2904,27 @@ describe("live local audio analysis parity", () => {
 
       const longPath = await writeFloatWav(mediaRoot, 121);
       const longImport = await facade["media.import"]({ path: longPath });
-      if (!longImport.ok) throw new Error(longImport.error.message);
-      const tooLong = await facade["media.analyze_start"]({
+      if (!longImport.ok) throw new ImportFailedError(longImport.error.message);
+      // AUD-11: streamed local analyses accept ranges beyond 120 s now.
+      const beyondOldCap = await facade["media.analyze_start"]({
         mediaId: longImport.value.mediaId,
         analysisTypes: ["beatGrid"],
         startSec: 0,
         endSec: 120.5,
       });
-      expect(tooLong).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS", message: expect.stringContaining("120 seconds") } });
+      expect(beyondOldCap.ok).toBe(true);
+      if (beyondOldCap.ok) {
+        const settled = await waitForJob(facade, beyondOldCap.value.jobId, 20_000);
+        expect(settled.state).toBe("done");
+      }
+      const tooLong = await facade["media.analyze_start"]({
+        mediaId: longImport.value.mediaId,
+        analysisTypes: ["beatGrid"],
+        startSec: 0,
+        endSec: 3600.5,
+      });
+      // endSec also exceeds the 121 s media duration, so either bound rejects.
+      expect(tooLong).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
     } finally {
       await facade.dispose();
       await rm(mediaRoot, { recursive: true, force: true });
@@ -3938,6 +3977,88 @@ describe("idempotency ledger scope is captured per request", () => {
       expect(miss.value.jobId).not.toBe("job-a");
       expect(stub.requests).toHaveLength(1);
 
+      await facade.dispose();
+    }
+  });
+});
+
+describe("AUD-13 restored audio-process receipts replay under their own verb", () => {
+  it("replays a restored denoise receipt instead of starting a new job", async () => {
+    const { lifecycle, records } = memoryTaskLifecycle();
+    const denoiseParams = {
+      mediaId: "m1", audioStream: 0, startSec: 0, endSec: 5,
+      sampleRate: 48_000 as const, channels: 2 as const, profile: "light" as const,
+    };
+    const jobId = "job-denoise-restored";
+    const now = new Date().toISOString();
+    records.set(jobId, {
+      projectId: store.project.id,
+      workspaceId: "workspace-live-1",
+      status: {
+        jobId, kind: "audio-process", sourceRevision: 3, state: "error",
+        progress: null, artifact: null, result: null,
+        error: { code: "INTERRUPTED", message: "Desktop restarted before this task completed." },
+        deliveredTo: null, deliveryError: null, route: null,
+        upscalingRequestedButInactive: false, cancelRequested: false,
+        createdAt: now, updatedAt: now,
+      },
+      parameters: { verb: "audio.process.denoise", ...denoiseParams, idempotencyKey: "denoise-restore", payloadHash: stableStringify(denoiseParams) },
+    });
+    const facade = liveFacade({ taskLifecycle: lifecycle });
+    try {
+      const replay = await facade["audio.process.denoise"]({ ...denoiseParams, idempotencyKey: "denoise-restore" });
+      expect(replay.ok).toBe(true);
+      if (!replay.ok) return;
+      expect(replay.value.jobId).toBe(jobId);
+      expect(replay.value.replayed).toBe(true);
+      // The same key under the WRONG verb is not a hit (it would start a new job).
+      const wrongVerb = await facade["audio.process.normalize"]({
+        mediaId: "m1", audioStream: 0, startSec: 0, endSec: 5,
+        targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 11,
+        sampleRate: 48_000, channels: 2, idempotencyKey: "denoise-restore",
+      });
+      // Not a replay: either a fresh job (media found) or an honest NOT_FOUND
+      // after passing the ledger — never the restored denoise jobId.
+      if (wrongVerb.ok) {
+        expect(wrongVerb.value.replayed).toBe(false);
+        expect(wrongVerb.value.jobId).not.toBe(jobId);
+      } else {
+        expect(wrongVerb.error.code).toBe("NOT_FOUND");
+      }
+    } finally {
+      await facade.dispose();
+    }
+  });
+
+  it("keeps the legacy normalize default for records that predate the persisted verb", async () => {
+    const { lifecycle, records } = memoryTaskLifecycle();
+    const normalizeParams = {
+      mediaId: "m1", audioStream: 0, startSec: 0, endSec: 4,
+      targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 11,
+      sampleRate: 48_000 as const, channels: 2 as const,
+    };
+    const jobId = "job-normalize-legacy";
+    const now = new Date().toISOString();
+    records.set(jobId, {
+      projectId: store.project.id,
+      workspaceId: "workspace-live-1",
+      status: {
+        jobId, kind: "audio-process", sourceRevision: 2, state: "done",
+        progress: null, artifact: null, result: null, error: null,
+        deliveredTo: null, deliveryError: null, route: null,
+        upscalingRequestedButInactive: false, cancelRequested: false,
+        createdAt: now, updatedAt: now,
+      },
+      parameters: { ...normalizeParams, idempotencyKey: "normalize-legacy", payloadHash: stableStringify(normalizeParams) },
+    });
+    const facade = liveFacade({ taskLifecycle: lifecycle });
+    try {
+      const replay = await facade["audio.process.normalize"]({ ...normalizeParams, idempotencyKey: "normalize-legacy" });
+      expect(replay.ok).toBe(true);
+      if (!replay.ok) return;
+      expect(replay.value.jobId).toBe(jobId);
+      expect(replay.value.replayed).toBe(true);
+    } finally {
       await facade.dispose();
     }
   });

@@ -106,7 +106,7 @@ export function compactContextResult(result: FacadeResult<unknown>): FacadeResul
   const value = result.value;
   const keys = [
     "mode", "contextAvailable", "projectRevision", "contextRevision", "playheadSeconds",
-    "selectedClipIds", "selectedTextIds", "selectedMediaIds", "timeRange", "canvasPoint", "identity", "references", "requirements",
+    "selectedClipIds", "selectedTextIds", "selectedMediaIds", "timeRange", "canvasPoint", "identity", "references", "requirements", "collaborationInstructions",
   ];
   const compact: Record<string, unknown> = {};
   for (const key of keys) if (Object.prototype.hasOwnProperty.call(value, key)) compact[key] = value[key];

@@ -47,6 +47,7 @@ export interface Project {
   readonly markers?: ProjectMarkersState;
   /** Project-scoped user requirements consumed by external Agents through reelctl. */
   readonly requirements?: ProjectRequirementsState;
+  readonly collaborationInstructions?: import("./collaboration-instruction").ProjectCollaborationInstructions;
   readonly textClips?: TextClip[];
   readonly shapeClips?: ShapeClip[];
   readonly svgClips?: SVGClip[];

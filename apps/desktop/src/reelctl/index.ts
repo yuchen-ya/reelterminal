@@ -310,13 +310,6 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
   }
   const client = options.client ?? new LiveCommandClient();
 
-  if (argv[0] === "mcp") {
-    if (argv[1] !== "serve") throw new LiveCliError("Usage: reelctl mcp serve", "args", 2);
-    const { serveMcp } = await import("../live-mcp/adapter");
-    await serveMcp(client);
-    return 0;
-  }
-
   if (argv[0] === "schema" || argv[0] === "help" && argv.length > 1) {
     const { domain, rest } = argv[0] === "schema"
       ? splitSchemaDomainFlag(argv.slice(1))
@@ -417,8 +410,7 @@ async function main(): Promise<void> {
     const code = error instanceof LiveCliError ? error.exitCode : 4;
     const failure = cliErrorEnvelope(error);
     const message = error instanceof Error ? error.message : "unexpected reelctl error";
-    const isMcpStream = process.argv[2] === "mcp" && process.argv[3] === "serve";
-    if (!isMcpStream) process.stdout.write(`${JSON.stringify(failure)}\n`);
+    process.stdout.write(`${JSON.stringify(failure)}\n`);
     process.stderr.write(`${message}\n`);
     process.exitCode = code;
   }

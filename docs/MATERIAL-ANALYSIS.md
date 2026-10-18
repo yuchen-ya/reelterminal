@@ -36,10 +36,21 @@ is rejected before creating a job.
 `summary.analysisRecord.id`; use that ID to read details. Restored jobs and
 batch checkpoints use the same compact audio view.
 
-Source ranges are limited to 120 seconds. At most two analysis jobs run per
-session, with four local audio subprocesses per process. Each process has a
-60-second deadline and a 16 MiB combined output limit. Missing FFmpeg or ffprobe
-is reported through capabilities and job results.
+Source ranges: the three local PCM/loudnorm analyses (`audioSummary`,
+`silence`, `beatGrid`) accept up to 3600 seconds (AUD-11) — their decodes
+run as ONE continuous FFmpeg process whose stdout is consumed in bounded
+chunks, so kernel memory stays bounded by derived window/energy state
+(whole-stream ceiling 340 MiB, per-process wall budget `60 s + 2 s per
+source second`); the integrated LUFS always comes from a single whole-range
+loudnorm pass, never an average of chunk measurements, and streamed silence
+windows sit at absolute sample indices so regions equal the whole-buffer
+kernel exactly — nothing is lost or duplicated across chunk boundaries. The
+model-backed analyses (`speechActivity`, `speechTranscript`,
+`speakerDiarization`) and `syncOffset` keep the 120-second cap; longer
+material must be split into explicit ranges. At most two analysis jobs run
+per session, with four local audio subprocesses per process. Each buffered
+process has a 60-second deadline and a 16 MiB combined output limit.
+Missing FFmpeg or ffprobe is reported through capabilities and job results.
 
 ### Speech activity (VAD)
 

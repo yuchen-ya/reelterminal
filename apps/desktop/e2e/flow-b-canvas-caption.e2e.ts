@@ -1,7 +1,7 @@
 /**
  * 选中画布位置，让 Agent 添加字幕，并检查过期上下文会返回冲突。
  *
- * Human side: real UI input only. Agent side: real MCP stdio client.
+ * Human side: real UI input only. Agent side: real CLI process.
  * Pixel assertion decodes the facade's preview.render_frame PNG with ffmpeg
  * (no image libraries) and checks the caption's non-background centroid
  * against the OBSERVED canvas point.
@@ -9,7 +9,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { launchApp, type LaunchedApp } from "./harness/launch";
-import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { createEvidence, type EvidenceRecord } from "./harness/evidence";
 import { analyzePng } from "./harness/pixels";
 import {
@@ -47,7 +47,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
   let target: { projectId: string; workspaceId: string };
 
   const readContext = async (): Promise<EditorContext> => {
-    const result = await agent.callTool<EditorContext>("editor_get_context");
+    const result = await agent.callCommand<EditorContext>("editor.get_context");
     expect(result.ok).toBe(true);
     return result.value!;
   };
@@ -103,7 +103,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
   });
 
   test("agent places the caption at the point; GUI shows it; rendered pixels agree", async () => {
-    const applied = await agent.callTool<{ revision: number }>("edit_apply", {
+    const applied = await agent.callCommand<{ revision: number }>("edit.apply", {
       ...target,
       ops: [
         { op: "track.add", trackType: "text" },
@@ -115,6 +115,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
           position: { ...contextWithPoint.canvasPoint! },
         },
       ],
+      expectedRevision: contextWithPoint.projectRevision,
       expectedContextRevision: contextWithPoint.contextRevision,
     });
     expect(applied.ok).toBe(true);
@@ -126,12 +127,12 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
     await evidence.screenshot("caption-in-gui");
 
     // Rendered pixels: frame at T+1 shows the caption at the observed point.
-    const frame = await agent.callTool<{
+    const frame = await agent.callCommand<{
       revision: number;
       width: number;
       height: number;
       artifact: { path: string; sizeBytes: number; sha256: string };
-    }>("preview_render_frame", { ...target, timeSec: PLAYHEAD_T + 1 }, { timeoutMs: 300_000 });
+    }>("preview.render_frame", { ...target, timeSec: PLAYHEAD_T + 1 }, { timeoutMs: 300_000 });
     expect(frame.ok, JSON.stringify(frame)).toBe(true);
     const artifact = frame.value!.artifact;
     const png = readFileSync(artifact.path);
@@ -163,7 +164,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
       async () => (await readContext()).canvasPoint,
     );
 
-    const replayed = await agent.callTool("edit_apply", {
+    const replayed = await agent.callCommand("edit.apply", {
       ...target,
       ops: [
         { op: "track.add", trackType: "text" },
@@ -175,13 +176,13 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
           position: { ...contextWithPoint.canvasPoint! },
         },
       ],
+      expectedRevision: revisionAfterCaption,
       expectedContextRevision: contextWithPoint.contextRevision,
     });
     expect(replayed.ok).toBe(false);
-    expect(replayed.isError).toBe(true);
     expect(replayed.error!.code).toBe("CONFLICT");
 
-    const timeline = await agent.callTool<TimelineView>("timeline_get", target);
+    const timeline = await agent.callCommand<TimelineView>("timeline.get", target);
     expect(timeline.value!.textOverlays).toHaveLength(1);
     expect(timeline.value!.textOverlays[0]!.text).toBe(CAPTION_TEXT);
     expect(await timelineTextClip(launched.page, CAPTION_TEXT).count()).toBe(1);

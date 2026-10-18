@@ -1,13 +1,12 @@
 {
   "name": "@reelterminal/desktop",
   "private": true,
-  "version": "1.2.2",
+  "version": "1.2.3",
   "type": "commonjs",
   "main": "dist/main/index.js",
   "homepage": "https://github.com/yuchen-ya/reelterminal",
   "bin": {
-    "reelctl": "dist/reelctl/index.js",
-    "reelterminal-live-mcp": "dist/live-mcp/legacy.js"
+    "reelctl": "dist/reelctl/index.js"
   },
   "author": {
     "name": "yuchen-ya and contributors"

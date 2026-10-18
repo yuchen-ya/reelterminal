@@ -75,7 +75,7 @@ flowchart LR
 
 1. 前往 **[Releases 页面](https://github.com/yuchen-ya/reelterminal/releases)**，选择适合自己系统和架构的安装包。
 2. 打开视频工程。需要助手修改工程时，在时间线上方将协作权限切换为 **`可编辑`**；可随时切回只读。
-3. 在通知中点击 **「复制启动提示词」**，把内容发给具有本机 CLI 或 MCP 工具能力的 AI 助手。
+3. 在通知中点击 **「复制启动提示词」**，把内容发给具有本机 CLI 工具能力的 AI 助手。
 4. 提示词包含本次安装的命令路径与协作规则。让助手确认目标工程、工作区和权限，再开始编辑；你继续在同一界面查看、调整和决定最终结果。
 
 当前下载提供 **Windows x64 安装器/便携 ZIP** 和 **macOS Apple Silicon（M 系列，arm64）DMG/ZIP**。具体附件、架构、签名和校验信息以 [Releases](https://github.com/yuchen-ya/reelterminal/releases) 为准。Windows ZIP 需完整解压后运行 `ReelTerminal.exe`。
@@ -120,7 +120,7 @@ flowchart TD
     end
 
     subgraph Facade [" 控制门面 (Control Facade) "]
-        Bridge["CLI / MCP · 本机 Command API"]
+        Bridge["CLI · 本机 Command API"]
         Guard["Revision 乐观锁 (CAS) & 幂等事务"]
     end
 

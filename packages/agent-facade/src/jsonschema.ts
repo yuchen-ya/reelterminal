@@ -4,7 +4,7 @@
  * Dependency-free: the closed `ObjectSchema` declarations in
  * verb-schemas.ts / ops.ts ARE the single hand-maintained definition of
  * each verb's params; this module renders them into the JSON Schemas the
- * transport assigns verbatim to its `tools/list` entries. There is no
+ * command catalog assigns verbatim to its entries. There is no
  * second hand-written schema anywhere.
  *
  * The emitted schemas use these shapes:
@@ -13,8 +13,7 @@
  *    emitted);
  *  - `additionalProperties: false` on every object (closed, like the
  *    runtime validators);
- *  - inline everything — no `$ref` (at least one major MCP client does not
- *    dereference them);
+ *  - inline everything — no `$ref` (consumers need no separate schema resolver);
  *  - `integer` where the validator demands integers, enums and consts where
  *    the validator checks membership, min/max bounds where the validator
  *    has them;
@@ -103,10 +102,8 @@ function emitVerbSchema(verb: FacadeVerb): JsonSchemaObject {
 
 /**
  * The emitted draft-2020-12 input schema per facade verb, keyed by verb
- * name (B.1 tool map, 24 verbs). The transport imports this map and assigns
- * `tool.inputSchema = EMITTED_VERB_JSON_SCHEMAS[verb]` verbatim; a CI
- * assertion there deep-equals it against the running `tools/list` payload,
- * so any drift between the two surfaces dies in CI.
+ * name. The command catalog assigns these schemas verbatim; contract
+ * tests verify that discovery and runtime validation stay aligned.
  *
  * Derived once at module load from VERB_PARAM_SCHEMAS — editing a
  * declaration changes validation and emission together, by construction.
@@ -119,7 +116,7 @@ export const EMITTED_VERB_JSON_SCHEMAS: Readonly<
 
 const PROJECT_WORKSPACE_VERBS = new Set<FacadeVerb>([
   "project.save", "project.rename", "project.get_state", "project.changes",
-  "requirements.list", "requirements.get",
+  "requirements.list", "requirements.get", "collaboration.instructions.get",
   "media.import", "media.analyze_start", "audio.process.normalize", "audio.process.denoise", "audio.process.separate", "audio.process.register", "timeline.get", "timeline.query",
   "timeline.mapSourceTimes", "editor.control",
   "edit.validate", "edit.apply", "history.get", "history.control",
@@ -166,7 +163,7 @@ function liveTargetSchema(verb: FacadeVerb, schema: JsonSchemaObject): JsonSchem
  * Live-mode input-schema overrides. The live facade implements the
  * same bundled verbs, but live `project.save` creates an immutable node in an
  * explicit workspace. Advertising the headless checkpoint schema (`path`
- * required) on the live `tools/list` would instruct integrators to pass a
+ * required) on the live command catalog would instruct integrators to pass a
  * param the live runtime must reject — a contract self-contradiction. Live endpoints assign
  * `LIVE_VERB_INPUT_SCHEMA_OVERRIDES[verb] ?? EMITTED_VERB_JSON_SCHEMAS[verb]`.
  * Live edit schemas also omit clip.add.clipId because the canonical GUI store

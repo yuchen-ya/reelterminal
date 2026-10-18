@@ -3,12 +3,10 @@
  * `reelterminal-agent` CLI.
  *
  * Commands:
- *   serve                — the MCP stdio server; one process == one session
  *   run --workflow <abs> — executable JSONL workflow over a fresh session
  *   doctor               — one machine-readable environment report
  *
- * stdout carries only MCP frames, step
- * JSON lines, or the doctor report — everything else (logs, usage errors)
+ * stdout carries only step JSON lines or the doctor report — everything else (logs, usage errors)
  * goes to stderr as single-line JSON. Dependency console.* is redirected
  * to stderr before any dependency module runs.
  */
@@ -23,13 +21,12 @@ import {
 const USAGE = `reelterminal-agent — ReelTerminal agent transport
 
 Usage:
-  reelterminal-agent serve [options]        Start the MCP stdio server (one process == one session)
   reelterminal-agent run --workflow <abs> [--keep-going] [options]
                                      Execute a JSONL workflow over a fresh session
   reelterminal-agent doctor                 Print the machine-readable environment report
   reelterminal-agent --help                 This help
 
-Options (serve/run):
+Options (run):
   --media-root <abs>      Repeatable. Roots media.import may read from.
   --artifact-root <abs>   Exactly one. Root for preview/visual/export/verify artifacts.
   --project-root <abs>    Repeatable. Roots for project.open/project.save checkpoints.
@@ -47,9 +44,9 @@ Every root and path input must be ABSOLUTE (relative paths and '~' are
 refused, never resolved against the cwd). Missing/relative/non-directory
 roots are a startup refusal (exit 2).
 
-Exit codes: serve/run/doctor — 0 ok · 1 degraded (doctor) or first step
+Exit codes: run/doctor — 0 ok · 1 degraded (doctor) or first step
 failure (run) · 2 unusable (doctor) or invocation/static error · signals
-exit 130/143/129; a second signal exits immediately; stdin EOF exits 0.
+exit 130/143/129; a second signal exits immediately.
 `;
 
 async function main(): Promise<never> {
@@ -57,10 +54,6 @@ async function main(): Promise<never> {
   const [, , cmd, ...rest] = process.argv;
 
   switch (cmd) {
-    case "serve": {
-      const { serveCommand } = await import("./serve");
-      return serveCommand(rest);
-    }
     case "run": {
       const { runCommand } = await import("./workflow");
       process.exit(await runCommand(rest));
@@ -81,14 +74,14 @@ async function main(): Promise<never> {
           ts: new Date().toISOString(),
           level: "error",
           scope: "cli",
-          msg: "no subcommand given — expected serve | run | doctor",
+          msg: "no subcommand given — expected run | doctor",
         })}\n${USAGE}`,
       );
       process.exit(2);
       break;
     default:
       setLogLevel("info");
-      logError("cli", `unknown subcommand "${cmd}" — expected serve | run | doctor`);
+      logError("cli", `unknown subcommand "${cmd}" — expected run | doctor`);
       process.stderr.write(USAGE);
       process.exit(2);
   }

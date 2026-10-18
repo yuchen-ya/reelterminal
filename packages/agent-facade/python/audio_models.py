@@ -115,13 +115,47 @@ def _load_audio(path, expected_rate=16000, mono=True):
     return pcm
 
 
+def verify_model_weights(path, expected):
+    import hashlib
+    if os.path.getsize(path) != expected["bytes"]:
+        raise RuntimeError("Model weights size does not match the pinned file")
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != expected["sha256"]:
+        raise RuntimeError("Model weights SHA256 does not match the pinned file")
+    return path
+
+
+def modelscope_model_directory(request):
+    expected = request["expectedModel"]
+    directory = request.get("modelDir")
+    if not directory:
+        from modelscope import snapshot_download
+        directory = snapshot_download(expected["repo"])
+    verify_model_weights(os.path.join(directory, expected["file"]), expected)
+    return directory
+
+
+def demucs_model_weights(request):
+    expected = request["expectedModel"]
+    path = request.get("modelWeightPath")
+    if not path:
+        from huggingface_hub import hf_hub_download
+        path = hf_hub_download(expected["repo"], expected["file"],
+                               cache_dir=os.path.join(request["cacheDir"], "hub"),
+                               local_files_only=bool(request.get("offline")))
+    return verify_model_weights(path, expected)
+
+
 def _sensevoice(request):
     from funasr import AutoModel
     import numpy as np
 
     pcm = _load_audio(request["wavPath"])
     device = request.get("device") or ("cuda:0" if __import__("torch").cuda.is_available() else "cpu")
-    model_ref = request.get("modelDir") or "iic/SenseVoiceSmall"
+    model_ref = modelscope_model_directory(request)
     progress(0.02, "load")
     started = time.time()
     asr = AutoModel(model=model_ref, device=device, disable_update=True)
@@ -166,7 +200,7 @@ def _diarize(request):
     pcm = _load_audio(request["wavPath"])
     segments = request.get("segments") or []
     device = request.get("device") or ("cuda:0" if torch.cuda.is_available() else "cpu")
-    model_ref = request.get("modelDir") or "iic/speech_campplus_sv_zh-cn_16k-common"
+    model_ref = modelscope_model_directory(request)
     threshold = float(request.get("threshold", 0.7))
     max_speakers = int(request.get("maxSpeakers", 8))
     max_chunk = 10.0
@@ -251,8 +285,8 @@ def _separate(request):
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
     import soundfile as sf
     import torch
-    from demucs.apply import apply_model
-    from demucs.pretrained import get_model
+    from demucs.apply import apply_model, BagOfModels
+    from demucs.hf import load_safetensors_model
 
     pcm = _load_audio(request["wavPath"], expected_rate=None, mono=False)
     # Demucs models are stereo; duplicate mono input.
@@ -262,7 +296,10 @@ def _separate(request):
     device = request.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
     progress(0.02, "load")
     started = time.time()
-    model = get_model(name=request.get("model", "htdemucs"))
+    # The pinned htdemucs bag contains this single model with default weights.
+    # Load the exact verified file; never resolve a mutable name or fall back
+    # to the legacy remote repository after verification.
+    model = BagOfModels([load_safetensors_model(demucs_model_weights(request))])
     model.to(device)
     model.eval()
     load_seconds = time.time() - started

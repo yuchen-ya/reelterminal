@@ -7,7 +7,7 @@
 import { expect, test, describe, beforeAll, afterAll } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { launchApp, type LaunchedApp } from "./harness/launch";
-import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { createEvidence, type EvidenceRecord } from "./harness/evidence";
 import {
   createProjectViaUI,
@@ -52,13 +52,13 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
   let target: { projectId: string; workspaceId: string };
 
   const readContext = async (): Promise<EditorContext> => {
-    const result = await agent!.callTool<EditorContext>("editor_get_context");
+    const result = await agent!.callCommand<EditorContext>("editor.get_context");
     expect(result.ok).toBe(true);
     return result.value!;
   };
 
   const readTimeline = async (): Promise<TimelineView> => {
-    const result = await agent!.callTool<TimelineView>("timeline_get", target);
+    const result = await agent!.callCommand<TimelineView>("timeline.get", target);
     expect(result.ok).toBe(true);
     return result.value!;
   };
@@ -74,8 +74,9 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
     target = { projectId: context.identity.projectId, workspaceId: context.identity.workspaceId };
 
     // Agent creates the caption the later tests work on.
-    const applied = await agent.callTool<{ revision: number }>("edit_apply", {
+    const applied = await agent.callCommand<{ revision: number }>("edit.apply", {
       ...target,
+      expectedRevision: context.projectRevision,
       ops: [
         { op: "track.add", trackType: "text" },
         { op: "text.create", text: CAPTION_TEXT, startTime: 2, duration: 3 },
@@ -111,7 +112,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
     expect(overlay!.startTime).toBeCloseTo(before.startTime + 100 * before.duration / clipBox!.width, 1);
 
     // Agent replays an edit against the PRE-human-edit revision → CONFLICT.
-    const stale = await agent!.callTool("edit_apply", {
+    const stale = await agent!.callCommand("edit.apply", {
       ...target,
       ops: [{ op: "text.update", overlayId: overlay!.id, text: "SHOULD-NOT-LAND" }],
       expectedRevision: revisionAfterAgentCreate,
@@ -148,8 +149,8 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
       statusSequenceContract: "renderer rejects status snapshots older than the disable acknowledgement",
     });
 
-    expect((await agent!.callTool("editor_get_context")).ok).toBe(true);
-    const rejected = await agent!.callTool("edit_apply", {
+    expect((await agent!.callCommand("editor.get_context")).ok).toBe(true);
+    const rejected = await agent!.callCommand("edit.apply", {
       ...target,
       expectedRevision: revisionAfterHumanDrag,
       ops: [{ op: "track.add", trackType: "video" }],
@@ -177,7 +178,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
   });
 
   test("save → full relaunch → project recovered with the agent's text; context works again", async () => {
-    const saved = await agent!.callTool<{ revision: number }>("project_save", {
+    const saved = await agent!.callCommand<{ revision: number }>("project.save", {
       ...target, expectedRevision: (await readContext()).projectRevision,
       idempotencyKey: "cross-cutting-save-before-relaunch",
     });
@@ -274,7 +275,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
       mainStdout: launched.output.mainStdout.join(""),
       mainStderr: launched.output.mainStderr.join(""),
       rendererConsole: launched.output.rendererConsole.join("\n"),
-      shimStderr: agent?.shimStderr() ?? "",
+      shimStderr: agent?.clientStderr() ?? "",
     };
     for (const [channel, text] of Object.entries(outputs)) {
       expect(text, `live token leaked into ${channel}`).not.toContain(endpoint.token);

@@ -8,6 +8,7 @@ import type { AnalysisAgentView } from "./analysis-records";
 import { setSpeechVadModelFactoryForTests } from "./speech-vad";
 import {
   mergeDiarizationChunks,
+  analyzeSpeakerDiarization,
   resolveDiarizationParams,
   setDiarizationModelForTests,
   setDiarizationModelReadyForTests,
@@ -81,6 +82,21 @@ describe("diarization parameter validation and chunk merging", () => {
 });
 
 describe("speakerDiarization session integration", () => {
+  it("maps cropped worker spans back to source seconds", async () => {
+    const root = await mkdtemp(join(tmpdir(), "rt-diarization-range-"));
+    try {
+      const source = join(root, "speech.wav");
+      await writeFile(source, toneWav([{ startSec: 10.5, endSec: 11.5 }], 12));
+      setDiarizationModelForTests(async (request) => {
+        expect(request.segments).toEqual([{ startSec: 0.5, endSec: 1.5 }]);
+        return { labels: [0], spans: [{ startSec: 0.5, endSec: 1.5, segmentIndex: 0 }], speakerCount: 1,
+          model: "test", device: "cpu", loadSeconds: 0, inferenceSeconds: 0 };
+      });
+      const result = await analyzeSpeakerDiarization(source, { startSec: 10, endSec: 12 },
+        [{ startSec: 10.5, endSec: 11.5, durationSec: 1 }], resolveDiarizationParams(), null, new AbortController().signal);
+      expect(result.segments[0]).toMatchObject({ startSec: 10.5, endSec: 11.5, speakerId: "speaker-1" });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
   it("persists anonymous clusters compactly and pages segments", async () => {
     const root = await mkdtemp(join(tmpdir(), "rt-diarization-"));
     try {

@@ -51,7 +51,7 @@
 - 目标：`vocals` 直接取人声 stem；`instrumental` 用 `amix=inputs=3:normalize=0` 合并 drums+bass+other。worker 内部仍产出四个 stem，便于后续扩展。
 - 输出：48 kHz PCM s24le WAV，**精确请求样本数**，起点对应源区间起点；`timing.processingDelaySamples: 0`。目标写入后 ffprobe 复核采样率/声道/样本数，并重新测量响度（人声 stem 可能近乎静音，此时 `after` 为 null，如实披露而非伪造测量）。
 - provenance 记录：源指纹/范围、模型版本与 sha、设备、加载/推理秒数、实时因子、峰值 GPU 显存（Windows 无 `resource` 时 RSS 为 null）、目标混音方式、限制。速度/内存为**本机实测**，不是营销指标。
-- 生命周期：`generated-assets/audio-separate/<jobId>/separated.wav` + `provenance.json`；staging 目录 + 原子 rename + 哈希幂等；取消/失败清理本次目录；沿用 `audio.process.register` revision CAS 注册，不替换片段。
+- 生命周期：`generated-assets/audio-separate/<jobId>/separated.wav` + `provenance.json`；staging 目录 + 原子 rename + 哈希幂等；取消/失败清理本次目录；沿用 `audio.process.register` revision CAS 注册，不替换片段。AUD-13 起同目录下 `.reuse-index.json` 提供内容寻址复用（键含源内容 sha/音轨/范围/参数/目标/链版本/Demucs 权重 sha + ffmpeg 版本；命中需验证文件存在+sha+版本,可跳过模型推理,provenance 以 `reusedFrom` 披露）；偏移音轨仍被拒绝。
 - 与响度标准化/降噪职责分离：分离不改变响度目标，动态处理不包含。
 
 ## 验证（2026-10-18 本机）

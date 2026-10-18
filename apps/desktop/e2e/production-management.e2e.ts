@@ -1,4 +1,4 @@
-import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, copyFileSync } from "node:fs";
 import path from "node:path";
@@ -13,7 +13,7 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
   let agent: ExternalAgent | undefined;
   const batchCall = async (name: string, args: Record<string, unknown>) => {
     const context = await cli(["context"]);
-    const result = await agent!.callTool<any>(name, {
+    const result = await agent!.callCommand<any>(name, {
       projectId: context.identity.projectId, workspaceId: context.identity.workspaceId, ...args,
     });
     if (!result.ok) throw new Error(result.error?.message ?? "Batch command failed");
@@ -308,6 +308,7 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
       importedCandidate.mediaId,
     );
     await page.getByTestId("requirement-board-entry").click();
+    await page.getByRole("tab", { name: "Tasks", exact: true }).click();
     // The inspector preserves its detail view while comparing a candidate.
     await page.getByTestId("inspector-board").getByRole("button", { name: "Back to list", exact: true }).click();
     await page
@@ -379,7 +380,7 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
     });
     current = await state();
     agent = await connectExternalAgent(launched.endpointFile);
-    const batch = await batchCall("batch_start", {
+    const batch = await batchCall("batch.start", {
       batchId: "m3-live",
       mediaIds: [originalClip.mediaId, longMedia.mediaId],
       analysisTypes: ["technicalQuality", "blackFrames", "duplicateFrames"],
@@ -396,7 +397,7 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
       path.join(launched.userDataDir, "live-artifacts", "task-records", `${jobId}.status.json`),
       "utf8",
     )).status;
-    await batchCall("job_cancel", { jobId: batch.items[1].jobId });
+    await batchCall("job.cancel", { jobId: batch.items[1].jobId });
     await vi.waitFor(
       () =>
         expect(
@@ -413,7 +414,7 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
     // observer must never replace the desktop task ledger's subscription.
     expect(readDurableStatus(batch.items[0].jobId).state).toBe("done");
     expect(readDurableStatus(batch.items[1].jobId).state).toBe("cancelled");
-    const retry = await batchCall("batch_resume", { batchId: "m3-live" });
+    const retry = await batchCall("batch.resume", { batchId: "m3-live" });
     expect(retry.items[0].jobId).toBe(batch.items[0].jobId);
     expect(retry.items[1].jobId).not.toBe(batch.items[1].jobId);
     expect(["queued", "running"]).toContain(retry.items[1].status.state);
@@ -430,7 +431,7 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
     expect(readDurableStatus(retry.items[1].jobId)).toMatchObject({
       state: "error", error: { code: "INTERRUPTED" },
     });
-    const resumed = await batchCall("batch_resume", {
+    const resumed = await batchCall("batch.resume", {
       batchId: "m3-live",
       expectedRevision: current.revision,
       // Restarted unfinished jobs are honest INTERRUPTED errors. The batch
@@ -457,6 +458,7 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
       current.project.requirements.items[0].reviewRange.evidence.timelineFrame,
     ).toBe(15);
     await launched.page.getByTestId("requirement-board-entry").click();
+    await launched.page.getByRole("tab", { name: "Tasks", exact: true }).click();
     await launched.page
       .getByRole("button")
       .filter({ hasText: "M3 selected frame review" })

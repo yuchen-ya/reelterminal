@@ -4,7 +4,6 @@ import path from "node:path";
 
 import { CLIP_DURATION_SEC, PROJECT_SETTINGS } from "./env.mjs";
 import { runDoctor, doctorChecks } from "./doctor.mjs";
-import { ServeClient } from "./mcp.mjs";
 import { runWorkflow } from "./run.mjs";
 import { TEXT_REGION, of, okValue, lineById } from "./common.mjs";
 import {
@@ -91,7 +90,7 @@ export async function scenario1Run({ env, recorder, cliPath }) {
       { id: "caps", verb: "capabilities.get", params: {} },
     ],
   });
-  await recorder.step("2", "session_describe: contract, 14 verbs, 8 error codes; capabilities all available", [
+  await recorder.step("2", "session.describe: contract, workflow verbs and error codes; capabilities available", [
     ...discoverChecks(
       okValue(lineById(describeWorkflow.lines, "describe"), "describe"),
       okValue(lineById(describeWorkflow.lines, "caps"), "caps"),
@@ -303,156 +302,6 @@ export async function scenario1Run({ env, recorder, cliPath }) {
   ]);
 }
 
-/* ------------------------------------------------------------------ */
-/* Path (b) — mcp (simulated client)                                   */
-/* ------------------------------------------------------------------ */
-
-export async function scenario1Mcp({ env, recorder, cliPath }) {
-  const label = "s1-mcp";
-
-  // Step 1 — doctor (same env contract; serve is configured from the same env).
-  const doctor1 = await runDoctor({ cliPath, env: env.cliEnv(), recorder, label });
-  await recorder.step("1", "doctor report is usable and complete", doctorChecks(doctor1));
-
-  const client = new ServeClient({ cliPath, args: env.cliFlags(), env: env.cliEnv(), recorder, label: `${label}/A` });
-  const init = await client.initialize();
-  await recorder.record("initialize", { label: `${label}/A`, serverInfo: init.result?.serverInfo });
-
-  // Step 2 — discover.
-  const describe = await client.call("session_describe", {});
-  const caps = await client.call("capabilities_get", {});
-  await recorder.step("2", "session_describe: contract, 14 verbs, 8 error codes; capabilities all available", [
-    ...discoverChecks(describe.facadeResult.value, caps.facadeResult.value),
-  ]);
-
-  // Steps 3–5.
-  const create = await client.call("project_create", { ...CREATE_PARAMS, idempotencyKey: CREATE_KEY });
-  await recorder.step("3", "project_create ⇒ ok, revision 0, replayed false", createChecks(create.facadeResult.value));
-
-  const imported = await client.call("media_import", { path: env.inputMp4, expectedRevision: 0, idempotencyKey: IMPORT_KEY });
-  await recorder.step("4", "media_import ⇒ revision 1, mediaId, duration >= 5 s", importChecks(imported.facadeResult.value));
-
-  const edit = await client.call("edit_apply", { ops: EDIT_OPS(imported.facadeResult.value.mediaId), expectedRevision: 1, idempotencyKey: EDIT_KEY });
-  await recorder.step("5", "edit_apply ⇒ revision 2 (0→1→2 arithmetic)", editChecks(edit.facadeResult.value));
-
-  // Step 6 — honesty probes in the SAME long-lived session.
-  const outsidePath = path.join(env.scratchDir, "outside.mp4");
-  await fs.writeFile(outsidePath, "probe: outside mediaRoots\n", "utf8");
-  // No expectedRevision here: this probe runs mid-session (revision 2), and
-  // the point under test is containment, not the revision guard.
-  const outside = await client.call("media_import", {
-    path: outsidePath,
-    idempotencyKey: "s2-outside",
-  });
-  await recorder.step("6a", "media_import outside roots ⇒ INVALID_PARAMS (escape wording)", [
-    ...outsideRootsChecks(outside.facadeResult),
-  ]);
-
-  const replay = await client.call("edit_apply", { ops: EDIT_OPS(imported.facadeResult.value.mediaId), expectedRevision: 2, idempotencyKey: EDIT_KEY });
-  await recorder.step("6b", "replay same key+payload ⇒ identical result replayed:true", [
-    ...replayChecks(replay.facadeResult.value, edit.facadeResult.value),
-  ]);
-
-  const conflict = await client.call("edit_apply", {
-    ops: EDIT_OPS(imported.facadeResult.value.mediaId).map((op) =>
-      op.op === "text.create" ? { ...op, text: "Different world" } : op,
-    ),
-    expectedRevision: 2,
-    idempotencyKey: EDIT_KEY,
-  });
-  await recorder.step("6c", "same key different payload ⇒ CONFLICT", conflictChecks(conflict.facadeResult));
-
-  const timeline = await client.call("timeline_get", {});
-  await recorder.step("6d", "timeline_get deep-check: exactly the constructed world", timelineWorldChecks(timeline.facadeResult.value));
-
-  // Step 7 — preview.
-  const preview = await client.call("preview_render_frame", { timeSec: 2.5 });
-  await recorder.step("7", "preview PNG {sizeBytes>0, sha256, sourceRevision:2} inside artifactRoot", [
-    ...(await previewChecks(preview.facadeResult.value, env)),
-  ]);
-  await recorder.sha256Of(preview.facadeResult.value.artifact.path, "s1 preview PNG (mcp)");
-
-  // Step 8 — export_start, then poll job_status at a 2–5 s cadence to terminal.
-  const exportStart = await client.call("export_start", { settings: EXPORT_SETTINGS, idempotencyKey: EXPORT_KEY });
-  await recorder.step("8a", "export_start ⇒ {jobId, state:queued, sourceRevision:2}", exportStartedChecks(exportStart.facadeResult.value));
-  const jobId = exportStart.facadeResult.value.jobId;
-  const doneStatus = await pollToTerminal({ client, jobId, recorder, label });
-  await recorder.step("8b", "poll job_status (2–5 s cadence) reached terminal done with artifact + route", exportDoneChecks(doneStatus));
-  await recorder.sha256Of(doneStatus.artifact.path, "s1 exported MP4 (mcp)");
-
-  // Step 9 — verify battery incl. both compares.
-  const verify = await client.call("verify_artifact", { path: doneStatus.artifact.path, expect: VERIFY_EXPECT });
-  await recorder.step("9a", "verify_artifact full battery ⇒ probe.frameCount == 150, all checks pass", verifyProbeChecks(verify.facadeResult.value));
-  const similar = await client.call("verify_artifact", {
-    path: doneStatus.artifact.path,
-    compare: { referencePath: preview.facadeResult.value.artifact.path, timeSec: 2.5, region: TEXT_REGION, mode: "similar", maxMeanAbsDiff: 14 },
-  });
-  await recorder.step("9b", "compare similar vs step-7 preview PNG (same project/revision)", compareSimilarChecks(similar.facadeResult.value, "preview PNG"));
-  const different = await client.call("verify_artifact", {
-    path: doneStatus.artifact.path,
-    compare: { referencePath: env.inputMp4, timeSec: 2.5, referenceTimeSec: 2.5, region: TEXT_REGION, mode: "different", minChangedPixelsRatio: 0.005 },
-  });
-  await recorder.step("9c", "compare different vs raw input.mp4 (minChangedPixelsRatio > 0 — the load-bearing pixel proof)", compareDifferentChecks(different.facadeResult.value, "raw input.mp4"));
-
-  // Step 10 — disconnect the client IMMEDIATELY after a second export_start.
-  const export2 = await client.call("export_start", { settings: EXPORT_SETTINGS, idempotencyKey: EXPORT2_KEY });
-  const job1Id = exportStart.facadeResult.value.jobId;
-  const job2Id = export2.facadeResult.value.jobId;
-  client.disconnect();
-  const exitCode = await client.waitForExit();
-  await recorder.record("disconnect", { label: `${label}/A`, job2Id, serveExitCode: exitCode });
-
-  // Restart serve (fresh session), same configuration.
-  const client2 = new ServeClient({ cliPath, args: env.cliFlags(), env: env.cliEnv(), recorder, label: `${label}/B` });
-  await client2.initialize();
-  const timelineRead = await client2.call("timeline_get", {});
-  const job1Read = await client2.call("job_status", { jobId: job1Id });
-  const job2Read = await client2.call("job_status", { jobId: job2Id });
-  await recorder.step("10a", "restart ⇒ fresh session has no project and no jobs (NOT_FOUND on reads)", [
-    truthyExit("serve exited 0 on client disconnect (stdin EOF)", exitCode === 0, `exitCode=${exitCode}`),
-    ...postRestartReadsChecks({
-      timelineResult: timelineRead.facadeResult,
-      job1Result: job1Read.facadeResult,
-      job2Result: job2Read.facadeResult,
-    }),
-  ]);
-  await client2.disconnect();
-  await client2.waitForExit();
-
-  const doctor2 = await runDoctor({ cliPath, env: env.cliEnv(), recorder, label: `${label}/doctor-after` });
-  await recorder.step("10b", "doctor lists the orphan; nothing auto-deleted", [
-    ...orphanChecks({
-      report: doctor2.report,
-      job2Id,
-      artifactPath: doneStatus.artifact.path,
-      artifactRootReal: env.artifactRoot,
-    }),
-  ]);
-}
-
-/** Poll job_status at a 2.5 s cadence until a terminal state (bounded). */
-async function pollToTerminal({ client, jobId, recorder, label, timeoutMs = 1_200_000, cadenceMs = 2500 }) {
-  const deadline = Date.now() + timeoutMs;
-  let polls = 0;
-  for (;;) {
-    polls += 1;
-    const response = await client.call("job_status", { jobId });
-    const status = response.facadeResult.value;
-    await recorder.record("job-poll", { label, poll: polls, state: status.state });
-    if (status.state === "done" || status.state === "error" || status.state === "cancelled") {
-      await recorder.record("job-terminal", { label, polls, status });
-      if (status.state !== "done") {
-        throw new Error(`job reached terminal state "${status.state}" instead of done: ${JSON.stringify(status)}`);
-      }
-      return status;
-    }
-    if (Date.now() > deadline) {
-      throw new Error(`polling timed out after ${timeoutMs} ms (last state ${status.state})`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, cadenceMs));
-  }
-}
-
 function eqExit(name, actual, expected) {
   return {
     name,
@@ -466,4 +315,4 @@ function truthyExit(name, pass, detail) {
 }
 
 // Re-export for scenario 2's shared probes.
-export { pollToTerminal, eqExit, truthyExit, CREATE_PARAMS, VERIFY_EXPECT, EDIT_OPS, CREATE_KEY, IMPORT_KEY, EDIT_KEY, EXPORT_SETTINGS };
+export { eqExit, truthyExit, CREATE_PARAMS, VERIFY_EXPECT, EDIT_OPS, CREATE_KEY, IMPORT_KEY, EDIT_KEY, EXPORT_SETTINGS };

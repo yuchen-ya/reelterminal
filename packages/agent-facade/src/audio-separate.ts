@@ -20,9 +20,10 @@ import { dirname, join, resolve as resolvePath } from "node:path";
 import { FacadeError } from "./errors";
 import { assertContainedWrittenFile, prepareArtifactDir, sha256File } from "./artifact-io";
 import { fingerprintFile } from "./inspection-artifacts";
-import { FfmpegToolError, resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
+import { FfmpegToolError, resolveFfmpegVersion, resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
 import { resolveContainedPathDetailed } from "./media/path-roots";
 import { parseLoudnorm, probeAudioStreams, type NormalizeAudioMeasurement } from "./audio-normalize";
+import { computeAudioReuseKey, findReusableAudioArtifact, recordReusableAudioArtifact, stageReusableAudioWav } from "./audio-artifact-reuse";
 import { DEMUCS_MODEL, demucsCacheDir, demucsModelStatus, runAudioModelTask } from "./media/audio-models-runner";
 
 interface SeparateWorkerResult {
@@ -49,6 +50,8 @@ export function setDemucsModelReadyForTests(fn: (() => Promise<{ verified: boole
   demucsReadyOverride = fn;
 }
 export const AUDIO_SEPARATE_MAX_RANGE_SEC = 120;
+/** Bump when the separation decode/render chain changes — it invalidates reuse keys. */
+export const AUDIO_SEPARATE_CHAIN_VERSION = 1;
 const SAMPLE_RATE = 48_000;
 const DEMUCS_RATE = 44_100;
 const VERB = "audio.process.separate";
@@ -146,6 +149,16 @@ function validateParams(params: SeparateAudioParams): number {
 
 function formatSeconds(seconds: number): string {
   return seconds.toFixed(9).replace(/0+$/, "").replace(/\.$/, "") || "0";
+}
+
+/** Strictly validate a reuse candidate's recorded measurement; null → recompute. */
+function reusableMeasurement(value: unknown): NormalizeAudioMeasurement | null {
+  if (typeof value !== "object" || value === null) return null;
+  const measurement = value as Record<string, unknown>;
+  const finite = ["integratedLufs", "truePeakDbtp", "loudnessRangeLu", "thresholdLufs"].every(
+    (key) => typeof measurement[key] === "number" && Number.isFinite(measurement[key]),
+  );
+  return finite ? value as NormalizeAudioMeasurement : null;
 }
 
 function ffmpegMessage(error: unknown): string {
@@ -350,43 +363,103 @@ export async function produceSeparatedAudio(input: ProduceSeparatedAudioParams):
   }
   const before = await measureInputLoudness(binaries.ffmpeg, sourcePath, streamIndex, input.params, timestampOriginSec, input.signal);
   throwIfCancelled(input.signal);
+  const ffmpegVersion = await resolveFfmpegVersion();
+  // The model sha IS the algorithm version for separation; the ffmpeg decode
+  // and target render still pin the runtime version alongside it.
+  const algorithmVersion = `separate@${AUDIO_SEPARATE_CHAIN_VERSION}+${DEMUCS_MODEL.sha256.slice(0, 16)}+${ffmpegVersion}`;
+  const cacheKey = computeAudioReuseKey({
+    verb: VERB,
+    sourceSha256: sourceFingerprint.sha256,
+    audioStream: input.params.audioStream,
+    startSec: formatSeconds(input.params.startSec),
+    endSec: formatSeconds(input.params.endSec),
+    sampleRate: input.params.sampleRate,
+    channels: input.params.channels,
+    target: input.params.target,
+    algorithm: algorithmVersion,
+  });
   const workDir = await mkdtemp(join(tmpdir(), "rt-separate-"));
   const root = resolvePath(input.mediaRoots[0]!);
   const outputParent = join(root, "generated-assets", "audio-separate");
   const outputDir = join(outputParent, input.artifactId);
-  const stagingDir = join(outputParent, `.${input.artifactId}.${randomUUID()}.pending`);
+  const stagingDir = join(outputParent, `.${input.artifactId}.${process.pid}.${randomUUID()}.pending`);
   const stagedWavPath = join(stagingDir, "separated.wav");
   const stagedProvenancePath = join(stagingDir, "provenance.json");
   let publishedByThisAttempt = false;
+  let after: NormalizeAudioMeasurement | null = null;
+  let processing: SeparatedAudioArtifact["processing"] | null = null;
+  let reusedFrom: { cacheKey: string; artifactId: string } | null = null;
   try {
-    const sourceWav = join(workDir, "source-44k.wav");
-    await decodeStereo44k(binaries.ffmpeg, sourcePath, input.params, sourceWav, input.signal);
-    const stemsDir = join(workDir, "stems");
-    const worker = separateWorkerOverride
-      ? await separateWorkerOverride({ task: "separate", wavPath: sourceWav, outputDir: stemsDir, model: "htdemucs", cacheDir: demucsCacheDir(), offline: modelStatus.verified })
-      : await runAudioModelTask({
-          task: "separate",
-          wavPath: sourceWav,
-          outputDir: stemsDir,
-          model: "htdemucs",
-          cacheDir: demucsCacheDir(),
-          offline: modelStatus.verified,
-        }, {
-          signal: input.signal,
-          timeoutMs: 20 * 60 * 1000,
-          onProgress: () => {},
-        }) as unknown as SeparateWorkerResult;
-    const stems = worker.stems as Array<{ stem: string; path: string }> | undefined;
-    if (!Array.isArray(stems) || stems.length !== 4) fail("JOB_FAILED", "Demucs worker returned an unexpected stem set");
-    const stemPaths = Object.fromEntries(stems.map((stem) => [stem.stem, stem.path]));
-    for (const name of ["drums", "bass", "other", "vocals"]) {
-      if (!stemPaths[name]) fail("JOB_FAILED", `Demucs worker did not return the ${name} stem`);
-    }
     await prepareArtifactDir(stagingDir, root, VERB);
-    await renderTarget(binaries.ffmpeg, stemPaths, input.params, sampleCount, stagedWavPath, input.signal);
+    // AUD-13 content-addressed reuse: skipping the model inference entirely
+    // is the point here — a validated byte-identical prior separation is
+    // copied, with its recorded device/timing facts describing these bytes.
+    // A same-artifactId retry keeps compute-then-compare semantics.
+    const outputDirExists = (await lstat(outputDir).catch(() => null)) !== null;
+    const reuseHit = outputDirExists ? null : await findReusableAudioArtifact({
+      root, kind: "audio-separate", cacheKey, algorithmVersion, wavFilename: "separated.wav",
+    });
+    if (reuseHit !== null && typeof reuseHit.provenance.processing === "object" && reuseHit.provenance.processing !== null) {
+      const reusableBefore = reusableMeasurement(reuseHit.provenance.before);
+      const matches = reusableBefore !== null &&
+        (reuseHit.provenance.after === null || reusableMeasurement(reuseHit.provenance.after) !== null) &&
+        reuseHit.provenance.sourceSha256 === sourceFingerprint.sha256;
+      if (matches) {
+        await stageReusableAudioWav(reuseHit, stagedWavPath);
+        after = reuseHit.provenance.after === null
+          ? null
+          : reusableMeasurement(reuseHit.provenance.after);
+        processing = reuseHit.provenance.processing as SeparatedAudioArtifact["processing"];
+        reusedFrom = { cacheKey, artifactId: reuseHit.artifactId };
+      }
+    }
+    if (reusedFrom === null) {
+      const sourceWav = join(workDir, "source-44k.wav");
+      await decodeStereo44k(binaries.ffmpeg, sourcePath, input.params, sourceWav, input.signal);
+      const stemsDir = join(workDir, "stems");
+      const worker = separateWorkerOverride
+        ? await separateWorkerOverride({ task: "separate", wavPath: sourceWav, outputDir: stemsDir, model: "htdemucs", cacheDir: demucsCacheDir(), offline: modelStatus.verified })
+        : await runAudioModelTask({
+            task: "separate",
+            wavPath: sourceWav,
+            outputDir: stemsDir,
+            model: "htdemucs",
+            cacheDir: demucsCacheDir(),
+            offline: modelStatus.verified,
+          }, {
+            signal: input.signal,
+            timeoutMs: 20 * 60 * 1000,
+            onProgress: () => {},
+          }) as unknown as SeparateWorkerResult;
+      const stems = worker.stems as Array<{ stem: string; path: string }> | undefined;
+      if (!Array.isArray(stems) || stems.length !== 4) fail("JOB_FAILED", "Demucs worker returned an unexpected stem set");
+      const stemPaths = Object.fromEntries(stems.map((stem) => [stem.stem, stem.path]));
+      for (const name of ["drums", "bass", "other", "vocals"]) {
+        if (!stemPaths[name]) fail("JOB_FAILED", `Demucs worker did not return the ${name} stem`);
+      }
+      await renderTarget(binaries.ffmpeg, stemPaths, input.params, sampleCount, stagedWavPath, input.signal);
+      processing = {
+        model: "htdemucs",
+        modelRepo: DEMUCS_MODEL.repo,
+        modelSha256: DEMUCS_MODEL.sha256,
+        modelBytes: DEMUCS_MODEL.bytes,
+        modelLicense: DEMUCS_MODEL.license,
+        device: typeof worker.device === "string" ? worker.device : "unknown",
+        loadSeconds: typeof worker.loadSeconds === "number" ? worker.loadSeconds : 0,
+        inferenceSeconds: typeof worker.inferenceSeconds === "number" ? worker.inferenceSeconds : 0,
+        realtimeFactor: typeof worker.realtimeFactor === "number" ? worker.realtimeFactor : 0,
+        peakGpuMemoryMb: typeof worker.peakGpuMemoryMb === "number" ? worker.peakGpuMemoryMb : null,
+        peakRssMb: typeof worker.peakRssMb === "number" ? worker.peakRssMb : null,
+        stems: stems.map((stem) => stem.stem),
+        targetMix: input.params.target === "vocals" ? "vocals stem" : "drums + bass + other (amix normalize=0)",
+      };
+    }
     const verifiedStagedWav = await assertContainedWrittenFile(stagedWavPath, root, VERB);
     await verifyPublishedSamples(binaries.ffprobe, verifiedStagedWav, sampleCount, input.params.channels, input.signal);
-    const after = await measureLoudnessOrNull(binaries.ffmpeg, verifiedStagedWav, input.signal);
+    if (reusedFrom === null) {
+      after = await measureLoudnessOrNull(binaries.ffmpeg, verifiedStagedWav, input.signal);
+    }
+    if (processing === null) fail("JOB_FAILED", "internal: separation facts were not established");
     throwIfCancelled(input.signal);
     const currentFingerprint = await fingerprintFile(sourcePath);
     if (currentFingerprint.sha256 !== sourceFingerprint.sha256) fail("CONFLICT", "source media changed while separation was running; retry against its current version");
@@ -427,30 +500,20 @@ export async function produceSeparatedAudio(input: ProduceSeparatedAudioParams):
         outputStartSec: 0 as const,
         processingDelaySamples: 0 as const,
       },
-      processing: {
-        model: "htdemucs",
-        modelRepo: DEMUCS_MODEL.repo,
-        modelSha256: DEMUCS_MODEL.sha256,
-        modelBytes: DEMUCS_MODEL.bytes,
-        modelLicense: DEMUCS_MODEL.license,
-        device: typeof worker.device === "string" ? worker.device : "unknown",
-        loadSeconds: typeof worker.loadSeconds === "number" ? worker.loadSeconds : 0,
-        inferenceSeconds: typeof worker.inferenceSeconds === "number" ? worker.inferenceSeconds : 0,
-        realtimeFactor: typeof worker.realtimeFactor === "number" ? worker.realtimeFactor : 0,
-        peakGpuMemoryMb: typeof worker.peakGpuMemoryMb === "number" ? worker.peakGpuMemoryMb : null,
-        peakRssMb: typeof worker.peakRssMb === "number" ? worker.peakRssMb : null,
-        stems: stems.map((stem) => stem.stem),
-        targetMix: input.params.target === "vocals" ? "vocals stem" : "drums + bass + other (amix normalize=0)",
-      },
+      processing,
       bytes: wavStat.size,
       sha256,
     };
     const provenance = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       ...artifact,
       sourceSha256: sourceFingerprint.sha256,
       sourceTimestampOriginSec: timestampOriginSec,
-      method: "Demucs htdemucs (4 stems at 44.1 kHz) → requested target → 48 kHz exact sample window; output sample count/rate re-verified; loudness measured on the written WAV",
+      algorithmVersion,
+      ...(reusedFrom !== null ? { reusedFrom } : {}),
+      method: `${reusedFrom !== null
+        ? "Byte-identical reuse of a validated prior artifact (content-addressed cache hit; Demucs inference was not re-run — the recorded device/timing facts describe exactly these bytes)."
+        : "Demucs htdemucs (4 stems at 44.1 kHz) → requested target → 48 kHz exact sample window; output sample count/rate re-verified; loudness measured on the written WAV"}`,
       limitations: [
         "Separation quality is model inference; bleed and artifacts are possible, especially with heavy reverb or unusual instruments.",
         "The vocal stem is not a diarization or speech-enhancement guarantee; overlapping speakers are not separated.",
@@ -483,6 +546,11 @@ export async function produceSeparatedAudio(input: ProduceSeparatedAudioParams):
     }
     if (!publishedByThisAttempt) await cleanupOwnedDirectory(stagingDir, root);
     throwIfCancelled(input.signal);
+    // AUD-13: name this published artifact as the reusable result. Best-effort.
+    await recordReusableAudioArtifact({
+      root, kind: "audio-separate", cacheKey, artifactId: input.artifactId,
+      wavFilename: "separated.wav", wavSha256: sha256, algorithmVersion,
+    }).catch(() => {});
     return { ...artifact, path: published.wavPath, provenancePath: published.provenancePath };
   } catch (error) {
     const cleanupErrors: string[] = [];

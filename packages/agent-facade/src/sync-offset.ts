@@ -474,22 +474,18 @@ export function estimateSyncOffsetFromPcm(
     });
   }
 
-  const drift = summarizeSyncDrift(planned.map((_, index) => {
-    const facts = windows[index]!;
-    const midTimeSec = (facts.startSec + facts.endSec) / 2;
-    return { midTimeSec, offsetSec: facts.offsetSec };
-  }));
+  const drift = summarizeSyncDrift(usable);
   const okCount = usable.length;
   const majorityOk = okCount > 0 && (windows.length === 1 || okCount * 2 >= windows.length);
-  const verdict: SyncOffsetVerdict = drift.detected ? "clock-drift"
-    : majorityOk ? "ok"
-      : windows.some((window) => window.prominenceDb >= SYNC_OFFSET_MIN_PROMINENCE_DB && window.verdict === "ambiguous") ? "ambiguous"
-        : "no-match";
   const offsets = usable.map((window) => window.offsetSec).sort((left, right) => left - right);
   const offsetSec = offsets.length > 0 ? median(offsets) : null;
   const spread = offsets.length >= 2 ? offsets.at(-1)! - offsets[0]! : 0;
   const expectedSpread = drift.detected ? Math.abs(drift.slopeSecPerSec ?? 0) * (drift.spanSec ?? 0) : 0;
   const peaksAgree = spread <= Math.max(0.001, expectedSpread + 0.001);
+  const verdict: SyncOffsetVerdict = drift.detected ? "clock-drift"
+    : majorityOk && peaksAgree ? "ok"
+      : !peaksAgree || windows.some((window) => window.verdict === "ambiguous") ? "ambiguous"
+        : "no-match";
   const requestedDuration = targetRange.endSec - targetRange.startSec;
   return {
     coordinateSpace: "source",

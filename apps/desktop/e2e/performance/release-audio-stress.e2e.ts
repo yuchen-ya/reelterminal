@@ -25,21 +25,21 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
     run(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "aevalsrc=if(lt(mod(t\\,0.2)\\,0.04)\\,0.2*sin(2*PI*997*t)\\,0):s=44100:d=130", "-ac", "2", "-c:a", "pcm_s16le", source]);
     c.record.source_sha256 = await hash(source);
     await copyFile(source, path.join(c.evidence, "source.wav"));
-    const importResult = await c.call("media_import", { path: source, expectedRevision: (await c.call("project_get_state")).revision, idempotencyKey: "release-audio-source" });
+    const importResult = await c.call("media.import", { path: source, expectedRevision: (await c.call("project.get_state")).revision, idempotencyKey: "release-audio-source" });
     const channelMedia: { name: string; mediaId: string }[] = [];
     for (const [name, expression] of [["right-only", "0|0.2*sin(2*PI*997*t)"], ["anti-phase", "0.2*sin(2*PI*997*t)|-0.2*sin(2*PI*997*t)"]]) {
       const file = path.join(root, name + ".wav");
       run(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "aevalsrc=" + expression + ":s=44100:d=4", "-c:a", "pcm_s16le", file]);
-      const imported = await c.call("media_import", { path: file, expectedRevision: (await c.call("project_get_state")).revision, idempotencyKey: name });
+      const imported = await c.call("media.import", { path: file, expectedRevision: (await c.call("project.get_state")).revision, idempotencyKey: name });
       channelMedia.push({ name: name!, mediaId: imported.mediaId });
       await copyFile(file, path.join(c.evidence, name + ".wav"));
     }
     const analysisParams = { mediaId: importResult.mediaId, analysisTypes: ["audioSummary", "silence", "beatGrid"] as const, startSec: 0, endSec: 120, silenceParams: { thresholdDb: -35, minDurationSec: .05, paddingSec: 0 } };
-    const before = await c.call("project_get_state");
+    const before = await c.call("project.get_state");
     const wait = async (jobId: string) => {
       const deadline = Date.now() + 300_000;
       for (;;) {
-        const status = await c.call("job_status", { jobId });
+        const status = await c.call("job.status", { jobId });
         if (["done", "error", "cancelled"].includes(status.state)) return status;
         if (Date.now() > deadline) throw new Error("audio job did not settle: " + jobId);
         await c.app.page.waitForTimeout(50);
@@ -50,7 +50,7 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
       const events: any[] = [];
       let pages = 0;
       do {
-        const result = await c.call("analysis_get", { recordId, view: "events", series: "silence.silentRegions", limit: 128, ...(cursor ? { cursor } : {}) });
+        const result = await c.call("analysis.get", { recordId, view: "events", series: "silence.silentRegions", limit: 128, ...(cursor ? { cursor } : {}) });
         expect(result.events.items.length).toBeLessThanOrEqual(128);
         expect(result.events.complete).toBe(true);
         events.push(...result.events.items);
@@ -66,7 +66,7 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
     c.record.phase = "analysis_jobs";
     c.record.channel_checks = [];
     for (const media of channelMedia) {
-      const start = await c.call("media_analyze_start", { mediaId: media.mediaId, analysisTypes: ["audioSummary"], startSec: 0, endSec: 4, expectedRevision: before.revision, idempotencyKey: "channel-check-" + media.name });
+      const start = await c.call("media.analyze_start", { mediaId: media.mediaId, analysisTypes: ["audioSummary"], startSec: 0, endSec: 4, expectedRevision: before.revision, idempotencyKey: "channel-check-" + media.name });
       const status = await wait(start.jobId);
       expect(status.state).toBe("done");
       expect(status.result.summary.audioSummary.silenceCount).toBe(0);
@@ -76,11 +76,11 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
     let fixedRecord = "";
     for (let index = 0; index < jobs; index++) {
       const start = performance.now();
-      const submitted = await c.call("media_analyze_start", { ...analysisParams, expectedRevision: before.revision, idempotencyKey: "release-analysis-" + index });
+      const submitted = await c.call("media.analyze_start", { ...analysisParams, expectedRevision: before.revision, idempotencyKey: "release-analysis-" + index });
       const status = await wait(submitted.jobId);
       expect(status.state).toBe("done");
       const recordId = status.result.summary.analysisRecord.id;
-      const summary = await c.call("analysis_get", { recordId });
+      const summary = await c.call("analysis.get", { recordId });
       expect(JSON.stringify(summary)).not.toMatch(/"(?:silentRegions|waveform|onsets|beats)":/);
       expect(JSON.stringify(status.result.summary)).not.toMatch(/"(?:silentRegions|waveform|onsets|beats)":/);
       const paged = await pageEvents(recordId);
@@ -90,7 +90,7 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
       fixedJob = status; fixedRecord = recordId;
       await c.flush(); console.info("REAL_AUDIO_ANALYSIS_COMPLETE", { index, events: paged.events.length });
     }
-    expect((await c.call("project_get_state")).revision).toBe(before.revision);
+    expect((await c.call("project.get_state")).revision).toBe(before.revision);
     // A separate headless session consumes the same bytes after live work ends.
     const headless = createAgentFacade({ mediaRoots: [root], projectRoots: [root], artifactRoot: path.join(root, "headless-records") });
     const unwrap = (reply: any) => { if (!reply.ok) throw new Error(reply.error?.message); return reply.value; };
@@ -106,7 +106,7 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
     } while (!["done", "error", "cancelled"].includes(headlessStatus.state));
     expect(headlessStatus.state).toBe("done");
     const headlessSummary: any = unwrap(await headless["analysis.get"]({ recordId: headlessStatus.result.summary.analysisRecord.id }));
-    const liveSummary = await c.call("analysis_get", { recordId: fixedRecord });
+    const liveSummary = await c.call("analysis.get", { recordId: fixedRecord });
     // Session identity and import timestamps legitimately differ. Preserve both
     // originals and compare every analytical fact, including fingerprint size.
     const comparableFacts = (summary: any) => summary.observations.map((o: any) => {
@@ -118,7 +118,7 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
     c.record.headless_parity = { status: headlessStatus, live_summary: liveSummary, headless_summary: headlessSummary, excluded_session_fields: ["mediaId", "sourceFingerprint.lastModified"] };
     expect(comparableFacts(headlessSummary)).toEqual(comparableFacts(liveSummary));
     c.record.headless_parity.summary_facts_equal = true;
-    const badQuery = await c.reply("analysis_get", { recordId: fixedRecord, view: "events", series: "silence.silentRegions", limit: 257 });
+    const badQuery = await c.reply("analysis.get", { recordId: fixedRecord, view: "events", series: "silence.silentRegions", limit: 257 });
     expect(badQuery.ok).toBe(false);
     c.record.invalid_query = { ok: badQuery.ok, error: badQuery.error };
     c.record.phase = "fixed_record_observation";
@@ -129,12 +129,12 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
     for (let index = 0; index < reads || performance.now() - observationStart < durationSeconds * 1000; index++) {
       expect(await c.app.page.evaluate(() => !document.hidden)).toBe(true);
       const start = performance.now();
-      const status = await c.call("job_status", { jobId: fixedJob.jobId });
-      const summary = await c.call("analysis_get", { recordId: fixedRecord });
+      const status = await c.call("job.status", { jobId: fixedJob.jobId });
+      const summary = await c.call("analysis.get", { recordId: fixedRecord });
       expect(status.state).toBe("done");
       expect(summary).toEqual(liveSummary);
       const paged = await pageEvents(fixedRecord);
-      const waveform = await c.call("analysis_get", { recordId: fixedRecord, view: "waveform", startSec: 0, endSec: 120, maxPoints: 600 });
+      const waveform = await c.call("analysis.get", { recordId: fixedRecord, view: "waveform", startSec: 0, endSec: 120, maxPoints: 600 });
       expect(waveform.waveform.points.length).toBeLessThanOrEqual(600);
       c.record.reads.push({ index, elapsed_ms: performance.now() - start, summary_bytes: Buffer.byteLength(JSON.stringify(summary)), status_bytes: Buffer.byteLength(JSON.stringify(status)), waveform_bytes: Buffer.byteLength(JSON.stringify(waveform)), events: paged.events.length, pages: paged.pages });
       if (performance.now() - observationStart >= nextSample) { await c.app.page.waitForTimeout(1000); await c.sample(); await c.flush(); nextSample = performance.now() - observationStart + 30_000; console.info("AUDIO_FIXED_RECORD_PROGRESS", { elapsed_seconds: Math.round((performance.now() - observationStart) / 1000), completed_reads: index + 1 }); }
@@ -143,12 +143,12 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
     }
     c.record.read_observation_elapsed_ms = performance.now() - observationStart;
     expect(c.record.read_observation_elapsed_ms).toBeGreaterThanOrEqual(durationSeconds * 1000);
-    expect((await c.call("project_get_state")).revision).toBe(before.revision);
+    expect((await c.call("project.get_state")).revision).toBe(before.revision);
     c.record.phase = "normalization_jobs";
     const params = { mediaId: importResult.mediaId, audioStream: 0, startSec: 1.123, endSec: 121.123, targetLufs: -18, truePeakDbtp: -1, loudnessRangeLu: 11, sampleRate: 48000, channels: 2 };
     c.record.normalization_params = params;
     c.record.normalizations = [];
-    const failureJob = await c.call("audio_process_normalize", { ...params, expectedRevision: (await c.call("project_get_state")).revision, idempotencyKey: "normalize-owned-ffmpeg-failure" });
+    const failureJob = await c.call("audio.process.normalize", { ...params, expectedRevision: (await c.call("project.get_state")).revision, idempotencyKey: "normalize-owned-ffmpeg-failure" });
     const mainPid = await c.app.app.evaluate(() => process.pid);
     const killDeadline = Date.now() + 30_000;
     let ownedFfmpeg: number | undefined;
@@ -168,12 +168,12 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
     expect(c.record.ffmpeg_failure.state).toBe("error");
     expect(c.record.ffmpeg_failure.result).toBeNull();
     for (let index = 0; index < jobs; index++) {
-      const state = await c.call("project_get_state");
+      const state = await c.call("project.get_state");
       const start = performance.now();
-      const submitted = await c.call("audio_process_normalize", { ...params, expectedRevision: state.revision, idempotencyKey: "release-normalize-" + index });
+      const submitted = await c.call("audio.process.normalize", { ...params, expectedRevision: state.revision, idempotencyKey: "release-normalize-" + index });
       const status = await wait(submitted.jobId);
       expect(status.state, JSON.stringify(status.error)).toBe("done");
-      expect((await c.call("project_get_state")).revision).toBe(state.revision);
+      expect((await c.call("project.get_state")).revision).toBe(state.revision);
       const output = status.result.path;
       const probe = JSON.parse(run(ffprobe, ["-v", "error", "-show_streams", "-show_format", "-of", "json", output]).toString());
       expect(probe.streams[0]).toMatchObject({ codec_name: "pcm_s24le", sample_rate: "48000", channels: 2, duration_ts: 5760000 });
@@ -189,19 +189,19 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
       await copyFile(output, path.join(c.evidence, "normalized-" + index + ".wav"));
       await copyFile(status.result.provenancePath, path.join(c.evidence, "provenance-" + index + ".json"));
       if (index === jobs - 1) {
-        const stale = await c.reply("audio_process_register", { jobId: submitted.jobId, expectedRevision: state.revision - 1 });
+        const stale = await c.reply("audio.process.register", { jobId: submitted.jobId, expectedRevision: state.revision - 1 });
         expect(stale.ok).toBe(false);
         expect(stale.error.code).toBe("CONFLICT");
         const validBytes = await readFile(output);
         await writeFile(output, Buffer.concat([validBytes, Buffer.from([0])]));
-        const changed = await c.reply("audio_process_register", { jobId: submitted.jobId, expectedRevision: state.revision });
+        const changed = await c.reply("audio.process.register", { jobId: submitted.jobId, expectedRevision: state.revision });
         expect(changed.ok).toBe(false);
         await copyFile(output, path.join(c.evidence, "tampered-normalized.wav"));
         await writeFile(output, validBytes);
         c.record.registration_negatives = { stale: { ok: stale.ok, error: stale.error }, tampered: { ok: changed.ok, error: changed.error } };
       }
-      const registered = await c.call("audio_process_register", { jobId: submitted.jobId, expectedRevision: state.revision });
-      const replay = await c.call("audio_process_register", { jobId: submitted.jobId, expectedRevision: state.revision });
+      const registered = await c.call("audio.process.register", { jobId: submitted.jobId, expectedRevision: state.revision });
+      const replay = await c.call("audio.process.register", { jobId: submitted.jobId, expectedRevision: state.revision });
       expect(replay.mediaId).toBe(registered.mediaId);
       expect(replay.replayed).toBe(true);
       c.record.normalizations.push({ index, elapsed_ms: performance.now() - start, job: status, probe, measured: loudness, registered, replay, output_sha256: await hash(output) });
@@ -210,7 +210,7 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
     expect(await hash(source)).toBe(c.record.source_sha256);
     // Deliberate cancellation happens after an actual running status, and
     // settle is observed before testing queue recovery.
-    const cancelStart = await c.call("audio_process_normalize", { ...params, expectedRevision: (await c.call("project_get_state")).revision, idempotencyKey: "normalize-cancel" });
+    const cancelStart = await c.call("audio.process.normalize", { ...params, expectedRevision: (await c.call("project.get_state")).revision, idempotencyKey: "normalize-cancel" });
     const cancelDeadline = Date.now() + 30_000;
     let cancelChild: number | undefined;
     while (!cancelChild && Date.now() < cancelDeadline) {
@@ -222,13 +222,13 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
     }
     expect(cancelChild, "actual owned FFmpeg was not observed before cancellation").toBeDefined();
     c.record.cancel_owned_ffmpeg_pid = cancelChild;
-    c.record.cancel_before = await c.call("job_status", { jobId: cancelStart.jobId });
+    c.record.cancel_before = await c.call("job.status", { jobId: cancelStart.jobId });
     expect(["queued", "running"]).toContain(c.record.cancel_before.state);
-    await c.call("job_cancel", { jobId: cancelStart.jobId });
+    await c.call("job.cancel", { jobId: cancelStart.jobId });
     c.record.cancellation = await wait(cancelStart.jobId);
     expect(c.record.cancellation.state).toBe("cancelled");
     expect(c.record.cancellation.result).toBeNull();
-    const recoveryStart = await c.call("audio_process_normalize", { ...params, expectedRevision: (await c.call("project_get_state")).revision, idempotencyKey: "normalize-after-cancel" });
+    const recoveryStart = await c.call("audio.process.normalize", { ...params, expectedRevision: (await c.call("project.get_state")).revision, idempotencyKey: "normalize-after-cancel" });
     c.record.cancel_recovery = await wait(recoveryStart.jobId);
     expect(c.record.cancel_recovery.state).toBe("done");
     await c.flush(); console.info("REAL_AUDIO_CANCEL_RECOVERY_COMPLETE");
@@ -240,20 +240,20 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "audio";
       c.record.failed_cancelled_files[job.jobId] = matching;
       expect(matching).toEqual([]);
     }
-    const saved = await c.call("node_save", { expectedRevision: (await c.call("project_get_state")).revision, name: "Audio registered outputs" });
+    const saved = await c.call("node.save", { expectedRevision: (await c.call("project.get_state")).revision, name: "Audio registered outputs" });
     c.record.saved_node = saved;
     await c.app.page.keyboard.press("Control+s");
     await c.app.page.waitForFunction(async () => {
       const r = await (globalThis as any).__reelterminalPerformanceCapture.readResources();
       return r.workspace.pendingWrites === 0 && r.workspace.queuedWrites === 0 && r.autoSave.queuedSaveOperations === 0;
     }, null, { timeout: 30_000 });
-    const originalProject = (await c.call("project_get_state")).project;
+    const originalProject = (await c.call("project.get_state")).project;
     await c.app.page.screenshot({ path: path.join(c.evidence, "audio-assets.png") });
     c.record.phase = "relaunch_recovery"; await c.flush();
     await c.reconnect();
-    const restored = await c.call("project_get_state");
+    const restored = await c.call("project.get_state");
     expect(restored.project.mediaLibrary.items.map((m: any) => m.id)).toEqual(originalProject.mediaLibrary.items.map((m: any) => m.id));
-    c.record.recovered_job = await c.call("job_status", { jobId: c.record.normalizations[0].job.jobId });
+    c.record.recovered_job = await c.call("job.status", { jobId: c.record.normalizations[0].job.jobId });
     expect(c.record.recovered_job.state).toBe("done");
     c.record.phase = "finished";
     await c.sample();

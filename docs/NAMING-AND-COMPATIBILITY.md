@@ -3,7 +3,6 @@
 User-facing names use **ReelTerminal**. Workspace packages use the
 `@reelterminal/*` scope; the desktop bridge is `window.reelterminal`; the live
 CLI is `reelctl`; and standalone workflows use `reelterminal-agent`.
-The `reelterminal-live-mcp` launcher invokes `reelctl mcp serve`.
 
 ## Configuration
 
@@ -11,7 +10,8 @@ Product configuration uses canonical `REELTERMINAL_*` and
 `VITE_REELTERMINAL_*` names. Removed upstream cloud environment aliases are no
 longer supported. Some explicit compatibility seams remain: the Blender
 resolver still accepts `BLENDER_PATH` after `REELTERMINAL_BLENDER_PATH`, and the
-MCP adapter exposes its catalog's compatibility tool aliases.
+CLI schema discovery retains the catalog's compatibility aliases; calls use
+canonical command names.
 Cloud integrations require an explicit opt-in and a configured backend;
 see [EXTERNAL-DEPENDENCIES.md](EXTERNAL-DEPENDENCIES.md).
 No default deployment points at the upstream project's hosted services.

@@ -55,7 +55,7 @@ export function agentWorkspaceRoot(): string {
  * and creates one deterministic workspace under Videos for generated assets,
  * working files, deliverables, and evidence.
  * Advanced hosts can replace the list before launch without changing the
- * MCP contract.
+ * Command API contract.
  */
 export function liveMediaRoots(): readonly string[] {
   const controlledRoot = controlledMediaRoot();

@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020";
-import { TOOLS } from "../src/tools";
+
 import {
   createAgentFacade,
+  getCommandCatalog,
   EMITTED_VERB_JSON_SCHEMAS,
   FACADE_VERBS,
   VERB_SCHEMA_CORPUS,
@@ -41,10 +42,10 @@ async function productionFacadeErrorCode(
 }
 
 describe("Decision 4 item 2: transport assigns facade schemas verbatim", () => {
-  it("TOOLS inputSchemas are the EMITTED_VERB_JSON_SCHEMAS objects (deep-equal, by reference)", () => {
+  it("Command catalog inputSchemas are the EMITTED_VERB_JSON_SCHEMAS objects (deep-equal, by reference)", () => {
     const emitted = EMITTED_VERB_JSON_SCHEMAS as Record<string, unknown>;
-    expect(TOOLS).toHaveLength(FACADE_VERBS.length);
-    TOOLS.forEach((tool, index) => {
+    expect(getCommandCatalog("headless")).toHaveLength(FACADE_VERBS.length);
+    getCommandCatalog("headless").forEach((tool, index) => {
       expect(tool.inputSchema).toBe(emitted[FACADE_VERBS[index]]);
       expect(tool.inputSchema).toEqual(emitted[FACADE_VERBS[index]]);
     });

@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { launchApp } from "../harness/launch";
-import { connectExternalAgent, type ExternalAgent } from "../harness/mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "../harness/cli-client";
 import { createProjectViaUI, enableAgentSessionViaUI } from "../harness/ui";
 import { ARTIFACTS_DIR } from "../harness/paths";
 import { acquirePerformanceLock } from "../harness/performance/driver";
@@ -48,13 +48,13 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
   };
   let target: Record<string, unknown> = {};
   const call = async (name: string, args: Record<string, unknown> = {}): Promise<any> => {
-    const reply = await agent!.callTool<any>(name, args, { timeoutMs: 120_000 });
+    const reply = await agent!.callCommand<any>(name, args, { timeoutMs: 120_000 });
     if (!reply.ok) throw new Error(`${name}: ${reply.error?.code}: ${reply.error?.message}`);
     return reply.value;
   };
-  const state = () => call("project_get_state", target);
-  const edit = async (ops: unknown[]) => call("edit_apply", { ...target, ops, expectedRevision: (await state()).revision });
-  const control = (action: string, timeSeconds?: number) => call("editor_control", { ...target, action, ...(timeSeconds === undefined ? {} : { timeSeconds }) });
+  const state = () => call("project.get_state", target);
+  const edit = async (ops: unknown[]) => call("edit.apply", { ...target, ops, expectedRevision: (await state()).revision });
+  const control = (action: string, timeSeconds?: number) => call("editor.control", { ...target, action, ...(timeSeconds === undefined ? {} : { timeSeconds }) });
   const centerPixel = () => launched.page.getByTestId("preview-canvas").evaluate((element) => {
     const c = element as HTMLCanvasElement;
     return Array.from(c.getContext("2d")!.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data);
@@ -74,7 +74,7 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
   const waitJob = async (jobId: string, timeout = 600_000) => {
     const deadline = Date.now() + timeout;
     for (;;) {
-      const job = await call("job_status", { jobId });
+      const job = await call("job.status", { jobId });
       if (["done", "error", "cancelled"].includes(job.state)) return job;
       if (Date.now() > deadline) throw new Error("real export timeout");
       await launched.page.waitForTimeout(500);
@@ -83,7 +83,7 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
   const waitForEncodedProgress = async (jobId: string) => {
     const deadline = Date.now() + 120_000;
     for (;;) {
-      const job = await call("job_status", { jobId });
+      const job = await call("job.status", { jobId });
       if (["done", "error", "cancelled"].includes(job.state)) throw new Error(`export terminated before mid-run intervention: ${JSON.stringify(job)}`);
       if ((job.progress?.currentFrame ?? 0) > 0) return job.progress;
       if (Date.now() > deadline) throw new Error("real export made no encoded-frame progress before intervention");
@@ -99,9 +99,9 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
     await createProjectViaUI(launched.page);
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     agent = await connectExternalAgent(launched.endpointFile);
-    const ctx = await call("editor_get_context");
+    const ctx = await call("editor.get_context");
     target = { projectId: ctx.identity.projectId, workspaceId: ctx.identity.workspaceId };
-    const caps = await call("capabilities_get");
+    const caps = await call("capabilities.get");
     record.environment = await readEnvironmentIdentity(launched);
     const observationSeconds = Number(process.env.REELTERMINAL_REAL_MEDIA_RESOURCE_OBSERVATION_SECONDS ?? 0);
     if (!Number.isInteger(observationSeconds) || observationSeconds < 0 || observationSeconds > 3600) throw new Error("invalid post-export resource observation duration");
@@ -126,7 +126,7 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
       record.sources[index].counter_at_2_seconds = readCounter(file, 2);
       expect(Math.abs(record.sources[index].counter_at_2_seconds - 60)).toBeLessThanOrEqual(1);
       await copyFile(file, path.join(evidence, `source-${index}.mp4`));
-      const imported = await call("media_import", { ...target, path: file, expectedRevision: (await state()).revision, idempotencyKey: `${id}-import-${index}` });
+      const imported = await call("media.import", { ...target, path: file, expectedRevision: (await state()).revision, idempotencyKey: `${id}-import-${index}` });
       mediaIds.push(imported.mediaId);
       await flush();
     }
@@ -137,7 +137,7 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
     const green = tracks.find((t: any) => t.id === "upper-green").clips[0];
     const blue = tracks.find((t: any) => t.id === "upper-blue").clips[0];
     await edit([{ op: "clip.setTransform", clipId: green.id, transform: { position: { x: 500, y: -250 }, scale: { x: 0.3, y: 0.3 } } }, { op: "clip.setTransform", clipId: blue.id, transform: { position: { x: -500, y: -250 }, scale: { x: 0.3, y: 0.3 } } }, { op: "clip.setSpeedConfig", clipId: green.id, speed: 1.5, reversed: false, pitchCorrection: true, keyframes: [], freezeFrames: [] }, { op: "transition.add", clipAId: back[0].id, clipBId: back[1].id, type: "crossfade", duration: 0.5 }]);
-    const unsupportedAudio = await agent.callTool("editor_control", { ...target, action: "play" });
+    const unsupportedAudio = await agent.callCommand("editor.control", { ...target, action: "play" });
     record.unsupported_audio = { pitch_correction: true, result: { ok: unsupportedAudio.ok, error: unsupportedAudio.error } };
     expect(unsupportedAudio.ok).toBe(false);
     expect(unsupportedAudio.error?.message).toMatch(/pitch correction.*not available/i);
@@ -145,7 +145,7 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
     await edit([{ op: "clip.setSpeedConfig", clipId: green.id, speed: 1.5, reversed: false, pitchCorrection: false, keyframes: [], freezeFrames: [] }]);
     record.selected_audio_mode = "1.5x_varispeed_pitch_correction_false";
     record.project = (await state()).project;
-    await call("node_save", { ...target, expectedRevision: (await state()).revision, name: "Real media fixed project" });
+    await call("node.save", { ...target, expectedRevision: (await state()).revision, name: "Real media fixed project" });
     await verifyGuiFrame(2, 0);
     await verifyGuiFrame(8, 2);
     await verifyGuiFrame(2, 0);
@@ -183,7 +183,7 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
       }
       await launched.page.waitForTimeout(7000);
       await control("pause");
-      const context = await call("editor_get_context", target);
+      const context = await call("editor.get_context", target);
       record.continuous_playback.push({ pass, elapsed_ms: performance.now() - start, playhead_seconds: context.playheadSeconds });
       expect(context.playheadSeconds).toBeGreaterThanOrEqual(8.5);
       expect(context.playheadSeconds).toBeLessThanOrEqual(12.1);
@@ -197,14 +197,14 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
       await control("play"); await launched.page.waitForTimeout(1200); await control("pause");
       const before = await state();
       await edit([{ op: "clip.setTransform", clipId: blue.id, transform: { opacity: 0.8 } }]);
-      await call("history_control", { ...target, action: "undo", expectedRevision: (await state()).revision });
+      await call("history.control", { ...target, action: "undo", expectedRevision: (await state()).revision });
       const after = await state();
       expect(after.project.timeline.tracks).toEqual(before.project.timeline.tracks);
       await launched.page.keyboard.press("Control+s");
       record.operations.push({ round, duration_ms: performance.now() - start, undo_verified: true });
       await flush();
     }
-    const nodes = await call("node_list", { projectId: target.projectId });
+    const nodes = await call("node.list", { projectId: target.projectId });
     const saved = nodes.nodes.find((n: any) => n.name === "Real media fixed project");
     expect(saved).toBeDefined();
     const node = launched.page.getByTestId(`version-node-${saved.id}`);
@@ -217,10 +217,10 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
     await verifyGuiFrame(2, 0);
     await launched.page.screenshot({ path: path.join(evidence, "real-project.png") });
     const cancelledDestination = path.join(outputRoot, "cancelled.mp4");
-    const cancellation = await call("export_start", { ...target, settings: record.settings, destinationPath: cancelledDestination });
+    const cancellation = await call("export.start", { ...target, settings: record.settings, destinationPath: cancelledDestination });
     activeJob = cancellation.jobId;
     record.cancel_progress = await waitForEncodedProgress(activeJob!);
-    await call("job_cancel", { jobId: activeJob });
+    await call("job.cancel", { jobId: activeJob });
     record.cancellation = await waitJob(activeJob!);
     activeJob = undefined;
     expect(record.cancellation.state).toBe("cancelled");
@@ -230,7 +230,7 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
     // Kill only the dedicated Chromium export worker owned by this isolated
     // app, after actual frame progress. The visible Electron editor stays alive.
     const failedDestination = path.join(outputRoot, "encoder-failed.mp4");
-    const failedExport = await call("export_start", { ...target, settings: record.settings, destinationPath: failedDestination });
+    const failedExport = await call("export.start", { ...target, settings: record.settings, destinationPath: failedDestination });
     activeJob = failedExport.jobId;
     record.failure_progress = await waitForEncodedProgress(activeJob!);
     const appPid = await launched.app.evaluate(() => process.pid);
@@ -268,7 +268,7 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
     // jobs are deliberately not registered and cannot alter its timeline.
     const normalize = async (key: string) => {
       const sourceRevision = (await state()).revision;
-      const submitted = await call("audio_process_normalize", { ...target, mediaId: mediaIds[0], audioStream: 0, startSec: 1, endSec: 11, targetLufs: -18, truePeakDbtp: -1, loudnessRangeLu: 11, sampleRate: 48000, channels: 2, expectedRevision: sourceRevision, idempotencyKey: key });
+      const submitted = await call("audio.process.normalize", { ...target, mediaId: mediaIds[0], audioStream: 0, startSec: 1, endSec: 11, targetLufs: -18, truePeakDbtp: -1, loudnessRangeLu: 11, sampleRate: 48000, channels: 2, expectedRevision: sourceRevision, idempotencyKey: key });
       activeJob = submitted.jobId;
       const job = await waitJob(activeJob!);
       activeJob = undefined;
@@ -282,13 +282,13 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
       return job;
     };
     const firstAudioJob = await normalize("interleave-before-export");
-    record.interleaved_registration = await call("audio_process_register", { ...target, jobId: firstAudioJob.jobId, expectedRevision: (await state()).revision });
+    record.interleaved_registration = await call("audio.process.register", { ...target, jobId: firstAudioJob.jobId, expectedRevision: (await state()).revision });
     record.fixed_export_revision = (await state()).revision;
     await flush();
     for (let index = 0; index < 10; index++) {
       const destination = path.join(outputRoot, `export-${index}.mp4`);
       const start = performance.now();
-      const submitted = await call("export_start", { ...target, settings: record.settings, destinationPath: destination, expectedRevision: (await state()).revision, idempotencyKey: `${id}-export-${index}` });
+      const submitted = await call("export.start", { ...target, settings: record.settings, destinationPath: destination, expectedRevision: (await state()).revision, idempotencyKey: `${id}-export-${index}` });
       activeJob = submitted.jobId;
       const job = await waitJob(activeJob!);
       activeJob = undefined;
@@ -338,8 +338,8 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
       await resourceObserver?.sample(`after_export_${index}`);
       if (index === 0) {
         await normalize("interleave-between-exports");
-        expect((await call("job_status", { jobId: job.jobId })).state).toBe("done");
-        expect((await call("job_status", { jobId: firstAudioJob.jobId })).state).toBe("done");
+        expect((await call("job.status", { jobId: job.jobId })).state).toBe("done");
+        expect((await call("job.status", { jobId: firstAudioJob.jobId })).state).toBe("done");
         expect((await state()).revision).toBe(record.fixed_export_revision);
       }
     }
@@ -363,7 +363,7 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
     await launched.page.screenshot({ path: path.join(evidence, "failure.png"), timeout: 5000 }).catch(() => {});
     throw error;
   } finally {
-    if (activeJob && agent) await call("job_cancel", { jobId: activeJob }).catch(() => {});
+    if (activeJob && agent) await call("job.cancel", { jobId: activeJob }).catch(() => {});
     // Read persisted task status only; never copy endpoint descriptors or tokens.
     const collectStatuses = async (dir: string): Promise<void> => {
       for (const item of await readdir(dir, { withFileTypes: true }).catch(() => [])) {

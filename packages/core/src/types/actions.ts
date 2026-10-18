@@ -91,6 +91,7 @@ export interface ValidationError {
 
 // Project actions
 export type ProjectAction =
+  | { type: "project/setCollaborationInstructions"; params: { instructions?: import("./collaboration-instruction").ProjectCollaborationInstructions } }
   | {
       type: "project/create";
       params: { name: string; settings: ProjectSettings };

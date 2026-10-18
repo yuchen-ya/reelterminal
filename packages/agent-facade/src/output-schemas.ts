@@ -3,11 +3,10 @@ import { MAX_TIMELINE_SOURCE_MAP_POINTS } from "./timeline-source-map";
 /**
  * Machine-readable successful-result schemas for the facade tools.
  *
- * The MCP transports return the complete `{ok:true,value}` envelope in
- * structuredContent, so these schemas describe that envelope (not a guessed
- * `results[]` convenience shape). Error envelopes are `isError:true` and are
- * intentionally outside successful-output validation. Keep this declaration
- * small and JSON-only: it is shared by stdio and live MCP transports.
+ * These schemas describe the complete `{ok:true,value}` command envelope.
+ * Error envelopes use `ok:false` and remain outside successful-output
+ * validation. Keep this declaration
+ * small and JSON-only: it is shared by headless and live command discovery.
  */
 import { EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES, type FacadeVerb } from "./types";
 
@@ -447,6 +446,10 @@ const editorContext = (): OutputSchemaNode =>
       timeRange: nullable(openObject()),
       canvasPoint: nullable(objectSchema({ x: numberSchema(0, 1), y: numberSchema(0, 1) }, ["x", "y"])),
       references: editorReferences(),
+      collaborationInstructions: objectSchema({
+        enabledCount: integerSchema(0),
+        items: arraySchema(objectSchema({ id: stringSchema(), title: stringSchema(), updatedAt: numberSchema() }, ["id", "title", "updatedAt"]), { maxItems: 20 }),
+      }, ["enabledCount", "items"]),
       requirements: objectSchema(
         {
           ready: integerSchema(0),
@@ -480,6 +483,7 @@ const editorContext = (): OutputSchemaNode =>
       "canvasPoint",
       "references",
       "requirements",
+      "collaborationInstructions",
       "identity",
     ],
   );
@@ -660,7 +664,7 @@ const projectSaveResult = (): OutputSchemaNode =>
   objectSchema(
     {
       // Live project.save only returns revision; headless also fills the
-      // checkpoint fields below. Keeping these optional makes one MCP tool
+      // checkpoint fields below. Keeping these optional makes one command
       // schema honest for both runtime modes.
       revision: integerSchema(0),
       path: stringSchema(),
@@ -824,6 +828,10 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
     ["revision", "projectId", "previousName", "name", "replayed"],
   ),
   "project.get_state": projectState(),
+  "collaboration.instructions.get": objectSchema({
+    revision: integerSchema(0), projectId: stringSchema(), workspaceId: stringSchema(),
+    instructions: arraySchema(openObject(), { maxItems: 20 }),
+  }, ["revision", "projectId", "instructions"]),
   "requirements.list": objectSchema({
     revision: integerSchema(0),
     requirements: arraySchema(objectSchema({
@@ -1213,7 +1221,7 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   ),
 };
 
-/** Successful `{ok:true,value}` output schema for every MCP facade verb. */
+/** Successful `{ok:true,value}` output schema for every facade command. */
 export const EMITTED_VERB_OUTPUT_JSON_SCHEMAS: Readonly<Record<FacadeVerb, OutputSchemaObject>> = Object.fromEntries(
   Object.entries({ ...valueSchemas, ...Object.fromEntries(PLUGIN_TOOLS.map((tool) => [tool.name, tool.output])) }).map(([verb, value]) => [verb, successEnvelope(value)]),
 ) as Readonly<Record<FacadeVerb, OutputSchemaObject>>;

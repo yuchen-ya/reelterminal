@@ -151,6 +151,23 @@ describe("syncOffset drift summary", () => {
 });
 
 describe("syncOffset aggregation over windows", () => {
+  it("refuses contradictory offsets despite individually reliable windows", () => {
+    const windowLength = 10 * SR;
+    const ref = noise(3 * windowLength, 17);
+    const target = new Float32Array(ref.length);
+    [0.1, -0.1, 0.1].forEach((offset, index) => {
+      target.set(delayed(ref.subarray(index * windowLength, (index + 1) * windowLength), Math.round(offset * SR)), index * windowLength);
+    });
+    const facts = estimateSyncOffsetFromPcm(ref, target, {
+      targetRange: { startSec: 0, endSec: 30 }, referenceRange: { startSec: 0, endSec: 30 },
+      params: resolveSyncOffsetParams({ referenceMediaId: "ref-media", windowSec: 10, searchRangeSec: 1 }),
+      reference: reference({ endSec: 30, durationSec: 30 }),
+    });
+    expect(facts.windows.every((window) => window.verdict === "ok")).toBe(true);
+    expect(facts.peaks.peaksAgree).toBe(false);
+    expect(facts.verdict).toBe("ambiguous");
+    expect(facts.fixedOffsetSupported).toBe(false);
+  });
   it("reports the median offset, every window and the fixed-offset verdict", () => {
     const ref = noise(6 * SR, 7);
     const target = delayed(ref, Math.round(0.125 * SR));

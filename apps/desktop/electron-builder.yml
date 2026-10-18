@@ -5,7 +5,7 @@ productName: ReelTerminal
 artifactName: ${productName}-${version}-${arch}.${ext}
 asar: true
 asarUnpack:
-  - dist/live-mcp/**
+  - dist/python/audio_models.py
   - dist/aurora-host/**
   # Native ONNX runtime for the Silero VAD speech-activity analysis. The main
   # bundle keeps the require() external, so the packaged app loads the .node
@@ -71,8 +71,6 @@ extraFiles:
   # that prefer an explicit resources path.
   - from: resources/bin/reelctl.cmd
     to: reelctl.cmd
-  - from: resources/bin/reelterminal-live-mcp.cmd
-    to: reelterminal-live-mcp.cmd
 mac:
   files:
     # Keep only the darwin bindings. The mac targets ship arm64 and x64, so

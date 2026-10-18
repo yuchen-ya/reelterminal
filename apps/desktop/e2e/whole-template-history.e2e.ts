@@ -8,7 +8,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { launchApp, type LaunchedApp } from "./harness/launch";
-import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { createEvidence, type EvidenceRecord } from "./harness/evidence";
 import { DESKTOP_DIR } from "./harness/paths";
 import {
@@ -111,13 +111,13 @@ describe("whole-project template replacement with a pending redo", () => {
   const observations: Record<string, unknown> = {};
 
   const readProject = async (): Promise<ProjectView> => {
-    const result = await agent.callTool<ProjectView>("project_get_state", target);
+    const result = await agent.callCommand<ProjectView>("project.get_state", target);
     expect(result.ok, JSON.stringify(result.error)).toBe(true);
     return result.value!;
   };
 
   const readHistory = async (): Promise<HistoryView> => {
-    const result = await agent.callTool<HistoryView>("history_get", target);
+    const result = await agent.callCommand<HistoryView>("history.get", target);
     expect(result.ok, JSON.stringify(result.error)).toBe(true);
     return result.value!;
   };
@@ -168,9 +168,9 @@ describe("whole-project template replacement with a pending redo", () => {
     await launched.waitForEndpointFile();
     agent = await connectExternalAgent(launched.endpointFile);
 
-    const context = await agent.callTool<{
+    const context = await agent.callCommand<{
       identity: { projectId: string; workspaceId: string };
-    }>("editor_get_context");
+    }>("editor.get_context");
     expect(context.ok, JSON.stringify(context.error)).toBe(true);
     target = {
       projectId: context.value!.identity.projectId,

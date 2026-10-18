@@ -17,7 +17,7 @@ import path from "node:path";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright-core";
 import {
   DESKTOP_DIR,
-  LIVE_MCP_CONNECTOR_PATH,
+  REELCTL_PATH,
   MAIN_BUNDLE_PATH,
   ARTIFACTS_DIR,
 } from "./paths";
@@ -83,7 +83,7 @@ async function launch(
   extraEnv: NodeJS.ProcessEnv = {},
   skipLocaleReload = false,
 ): Promise<LaunchedApp> {
-  if (!existsSync(MAIN_BUNDLE_PATH) || !existsSync(LIVE_MCP_CONNECTOR_PATH)) {
+  if (!existsSync(MAIN_BUNDLE_PATH) || !existsSync(REELCTL_PATH)) {
     throw new Error(
       "desktop build missing — run `pnpm --filter @reelterminal/desktop build` before test:e2e",
     );

@@ -580,6 +580,12 @@ export class ActionExecutor {
         (project as any).modifiedAt = Date.now();
         break;
 
+      case "project/setCollaborationInstructions": {
+        const mutable = project as { collaborationInstructions?: Project["collaborationInstructions"] };
+        if (action.params.instructions === undefined) delete mutable.collaborationInstructions;
+        else mutable.collaborationInstructions = structuredClone(action.params.instructions);
+        break;
+      }
       case "project/setRenderFonts":
         if (action.params.fonts) (project as any).renderFonts = structuredClone(action.params.fonts);
         else delete (project as any).renderFonts;

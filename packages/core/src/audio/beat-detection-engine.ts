@@ -76,19 +76,37 @@ export class BeatDetectionEngine {
     sampleRate: number,
   ): Promise<BeatAnalysisResult> {
     const duration = samples.length / sampleRate;
+    const energies = this.computeRawEnergies(samples);
+    return this.analyzeFromRawEnergies(energies, sampleRate, duration);
+  }
 
-    const onsets = this.detectOnsets(samples, sampleRate);
+  /** Raw (unsmoothed) RMS energy frames; frame k covers [k*hop, k*hop+window). */
+  private computeRawEnergies(samples: Float32Array): Float32Array {
+    const { windowSize, hopSize } = this.config;
+    const numFrames = Math.floor((samples.length - windowSize) / hopSize);
+    const energiesF32 = new Float32Array(Math.max(0, numFrames));
+    if (numFrames > 0) {
+      this.wasmProcessor.computeRMSEnergies(
+        samples,
+        windowSize,
+        hopSize,
+        energiesF32,
+      );
+    }
+    return energiesF32;
+  }
+
+  /** Onset detection and everything downstream, over raw energy frames. */
+  analyzeFromRawEnergies(
+    energiesF32: Float32Array,
+    sampleRate: number,
+    duration: number,
+  ): BeatAnalysisResult {
+    const onsets = this.detectOnsetsFromRawEnergies(energiesF32, sampleRate);
     const { bpm, confidence } = this.calculateBpm(onsets, duration);
     const beats = this.generateBeats(bpm, duration, onsets);
     const downbeats = this.detectDownbeats(beats);
-
-    return {
-      bpm,
-      confidence,
-      beats,
-      duration,
-      downbeats,
-    };
+    return { bpm, confidence, beats, duration, downbeats };
   }
 
   async analyzeFromBlob(blob: Blob): Promise<BeatAnalysisResult> {
@@ -108,22 +126,20 @@ export class BeatDetectionEngine {
   }
 
   /**
-   * Detects onset events (significant energy increases) in audio using RMS energy analysis.
-   * Algorithm: Extract RMS energy in windows, smooth for stability, apply adaptive threshold,
-   * find peaks (local maxima with sufficient rise), enforce minimum spacing between detections.
-   *
-   * This is more robust than spectral methods for real-world audio with variable dynamics.
+   * Detects onset events (significant energy increases) over RMS energy
+   * frames: smooth for stability, apply an adaptive threshold, find peaks
+   * (local maxima with sufficient rise), enforce minimum spacing between
+   * detections. This is more robust than spectral methods for real-world
+   * audio with variable dynamics.
    */
-  private detectOnsets(samples: Float32Array, sampleRate: number): number[] {
-    const { windowSize, hopSize, sensitivity } = this.config;
+  private detectOnsetsFromRawEnergies(
+    energiesF32: Float32Array,
+    sampleRate: number,
+  ): number[] {
+    const { hopSize, sensitivity } = this.config;
     const onsets: number[] = [];
 
-    const numFrames = Math.floor((samples.length - windowSize) / hopSize);
-    const energiesF32 = new Float32Array(numFrames);
-
-    this.wasmProcessor.computeRMSEnergies(samples, windowSize, hopSize, energiesF32);
-
-    const smoothedF32 = new Float32Array(numFrames);
+    const smoothedF32 = new Float32Array(energiesF32.length);
     this.wasmProcessor.smoothArray(energiesF32, smoothedF32, 5);
 
     const smoothedEnergies = Array.from(smoothedF32);
@@ -408,6 +424,56 @@ export async function analyzeBeatsInPcm(
 ): Promise<BeatAnalysisResult> {
   const engine = new BeatDetectionEngine(config);
   return engine.analyzePcm(samples, sampleRate);
+}
+
+/**
+ * Raw (unsmoothed) RMS energy frames for one streamed PCM segment (AUD-11
+ * long-material decode). Frame k of THIS buffer covers its samples
+ * [k*hopSize, k*hopSize+windowSize); a caller concatenating frames from
+ * successive segments must decode one continuous stream, keep segment
+ * boundaries on whole hopSize multiples and carry windowSize-1 leading
+ * samples, so every global frame's window covers exactly the samples a
+ * single-pass decode would see. Uses the same processor as analyzePcm.
+ */
+export function computeRawBeatEnergies(
+  samples: Float32Array,
+  config: Partial<BeatDetectionConfig> = {},
+): Float32Array {
+  const { windowSize, hopSize } = {
+    ...DEFAULT_BEAT_DETECTION_CONFIG,
+    ...config,
+  };
+  const numFrames = Math.floor((samples.length - windowSize) / hopSize);
+  const energies = new Float32Array(Math.max(0, numFrames));
+  if (numFrames > 0) {
+    getBeatDetectionProcessor().computeRMSEnergies(
+      samples,
+      windowSize,
+      hopSize,
+      energies,
+    );
+  }
+  return energies;
+}
+
+/**
+ * Full beat analysis over precomputed raw energy frames — the exact
+ * downstream of analyzePcm (smooth → adaptive threshold → onsets → BPM →
+ * beats → downbeats). A streamed decode that reproduces analyzePcm's energy
+ * frames therefore reproduces its result bit-for-bit.
+ */
+export async function analyzeBeatsFromOnsetEnergies(
+  rawEnergies: Float32Array,
+  sampleRate: number,
+  durationSec: number,
+  config: Partial<BeatDetectionConfig> = {},
+): Promise<BeatAnalysisResult> {
+  const engine = new BeatDetectionEngine(config);
+  return engine.analyzeFromRawEnergies(
+    rawEnergies,
+    sampleRate,
+    durationSec,
+  );
 }
 
 export function getBeatDetectionEngine(): BeatDetectionEngine {

@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { launchApp } from "./harness/launch";
-import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { createProjectViaUI, createTextClipViaUI, enableAgentSessionViaUI } from "./harness/ui";
 import { ARTIFACTS_DIR } from "./harness/paths";
 
@@ -13,7 +13,7 @@ test("inspector archives and board preserve preview, target, forms and main layo
   let evidence: string | undefined;
   const observations: Record<string, unknown> = {};
   const call = async (name: string, args: Record<string, unknown> = {}) => {
-    const result = await agent!.callTool<any>(name.replaceAll(".", "_"), args);
+    const result = await agent!.callCommand<any>(name, args);
     expect(result.ok, JSON.stringify(result.error)).toBe(true);
     return result.value;
   };
@@ -107,12 +107,14 @@ test("inspector archives and board preserve preview, target, forms and main layo
     await launched.page.getByTestId(`version-node-${first.id}`).dblclick();
     await launched.page.getByTestId("version-preview-banner").waitFor();
     await launched.page.getByTestId("requirement-board-entry").click();
+    await launched.page.getByRole("tab", { name: "Tasks", exact: true }).click();
     await launched.page.getByRole("button", { name: "New requirement", exact: true }).click();
     const formTitle = launched.page.getByRole("textbox", { name: "New requirement", exact: true });
     await formTitle.fill("Board writes to actual edit");
     await launched.page.getByRole("button", { name: "Select text clip New Title", exact: true }).click();
     expect(await launched.page.getByTestId("inspector-properties").isVisible()).toBe(true);
     await launched.page.getByTestId("requirement-board-entry").click();
+    await launched.page.getByRole("tab", { name: "Tasks", exact: true }).click();
     expect(await formTitle.inputValue()).toBe("Board writes to actual edit");
     expect(await launched.page.getByTestId("version-preview-banner").isVisible()).toBe(true);
     await launched.page.getByRole("button", { name: "Publish to board", exact: true }).click();
@@ -127,6 +129,7 @@ test("inspector archives and board preserve preview, target, forms and main layo
     await launched.page.getByLabel(/^Vertical /).click();
     await vi.waitFor(async () => expect((await call("editor.get_context")).identity.projectId).not.toBe(target.projectId));
     await launched.page.getByTestId("requirement-board-entry").click();
+    await launched.page.getByRole("tab", { name: "Tasks", exact: true }).click();
     await launched.page.getByRole("button", { name: "New requirement", exact: true }).click();
     expect(await formTitle.inputValue()).toBe("");
     await launched.page.getByRole("button", { name: "Vertical", exact: true }).click();
@@ -152,6 +155,7 @@ test("inspector archives and board preserve preview, target, forms and main layo
       throw error;
     }
     await launched.page.getByTestId("requirement-board-entry").click();
+    await launched.page.getByRole("tab", { name: "Tasks", exact: true }).click();
     expect(await formTitle.inputValue()).toBe("Unsubmitted project A form");
     observations.projectFormsIsolated = true;
     await launched.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1024, 720));

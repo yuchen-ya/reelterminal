@@ -5,7 +5,7 @@ import type { CaptureReport } from "../../../web/src/performance";
 import type { TimelineState } from "@reelterminal/agent-facade";
 import { launchApp, type LaunchedApp } from "../harness/launch";
 import { ARTIFACTS_DIR } from "../harness/paths";
-import { connectExternalAgent, type ExternalAgent } from "../harness/mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "../harness/cli-client";
 import { enableAgentSessionViaUI } from "../harness/ui";
 import { acquirePerformanceLock, captureComplete, prepareProfile, installProbe, dragTo, waitForMarker, type RendererWindowEvidence, type DragTiming } from "../harness/performance/driver";
 import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/performance/identity";
@@ -100,7 +100,7 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
       await installProbe(page);
       const target = { projectId: fixture.projectId!, workspaceId: fixture.workspaceId! };
       const readClip = async () => {
-        const state = await agent!.callTool<TimelineState>("timeline_get", target, { timeoutMs: 30_000 });
+        const state = await agent!.callCommand<TimelineState>("timeline.get", target, { timeoutMs: 30_000 });
         if (!state.ok) throw new Error("calibration timeline read failed");
         return state.value!.tracks.flatMap(track => track.clips).find(clip => clip.id === fixture.targetMediaClipId)!;
       };

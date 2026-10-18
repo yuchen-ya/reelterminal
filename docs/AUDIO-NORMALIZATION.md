@@ -33,8 +33,18 @@ context; direct in-process facade calls omit these two transport fields.
 Processing fields are required. LUFS accepts -70 through -5, true peak -9
 through 0 dBTP, LRA 1 through 50 LU. These are configurable targets, without
 claiming a universal delivery standard. Ranges must fit the selected audio
-stream and span at most 120 seconds. Output is 48 kHz mono or stereo PCM
-24-bit WAV; FFmpeg's native channel-layout conversion applies before measuring.
+stream and span at most 3600 seconds (AUD-11; previously 120). Output is
+48 kHz mono or stereo PCM 24-bit WAV; FFmpeg's native channel-layout
+conversion applies before measuring.
+
+Long ranges are bounded explicitly rather than by a small cap: each loudnorm
+pass streams inside one FFmpeg process (no PCM buffering in this process),
+the per-pass wall-clock budget is `180 s + 8 s per source second`
+(cancellation stays available), the whole-range integrated LUFS always comes
+from one two-pass run over the exact requested window — never an average of
+chunk measurements — and the output budget is 288 KB/s for stereo s24le
+(about 1.0 GiB per hour). Job progress now tracks each pass through FFmpeg
+`-progress` reporting.
 
 The start response contains `jobId`, `kind: "audio-process"`, source revision,
 state and `replayed`. Poll `reelctl job wait <jobId>` or `job.status`. A completed
@@ -135,18 +145,62 @@ mode, the existing operational media-import bridge. No live user project is
 needed for development validation.
 
 Audio streams with a nonzero offset relative to the media's timestamp origin
-are currently rejected, so their leading delay cannot silently collapse.
-A shared positive format/audio timestamp origin is preserved during source
-trimming and then mapped to output zero. Source decoding is bounded by the
-existing local FFmpeg process timeout and output limits. Headless transport
-shutdown waits up to ten seconds for requested audio cancellation to settle;
-forced process termination can leave an unpublished staging directory.
+are supported since AUD-12, with the mapping fixed explicitly instead of
+rejecting the stream:
+
+- source media time = container time − the format's timestamp origin;
+- audio track time = source media time − the stream's start offset;
+- output time zero = the requested `startSec` in source media time.
+
+A range that starts before the audio track begins keeps the gap as real
+output silence (`timing.leadSilenceSamples`), so a legal leading delay is
+preserved and nothing is silently shifted; a negative stream offset simply
+means the track has content before the media origin, which the PTS-based
+trim never requests. Provenance records `sourceStreamStartSec` and
+`sourceStreamOffsetSec` alongside the existing timestamp origin. A shared
+positive format/audio timestamp origin is still preserved during source
+trimming and then mapped to output zero. Container-reported stream starts
+carry codec priming (AAC ≈ 22 ms), so the preserved lead is the container's
+reported offset, not a nominal value. A range ending before the track starts
+is rejected; a range past the track's honest coverage fails measurement
+rather than publishing padded silence as normalized. The denoise and
+separation verbs still reject offset tracks (their delay-compensation and
+model paths have not adopted the mapping).
+
+Source decoding is bounded by the per-pass budget above and output limits.
+Headless transport shutdown waits up to ten seconds for requested audio
+cancellation to settle; forced process termination can leave an unpublished
+staging directory. The desktop host only sweeps
+`.<jobId>.<pid>.<uuid>.pending` directories whose owner process is confirmed
+absent. Live owners, permission-unknown owners and legacy directories without
+a PID are retained. Published assets are never swept.
+
+## Content-addressed reuse and lifecycle (AUD-13)
+
+A new job whose full effective identity — source content SHA-256, audio
+stream, sample-exact range, all effective parameters, preprocessing chain
+version and the FFmpeg runtime version, never `mediaId` alone — matches a
+previously published artifact reuses those exact bytes: the WAV is copied
+into the new job's staging directory, verified (existence, WAV and provenance
+SHA-256, version),
+and published under the new jobId with `reusedFrom` disclosed in provenance
+alongside the original run's measurements, which describe exactly those
+bytes. Any doubt (missing file, changed bytes, version drift) recomputes
+from scratch and repairs the index. The reuse index
+(`generated-assets/<kind>/.reuse-index.json`) only names published
+artifacts and deletes nothing: registered assets, project references and
+undo history are never treated as cache, and a completed-but-unregistered
+job keeps its artifact available for later registration. Undo/redo of a
+registration replays retained media bytes; reuse is an optimization, not a
+promise of zero recomputation. Restored after-restart receipts replay under
+their own verb (normalize/denoise/separate), so a same-key retry no longer
+starts a duplicate job.
 
 ## Follow-up work
 
-Longer ranges, relative audio-stream offsets, headless cross-session recovery
-and abandoned-output management are tracked in [AUDIO-TODO.md](AUDIO-TODO.md).
-They are not supported by this command today. VAD, denoising, transcription
-and source separation are separate planned work; normalization does not imply
-those models are installed. This page describes implemented source behavior;
-query the running installation's catalog and capabilities before invoking it.
+Headless cross-session job recovery beyond the existing durable live ledger,
+DeepFilterNet-tier denoising and further lifecycle automation are tracked in
+[AUDIO-TODO.md](AUDIO-TODO.md). VAD, denoising, transcription and source
+separation are separate work; normalization does not imply those models are
+installed. This page describes implemented source behavior; query the
+running installation's catalog and capabilities before invoking it.

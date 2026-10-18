@@ -3,7 +3,7 @@
  * screen id. Generated assets: real UI captures (V5 build b7fa4a3) downscaled
  * to 800px-wide PNGs and inlined as data URLs — the only self-contained form
  * that survives every transport: the headless CLI bundle (tsup inlines this
- * module; there is no asset-copy step in dist packaging) and the MCP JSON
+ * module; there is no asset-copy step in dist packaging) and the command JSON
  * payload both carry the bytes themselves, so help.describe answers stay
  * reachable without a filesystem lookup next to the bundle.
  *

@@ -44,7 +44,13 @@ const MAX_STDERR_BYTES = 64 * 1024 * 1024;
 export function runToolProcess(
   exe: string,
   args: readonly string[],
-  options: { timeoutMs?: number; signal?: AbortSignal; input?: string } = {},
+  options: {
+    timeoutMs?: number;
+    signal?: AbortSignal;
+    input?: string;
+    /** Observes stdout chunks as they arrive (e.g. -progress parsing); the buffer is still returned. */
+    onStdoutChunk?: (chunk: Buffer) => void;
+  } = {},
 ): Promise<RunResult> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   return new Promise((resolvePromise, reject) => {
@@ -89,6 +95,7 @@ export function runToolProcess(
         stop(new FfmpegToolError("tool process output exceeded the resource cap"));
       } else {
         stdoutChunks.push(chunk);
+        options.onStdoutChunk?.(chunk);
       }
     });
     child.stderr!.on("data", (chunk: Buffer) => {
@@ -185,6 +192,28 @@ export function resolveToolFfmpeg(): Promise<FfmpegBinaries | null> {
     return { ffmpeg, ffprobe };
   })();
   return cached;
+}
+
+let cachedVersion: Promise<string> | null = null;
+
+/**
+ * First line of `ffmpeg -version` (e.g. "ffmpeg version 7.1-full_build-www.gyan.dev"),
+ * memoized for the session. Used as the algorithm-runtime component of derived
+ * audio cache keys; resolves to "unavailable"/"unknown" instead of throwing so
+ * a probe hiccup never fails a job that does not need the version.
+ */
+export function resolveFfmpegVersion(): Promise<string> {
+  cachedVersion ??= (async () => {
+    const binaries = await resolveToolFfmpeg();
+    if (!binaries) return "unavailable";
+    try {
+      const { stdout } = await runToolProcess(binaries.ffmpeg, ["-hide_banner", "-version"], { timeoutMs: 15_000 });
+      return stdout.toString("utf8").split("\n", 1)[0]?.trim() || "unknown";
+    } catch {
+      return "unknown";
+    }
+  })();
+  return cachedVersion;
 }
 
 /** Preflight shape shared with capabilities reporting. */

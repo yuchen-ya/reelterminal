@@ -58,7 +58,7 @@ describe("audio analysis subprocesses", () => {
           child.finish(0);
         });
       } else if (mode === "overflow") {
-        queueMicrotask(() => child.stdout.write(Buffer.alloc(AUDIO_LIMITS.maxProcessOutputBytes + 1)));
+        queueMicrotask(() => child.stdout.write(Buffer.alloc(AUDIO_LIMITS.maxStreamDecodeBytes + 1)));
       }
       return child as unknown as ReturnType<typeof spawn>;
     }) as typeof spawn);
@@ -114,7 +114,7 @@ describe("audio analysis subprocesses", () => {
     expect(children[0]!.kill).toHaveBeenCalledWith("SIGKILL");
   });
 
-  it("kills output that exceeds the process cap", async () => {
+  it("kills streamed output that exceeds the decode cap", async () => {
     mode = "overflow";
     const request = analyzeSilence("fixture.wav", { startSec: 0, endSec: 1 }, undefined, new AbortController().signal);
     await flushPromises();

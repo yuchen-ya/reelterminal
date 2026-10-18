@@ -42,7 +42,7 @@ export function defineTool<const Name extends string, Input, Output>(
   definition: ToolDefinition<Name, Input, Output>,
 ): ToolDefinition<Name, Input, Output> {
   // Segments may contain underscores (media.render_html verb style); the
-  // dots→underscores MCP spelling stays collision-checked by
+  // dots→underscores compatibility alias stays collision-checked by
   // assertUniqueToolNames below.
   if (!/^[a-z][a-z0-9]*(?:[._][a-z0-9][a-z0-9_]*)*$/.test(definition.name)) {
     throw new Error(`Invalid tool name: ${definition.name}`);
@@ -80,9 +80,9 @@ export function bindTools<const Tools extends readonly ToolDefinition<string, ne
 export function assertUniqueToolNames(names: readonly string[]): void {
   const seen = new Set<string>();
   for (const name of names) {
-    const mcpName = name.replace(/\./g, "_");
-    if (seen.has(mcpName)) throw new Error(`Duplicate MCP tool name: ${mcpName}`);
-    seen.add(mcpName);
+    const alias = name.replace(/\./g, "_");
+    if (seen.has(alias)) throw new Error(`Duplicate command alias: ${alias}`);
+    seen.add(alias);
   }
 }
 

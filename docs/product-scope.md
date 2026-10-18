@@ -8,7 +8,7 @@ reviewing, editing, and exporting that material.
 
 ReelTerminal owns the project, timeline, media inventory, editor context,
 revision checks, undo and redo, preview, verification, and export. People use
-the GUI; external Agents use the Command API, CLI, or explicit MCP adapter.
+the GUI; external Agents use the CLI and Command API.
 Both operate on the same project and actions.
 
 Agents own their installation, authentication, model providers, credentials,

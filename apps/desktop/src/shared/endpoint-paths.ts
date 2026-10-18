@@ -1,6 +1,6 @@
 /**
  * Central endpoint-directory resolution for the desktop host and the
- * live-mcp connector.
+ * reelctl client.
  *
  * Canonical location:  ~/.reelterminal/<resource>
  * Legacy location:     ~/.openreel/<resource>

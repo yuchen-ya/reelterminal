@@ -296,7 +296,7 @@
       "copyStartupPrompt": "复制启动提示词",
       "startupCopied": "启动提示词已复制",
       "startupCopyFailed": "无法复制启动提示词",
-      "startupPrompt": "请通过 live CLI 协作编辑当前已打开的 ReelTerminal 桌面项目。\n请使用 {{shell}} 执行下列命令。\nCLI 命令前缀（每次调用请使用这个完整路径）：{{cliCommand}}\nAgent 工作目录：{{workspaceRoot}}\n以上是复制时的有效路径。修改安装或存储位置后，请重启 GUI 并重新复制提示词；显式设置的 Agent 工作目录环境变量优先于默认存储位置。\n\n首先执行：\n{{cliCommand}} status\n{{cliCommand}} call capabilities.get\n{{cliCommand}} context --compact\n{{cliCommand}} requirements list --status ready --compact\n日常编辑使用最新 revision 和安全保护参数，编辑前可用 {{cliCommand}} schema <command> 查询参数契约；用户询问界面操作或功能位置时，按需调用 {{cliCommand}} call help.search --query '<关键词>' 查阅内置手册如实解答。保留当前项目的画面格式和已有状态，除非我明确要求，否则不要新建或替换项目。\n\n以 capabilities.get 返回的 recommendedRoot 为准确工作目录，在其中创建 jobs/<YYYY-MM-DD>-<short-slug>/，包含 brief.md、source/、generated/、work/、project/、output/ 和 evidence/。所有生成媒体、辅助脚本都放在该任务目录中，不要放入源码仓库。导出前预览检查，交付前验证，最终成片放在 output/。CLI 会自动读取 live endpoint 凭据；不要打印或复制其中的 token。\n\n读取当前上下文和 ready 需求后，继续处理我的任务；如果还没有具体任务，请询问我要编辑什么。",
+      "startupPrompt": "请通过 live CLI 协作处理当前 ReelTerminal 桌面项目。使用 {{shell}}，每次调用使用完整前缀：{{cliCommand}}\n\n首先执行：\n{{cliCommand}} status\n{{cliCommand}} call capabilities.get\n{{cliCommand}} context --compact\n\n如上下文报告启用的协作指令，调用 collaboration.instructions.get 读取全文；如有待处理任务，使用 requirements list/get 读取。相关读取与编辑绑定同一 projectId 和 workspaceId；每轮工作和提交编辑前刷新上下文，协作指令摘要变化时重新读取。\n\n编辑使用读取时的 revision、项目身份及命令支持的安全保护参数；参数通过 schema <command> 查询。发生冲突时重新核对目标与计划，不盲目重试。保留当前项目的格式和已有状态，除非我明确要求更改或替换。\n\n文件工作根目录以 capabilities.get 的 recommendedRoot 为准（复制时路径：{{workspaceRoot}}），生成文件遵守返回的目录与导入边界。CLI 自动读取凭据，不打印或复制 token。安装或存储位置变化后重新复制此提示词。\n\n读取上下文后继续处理我的请求；尚无具体请求时询问我要处理什么。",
       "readOnly": "只读",
       "restoreWrite": "允许编辑",
       "restoreWriteDescription": "允许智能体修改当前项目",
@@ -1128,5 +1128,76 @@
     "empty": "没有已复制的片段。",
     "readOnly": "历史预览为只读。",
     "missingDependencies": "缺少已留存的依赖：{{names}}"
+  },
+  "collaborationInstructions": {
+    "title": "协作指令",
+    "tasks": "任务",
+    "emptyTitle": "让协作慢慢贴近你",
+    "emptyDescription": "添加希望 Agent 在这个项目中遵循的习惯。从一条开始，也可以暂时留空。",
+    "fromPresets": "从预设添加",
+    "writeOwn": "自己写一条",
+    "enabledCount": "{{count}} 条启用 · 仅当前项目",
+    "add": "添加",
+    "back": "返回",
+    "presetHint": "选择后可修改内容，再添加到当前项目。预设不会自动启用。",
+    "fieldTitle": "标题",
+    "description": "详细说明",
+    "references": "参考素材与片段（可选）",
+    "startSeconds": "起点（秒）",
+    "endSeconds": "终点（秒）",
+    "noReferences": "当前项目没有可引用的素材或片段。",
+    "removeReference": "移除引用",
+    "missingReference": "引用已失效",
+    "save": "保存修改",
+    "addToProject": "添加到项目",
+    "cancel": "取消",
+    "delete": "删除指令",
+    "toggle": "启用 {{title}}",
+    "saved": "已保存 · Agent 下次读取可获取",
+    "scope": "仅当前项目生效 · 由你选择添加",
+    "historyLabel": "修改协作指令",
+    "required": "请填写标题和详细说明。",
+    "placeholder": "请先填写预设中【】标出的内容。",
+    "conflict": "这条指令已发生变化。请返回列表，重新打开后编辑。",
+    "limit": "每个项目最多添加 20 条协作指令。",
+    "saveFailed": "保存协作指令失败。",
+    "presets": {
+      "visual": {
+        "title": "通过可视化引导我",
+        "description": "当我对整体方向不满意或难以描述偏好时，先提供少量有明显差异的关键画面或短动态原型，每轮围绕一个问题让我比较。确定方向后再扩展制作。"
+      },
+      "explain": {
+        "title": "用画面变化解释内容",
+        "description": "让图形的生成、连接、变化和对比承担主要解释；文字用于标注与强调，避免主要依赖连续的静态大字卡片讲解。"
+      },
+      "sample": {
+        "title": "先试一小段",
+        "description": "涉及整体风格、结构或动画语言调整时，先完成有代表性的小段，让我判断方向，再扩展制作。"
+      },
+      "compare": {
+        "title": "给我可比较的方案",
+        "description": "对同一内容提供少量候选，说明主要差异，每轮集中解决一个设计问题。让我通过选择和指认表达偏好。"
+      },
+      "preserve": {
+        "title": "保留我已认可的部分",
+        "description": "后续修改继承已经认可的设计，缩小调整范围；如需改变已认可的部分，先说明原因和影响。"
+      },
+      "review": {
+        "title": "在项目内审阅",
+        "description": "编辑结果优先在当前时间线中定位和预览；仅在我要求文件交付时导出整片。必要的中间动画素材渲染不受此条限制。"
+      },
+      "resources": {
+        "title": "先查已有素材与方法",
+        "description": "规划时先查看相关项目素材及个人素材库，复用适合当前任务的资源和方法。工具可用性应实际检查，不根据记录直接假定。"
+      },
+      "tool": {
+        "title": "优先使用指定工具",
+        "description": "需要【填写用途，如生成概念图】时，优先使用【填写工具，如本地 Moss-Image】。先确认可用性；不适用或不可用时说明原因，再提出替代方案。"
+      },
+      "skill": {
+        "title": "代码动画使用指定 skill",
+        "description": "制作代码动画时使用【填写 skill 名称或路径】。视觉表达参考【填写素材与片段，并说明借鉴的特点】；工具负责实现，参考作品用于设计方向。"
+      }
+    }
   }
 }

@@ -56,12 +56,13 @@ Reusable, user-approved assets such as logos, fonts, and brand audio may go in
    root or inside `apps/`, `packages/`, or `docs/`.
 4. Use `reelctl preview frame` and `reelctl call visual.inspect`; place retained inspection
    evidence in `evidence/`.
-5. Export through ReelTerminal, wait for completion, run `reelctl call verify.artifact`, and
+5. When file delivery is requested, export through ReelTerminal, wait for completion,
+   run `reelctl call verify.artifact`, and
    only then copy or name the delivery in `output/`. Alternatively pass
    `export.start`'s `destinationPath` (`<recommendedRoot>/jobs/<slug>/output/<name>.mp4`)
    to deliver the verified artifact copy directly — it never overwrites, and
    `reelctl job status` reports `deliveredTo`/`deliveryError`.
-6. A successful task ends with a concise `project/manifest.json` listing the
+6. A file delivery ends with a concise `project/manifest.json` listing the
    final file, duration, dimensions, verification result, and source paths.
 7. Never commit job contents to Git. Never delete another job, `source/`,
    `shared/`, or delivered `output/` without an explicit user request.

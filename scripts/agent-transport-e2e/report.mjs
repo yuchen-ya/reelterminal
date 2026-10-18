@@ -11,11 +11,8 @@ const evidenceDir = path.resolve(process.argv[optionIndex + 1]);
 
 const EXECUTIONS = [
   { dir: "scenario1/run", label: "Transport via workflow CLI" },
-  { dir: "scenario1/mcp", label: "Transport via MCP" },
   { dir: "scenario2/run-sigterm", label: "Persistence via workflow CLI (SIGTERM)" },
   { dir: "scenario2/run-sigkill", label: "Persistence via workflow CLI (SIGKILL)" },
-  { dir: "scenario2/mcp-sigterm", label: "Persistence via MCP (SIGTERM)" },
-  { dir: "scenario2/mcp-sigkill", label: "Persistence via MCP (SIGKILL)" },
 ];
 
 async function readOptionalJson(file) {

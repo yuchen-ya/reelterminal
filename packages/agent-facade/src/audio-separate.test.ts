@@ -87,7 +87,7 @@ describe("audio separation asset lifecycle", () => {
     expect(artifact.processing.stems).toEqual(["drums", "bass", "other", "vocals"]);
     expect(artifact.path).toContain(join("generated-assets", "audio-separate"));
     const provenance = JSON.parse(await readFile(artifact.provenancePath, "utf8")) as Record<string, unknown>;
-    expect(provenance).toMatchObject({ schemaVersion: 1, target: "vocals", processing: { model: "htdemucs" } });
+    expect(provenance).toMatchObject({ schemaVersion: 2, target: "vocals", processing: { model: "htdemucs" } });
     const registered = await facade["audio.process.register"]({ jobId: done.jobId, expectedRevision: 1 });
     if (!registered.ok) throw new Error(registered.error.message);
     expect(registered.value).toMatchObject({ revision: 2, type: "audio", replayed: false });

@@ -5,7 +5,7 @@ import { readVisualImageSet } from "./artifact-images";
  * LiveSessionHost — the desktop main-process singleton for live agent access:
  *
  *  - One `LiveWriterLease` belongs to the external agent's live
- *    facade session. CLI and MCP clients share that external writer identity.
+ *    facade session. CLI clients share that external writer identity.
  *  - The external session shares one `LiveProjectStore` bridge to the
  *    canonical renderer store, one Chromium provider set, and one
  *    artifactRoot (<userData>/live-artifacts). It lives in MAIN, so it
@@ -27,6 +27,7 @@ import {
   toolPresentation,
   LiveWriterLease,
   WORKSPACE_VERBS,
+  sweepAbandonedAudioArtifactStaging,
   type FacadeResult,
   type FacadeVerb,
   type LiveAgentFacade,
@@ -161,8 +162,27 @@ export function createLiveSessionHost(
   let externalSession: LiveAgentFacade | null = null;
   let externalConnected = false;
   const shownReviews = new Set<string>();
+  let stagingSwept = false;
   const getTaskLedger = (): DurableTaskLedger => {
     taskLedger ??= new DurableTaskLedger(path.join(deps.artifactRoot, "task-records"));
+    // AUD-13: once per host start, remove staging directories a forced exit
+    // stranded mid-job. Only `.<id>.<pid>.<uuid>.pending` directories match —
+    // published artifacts, registered media and the reuse index are never
+    // touched. The sweep checks that the owner PID has exited; another
+    // desktop/headless producer sharing these roots is retained, including
+    // jobs that start while this asynchronous sweep is running.
+    if (!stagingSwept) {
+      stagingSwept = true;
+      if (deps.mediaRoots && deps.mediaRoots.length > 0) {
+        void sweepAbandonedAudioArtifactStaging(deps.mediaRoots).then((removed) => {
+          if (removed.length > 0) {
+            console.log(`[live-host] swept ${removed.length} abandoned audio staging director${removed.length === 1 ? "y" : "ies"} left by a forced exit`);
+          }
+        }).catch(() => {
+          // Cleanup hygiene only; a failed sweep retries on the next start.
+        });
+      }
+    }
     return taskLedger;
   };
   // Enable/disable are one lifecycle lane. In particular, `enabled` cannot be

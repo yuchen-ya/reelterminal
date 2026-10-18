@@ -5,7 +5,6 @@ import path from "node:path";
 
 import { CLIP_DURATION_SEC, PROJECT_SETTINGS } from "./env.mjs";
 import { doctorChecks, runDoctor } from "./doctor.mjs";
-import { ServeClient } from "./mcp.mjs";
 import { runWorkflow, spawnWorkflow, waitForLine } from "./run.mjs";
 import {
   TEXT_REGION,
@@ -42,7 +41,6 @@ import {
   IMPORT_KEY,
   VERIFY_EXPECT,
   eqExit,
-  pollToTerminal,
   truthyExit,
 } from "./scenario1.mjs";
 
@@ -225,126 +223,9 @@ export async function scenario2Run({ env, recorder, cliPath, variant }) {
   ]);
 
   // Step 6d — corruption honesty probes (each in a fresh process).
-  await runCorruptionProbes({ env, recorder, cliPath, mode: "run", v1Path, variant });
+  await runCorruptionProbes({ env, recorder, cliPath, v1Path, variant });
 
   await recorder.step("9", "scenario 2 complete (run path)", [
-    { name: "all process boundaries crossed via the checkpoint file only", pass: true, detail: `variant=${variant} revisionBefore=${revisionBefore}` },
-  ]);
-}
-
-/* ------------------------------------------------------------------ */
-/* Path (b) — mcp (simulated client)                                   */
-/* ------------------------------------------------------------------ */
-
-export async function scenario2Mcp({ env, recorder, cliPath, variant }) {
-  const label = `s2-mcp-${variant.toLowerCase()}`;
-  const v1Path = path.join(env.projectRoot, "e2e-v1.openreel.json");
-  const v2Path = path.join(env.projectRoot, "e2e-v2.openreel.json");
-
-  const doctor1 = await runDoctor({ cliPath, env: env.cliEnv(), recorder, label });
-  await recorder.step("0", "doctor report is usable and complete", doctorChecks(doctor1));
-
-  // Process A.
-  const clientA = new ServeClient({ cliPath, args: env.cliFlags(), env: env.cliEnv(), recorder, label: `${label}/A` });
-  await clientA.initialize();
-  const created = await clientA.call("project_create", { ...CREATE_PARAMS, idempotencyKey: CREATE_KEY });
-  const imported = await clientA.call("media_import", { path: env.inputMp4, expectedRevision: 0, idempotencyKey: IMPORT_KEY });
-  const edited = await clientA.call("edit_apply", { ops: editOpsA(imported.facadeResult.value.mediaId), expectedRevision: 1, idempotencyKey: EDIT_KEY });
-  const previewA = await clientA.call("preview_render_frame", { timeSec: 2.5 });
-  await recorder.step("1", "process A: create + import + edit + previewA at 2.5 s", [
-    ...createChecks(created.facadeResult.value),
-    ...importChecks(imported.facadeResult.value),
-    ...editChecks(edited.facadeResult.value),
-    ...(await previewChecks(previewA.facadeResult.value, env)),
-  ]);
-  await recorder.sha256Of(previewA.facadeResult.value.artifact.path, "s2 previewA PNG (mcp)");
-
-  const timelineA = await clientA.call("timeline_get", {});
-  const revisionBefore = timelineA.facadeResult.value.revision;
-  const saved = await clientA.call("project_save", { path: v1Path });
-  await recorder.step("2", "process A: save checkpoint ⇒ ok; revision == revisionBefore; exact path; no .tmp siblings", [
-    ...saveChecks(saved.facadeResult.value, { expectedRevision: revisionBefore, savePath: v1Path }),
-    ...(await checkpointFileChecks({ savePath: v1Path, projectRoot: env.projectRoot })),
-  ]);
-  await recorder.sha256Of(v1Path, "s2 e2e-v1.openreel.json (mcp)");
-
-  // Step 3 — kill process A entirely (after the save returned ok).
-  clientA.kill(variant);
-  const exitA = await clientA.waitForExit();
-  await recorder.step("3", `process A killed entirely (${variant}) — checkpoint already complete and visible`, [
-    {
-      name: variant === "SIGTERM" ? "serve exited 143 (first-signal bounded disposal)" : "serve was killed by SIGKILL (no in-process cleanup)",
-      pass: variant === "SIGTERM" ? exitA === 143 : exitA === null,
-      detail: `exit=${exitA}`,
-    },
-    { name: "checkpoint file still present at the exact saved path", pass: existsSync(v1Path), detail: v1Path },
-  ]);
-
-  // Third process: create then open ⇒ CONFLICT.
-  const clientC = new ServeClient({ cliPath, args: env.cliFlags(), env: env.cliEnv(), recorder, label: `${label}/C` });
-  await clientC.initialize();
-  await clientC.call("project_create", { ...CREATE_PARAMS, idempotencyKey: "s2-createC" });
-  const openConflict = await clientC.call("project_open", { path: v1Path, idempotencyKey: "s2-openC" });
-  await recorder.step("4a", "third process: project_create then project_open ⇒ CONFLICT", openConflictChecks(openConflict.facadeResult));
-  await clientC.disconnect();
-  await clientC.waitForExit();
-
-  // Process B.
-  const clientB = new ServeClient({ cliPath, args: env.cliFlags(), env: env.cliEnv(), recorder, label: `${label}/B` });
-  await clientB.initialize();
-  const opened = await clientB.call("project_open", { path: v1Path, idempotencyKey: `s2-openB-${variant.toLowerCase()}` });
-  const timelineB = await clientB.call("timeline_get", {});
-  await recorder.step("4b", "process B: fresh session, empty ledger — project_open ⇒ adopted at revisionBefore; timeline deep-equals", [
-    ...openChecks(opened.facadeResult.value, revisionBefore),
-    ...timelineDeepEqualChecks(timelineB.facadeResult.value, timelineA.facadeResult.value),
-  ]);
-
-  const edit2 = await clientB.call("edit_apply", { ops: editOpsB(), expectedRevision: revisionBefore, idempotencyKey: "s2-editB" });
-  await recorder.step("5a", "process B: continue edit (expectedRevision == revisionBefore) ⇒ revision + 1", continueEditChecks(edit2.facadeResult.value, revisionBefore));
-
-  const saved2 = await clientB.call("project_save", { path: v2Path });
-  await recorder.step("5b", "process B: save to NEW path e2e-v2 ⇒ ok", saveChecks(saved2.facadeResult.value, { expectedRevision: revisionBefore + 1, savePath: v2Path }));
-
-  const saveConflict = await clientB.call("project_save", { path: v1Path });
-  await recorder.step("5c", "process B: save back onto v1 without overwrite ⇒ CONFLICT (default no-overwrite)", saveConflictChecks(saveConflict.facadeResult));
-
-  const previewB = await clientB.call("preview_render_frame", { timeSec: 2.5 });
-  await recorder.step("6a", "process B: pixels — previewB renders the pre-restart content", [
-    ...(await previewChecks(previewB.facadeResult.value, env, revisionBefore + 1)),
-  ]);
-  await recorder.sha256Of(previewB.facadeResult.value.artifact.path, "s2 previewB PNG (mcp)");
-
-  const exportB = await clientB.call("export_start", { settings: EXPORT_SETTINGS, idempotencyKey: `s2-expB-${variant.toLowerCase()}` });
-  const doneB = await pollToTerminal({ client: clientB, jobId: exportB.facadeResult.value.jobId, recorder, label: `${label}/B` });
-  await recorder.step("8", "process B export_start ⇒ queued → terminal done (poll 2.5 s)", [
-    ...exportStartedChecks(exportB.facadeResult.value, revisionBefore + 1),
-    ...exportDoneChecks(doneB, revisionBefore + 1),
-  ]);
-  await recorder.sha256Of(doneB.artifact.path, "s2 exported MP4 (mcp)");
-
-  const battery = await clientB.call("verify_artifact", { path: doneB.artifact.path, expect: VERIFY_EXPECT });
-  const simB = await clientB.call("verify_artifact", {
-    path: doneB.artifact.path,
-    compare: { referencePath: previewB.facadeResult.value.artifact.path, timeSec: 2.5, region: TEXT_REGION, mode: "similar", maxMeanAbsDiff: 14 },
-  });
-  const simA = await clientB.call("verify_artifact", {
-    path: doneB.artifact.path,
-    compare: { referencePath: previewA.facadeResult.value.artifact.path, timeSec: 2.5, mode: "similar" },
-  });
-  await recorder.step("6b", "process B: compare similar previewB vs previewA — pixel continuity across the restart", [
-    ...compareSimilarChecks(simA.facadeResult.value, "previewA.png (pre-restart)"),
-  ]);
-  await recorder.step("6c", "process B: full verify battery of scenario 1 step 9 incl. compare-similar vs its own preview", [
-    ...verifyProbeChecks(battery.facadeResult.value),
-    ...compareSimilarChecks(simB.facadeResult.value, "previewB.png (own preview)"),
-  ]);
-  await clientB.disconnect();
-  await clientB.waitForExit();
-
-  // Step 6d — corruption honesty probes (each in a fresh process).
-  await runCorruptionProbes({ env, recorder, cliPath, mode: "mcp", v1Path, variant });
-
-  await recorder.step("9", "scenario 2 complete (mcp path)", [
     { name: "all process boundaries crossed via the checkpoint file only", pass: true, detail: `variant=${variant} revisionBefore=${revisionBefore}` },
   ]);
 }
@@ -353,8 +234,8 @@ export async function scenario2Mcp({ env, recorder, cliPath, variant }) {
 /* Step 6d — the five corruption honesty probes                        */
 /* ------------------------------------------------------------------ */
 
-async function runCorruptionProbes({ env, recorder, cliPath, mode, v1Path, variant }) {
-  const label = `${mode === "run" ? "s2-run" : "s2-mcp"}-${variant.toLowerCase()}`;
+async function runCorruptionProbes({ env, recorder, cliPath, v1Path, variant }) {
+  const label = `s2-run-${variant.toLowerCase()}`;
   const probesDir = path.join(env.projectRoot, "probes");
   await fs.mkdir(probesDir, { recursive: true });
   const raw = await fs.readFile(v1Path, "utf8");
@@ -363,29 +244,20 @@ async function runCorruptionProbes({ env, recorder, cliPath, mode, v1Path, varia
 
   // Open helper: one probe = one fresh process (open needs an empty session).
   const openExpectingRefusal = async (probeId, title, checkpointPath, { code, wording }) => {
-    if (mode === "run") {
-      const run = await runWorkflow({
-        cliPath,
-        recorder,
-        label: `${label}/probe-${probeId}`,
-        scratchDir: env.scratchDir,
-        env: env.cliEnv(),
-        flags: env.cliFlags(),
-        steps: [{ id: "open", verb: "project.open", params: { path: checkpointPath } }],
-      });
-      await recorder.step(probeId, title, [
-        eqExit("probe run exit 1 (the refusal is the expected outcome)", run.exitCode, 1),
-        ...corruptionProbeChecks(of(lineById(run.lines, "open")), { code, wording }),
-      ]);
-      return of(lineById(run.lines, "open"));
-    }
-    const client = new ServeClient({ cliPath, args: env.cliFlags(), env: env.cliEnv(), recorder, label: `${label}/probe-${probeId}` });
-    await client.initialize();
-    const opened = await client.call("project_open", { path: checkpointPath });
-    await client.disconnect();
-    await client.waitForExit();
-    await recorder.step(probeId, title, corruptionProbeChecks(opened.facadeResult, { code, wording }));
-    return opened.facadeResult;
+    const run = await runWorkflow({
+      cliPath,
+      recorder,
+      label: `${label}/probe-${probeId}`,
+      scratchDir: env.scratchDir,
+      env: env.cliEnv(),
+      flags: env.cliFlags(),
+      steps: [{ id: "open", verb: "project.open", params: { path: checkpointPath } }],
+    });
+    await recorder.step(probeId, title, [
+      eqExit("probe run exit 1 (the refusal is the expected outcome)", run.exitCode, 1),
+      ...corruptionProbeChecks(of(lineById(run.lines, "open")), { code, wording }),
+    ]);
+    return of(lineById(run.lines, "open"));
   };
 
   // 6d-i — one byte flipped inside `project` ⇒ integrity refusal.
@@ -469,7 +341,7 @@ async function runCorruptionProbes({ env, recorder, cliPath, mode, v1Path, varia
   }
 }
 
-/** Checkpoint file assertions shared by both paths (step 2). */
+/** Checkpoint file assertions for the CLI path (step 2). */
 async function checkpointFileChecks({ savePath, projectRoot }) {
   const files = await fs.readdir(projectRoot);
   const tmpSiblings = files.filter((name) => name.endsWith(".tmp"));

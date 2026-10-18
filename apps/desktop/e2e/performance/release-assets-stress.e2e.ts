@@ -37,7 +37,7 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "assets";
       c.record.operations.push({ kind, index, elapsed_ms: performance.now() - start, verified: true });
     };
     c.record.scale = { mediaCount, nodeCount, samples_per_kind: samples, cues_per_format: cues, image_content_reused: true, video_decode_stress: false };
-    const initial = await c.call("project_get_state");
+    const initial = await c.call("project.get_state");
     expect(initial.project.mediaLibrary.items).toHaveLength(mediaCount);
     await currentCount(mediaCount);
     for (let i = 0; i < samples; i++) {
@@ -75,7 +75,7 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "assets";
       });
       if (i % 10 === 0) { await c.sample(); await c.flush(); console.info("ASSET_PRESSURE_PROGRESS", { completed_each: i + 1, samples }); }
     }
-    const unchanged = await c.call("project_get_state");
+    const unchanged = await c.call("project.get_state");
     expect(unchanged.revision).toBe(initial.revision);
     expect(unchanged.project.timeline).toEqual(initial.project.timeline);
     const timestamp = (seconds: number, vtt: boolean) => [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map(n => String(n).padStart(2, "0")).join(":") + (vtt ? ".000" : ",000");
@@ -83,27 +83,27 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "assets";
       const vtt = format === "vtt";
       const content = (vtt ? "WEBVTT\n\n" : "\uFEFF") + Array.from({ length: cues }, (_, i) => String(i + 1) + "\n" + timestamp(i * 2, vtt) + " --> " + timestamp(i * 2 + 1, vtt) + "\nCue " + i + " 中文字幕\n").join("\n");
       const file = path.join(c.app.runDir, "pressure." + format); await writeFile(file, content);
-      const before = await c.call("project_get_state");
+      const before = await c.call("project.get_state");
       const beforeResources = await c.sample();
       const start = performance.now();
       await page.locator('input[type="file"][aria-label="Import media"]').setInputFiles(file);
       await waitCount('[data-testid="project-subtitles"] > div.rounded', cues);
-      const after = await c.call("project_get_state");
+      const after = await c.call("project.get_state");
       expect(after.project.textClips).toHaveLength(cues);
       const ordered = [...after.project.textClips].sort((a: any, b: any) => a.startTime - b.startTime);
       ordered.forEach((clip: any, i: number) => { expect(clip.startTime).toBe(i * 2); expect(clip.duration).toBe(1); expect(clip.text).toBe("Cue " + i + " 中文字幕"); });
       const afterResources = await c.sample();
       // actionUndo counts retained actions, not atomic user-visible groups.
       // One real undo/redo below must restore all cues and the created track.
-      await c.call("history_control", { action: "undo", expectedRevision: after.revision });
-      const undone = await c.call("project_get_state");
+      await c.call("history.control", { action: "undo", expectedRevision: after.revision });
+      const undone = await c.call("project.get_state");
       expect(undone.project.textClips).toEqual(before.project.textClips);
       expect(undone.project.timeline).toEqual(before.project.timeline);
-      await c.call("history_control", { action: "redo", expectedRevision: undone.revision });
-      const redone = await c.call("project_get_state");
+      await c.call("history.control", { action: "redo", expectedRevision: undone.revision });
+      const redone = await c.call("project.get_state");
       expect(redone.project.textClips).toEqual(after.project.textClips);
       await page.screenshot({ path: path.join(c.evidence, "captions-" + format + ".png") });
-      await c.call("history_control", { action: "undo", expectedRevision: redone.revision });
+      await c.call("history.control", { action: "undo", expectedRevision: redone.revision });
       c.record.operations.push({ kind: "subtitle_" + format, cues, elapsed_ms: performance.now() - start, final_content_verified: true, single_undo_group_verified: true, retained_actions_before: beforeResources.resources.history.actionUndo, retained_actions_after: afterResources.resources.history.actionUndo });
       await types.getByRole("button", { name: "All", exact: true }).click(); await currentCount(mediaCount);
       await c.flush();

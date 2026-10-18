@@ -16,7 +16,7 @@ export const WORDINGS = {
   corrupted: "corrupted or hand-edited",
   mediaRefsBinding: "mediaRefs do not match project.mediaLibrary.items",
   mediaMoved: "missing, moved, or changed",
-  contractVersion: "facade-slice-2",
+  contractVersion: "facade-slice-9",
   orphanLabel: "orphan — unverifiable, do not trust as an artifact",
 };
 
@@ -125,7 +125,7 @@ export async function probeClientClis() {
 }
 
 /** Facade result convenience: pull ok/error/value out of either a run stdout
- * line or an MCP facadeResult. */
+ * line or a facade result. */
 export function of(line) {
   const result = line?.result ?? line;
   return result;

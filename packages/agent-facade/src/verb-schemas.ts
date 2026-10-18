@@ -8,7 +8,7 @@ import { REQUIREMENTS_GET_SCHEMA, REQUIREMENTS_LIST_SCHEMA } from "./requirement
  *    with exactly these declarations — same checks, same labels, same
  *    stable error ordering); and
  *  - the emitted draft-2020-12 JSON Schemas (jsonschema.ts renders them
- *    for the transport's `tools/list`, which assigns them verbatim).
+ *    for the command catalog, which assigns them verbatim).
  *
  * Cross-field rules that JSON Schema cannot express (clip.trim's
  * at-least-one-of in/out, verify.compare.region's x+width ≤ 1) stay
@@ -539,7 +539,7 @@ export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
   cloudUpload: { check: (v) => typeof v === "boolean", describe: "must be true for videoReview: uploads the selected range to Alibaba", emits: { kind: "leaf", schema: { type: "boolean" } } },
   reviewQuestion: { check: (v) => typeof v === "string" && v.length <= 1000, describe: "optional video review focus, at most 1000 characters", emits: { kind: "leaf", schema: { type: "string", maxLength: 1000 } } },
   startSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0, describe: "nonnegative source seconds", emits: { kind: "leaf", schema: { type: "number", minimum: 0 } } },
-  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary/silence/beatGrid/speechActivity/speechTranscript/speakerDiarization/syncOffset range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
+  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary/silence/beatGrid range ≤3600s; speechActivity/speechTranscript/speakerDiarization/syncOffset range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
   mediaId: {
     check: isNonEmptyString,
     describe: "a non-empty media-library id",
@@ -2259,6 +2259,7 @@ export const VERB_PARAM_SCHEMAS: {
   "project.get_state": EMPTY_PARAMS_SCHEMA,
   "requirements.list": REQUIREMENTS_LIST_SCHEMA,
   "requirements.get": REQUIREMENTS_GET_SCHEMA,
+  "collaboration.instructions.get": EMPTY_PARAMS_SCHEMA,
   "project.changes": PROJECT_CHANGES_SCHEMA,
   "media.import": MEDIA_IMPORT_SCHEMA,
   "audio.process.normalize": AUDIO_PROCESS_NORMALIZE_SCHEMA,

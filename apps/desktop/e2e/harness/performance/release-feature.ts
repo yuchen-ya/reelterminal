@@ -1,7 +1,7 @@
 import { mkdir, writeFile, appendFile } from "node:fs/promises";
 import path from "node:path";
 import { launchApp, type LaunchedApp } from "../launch";
-import { connectExternalAgent, type ExternalAgent } from "../mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "../cli-client";
 import { createProjectViaUI, enableAgentSessionViaUI, openRecentProjectViaUI } from "../ui";
 import { ARTIFACTS_DIR } from "../paths";
 import type { CDPSession } from "playwright-core";
@@ -51,8 +51,8 @@ export async function runReleaseFeature(
     agent = await connectExternalAgent(app.endpointFile);
     context = { app, agent, target: {}, evidence, record, flush, call: undefined!, reply: undefined!, sample: undefined!, reconnect: undefined! };
     const connect = async () => {
-      schemas = new Map((await context!.agent.client.listTools()).tools.map(tool => [tool.name, (tool as any).inputSchema]));
-      const ctx = await context!.agent.callTool<any>("editor_get_context");
+      schemas.clear();
+      const ctx = await context!.agent.callCommand<any>("editor.get_context");
       if (!ctx.ok) throw new Error("editor context unavailable");
       context!.target = { projectId: ctx.value.identity.projectId, workspaceId: ctx.value.identity.workspaceId };
       await cdp?.detach().catch(() => undefined);
@@ -60,18 +60,19 @@ export async function runReleaseFeature(
       await cdp.send("Performance.enable");
     };
     context.reply = async (verb, args = {}) => {
+      if (!schemas.has(verb)) schemas.set(verb, (await context!.agent.schema(verb)).inputSchema);
       const properties = schemas.get(verb)?.properties ?? {};
       const target = Object.fromEntries(Object.entries(context!.target).filter(([key]) => key in properties));
-      const result = await context!.agent.callTool<any>(verb, { ...target, ...args }, { timeoutMs: 120_000 });
+      const result = await context!.agent.callCommand<any>(verb, { ...target, ...args }, { timeoutMs: 120_000 });
       if (!result.ok) { record.rejected_requests ??= []; record.rejected_requests.push({ verb, args, error: result.error }); }
-      if (result.ok && verb === "job_status") { record.latest_job_statuses ??= {}; record.latest_job_statuses[String(args.jobId)] = result.value; }
-      if (result.ok && verb === "analysis_get") { record.latest_analysis_views ??= {}; record.latest_analysis_views[String(args.recordId) + ":" + String(args.view ?? "summary")] = result.value; }
+      if (result.ok && verb === "job.status") { record.latest_job_statuses ??= {}; record.latest_job_statuses[String(args.jobId)] = result.value; }
+      if (result.ok && verb === "analysis.get") { record.latest_analysis_views ??= {}; record.latest_analysis_views[String(args.recordId) + ":" + String(args.view ?? "summary")] = result.value; }
       return result;
     };
     context.call = async (verb, args = {}) => {
       const result = await context!.reply(verb, args);
       if (!result.ok) throw new Error(verb + ": " + result.error?.code + ": " + result.error?.message);
-      if (result.value?.jobId && (verb.endsWith("_start") || verb === "audio_process_normalize")) {
+      if (result.value?.jobId && ((verb === "export.start" || verb === "media.analyze_start") || verb === "audio.process.normalize")) {
         record.owned_job_ids ??= []; record.owned_job_ids.push(result.value.jobId);
       }
       return result.value;
@@ -103,8 +104,8 @@ export async function runReleaseFeature(
       record.relaunched_application = await context!.app.app.evaluate(({ app }) => ({ pid: process.pid, packaged: app.isPackaged, version: app.getVersion() }));
     };
     await connect();
-    record.capabilities = await context.call("capabilities_get");
-    record.project_name = (await context.call("project_get_state")).project.name;
+    record.capabilities = await context.call("capabilities.get");
+    record.project_name = (await context.call("project.get_state")).project.name;
     record.environment = await readEnvironmentIdentity(app);
     await flush();
     console.info("RELEASE_FEATURE_EVIDENCE", evidence);
@@ -121,12 +122,12 @@ export async function runReleaseFeature(
     if (context) {
       for (const jobId of record.owned_job_ids ?? []) {
         try {
-          let status = await context.agent.callTool<any>("job_status", { jobId }, { timeoutMs: 5000 });
+          let status = await context.agent.callCommand<any>("job.status", { jobId }, { timeoutMs: 5000 });
           if (status.ok && !["done", "error", "cancelled"].includes(status.value.state)) {
-            await context.agent.callTool("job_cancel", { jobId }, { timeoutMs: 5000 });
+            await context.agent.callCommand("job.cancel", { jobId }, { timeoutMs: 5000 });
             const deadline = Date.now() + 10000;
             while (Date.now() < deadline) {
-              status = await context.agent.callTool<any>("job_status", { jobId }, { timeoutMs: 5000 });
+              status = await context.agent.callCommand<any>("job.status", { jobId }, { timeoutMs: 5000 });
               if (!status.ok || ["done", "error", "cancelled"].includes(status.value.state)) break;
               await new Promise(resolve => setTimeout(resolve, 50));
             }

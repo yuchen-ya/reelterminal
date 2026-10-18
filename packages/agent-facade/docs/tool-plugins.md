@@ -18,7 +18,7 @@ see `docs/MEDIA-REVIEW-WORKFLOWS.md` in the repository root).
 3. Add behavioral tests beside the implementation. Build and restart the
    desktop application (or restart the stdio server).
 
-The registry derives MCP names, input/output schema maps, schema corpus,
+The registry derives compatibility command aliases, input/output schema maps, schema corpus,
 read-only classification, capability status and typed facade bindings.
 Both Live and Headless execute the same plugin function. Names that collide
 after dot-to-underscore conversion and duplicate plugin ids fail at startup.

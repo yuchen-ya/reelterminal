@@ -11,6 +11,8 @@ import { opToCoreActions } from "./ops";
 import { setSpeechVadModelFactoryForTests } from "./speech-vad";
 import {
   parseSenseVoiceTags,
+  transcribeSpeechRegions,
+  resolveTranscriptParams,
   setSpeechTranscriptModelForTests,
   setTranscriptModelReadyForTests,
 } from "./speech-transcript";
@@ -80,6 +82,21 @@ describe("SenseVoice tag parsing", () => {
 });
 
 describe("speechTranscript analysis + record-driven subtitles", () => {
+  it("uses range-local worker times and preserves source-time transcript cues", async () => {
+    const root = await mkdtemp(join(tmpdir(), "rt-transcript-range-"));
+    try {
+      const source = join(root, "speech.wav");
+      await writeFile(source, toneWav([{ startSec: 10.5, endSec: 11.5 }], 12));
+      setSpeechTranscriptModelForTests(async (request) => {
+        expect(request.segments).toEqual([{ startSec: 0.5, endSec: 1.5 }]);
+        return { texts: ["测试"], model: "test", device: "cpu", loadSeconds: 0, inferenceSeconds: 0 };
+      });
+      const result = await transcribeSpeechRegions(source, { startSec: 10, endSec: 12 },
+        [{ startSec: 10.5, endSec: 11.5, durationSec: 1 }], resolveTranscriptParams(),
+        { threshold: 0.5, minSpeechSec: 0.25, minSilenceSec: 0.1, padSec: 0 }, null, new AbortController().signal);
+      expect(result.segments[0]).toMatchObject({ startSec: 10.5, endSec: 11.5, text: "测试" });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
   it("persists paged segments, discloses VAD timestamps, and imports cues with one undo unit", async () => {
     const root = await mkdtemp(join(tmpdir(), "rt-transcript-"));
     try {

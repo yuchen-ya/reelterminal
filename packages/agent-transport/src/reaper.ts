@@ -185,7 +185,7 @@ export async function verifyBrowserReaper(): Promise<ReaperFinding> {
           ? {}
           : {
               reason:
-                "browser process outlived its SIGKILLed parent — orphaned Chromium children are possible here; explicit reaping belongs on the Desktop-MCP track",
+                "browser process outlived its SIGKILLed parent — orphaned Chromium children are possible here; explicit reaping belongs on the desktop lifecycle",
             }),
       });
     });

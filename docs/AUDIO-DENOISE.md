@@ -31,7 +31,7 @@
 
 ## 产物与生命周期
 
-- 输出：`mediaRoots[0]/generated-assets/audio-denoise/<jobId>/denoised.wav`（48 kHz、PCM s24le）与 `provenance.json`。
+- 输出：`mediaRoots[0]/generated-assets/audio-denoise/<jobId>/denoised.wav`（48 kHz、PCM s24le）与 `provenance.json`。AUD-13 起同目录下 `.reuse-index.json` 提供内容寻址复用（键含源内容 sha/音轨/范围/参数/链版本/ffmpeg 版本；命中需验证文件存在+sha+版本，provenance 以 `reusedFrom` 披露，详见[响度标准化文档](AUDIO-NORMALIZATION.md)）；偏移音轨仍被拒绝。
 - provenance 记录源媒体指纹、范围、声道、profile/declick、实际链、测量延迟、对齐检查、输入/输出响度（EBU R128，输出在写入后重新测量）与方法说明。
 - 发布采用 staging 目录 + 原子 rename + 内容哈希幂等；相同 `idempotencyKey` 重放同一 job，相同 `artifactId` 只有在字节完全一致时才复用。
 - 取消、失败或 checkpoint 未提交时清理本次拥有的目录；不注册残缺资产。`audio.process.register` 仍按 revision CAS 显式导入，不替换片段。

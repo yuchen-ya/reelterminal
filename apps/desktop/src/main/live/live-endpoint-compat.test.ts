@@ -20,7 +20,7 @@ import {
   ENDPOINT_PRODUCT_ID,
   resolveEndpointReadPath,
 } from "../../shared/endpoint-paths";
-import { readEndpoint } from "../../live-mcp/index";
+import { readEndpointCredentials as readEndpoint } from "../../reelctl/client";
 
 /**
  * Every fixture lives in a per-test temporary home; the real ~/.reelterminal and

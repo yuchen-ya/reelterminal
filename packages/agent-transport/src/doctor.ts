@@ -44,7 +44,7 @@ import {
 } from "./config";
 import { logInfo, setLogLevel } from "./log";
 import { verifyBrowserReaper, type ReaperFinding } from "./reaper";
-import { TRANSPORT_VERSION } from "./serve";
+import { TRANSPORT_VERSION } from "./version";
 
 /* ------------------------------------------------------------------ */
 /* Root inspection (lenient — doctor reports, it never refuses)        */
@@ -278,7 +278,7 @@ export async function doctorCommand(argv: readonly string[]): Promise<number> {
   setLogLevel(parsed.logLevel ?? "info");
   logInfo("doctor", "environment report starting", { pid: process.pid });
 
-  // 1. Lenient root inspection (env-only — flags belong to serve/run).
+  // 1. Lenient root inspection (env-only — flags belong to run).
   const env = process.env;
   const rawMediaRootsEnv = env[CONFIG_DEFAULTS.mediaRootsEnv];
   const rawProjectRootsEnv = env[CONFIG_DEFAULTS.projectRootsEnv];

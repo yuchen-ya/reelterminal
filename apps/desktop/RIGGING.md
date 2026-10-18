@@ -6,7 +6,7 @@ as a separate process for model inspection, rigging, and GLB/glTF export.
 The implementation is available through the restricted desktop renderer IPC
 bridge: `window.reelterminal.rigging.probeBackend()` and
 `rigHumanoidModel(args)`. These are internal renderer APIs, not public Command
-API/CLI/MCP verbs. The current live catalog does not expose the former
+API/CLI verbs. The current live catalog does not expose the former
 `probe_rigging_backend`, `inspect_3d_model`, `rig_humanoid_model`, or
 `set_model_animation` Agent tools.
 

@@ -135,7 +135,7 @@ describe("JobRegistry", () => {
       parameters: { mediaId: "source-1", audioStream: 0, startSec: 0, endSec: 2, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 11, sampleRate: 48_000, channels: 2 },
       before: { integratedLufs: -21, truePeakDbtp: -2, loudnessRangeLu: 1, thresholdLufs: -70 },
       after: { integratedLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 1, thresholdLufs: -70 },
-      timing: { sampleRate: 48_000, channels: 2, sampleCount: 96_000, durationSec: 2, outputStartSec: 0, processingDelaySamples: 0 },
+      timing: { sampleRate: 48_000, channels: 2, sampleCount: 96_000, durationSec: 2, outputStartSec: 0, processingDelaySamples: 0, leadSilenceSamples: 0 },
       bytes: 384_000,
       sha256: "ab".repeat(32),
     } as const;
@@ -165,7 +165,7 @@ describe("JobRegistry", () => {
       parameters: { mediaId: "source-1", audioStream: 0, startSec: 0, endSec: 2, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 11, sampleRate: 48_000, channels: 2 },
       before: { integratedLufs: -21, truePeakDbtp: -2, loudnessRangeLu: 1, thresholdLufs: -70 },
       after: { integratedLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 1, thresholdLufs: -70 },
-      timing: { sampleRate: 48_000, channels: 2, sampleCount: 96_000, durationSec: 2, outputStartSec: 0, processingDelaySamples: 0 },
+      timing: { sampleRate: 48_000, channels: 2, sampleCount: 96_000, durationSec: 2, outputStartSec: 0, processingDelaySamples: 0, leadSilenceSamples: 0 },
       bytes: 384_000,
       sha256: "ab".repeat(32),
     });

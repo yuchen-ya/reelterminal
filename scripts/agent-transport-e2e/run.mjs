@@ -10,8 +10,8 @@ import { E2EEnvironment, ffprobeVersion } from "./lib/env.mjs";
 import { gitSha, probeClientClis, sha256File } from "./lib/common.mjs";
 import { Recorder } from "./lib/recorder.mjs";
 import { runDoctor } from "./lib/doctor.mjs";
-import { scenario1Mcp, scenario1Run } from "./lib/scenario1.mjs";
-import { scenario2Mcp, scenario2Run } from "./lib/scenario2.mjs";
+import { scenario1Run } from "./lib/scenario1.mjs";
+import { scenario2Run } from "./lib/scenario2.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..");
@@ -19,7 +19,6 @@ const repoRoot = path.resolve(scriptDir, "..", "..");
 function parseArgs(argv) {
   const options = {
     scenario: "all",
-    path: "all",
     keepEvidence: false,
     evidenceDir: null,
     cli: path.join(repoRoot, "packages", "agent-transport", "dist", "cli.js"),
@@ -35,9 +34,6 @@ function parseArgs(argv) {
       case "--scenario":
         options.scenario = value();
         break;
-      case "--path":
-        options.path = value();
-        break;
       case "--keep-evidence":
         options.keepEvidence = true;
         break;
@@ -52,7 +48,6 @@ function parseArgs(argv) {
     }
   }
   if (!["1", "2", "all"].includes(options.scenario)) throw new Error("--scenario must be 1|2|all");
-  if (!["run", "mcp", "all"].includes(options.path)) throw new Error("--path must be run|mcp|all");
   return options;
 }
 
@@ -69,18 +64,15 @@ async function main() {
 
   const plan = [];
   if (options.scenario === "1" || options.scenario === "all") {
-    if (options.path === "run" || options.path === "all") plan.push({ scenario: 1, path: "run" });
-    if (options.path === "mcp" || options.path === "all") plan.push({ scenario: 1, path: "mcp" });
+    plan.push({ scenario: 1, path: "run" });
   }
   if (options.scenario === "2" || options.scenario === "all") {
-    if (options.path === "run" || options.path === "all") {
+    if (process.platform !== "win32") {
       plan.push({ scenario: 2, path: "run", variant: "SIGTERM" });
-      plan.push({ scenario: 2, path: "run", variant: "SIGKILL" });
+    } else {
+      console.log("SKIP scenario2 SIGTERM: Windows does not deliver POSIX termination signals.");
     }
-    if (options.path === "mcp" || options.path === "all") {
-      plan.push({ scenario: 2, path: "mcp", variant: "SIGTERM" });
-      plan.push({ scenario: 2, path: "mcp", variant: "SIGKILL" });
-    }
+    plan.push({ scenario: 2, path: "run", variant: "SIGKILL" });
   }
   console.log(`agent-e2e: ${plan.length} execution(s) planned: ${plan.map((p) => JSON.stringify(p)).join(", ")}`);
 
@@ -101,14 +93,7 @@ async function main() {
     const startedAt = Date.now();
     try {
       await env.setup();
-      const fn =
-        entry.scenario === 1
-          ? entry.path === "run"
-            ? scenario1Run
-            : scenario1Mcp
-          : entry.path === "run"
-            ? scenario2Run
-            : scenario2Mcp;
+      const fn = entry.scenario === 1 ? scenario1Run : scenario2Run;
       await fn({ env, recorder, cliPath: options.cli, variant: entry.variant });
       const totals = await recorder.close();
       results.push({ ...entry, dir, status: "PASS", ...totals });
@@ -132,7 +117,7 @@ async function main() {
     path.join(options.evidenceDir, "client-probe.json"),
     `${JSON.stringify(
       {
-        note: "Workflow and MCP clients in this run are scripted and labeled simulated.",
+        note: "Workflow clients in this run are scripted and labeled simulated.",
         probedAt: new Date().toISOString(),
         probes,
       },

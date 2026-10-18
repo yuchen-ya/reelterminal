@@ -1,3 +1,4 @@
+import type { CollaborationInstructionsResult } from "./collaboration-instructions";
 import { bindBundledTools, type BundledToolBindings } from "./plugin-runtime";
 import { withValidatedFacadeCalls } from "./request-validation";
 import type { RequirementsListParams, RequirementsListResult, RequirementsGetParams, RequirementsGetResult } from "./requirements";
@@ -98,6 +99,7 @@ export interface AgentFacade extends BundledToolBindings {
     params: ProjectRenameParams,
   ) => Promise<FacadeResult<ProjectRenameResult>>;
   readonly "project.get_state": () => Promise<FacadeResult<ProjectState>>;
+  readonly "collaboration.instructions.get": (params?: Record<string, never>) => Promise<FacadeResult<CollaborationInstructionsResult>>;
   readonly "requirements.list": (params?: RequirementsListParams) => Promise<FacadeResult<RequirementsListResult>>;
   readonly "requirements.get": (params: RequirementsGetParams) => Promise<FacadeResult<RequirementsGetResult>>;
   readonly "project.changes": (
@@ -268,6 +270,7 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "project.save": (params) => session.projectSave(params),
     "project.rename": (params) => session.projectRename(params),
     "project.get_state": () => session.projectGetState(),
+    "collaboration.instructions.get": (params) => session.collaborationInstructionsGet(params),
     "requirements.list": (params) => session.requirementsList(params),
     "requirements.get": (params) => session.requirementsGet(params),
     "project.changes": (params) => session.projectChanges(params),
@@ -389,6 +392,7 @@ export {
 export type { ProjectRenderAdapter } from "./render/adapter";
 export { JobRegistry, JOB_STATES, jobStatusView } from "./jobs";
 export type { JobProgressView, JobRecord, JobState } from "./jobs";
+export { sweepAbandonedAudioArtifactStaging, AUDIO_ARTIFACT_STAGING_PATTERN, AUDIO_ARTIFACT_KIND_DIRS } from "./audio-artifact-lifecycle";
 export type {
   ArtifactProbeExpectation,
   ArtifactProbeReport,

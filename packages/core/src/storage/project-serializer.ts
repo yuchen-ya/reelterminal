@@ -1,3 +1,4 @@
+import { validCollaborationInstructions } from "../types/collaboration-instruction";
 import { validateMediaProduction } from "../types/media-production";
 import { validReviewRange } from "../types/review-range";
 import { SpeedEngine } from "../video/speed-engine";
@@ -484,6 +485,7 @@ export function normalizeProjectSpeedDurations(project: Project): Project {
 }
 
 export function normalizeProjectStoredFields(project: Project): Project {
+  if (!validCollaborationInstructions(project.collaborationInstructions)) throw new Error("Invalid project collaboration instructions");
   for (const requirement of project.requirements?.items ?? []) {
     if (requirement.reviewRange !== undefined && !validReviewRange(requirement.reviewRange)) {
       throw new Error(`Invalid review range for ${requirement.id}`);

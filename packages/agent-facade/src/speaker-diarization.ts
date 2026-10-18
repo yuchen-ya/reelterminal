@@ -221,7 +221,10 @@ export async function analyzeSpeakerDiarization(
     const model = diarizeModelOverride ?? diarizeWithPythonWorker;
     const response = await model({
       wavPath,
-      segments: clipped,
+      segments: clipped.map((segment) => ({
+        startSec: segment.startSec - range.startSec,
+        endSec: segment.endSec - range.startSec,
+      })),
       threshold: params.threshold,
       maxSpeakers: params.maxSpeakers,
       modelDir,
@@ -229,7 +232,11 @@ export async function analyzeSpeakerDiarization(
       progress: (percent, _phase) => progress(0.15 + 0.85 * percent),
     });
     if (signal.aborted) throw new Error("Cancelled");
-    const segments = mergeDiarizationChunks(response.labels, response.spans);
+    const segments = mergeDiarizationChunks(response.labels, response.spans.map((span) => ({
+      ...span,
+      startSec: span.startSec + range.startSec,
+      endSec: span.endSec + range.startSec,
+    })));
     const speakerCount = new Set(segments.map((segment) => segment.speakerIndex)).size;
     progress(1);
     return {

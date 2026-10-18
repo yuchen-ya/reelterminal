@@ -11,7 +11,7 @@ zero-based, half-open **source** frame range applies each operation to only that
 segment. Multiple steps can describe a mixed source. Unrecorded media remain
 unknown; they are not classified as originals automatically.
 
-The asset panel filters by operation or candidate status. CLI/MCP read exactly
+The asset panel filters by operation or candidate status. CLI read exactly
 the same project metadata:
 
 ```json
@@ -131,7 +131,7 @@ new batch; backfill uses the existing identity/epoch/revision guards in
 by job observers, including while no client is polling. After application exit,
 completed items retain their result; unfinished items resume through the existing
 recovery command. Observers release when a job becomes terminal. Batch controls
-remain CLI/MCP commands; no separate GUI batch panel is added.
+remain CLI commands; no separate GUI batch panel is added.
 
 ## Strict replacement
 
@@ -178,7 +178,7 @@ the editor, import candidates, record the actual tool/model, review and adopt.
 
 Passed against a visible, built Electron desktop in an isolated profile (46.24 s).
 The test uses the real file-import UI, review form, comparison/adoption buttons,
-GUI undo, reelctl and a persistent external MCP connector. It does not replace
+GUI undo and independent reelctl processes. It does not replace
 FFprobe, rendering, job execution or project mutations with mocks.
 
 - Imported a synthetic 60-frame red/blue source. With the playhead at 1.5 s (blue),

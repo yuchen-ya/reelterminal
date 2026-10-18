@@ -1,3 +1,4 @@
+import { validCollaborationInstructions } from "../types/collaboration-instruction";
 import { validReviewRange } from "../types/review-range";
 import { validateMediaProduction } from "../types/media-production";
 import type {
@@ -226,6 +227,9 @@ export class ActionValidator {
         }
         break;
 
+      case "project/setCollaborationInstructions":
+        if (!validCollaborationInstructions(action.params.instructions)) errors.push({ code: "INVALID_PARAMS", message: "Invalid collaboration instructions (maximum 20 items, title 80 and description 2000 characters)", path: "params.instructions" });
+        break;
       case "project/setRenderFonts":
         if (action.params.fonts !== undefined && (!Array.isArray(action.params.fonts) || action.params.fonts.some(font =>
           !font || typeof font.family !== "string" || typeof font.style !== "string" || typeof font.weight !== "string" ||

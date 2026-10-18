@@ -1,5 +1,5 @@
 /**
- * Shared test helpers: spawn the real built CLI, an MCP client over stdio,
+ * Shared test helpers: spawn the real built CLI,
  * and preflight gates (Chromium / ffmpeg) with printed skip reasons.
  */
 import { spawn, type ChildProcess } from "node:child_process";
@@ -84,6 +84,7 @@ export function spawnCli(
 ): CliHandle {
   const child = spawn(process.execPath, [CLI, ...args], {
     cwd: packageDir,
+    windowsHide: true,
     env: { ...process.env, ...env },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -109,80 +110,6 @@ export function spawnCli(
     child.on("close", (code) => resolve(code ?? -1));
   });
   return handle;
-}
-
-export interface McpClient {
-  send: (message: Record<string, unknown>) => void;
-  read: (timeoutMs?: number) => Promise<Record<string, any>>;
-  handle: CliHandle;
-}
-
-/** Minimal NDJSON MCP client over a spawned serve process. */
-export function startServe(
-  args: readonly string[] = [],
-  env: Record<string, string | undefined> = {},
-): McpClient {
-  const handle = spawnCli(["serve", ...args], env);
-  const pending: Record<string, any>[] = [];
-  let notify: (() => void) | null = null;
-  let stdoutRemainder = "";
-  handle.child.stdout.on("data", (chunk: string) => {
-    const framed = stdoutRemainder + chunk;
-    const lines = framed.split("\n");
-    stdoutRemainder = lines.pop() ?? "";
-    for (const line of lines) {
-      if (line.trim().length === 0) continue;
-      try {
-        const parsed = JSON.parse(line);
-        pending.push(parsed);
-        const n = notify;
-        notify = null;
-        n?.();
-      } catch {
-        // non-JSON stdout is a purity violation asserted by tests
-      }
-    }
-  });
-  return {
-    handle,
-    send: (message) => handle.write(`${JSON.stringify(message)}\n`),
-    read: (timeoutMs = 120_000) =>
-      new Promise((resolve, reject) => {
-        if (pending.length > 0) return resolve(pending.shift() as Record<string, any>);
-        const timer = setTimeout(() => {
-          notify = null;
-          reject(new Error(`timed out reading MCP frame; stdout=${handle.stdout}`));
-        }, timeoutMs);
-        notify = () => {
-          clearTimeout(timer);
-          resolve(pending.shift() as Record<string, any>);
-        };
-      }),
-  };
-}
-
-export interface InitializeResult {
-  id: number;
-  result: {
-    serverInfo: Record<string, unknown>;
-    capabilities: Record<string, unknown>;
-  };
-}
-
-export async function initialize(client: McpClient, protocolVersion = "2025-06-18"): Promise<InitializeResult> {
-  client.send({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: {
-      protocolVersion,
-      capabilities: {},
-      clientInfo: { name: "agent-transport-test", version: "0" },
-    },
-  });
-  const init = (await client.read()) as InitializeResult;
-  client.send({ jsonrpc: "2.0", method: "notifications/initialized" });
-  return init;
 }
 
 import { createRequire as nodeCreateRequire } from "node:module";

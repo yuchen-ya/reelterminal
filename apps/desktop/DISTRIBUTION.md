@@ -1,8 +1,8 @@
 # Desktop distribution
 
-## Version 1.2.2
+## Version 1.2.3
 
-This checkout builds version 1.2.2 as an unsigned Windows x64 installer and
+This checkout builds version 1.2.3 as an unsigned Windows x64 installer and
 portable ZIP. Publication status and available assets are shown on Releases.
 The current audio batch (AUD-01–AUD-06) is recorded in the
 [audio execution plan](../../docs/AUDIO-PIPELINE-EXECUTION-PLAN.md); packaging
@@ -14,7 +14,7 @@ directory; do not rename an older package to a new version. For example:
 ```bash
 pnpm install --frozen-lockfile
 pnpm build:wasm
-pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.2.2-<short-sha>
+pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.2.3-<short-sha>
 ```
 
 Verify the packaged app version and `dist/performance-build.json` source SHA,

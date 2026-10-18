@@ -2,7 +2,7 @@
 
 Pure-Node, in-process, transport-agnostic agent facade over the ReelTerminal
 canonical `Project` state, with headless and live sessions and bundled
-read-only tool extensions. The desktop CLI and MCP adapter use the same
+read-only tool extensions. The desktop CLI uses the shared
 command catalog.
 
 The desktop calls an immutable node a **save point**. Current edits are saved
@@ -231,14 +231,12 @@ open project and enforces access and revision checks.
 
 `getCommandCatalog("live")` and `getCommandCatalog("headless")` describe the
 canonical verbs, schemas, effects and retry policies, including plugin commands.
-The desktop's Command API and reelctl use this catalog; MCP is an explicit
-adapter over the same API. See the
+The desktop's Command API and reelctl use this catalog. See the
 [Command API guide](../../docs/COMMAND-API.md).
 
-The new CLI requires recorded project identity, opening epoch and revision for
-edit/apply and history control. The legacy MCP adapter keeps the facade's
-optional revision semantics described above for compatibility. All transports
-still use the same atomic mutation, idempotency and shared undo implementation.
+The CLI requires explicit project/workspace targets and revisions for
+edit/apply and history control, and supports opening-epoch guards.
+Commands use the same atomic mutation, idempotency and shared undo implementation.
 
 ## Preview, export, and verification
 
@@ -283,11 +281,8 @@ Chromium + system ffmpeg). Semantics owned by the facade itself:
   the runtime has WebGPU; when the pass cannot run, the done job reports
   `upscalingRequestedButInactive: true` — the artifact is valid and NOT
   upscaled, never a silent downgrade.
-- The stdio MCP transports (including the desktop `reelterminal-live-mcp`
-  connector) accept `_meta.progressToken` on `export.start` and emit opt-in
-  `notifications/progress` updates while the job is running. Direct callers of
-  the desktop loopback HTTP endpoint have no server-push channel and should
-  keep the documented `job.status` polling flow.
+- Poll `job.status` for progress and terminal results. The live CLI also offers
+  `reelctl job wait`; headless workflows use an `await` step.
 - `job.status` / `job.cancel` expose `queued|running|done|error|cancelled`
   with progress, artifact (done only) and error (error only). A failed or
   cancelled job never carries an artifact and the runtime never leaves a
@@ -606,7 +601,7 @@ screenshot delivery state.
 ## Responsibility boundaries
 
 The facade contains no transport, cloud GPU, or OCR. The desktop supplies the
-Command API and CLI/MCP adapters. The facade owns command and state semantics, but contains
+Command API and CLI client. The facade owns command and state semantics, but contains
 no Chromium/Playwright/ffmpeg code — that lives in the runtime package.
 Text overlays are canonical model state (`project.textClips` on a
 `type:"text"` track); pixel output is available only when a render provider

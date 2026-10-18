@@ -2,13 +2,13 @@
  * 选中文字，让 Agent 通过外部连接改写。
  *
  * Human side: real UI input only (Playwright mouse/keyboard on the Electron
- * window). Agent side: a real MCP JSON-RPC client → live endpoint. The test
+ * window). Agent side: a real CLI process → live endpoint. The test
  * process never calls the facade in-process.
  */
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { launchApp, type LaunchedApp } from "./harness/launch";
-import { connectExternalAgent, type ExternalAgent, type FacadeCallResult } from "./harness/mcp-client";
+import { connectExternalAgent, type ExternalAgent, type FacadeCallResult } from "./harness/cli-client";
 import { createEvidence, type EvidenceRecord } from "./harness/evidence";
 import {
   createProjectViaUI,
@@ -61,7 +61,7 @@ describe("flow A: select text, external agent rewrites it", () => {
     // Human: enable Agent Access via the real status-bar toggle.
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     await launched.waitForEndpointFile();
-    // Agent: connect over real MCP stdio (shim → live endpoint).
+    // Agent: connect over real CLI (reelctl → live endpoint).
     agent = await connectExternalAgent(launched.endpointFile);
   }, 300_000);
 
@@ -72,7 +72,7 @@ describe("flow A: select text, external agent rewrites it", () => {
   });
 
   test("agent reads the user's real text selection via editor.get_context", async () => {
-    const ctxResult = await agent.callTool<EditorContext>("editor_get_context");
+    const ctxResult = await agent.callCommand<EditorContext>("editor.get_context");
     expect(ctxResult.ok).toBe(true);
     const ctx = ctxResult.value!;
     expect(ctx.mode).toBe("live");
@@ -82,7 +82,7 @@ describe("flow A: select text, external agent rewrites it", () => {
     expect(ctx.selectedTextIds).toHaveLength(1);
 
     target = { projectId: ctx.identity.projectId, workspaceId: ctx.identity.workspaceId };
-    const timeline = await agent.callTool<TimelineView>("timeline_get", target);
+    const timeline = await agent.callCommand<TimelineView>("timeline.get", target);
     expect(timeline.ok).toBe(true);
     const overlay = timeline.value!.textOverlays.find((o) => o.text === ORIGINAL_TEXT);
     expect(overlay).toBeDefined();
@@ -99,14 +99,15 @@ describe("flow A: select text, external agent rewrites it", () => {
   test("agent rewrites the text with a context-CAS edit; the GUI updates without reload", async () => {
     const urlBefore = launched.page.url();
 
-    const applied = await agent.callTool<{ revision: number }>("edit_apply", {
+    const applied = await agent.callCommand<{ revision: number }>("edit.apply", {
       ...target,
       ops: [{ op: "text.update", overlayId, text: AGENT_TEXT }],
+      expectedRevision: firstContext.projectRevision,
       expectedContextRevision: firstContext.contextRevision,
     });
     evidence.record("rewrite_result", applied);
     if (!applied.ok) {
-      evidence.record("context_at_rejection", (await agent.callTool<EditorContext>("editor_get_context")).value);
+      evidence.record("context_at_rejection", (await agent.callCommand<EditorContext>("editor.get_context")).value);
       evidence.record("renderer_diagnostics", launched.output.rendererConsole.map(line => line.replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")));
     }
     expect(applied.ok, JSON.stringify(applied.error)).toBe(true);
@@ -120,6 +121,7 @@ describe("flow A: select text, external agent rewrites it", () => {
 
     evidence.record("agent_edit_apply", {
       overlayId,
+      expectedRevision: firstContext.projectRevision,
       expectedContextRevision: firstContext.contextRevision,
       newRevision: revisionAfterAgentEdit,
     });
@@ -144,7 +146,7 @@ describe("flow A: select text, external agent rewrites it", () => {
     // Handoff legibility: the agent observes the post-undo/redo revisions —
     // undo and redo each advanced the shared project revision past the
     // revision the agent's own edit produced.
-    const ctx = (await agent.callTool<EditorContext>("editor_get_context")).value!;
+    const ctx = (await agent.callCommand<EditorContext>("editor.get_context")).value!;
     expect(ctx.projectRevision).toBeGreaterThan(revisionAfterAgentEdit);
     evidence.record("undo_redo", {
       revisionAfterAgentEdit,
@@ -154,8 +156,8 @@ describe("flow A: select text, external agent rewrites it", () => {
   });
 
   test("handoff legibility: the agent observes a real human edit as a new revision", async () => {
-    const beforeContext = await agent.callTool<EditorContext>("editor_get_context");
-    const beforeTimeline = await agent.callTool<TimelineView>("timeline_get", target);
+    const beforeContext = await agent.callCommand<EditorContext>("editor.get_context");
+    const beforeTimeline = await agent.callCommand<TimelineView>("timeline.get", target);
     evidence.record("before_human_drag", { context: beforeContext, timeline: beforeTimeline });
     expect(beforeContext.ok).toBe(true);
     expect(beforeTimeline.ok).toBe(true);
@@ -210,8 +212,8 @@ describe("flow A: select text, external agent rewrites it", () => {
     let timeline: FacadeCallResult<TimelineView> | undefined;
     try {
       await dragTextClipViaUI(launched.page, AGENT_TEXT, 100);
-      context = await agent.callTool<EditorContext>("editor_get_context");
-      timeline = await agent.callTool<TimelineView>("timeline_get", target);
+      context = await agent.callCommand<EditorContext>("editor.get_context");
+      timeline = await agent.callCommand<TimelineView>("timeline.get", target);
       evidence.record("after_human_drag", { context, timeline });
     } finally {
       evidence.record("human_drag_probe", await launched.page.evaluate(() =>

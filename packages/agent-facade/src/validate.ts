@@ -33,8 +33,8 @@ export type ObjectSchema = Record<string, FieldRule>;
 
 /**
  * The emitted JSON-Schema node shapes the facade produces. The emitter is
- * dependency-free and inlines everything (no `$ref` — at least one major
- * MCP client does not dereference them), keeps objects closed
+ * dependency-free and inlines everything (no `$ref` —
+ * schema consumers receive a self-contained document), keeps objects closed
  * (`additionalProperties: false`) and never places a combinator at a root.
  */
 export type JsonSchemaNode =

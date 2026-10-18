@@ -1,9 +1,9 @@
 {
   "name": "@reelterminal/agent-transport",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "type": "module",
-  "description": "The reelterminal-agent CLI — MCP stdio server (serve), executable workflow runner (run), and environment doctor. One process == one AgentFacadeSession. See docs/COMMAND-API.md; end-to-end checks live in scripts/agent-transport-e2e.",
+  "description": "The reelterminal-agent CLI — executable workflow runner (run) and environment doctor. One process == one AgentFacadeSession. See docs/COMMAND-API.md; end-to-end checks live in scripts/agent-transport-e2e.",
   "bin": {
     "reelterminal-agent": "dist/cli.js"
   },
@@ -26,7 +26,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.31.0",
     "@reelterminal/agent-facade": "workspace:*",
     "@reelterminal/runtime-chromium": "workspace:*"
   },

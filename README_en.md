@@ -73,7 +73,7 @@ flowchart LR
 
 1. Visit **[Releases](https://github.com/yuchen-ya/reelterminal/releases)** and choose a build for your operating system and architecture.
 2. Open a video project. When you want the assistant to modify it, switch collaboration above the timeline to **`Editable`**; you can return to read-only access at any time.
-3. Click **“Copy startup prompt”** in the notification and send it to an AI assistant with local CLI or MCP tool access.
+3. Click **“Copy startup prompt”** in the notification and send it to an AI assistant with local CLI access.
 4. The prompt includes this installation’s command paths and collaboration rules. Have the assistant confirm the intended project, workspace, and permissions before editing. Continue reviewing, adjusting, and making creative decisions in the same UI.
 
 Current downloads include a **Windows x64 installer/portable ZIP** and **macOS Apple Silicon (M-series, arm64) DMG/ZIP**. Check [Releases](https://github.com/yuchen-ya/reelterminal/releases) for exact assets, architectures, signing, and checksums. Extract the entire Windows ZIP before running `ReelTerminal.exe`.
@@ -121,7 +121,7 @@ flowchart TD
     end
 
     subgraph Facade ["Control facade"]
-        Bridge["CLI / MCP and local Command API"]
+        Bridge["CLI and local Command API"]
         Guard["Revision checks and idempotent transactions"]
     end
 

@@ -25,11 +25,14 @@ import { FFT } from "@reelterminal/core/audio/fft";
 import { FacadeError } from "./errors";
 import { assertContainedWrittenFile, prepareArtifactDir, sha256File } from "./artifact-io";
 import { fingerprintFile } from "./inspection-artifacts";
-import { FfmpegToolError, resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
+import { FfmpegToolError, resolveFfmpegVersion, resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
 import { resolveContainedPathDetailed } from "./media/path-roots";
 import { parseLoudnorm, probeAudioStreams, type NormalizeAudioMeasurement } from "./audio-normalize";
+import { computeAudioReuseKey, findReusableAudioArtifact, recordReusableAudioArtifact, stageReusableAudioWav } from "./audio-artifact-reuse";
 
 export const AUDIO_DENOISE_MAX_RANGE_SEC = 120;
+/** Bump when the denoise chain changes — it invalidates reuse keys. */
+export const AUDIO_DENOISE_CHAIN_VERSION = 1;
 const SAMPLE_RATE = 48_000;
 const VERB = "audio.process.denoise";
 const DELAY_PROBE_SECONDS = 1.5;
@@ -143,6 +146,16 @@ function validateParams(params: DenoiseAudioParams): number {
 
 function formatSeconds(seconds: number): string {
   return seconds.toFixed(9).replace(/0+$/, "").replace(/\.$/, "") || "0";
+}
+
+/** Strictly validate a reuse candidate's recorded measurement; null → recompute. */
+function reusableMeasurement(value: unknown): NormalizeAudioMeasurement | null {
+  if (typeof value !== "object" || value === null) return null;
+  const measurement = value as Record<string, unknown>;
+  const finite = ["integratedLufs", "truePeakDbtp", "loudnessRangeLu", "thresholdLufs"].every(
+    (key) => typeof measurement[key] === "number" && Number.isFinite(measurement[key]),
+  );
+  return finite ? value as NormalizeAudioMeasurement : null;
 }
 
 function ffmpegMessage(error: unknown): string {
@@ -334,10 +347,10 @@ async function verifyPublishedSamples(ffprobe: string, wavPath: string, expected
 }
 
 /** Decode a bounded mono slice at 48 kHz for the post-publication alignment check. */
-async function decodeMonoSlice(ffmpeg: string, path: string, startSec: number, durationSec: number, signal?: AbortSignal): Promise<Float32Array> {
+async function decodeMonoSlice(ffmpeg: string, path: string, streamIndex: number, startSec: number, durationSec: number, signal?: AbortSignal): Promise<Float32Array> {
   const { stdout } = await runToolProcess(ffmpeg, [
     "-hide_banner", "-nostdin", "-v", "error", "-ss", String(startSec), "-t", String(durationSec), "-i", path,
-    "-map", "0:a:0", "-vn", "-ar", String(SAMPLE_RATE), "-ac", "1", "-f", "f32le", "pipe:1",
+    "-map", `0:${streamIndex}`, "-vn", "-ar", String(SAMPLE_RATE), "-ac", "1", "-f", "f32le", "pipe:1",
   ], { signal });
   return readFloat32Buffer(stdout);
 }
@@ -486,49 +499,108 @@ export async function produceDenoisedAudio(input: ProduceDenoisedAudioParams): P
   if (sourceFingerprint.sha256 === null) fail("NOT_FOUND", "source could not be fingerprinted");
 
   const chain = resolveDenoiseProfile(input.params.profile, input.params.declick === true);
-  const delay = await measureFilterDelay(binaries.ffmpeg, chain.filters, input.signal);
-  throwIfCancelled(input.signal);
-  const before = await measureInputLoudness(binaries.ffmpeg, sourcePath, streamIndex, input.params, timestampOriginSec, input.signal);
+  const ffmpegVersion = await resolveFfmpegVersion();
+  const algorithmVersion = `denoise@${AUDIO_DENOISE_CHAIN_VERSION}+${ffmpegVersion}`;
+  const cacheKey = computeAudioReuseKey({
+    verb: VERB,
+    sourceSha256: sourceFingerprint.sha256,
+    audioStream: input.params.audioStream,
+    startSec: formatSeconds(input.params.startSec),
+    endSec: formatSeconds(input.params.endSec),
+    sampleRate: input.params.sampleRate,
+    channels: input.params.channels,
+    profile: input.params.profile,
+    declick: input.params.declick === true,
+    algorithm: algorithmVersion,
+  });
   throwIfCancelled(input.signal);
 
   const root = resolvePath(input.mediaRoots[0]!);
   const outputParent = join(root, "generated-assets", "audio-denoise");
   const outputDir = join(outputParent, input.artifactId);
-  const stagingDir = join(outputParent, `.${input.artifactId}.${randomUUID()}.pending`);
+  const stagingDir = join(outputParent, `.${input.artifactId}.${process.pid}.${randomUUID()}.pending`);
   const stagedWavPath = join(stagingDir, "denoised.wav");
   const stagedProvenancePath = join(stagingDir, "provenance.json");
   let publishedByThisAttempt = false;
 
+  let before: NormalizeAudioMeasurement | null = null;
+  let after: NormalizeAudioMeasurement | null = null;
+  let processing: DenoiseAudioArtifact["processing"] | null = null;
+  let reusedFrom: { cacheKey: string; artifactId: string } | null = null;
+
   try {
     await prepareArtifactDir(stagingDir, root, VERB);
-    await writeDenoisedWav(binaries.ffmpeg, sourcePath, streamIndex, stagedWavPath, input.params, sampleCount, timestampOriginSec, delay.samples, chain.filters, input.signal);
+    // AUD-13 content-addressed reuse (validated prior result, byte-identical);
+    // a same-artifactId retry keeps compute-then-compare semantics.
+    const outputDirExists = (await lstat(outputDir).catch(() => null)) !== null;
+    const reuseHit = outputDirExists ? null : await findReusableAudioArtifact({
+      root, kind: "audio-denoise", cacheKey, algorithmVersion, wavFilename: "denoised.wav",
+    });
+    if (reuseHit !== null && typeof reuseHit.provenance.processing === "object" && reuseHit.provenance.processing !== null) {
+      const reusableBefore = reusableMeasurement(reuseHit.provenance.before);
+      const reusableAfter = reusableMeasurement(reuseHit.provenance.after);
+      if (reuseHit.provenance.sourceSha256 === sourceFingerprint.sha256 && reusableBefore !== null && reusableAfter !== null) {
+        await stageReusableAudioWav(reuseHit, stagedWavPath);
+        before = reusableBefore;
+        after = reusableAfter;
+        processing = reuseHit.provenance.processing as DenoiseAudioArtifact["processing"];
+        reusedFrom = { cacheKey, artifactId: reuseHit.artifactId };
+      }
+    }
+    if (reusedFrom === null) {
+      const delay = await measureFilterDelay(binaries.ffmpeg, chain.filters, input.signal);
+      throwIfCancelled(input.signal);
+      before = await measureInputLoudness(binaries.ffmpeg, sourcePath, streamIndex, input.params, timestampOriginSec, input.signal);
+      throwIfCancelled(input.signal);
+      await writeDenoisedWav(binaries.ffmpeg, sourcePath, streamIndex, stagedWavPath, input.params, sampleCount, timestampOriginSec, delay.samples, chain.filters, input.signal);
+      const verifiedFreshWav = await assertContainedWrittenFile(stagedWavPath, root, VERB);
+      await verifyPublishedSamples(binaries.ffprobe, verifiedFreshWav, sampleCount, input.params.channels, input.signal);
+      // Prove the compensation on the actual published signal, not just the
+      // synthetic probe: a nonzero measured lag would be detectable drift.
+      const checkSeconds = Math.min(ALIGNMENT_CHECK_SECONDS, sampleCount / SAMPLE_RATE);
+      let alignmentLag: number | null = null;
+      let alignmentProminence: number | null = null;
+      let alignmentVerdict: "aligned" | "unverified" = "unverified";
+      let alignmentNote: string | null = null;
+      try {
+        const [sourceSlice, outputSlice] = await Promise.all([
+          decodeMonoSlice(binaries.ffmpeg, sourcePath, streamIndex, input.params.startSec, checkSeconds, input.signal),
+          decodeMonoSlice(binaries.ffmpeg, verifiedFreshWav, 0, 0, checkSeconds, input.signal),
+        ]);
+        const measured = crossCorrelationDelay(outputSlice, sourceSlice, SAMPLE_RATE, 0.2);
+        alignmentLag = measured.lagSamples;
+        alignmentProminence = measured.prominenceDb;
+        if (measured.lagSamples !== 0 && measured.prominenceDb >= 6) {
+          throw new FacadeError("JOB_FAILED", `${VERB}: published output is shifted by ${measured.lagSamples} samples against the source after delay compensation; no asset was published`, { lagSamples: measured.lagSamples, prominenceDb: measured.prominenceDb });
+        }
+        alignmentVerdict = measured.prominenceDb >= 6 ? "aligned" : "unverified";
+        if (alignmentVerdict === "unverified") alignmentNote = `correlation prominence ${measured.prominenceDb.toFixed(1)} dB is too low to prove alignment on this material; the measured ${delay.samples}-sample filter delay was still compensated`;
+      } catch (error) {
+        if (error instanceof FacadeError) throw error;
+        alignmentNote = `alignment check could not run: ${ffmpegMessage(error)}`;
+      }
+      after = await measureOutputLoudness(binaries.ffmpeg, verifiedFreshWav, input.signal);
+      processing = {
+        profile: input.params.profile,
+        declick: input.params.declick === true,
+        filterChain: chain.filters,
+        measuredFilterDelaySamples: delay.samples,
+        measuredFilterDelaySec: delay.samples / SAMPLE_RATE,
+        measuredDelayProminenceDb: delay.prominenceDb,
+        alignmentCheck: {
+          checkedSec: checkSeconds,
+          lagSamples: alignmentLag,
+          prominenceDb: alignmentProminence,
+          verdict: alignmentVerdict,
+          note: alignmentNote,
+        },
+      };
+    }
+    if (before === null || after === null || processing === null) {
+      fail("JOB_FAILED", "internal: denoise facts were not established");
+    }
     const verifiedStagedWav = await assertContainedWrittenFile(stagedWavPath, root, VERB);
     await verifyPublishedSamples(binaries.ffprobe, verifiedStagedWav, sampleCount, input.params.channels, input.signal);
-    // Prove the compensation on the actual published signal, not just the
-    // synthetic probe: a nonzero measured lag would be detectable drift.
-    const checkSeconds = Math.min(ALIGNMENT_CHECK_SECONDS, sampleCount / SAMPLE_RATE);
-    let alignmentLag: number | null = null;
-    let alignmentProminence: number | null = null;
-    let alignmentVerdict: "aligned" | "unverified" = "unverified";
-    let alignmentNote: string | null = null;
-    try {
-      const [sourceSlice, outputSlice] = await Promise.all([
-        decodeMonoSlice(binaries.ffmpeg, sourcePath, input.params.startSec, checkSeconds, input.signal),
-        decodeMonoSlice(binaries.ffmpeg, verifiedStagedWav, 0, checkSeconds, input.signal),
-      ]);
-      const measured = crossCorrelationDelay(outputSlice, sourceSlice, SAMPLE_RATE, 0.2);
-      alignmentLag = measured.lagSamples;
-      alignmentProminence = measured.prominenceDb;
-      if (measured.lagSamples !== 0 && measured.prominenceDb >= 6) {
-        throw new FacadeError("JOB_FAILED", `${VERB}: published output is shifted by ${measured.lagSamples} samples against the source after delay compensation; no asset was published`, { lagSamples: measured.lagSamples, prominenceDb: measured.prominenceDb });
-      }
-      alignmentVerdict = measured.prominenceDb >= 6 ? "aligned" : "unverified";
-      if (alignmentVerdict === "unverified") alignmentNote = `correlation prominence ${measured.prominenceDb.toFixed(1)} dB is too low to prove alignment on this material; the measured ${delay.samples}-sample filter delay was still compensated`;
-    } catch (error) {
-      if (error instanceof FacadeError) throw error;
-      alignmentNote = `alignment check could not run: ${ffmpegMessage(error)}`;
-    }
-    const after = await measureOutputLoudness(binaries.ffmpeg, verifiedStagedWav, input.signal);
     throwIfCancelled(input.signal);
     const currentFingerprint = await fingerprintFile(sourcePath);
     if (currentFingerprint.sha256 !== sourceFingerprint.sha256) {
@@ -570,31 +642,21 @@ export async function produceDenoisedAudio(input: ProduceDenoisedAudioParams): P
         outputStartSec: 0 as const,
         processingDelaySamples: 0 as const,
       },
-      processing: {
-        profile: input.params.profile,
-        declick: input.params.declick === true,
-        filterChain: chain.filters,
-        measuredFilterDelaySamples: delay.samples,
-        measuredFilterDelaySec: delay.samples / SAMPLE_RATE,
-        measuredDelayProminenceDb: delay.prominenceDb,
-        alignmentCheck: {
-          checkedSec: checkSeconds,
-          lagSamples: alignmentLag,
-          prominenceDb: alignmentProminence,
-          verdict: alignmentVerdict,
-          note: alignmentNote,
-        },
-      },
+      processing,
       bytes: wavStat.size,
       sha256,
     };
     const provenance = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       ...artifact,
       sourceSha256: sourceFingerprint.sha256,
       sourceTimestampOriginSec: timestampOriginSec,
       chainLabel: chain.label,
-      method: "FFmpeg afftdn tier (+ optional adeclick); exact 48 kHz sample window; measured chain delay trimmed and tail padded; output sample count verified; published output cross-correlated against the source; PCM s24le WAV; final loudness measured on the written WAV",
+      algorithmVersion,
+      ...(reusedFrom !== null ? { reusedFrom } : {}),
+      method: `${reusedFrom !== null
+        ? "Byte-identical reuse of a validated prior artifact (content-addressed cache hit; the denoise chain, delay measurement and alignment check were not re-run — the recorded facts describe exactly these bytes)."
+        : "FFmpeg afftdn tier (+ optional adeclick); exact 48 kHz sample window; measured chain delay trimmed and tail padded; output sample count verified; published output cross-correlated against the source; PCM s24le WAV; final loudness measured on the written WAV"}`,
     };
     await writeFile(stagedProvenancePath, `${JSON.stringify(provenance, null, 2)}\n`, { flag: "wx" });
     throwIfCancelled(input.signal);
@@ -622,6 +684,11 @@ export async function produceDenoisedAudio(input: ProduceDenoisedAudioParams): P
     }
     if (!publishedByThisAttempt) await cleanupOwnedDirectory(stagingDir, root);
     throwIfCancelled(input.signal);
+    // AUD-13: name this published artifact as the reusable result. Best-effort.
+    await recordReusableAudioArtifact({
+      root, kind: "audio-denoise", cacheKey, artifactId: input.artifactId,
+      wavFilename: "denoised.wav", wavSha256: sha256, algorithmVersion,
+    }).catch(() => {});
     return { ...artifact, path: published.wavPath, provenancePath: published.provenancePath };
   } catch (error) {
     const cleanupErrors: string[] = [];

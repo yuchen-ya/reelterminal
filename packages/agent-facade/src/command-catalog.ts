@@ -1,7 +1,7 @@
 /**
  * Protocol-neutral description of facade commands.
  *
- * MCP tool schemas and live CLI discovery are generated from this catalog.
+ * Command schemas and live CLI discovery are generated from this catalog.
  * The facade remains the authority for validation and execution; this module
  * only describes each already-registered verb and its operational behavior.
  */
@@ -24,7 +24,7 @@ export type RetryPolicy = CommandRetryPolicy;
 export interface CommandCatalogEntry {
   /** Canonical facade command name, such as `edit.apply`. */
   readonly name: FacadeVerb;
-  /** Compatibility MCP spelling, derived from the canonical name. */
+  /** Compatibility alias, derived from the canonical name. */
   readonly toolName: FacadeToolName;
   readonly description: string;
   readonly inputSchema: JsonSchemaObject;

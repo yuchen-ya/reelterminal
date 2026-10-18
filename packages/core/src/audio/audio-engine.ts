@@ -118,16 +118,13 @@ class SegmentedAudioDecoder {
  * dropped — the same post-processing the GUI silence-cut bridge applies.
  * Pass zeros to get the raw scanned ranges unchanged.
  */
-export function detectSilenceRangesInPcm(
+export function scanSilenceWindowsInPcm(
   pcm: Float32Array,
   sampleRate: number,
   thresholdDb: number,
-  minDurationSec: number = 0,
-  paddingSec: number = 0,
 ): TimeRange[] {
   const thresholdLinear = Math.pow(10, thresholdDb / 20);
   const windowSize = Math.max(1, Math.floor(sampleRate * 0.1)); // 100ms window
-  const durationSec = pcm.length / sampleRate;
 
   const scanned: TimeRange[] = [];
   let silenceStart: number | null = null;
@@ -152,9 +149,18 @@ export function detectSilenceRangesInPcm(
     }
   }
   if (silenceStart !== null) {
-    scanned.push({ start: silenceStart, end: durationSec });
+    scanned.push({ start: silenceStart, end: pcm.length / sampleRate });
   }
 
+  return scanned;
+}
+
+export function postprocessSilenceRanges(
+  scanned: TimeRange[],
+  durationSec: number,
+  minDurationSec: number,
+  paddingSec: number,
+): TimeRange[] {
   return scanned
     .map((range) => ({
       start: Math.max(0, range.start + paddingSec),
@@ -164,6 +170,82 @@ export function detectSilenceRangesInPcm(
       (range) =>
         range.start < range.end && range.end - range.start >= minDurationSec,
     );
+}
+
+export function detectSilenceRangesInPcm(
+  pcm: Float32Array,
+  sampleRate: number,
+  thresholdDb: number,
+  minDurationSec: number = 0,
+  paddingSec: number = 0,
+): TimeRange[] {
+  return postprocessSilenceRanges(
+    scanSilenceWindowsInPcm(pcm, sampleRate, thresholdDb),
+    pcm.length / sampleRate,
+    minDurationSec,
+    paddingSec,
+  );
+}
+
+/**
+ * Incremental form of the 100ms silence-window scan for streamed decodes
+ * (AUD-11 long material): windows sit at absolute sample indices k*windowSize
+ * of the concatenated stream, so chunk boundaries never shift, duplicate or
+ * drop a window. `finish()` returns exactly what scanSilenceWindowsInPcm
+ * returns for the concatenated buffer, including a trailing partial window.
+ */
+export class SilenceWindowScanner {
+  private readonly sampleRate: number;
+  private readonly thresholdLinear: number;
+  private readonly windowSize: number;
+  private readonly scanned: TimeRange[] = [];
+  private windowStart = 0;
+  private total = 0;
+  private maxAmp = 0;
+  private silenceStart: number | null = null;
+
+  constructor(sampleRate: number, thresholdDb: number) {
+    this.sampleRate = sampleRate;
+    this.thresholdLinear = Math.pow(10, thresholdDb / 20);
+    this.windowSize = Math.max(1, Math.floor(sampleRate * 0.1));
+  }
+
+  push(chunk: Float32Array): void {
+    for (let i = 0; i < chunk.length; i++) {
+      const amp = Math.abs(chunk[i]);
+      if (amp > this.maxAmp) this.maxAmp = amp;
+      this.total++;
+      if (this.total - this.windowStart === this.windowSize) {
+        this.closeWindow();
+      }
+    }
+  }
+
+  finish(): TimeRange[] {
+    if (this.total > this.windowStart) this.closeWindow();
+    if (this.silenceStart !== null) {
+      this.scanned.push({ start: this.silenceStart, end: this.total / this.sampleRate });
+      this.silenceStart = null;
+    }
+    return this.scanned;
+  }
+
+  get totalSamples(): number {
+    return this.total;
+  }
+
+  private closeWindow(): void {
+    const isSilent = this.maxAmp < this.thresholdLinear;
+    const currentTime = this.windowStart / this.sampleRate;
+    if (isSilent && this.silenceStart === null) {
+      this.silenceStart = currentTime;
+    } else if (!isSilent && this.silenceStart !== null) {
+      this.scanned.push({ start: this.silenceStart, end: currentTime });
+      this.silenceStart = null;
+    }
+    this.windowStart = this.total;
+    this.maxAmp = 0;
+  }
 }
 
 /**

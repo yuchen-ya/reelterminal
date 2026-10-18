@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { launchApp } from "./harness/launch";
-import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { createProjectViaUI, enableAgentSessionViaUI } from "./harness/ui";
 import { createEvidence } from "./harness/evidence";
 
@@ -23,10 +23,10 @@ test("decimal-adjacent clips use native playback and comparison settings leave b
     }
     await launched.waitForEndpointFile();
     agent = await connectExternalAgent(launched.endpointFile);
-    const context = await agent.callTool<{ identity: { projectId: string; workspaceId: string } }>("editor_get_context");
+    const context = await agent.callCommand<{ identity: { projectId: string; workspaceId: string } }>("editor.get_context");
     expect(context.ok).toBe(true);
     const target = { projectId: context.value!.identity.projectId, workspaceId: context.value!.identity.workspaceId };
-    const capabilities = await agent.callTool<{ mediaImport: { recommendedRoot: string } }>("capabilities_get");
+    const capabilities = await agent.callCommand<{ mediaImport: { recommendedRoot: string } }>("capabilities.get");
     expect(capabilities.ok).toBe(true);
     const fixtureJob = path.join(capabilities.value!.mediaImport.recommendedRoot, "jobs", `2026-10-10-comparison-regression-${crypto.randomUUID()}`);
     const sourceDir = path.join(fixtureJob, "source");
@@ -38,16 +38,16 @@ test("decimal-adjacent clips use native playback and comparison settings leave b
       "testsrc2=size=320x180:rate=30:duration=8", "-c:v", "libx264",
       "-pix_fmt", "yuv420p", "-colorspace", "bt709", source,
     ], { windowsHide: true });
-    const beforeImport = await agent.callTool<{ revision: number }>("project_get_state", target);
-    const imported = await agent.callTool<{ mediaId: string }>("media_import", {
+    const beforeImport = await agent.callCommand<{ revision: number }>("project.get_state", target);
+    const imported = await agent.callCommand<{ mediaId: string }>("media.import", {
       ...target, path: source, expectedRevision: beforeImport.value!.revision,
       idempotencyKey: "comparison-source-import",
     });
     expect(imported.ok, JSON.stringify(imported.error)).toBe(true);
     const mediaId = imported.value!.mediaId;
     const apply = async (ops: unknown[]) => {
-      const state = await agent!.callTool<{ revision: number }>("project_get_state", target);
-      const result = await agent!.callTool("edit_apply", { ...target, ops, expectedRevision: state.value!.revision });
+      const state = await agent!.callCommand<{ revision: number }>("project.get_state", target);
+      const result = await agent!.callCommand("edit.apply", { ...target, ops, expectedRevision: state.value!.revision });
       expect(result.ok, JSON.stringify(result.error)).toBe(true);
     };
     await apply([

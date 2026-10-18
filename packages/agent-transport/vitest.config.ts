@@ -6,7 +6,7 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["test/**/*.test.ts"],
-    // Protocol/signal/purity tests spawn the real built binary; the setup
+    // Command/signal/purity tests spawn the real built binary; the setup
     // builds it once per run (and links the external runtime deps).
     globalSetup: ["./test/global-setup.ts"],
     testTimeout: 180_000,

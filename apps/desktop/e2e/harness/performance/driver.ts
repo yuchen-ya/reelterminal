@@ -10,7 +10,7 @@ import type { TimelineState } from "@reelterminal/agent-facade";
 import type { CaptureReport } from "../../../../web/src/performance";
 import { launchApp, type LaunchedApp } from "../launch";
 import { ARTIFACTS_DIR, E2E_DIR } from "../paths";
-import { connectExternalAgent, type ExternalAgent } from "../mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "../cli-client";
 import { enableAgentSessionViaUI } from "../ui";
 import { captureBuildIdentity, readEnvironmentIdentity } from "./identity";
 import { createPerformanceResult, type RawPerformanceOperation } from "./result";
@@ -362,7 +362,7 @@ async function seek(page: Page, time: number, pixelsPerSecond: number): Promise<
 }
 
 async function timeline(agent: ExternalAgent, target: { projectId: string; workspaceId: string }) {
-  const result = await agent.callTool<TimelineState>("timeline_get", target, { timeoutMs: 30_000 });
+  const result = await agent.callCommand<TimelineState>("timeline.get", target, { timeoutMs: 30_000 });
   if (!result.ok) throw new Error(`timeline read failed: ${result.error?.code} ${result.error?.message}`);
   return result.value!;
 }
@@ -549,7 +549,7 @@ export async function runPerformanceScenario(scenarioId: TimelinePerformanceScen
         const equal = (actual: TimelineState, expected: TimelineState) => isDeepStrictEqual({ tracks: actual.tracks, text: actual.textOverlays }, { tracks: expected.tracks, text: expected.textOverlays });
         for (const [action, expected] of [["undo", before], ["redo", after]] as const) {
           const current = await timeline(agent!, targetIdentity);
-          const reply = await agent!.callTool("history_control", { ...targetIdentity, action, expectedRevision: current.revision, idempotencyKey: `${runId}-${current.revision}-${action}` });
+          const reply = await agent!.callCommand("history.control", { ...targetIdentity, action, expectedRevision: current.revision, idempotencyKey: `${runId}-${current.revision}-${action}` });
           const actual = await timeline(agent!, targetIdentity);
           if (!reply.ok || !equal(actual, expected)) {
             const directory = path.join(ARTIFACTS_DIR, "performance");
@@ -660,7 +660,7 @@ export async function runPerformanceScenario(scenarioId: TimelinePerformanceScen
             pixelsPerSecond = newBox.width / state.tracks.flatMap((track) => track.clips).find((clip) => clip.id === mediaId)!.duration;
             const requestedTime = index % 2 === 0 ? 2.5 : 3;
             await capture("timeline_seek_content_verified_ms", () => seek(launched!.page, requestedTime, pixelsPerSecond), async () => {
-              const context = await agent!.callTool<{ playheadSeconds: number }>("editor_get_context", targetIdentity, { timeoutMs: options.operationTimeoutMs });
+              const context = await agent!.callCommand<{ playheadSeconds: number }>("editor.get_context", targetIdentity, { timeoutMs: options.operationTimeoutMs });
               if (!context.ok || Math.abs(context.value!.playheadSeconds - requestedTime) > 0.06) throw new Error("seek did not reach requested playhead");
               await waitForMarker(launched!.page, fixture, options.operationTimeoutMs);
             });

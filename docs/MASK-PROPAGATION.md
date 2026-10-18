@@ -1,7 +1,7 @@
 # Mask refinement and short patch propagation
 
 These local OpenCV tools produce candidates only. They share the Command API,
-schema/MCP discovery, source containment and artifact rules with the existing
+schema discovery, source containment and artifact rules with the existing
 frame tools. Neither verb changes the timeline or starts a model download.
 
 ## Runtime and limits

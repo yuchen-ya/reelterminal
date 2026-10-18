@@ -142,7 +142,7 @@ describe("GUI manual content integrity", () => {
       }
     }
     // The delivery must stay within the data-URL budget this form was chosen
-    // for (self-contained MCP payloads): 1MB across all screens.
+    // for (self-contained command payloads): 1MB across all screens.
     expect(totalBytes).toBeLessThanOrEqual(1024 * 1024);
     expect(deliveredIds).toHaveLength(3);
   });

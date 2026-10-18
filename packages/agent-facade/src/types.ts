@@ -24,7 +24,7 @@ import { HELP_VERBS } from "./gui-manual";
  * Pixel/export/verify backing arrives through the independent provider
  * interfaces in providers.ts (RenderProvider / ExportProvider /
  * ArtifactVerifier); the facade itself never imports Chromium or ffmpeg.
- * MCP/CLI transports remain out of scope.
+ * CLI transports remain out of scope.
  */
 import type {
   Project,
@@ -65,6 +65,7 @@ export const FACADE_VERBS = [
   "project.get_state",
   "requirements.list",
   "requirements.get",
+  "collaboration.instructions.get",
   "project.changes",
   ...WORKSPACE_VERBS,
   "media.import",
@@ -108,12 +109,12 @@ type DotsToUnderscores<Value extends string> =
     ? `${Head}_${DotsToUnderscores<Tail>}`
     : Value;
 
-/** Canonical MCP spelling for one facade verb. */
+/** Compatibility alias for one facade verb. */
 export type FacadeToolName = DotsToUnderscores<FacadeVerb>;
 
 /**
  * The facade owns the verb-to-tool spelling as well as the schemas. Desktop
- * live, stdio live-mcp, and agent-transport consume this registry so a newly
+ * live and agent-transport consume this registry so a newly
  * added facade verb cannot be advertised by one transport and rejected by
  * another stale allowlist.
  */
@@ -160,6 +161,7 @@ export const READ_ONLY_VERBS = [
   "project.get_state",
   "requirements.list",
   "requirements.get",
+  "collaboration.instructions.get",
   "project.changes",
   "workspace.list",
   "workspace.list_drafts",
@@ -893,7 +895,7 @@ export interface MediaAnalyzeStartParams {
   /** Explicit consent to send this range to the configured Alibaba cloud service. */
   readonly cloudUpload?: boolean;
   readonly reviewQuestion?: string;
-  /** Original media seconds; audioSummary/silence/beatGrid/speechActivity/speechTranscript/speakerDiarization/syncOffset maximum 120s, videoReview explicit range maximum 20s. */
+  /** Original media seconds; audioSummary/silence/beatGrid maximum 3600s, speechActivity/speechTranscript/speakerDiarization/syncOffset maximum 120s, videoReview explicit range maximum 20s. */
   readonly startSec?: number;
   readonly endSec?: number;
   readonly mediaId: string;
@@ -1194,6 +1196,7 @@ export interface EditorGetContextResult {
   readonly canvasPoint: { readonly x: number; readonly y: number } | null;
   /** Ephemeral editor-session references keyed by their stable number. */
   readonly references: LiveEditorReferences;
+  readonly collaborationInstructions: ReturnType<typeof import("./collaboration-instructions").collaborationInstructionsSummary>;
   /** Compact project requirement signal; fetch details with reelctl requirements. */
   readonly requirements: {
     readonly ready: number;

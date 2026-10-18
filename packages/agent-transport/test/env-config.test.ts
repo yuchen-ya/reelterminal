@@ -1,17 +1,8 @@
-/**
- * B.5 env-config regression tests. The creative acceptance agent found
- * that `serve`/`run` silently ignored every `REELTERMINAL_AVE_*` env var the
- * SKILL and doctor document (only flags worked): `mergeEnvRoots` existed
- * but no command called it, and `REELTERMINAL_TRANSPORT_LOG` was read
- * nowhere. Every real MCP client following SKILL.md's env-based
- * per-client snippets would have hit this. These tests pin the merge
- * functions AND the command-level wiring end to end.
- */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ConfigRefusal, mergeEnvLogLevel, mergeEnvRoots } from "../src/config";
-import { initialize, makeRoots, spawnCli, startServe, type Roots } from "./helpers";
+import { makeRoots, spawnCli, type Roots } from "./helpers";
 
 let roots: Roots;
 
@@ -73,16 +64,19 @@ describe("B.5 env merge functions (unit)", () => {
 });
 
 describe("B.5 env config honored by the commands (integration)", () => {
-  it("serve with env-only roots: capabilities_get reports mediaImport available", async () => {
-    const client = startServe([], envRoots());
-    await initialize(client);
-    client.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "capabilities_get", arguments: {} } });
-    const response = await client.read();
-    const result = JSON.parse((response.result as any).content[0].text);
+  it("run with env-only roots reports media import capability and honors the log level", async () => {
+    const workflow = path.join(roots.projectRoot, "env-capabilities.jsonl");
+    await writeFile(workflow, JSON.stringify({ id: "capabilities", verb: "capabilities.get", params: {} }) + "\n");
+    const handle = spawnCli(["run", "--workflow", workflow], {
+      ...envRoots(), REELTERMINAL_TRANSPORT_LOG: "error",
+    });
+    expect(await handle.exitCode).toBe(0);
+    const result = JSON.parse(handle.stdout).result;
     expect(result.ok).toBe(true);
     expect(result.value.mediaImport.available).toBe(true);
-    client.handle.child.kill("SIGTERM");
-    await client.handle.exitCode;
+    const levels = handle.stderr.split("\n").filter(Boolean).map((line) => JSON.parse(line).level);
+    expect(levels).not.toContain("info");
+    expect(levels).not.toContain("debug");
   }, 120_000);
 
   it("run with an env-only project root: project.save lands the checkpoint", async () => {
@@ -106,22 +100,4 @@ describe("B.5 env config honored by the commands (integration)", () => {
     expect(lines[1].result.value.path).toContain("env-run.openreel.json");
   }, 120_000);
 
-  it("REELTERMINAL_TRANSPORT_LOG=error suppresses info-level stderr logs on serve", async () => {
-    // Readiness via the MCP handshake: at error level there is no
-    // "listening" info line to wait for, and a fixed sleep races handler
-    // installation on loaded runners.
-    const client = startServe([], { ...envRoots(), REELTERMINAL_TRANSPORT_LOG: "error" });
-    await initialize(client);
-    client.handle.child.kill("SIGTERM");
-    const exitCode = await client.handle.exitCode;
-    // Windows has no POSIX signals, so the 143 (128+SIGTERM) exit code
-    // does not exist there; asserting only that the server exited.
-    if (process.platform !== "win32") expect(exitCode).toBe(143);
-    const levels = client.handle.stderr
-      .split("\n")
-      .filter((l) => l.trim().length > 0)
-      .map((l) => (JSON.parse(l) as { level: string }).level);
-    expect(levels).not.toContain("info");
-    expect(levels).not.toContain("debug");
-  }, 120_000);
 });

@@ -13,14 +13,28 @@ import { dirname, join, resolve as resolvePath } from "node:path";
 import { FacadeError } from "./errors";
 import { assertContainedWrittenFile, prepareArtifactDir, sha256File } from "./artifact-io";
 import { fingerprintFile } from "./inspection-artifacts";
-import { FfmpegToolError, resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
+import { FfmpegToolError, resolveFfmpegVersion, resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
 import { resolveContainedPathDetailed } from "./media/path-roots";
+import { computeAudioReuseKey, findReusableAudioArtifact, recordReusableAudioArtifact, stageReusableAudioWav } from "./audio-artifact-reuse";
 
-export const AUDIO_NORMALIZE_MAX_RANGE_SEC = 120;
+/**
+ * AUD-11: long-material cap. The two loudnorm passes stream inside one FFmpeg
+ * process each (no PCM buffering in this process), so the binding budgets are
+ * wall-clock per pass (audioNormalizePassTimeoutMs) and output disk size
+ * (288 KB/s for stereo s24le at 48 kHz — about 1.0 GiB per hour).
+ */
+export const AUDIO_NORMALIZE_MAX_RANGE_SEC = 3600;
 export const AUDIO_NORMALIZE_MAX_INTEGRATED_DEVIATION_LU = 1;
 export const AUDIO_NORMALIZE_MAX_TRUE_PEAK_OVERSHOOT_DBTP = 0.2;
 const SAMPLE_RATE = 48_000;
 const VERB = "audio.process.normalize";
+/** Bump when the exact-range/loudnorm chain changes — it invalidates reuse keys. */
+export const AUDIO_NORMALIZE_CHAIN_VERSION = 2;
+
+/** Per-pass wall-clock budget: 3-minute floor + 8 s per source second; cancellation stays available. */
+export function audioNormalizePassTimeoutMs(durationSec: number): number {
+  return 180_000 + Math.ceil(Math.max(0, durationSec)) * 8_000;
+}
 
 export interface NormalizeAudioParams {
   readonly mediaId: string;
@@ -72,6 +86,12 @@ export interface NormalizeAudioArtifact {
     readonly durationSec: number;
     readonly outputStartSec: 0;
     readonly processingDelaySamples: 0;
+    /**
+     * AUD-12: leading silence preserved in the output when the requested
+     * range starts before the selected audio stream (a track offset relative
+     * to the media origin). Zero unless the stream starts inside the range.
+     */
+    readonly leadSilenceSamples: number;
   };
   readonly bytes: number;
   readonly sha256: string;
@@ -87,6 +107,8 @@ export interface ProduceNormalizedAudioParams {
   readonly signal?: AbortSignal;
   /** Stable, caller-owned identifier reserved for this normalization job. */
   readonly artifactId: string;
+  /** Optional 0–1 progress observer (AUD-11): probe→first pass→second pass→verify. */
+  readonly progress?: (percent: number) => void;
 }
 
 interface ProbeStream {
@@ -186,15 +208,13 @@ function parseTimeBaseRatio(value: string | undefined): { numerator: number; den
   return numerator > 0 && denominator > 0 ? { numerator, denominator } : null;
 }
 
-function streamDuration(stream: ProbeStream, formatDuration: string | undefined, formatStartSec: number): number | null {
+function streamDuration(stream: ProbeStream): number | null {
   const durationTicks = Number(stream.duration_ts);
   const timeBase = parseTimeBase(stream.time_base);
   if (Number.isFinite(durationTicks) && timeBase !== null && durationTicks >= 0) return durationTicks * timeBase;
   const duration = Number(stream.duration);
   if (Number.isFinite(duration) && duration >= 0) return duration;
-  const format = Number(formatDuration);
-  if (!Number.isFinite(format) || format < 0) return null;
-  return formatStartSec > 0 ? Math.max(0, format - formatStartSec) : format;
+  return null;
 }
 
 function ffmpegMessage(error: unknown): string {
@@ -206,7 +226,28 @@ function throwIfCancelled(signal?: AbortSignal): void {
   if (signal?.aborted) fail("JOB_FAILED", "Cancelled");
 }
 
-export async function probeAudioStreams(ffprobe: string, sourcePath: string, audioStream: number, signal?: AbortSignal): Promise<{ durationSec: number; streamIndex: number; timestampOriginSec: number }> {
+export interface ProbedAudioStream {
+  readonly durationSec: number;
+  readonly streamIndex: number;
+  /** Container/format timestamp origin: source time 0 refers to it. */
+  readonly timestampOriginSec: number;
+  /** Raw stream start_time from the probe; null when the container reports none. */
+  readonly streamStartSec: number | null;
+  /**
+   * streamStartSec − timestampOriginSec: where the audio track begins in
+   * source media time. Positive means the track starts after the media origin
+   * (a leading delay); negative means it starts before it. Zero when unknown.
+   */
+  readonly streamOffsetSec: number;
+}
+
+export async function probeAudioStreams(
+  ffprobe: string,
+  sourcePath: string,
+  audioStream: number,
+  signal?: AbortSignal,
+  options: { allowStreamOffset?: boolean } = {},
+): Promise<ProbedAudioStream> {
   let result: ProbeFile;
   try {
     const { stdout } = await runToolProcess(ffprobe, [
@@ -226,24 +267,84 @@ export async function probeAudioStreams(ffprobe: string, sourcePath: string, aud
   if (!selected) fail("INVALID_PARAMS", `audioStream ${audioStream} does not exist in the source`);
   const formatStart = Number(result.format?.start_time);
   const timestampOriginSec = Number.isFinite(formatStart) ? formatStart : 0;
-  const durationSec = streamDuration(selected.stream, result.format?.duration, timestampOriginSec);
-  if (durationSec === null) fail("JOB_FAILED", "the selected audio stream has no measurable duration");
   const streamStart = Number(selected.stream.start_time);
   const sourceSampleRate = Number(selected.stream.sample_rate);
   const startToleranceSec = 1 / (Number.isFinite(sourceSampleRate) && sourceSampleRate > 0 ? sourceSampleRate : SAMPLE_RATE);
-  if (Number.isFinite(streamStart) && Math.abs(streamStart - timestampOriginSec) > startToleranceSec) {
+  const streamStartSec = Number.isFinite(streamStart) ? streamStart : null;
+  const streamOffsetSec = streamStartSec === null ? 0 : streamStartSec - timestampOriginSec;
+  let durationSec = streamDuration(selected.stream);
+  if (durationSec === null) {
+    // Containers such as Matroska omit stream duration. The container end
+    // may belong to another track, so measure this track's packet endpoint.
+    const packets = await runToolProcess(ffprobe, [
+      "-v", "error", "-select_streams", `a:${audioStream}`, "-show_packets",
+      "-show_entries", "packet=pts_time,duration_time", "-of", "compact=p=0:nk=0", sourcePath,
+    ], { signal });
+    let endSec = -Infinity;
+    for (const line of packets.stdout.toString("utf8").split(/\r?\n/)) {
+      const fields = Object.fromEntries(line.split("|").map((field) => field.split("=")));
+      const pts = Number(fields.pts_time);
+      const duration = Number(fields.duration_time);
+      if (Number.isFinite(pts) && Number.isFinite(duration) && duration > 0) endSec = Math.max(endSec, pts + duration);
+    }
+    durationSec = endSec - (streamStartSec ?? timestampOriginSec);
+    if (!Number.isFinite(durationSec) || durationSec < 0) fail("JOB_FAILED", "the selected audio stream has no measurable duration");
+  }
+  if (streamStartSec !== null && Math.abs(streamOffsetSec) > startToleranceSec && options.allowStreamOffset !== true) {
     fail("INVALID_PARAMS", "selected audio track starts at a different source time than the media; audio tracks with a nonzero start offset are not supported");
   }
-  return { durationSec, streamIndex: selected.streamIndex, timestampOriginSec };
+  return { durationSec, streamIndex: selected.streamIndex, timestampOriginSec, streamStartSec, streamOffsetSec };
 }
 
-function exactRangeFilters(params: NormalizeAudioParams, sampleCount: number, timestampOriginSec: number): string {
+/** The audited source-range window for one normalization request (AUD-12). */
+export interface NormalizeRangeWindow {
+  /** Container-PTS atrim start: origin + the first source second that carries audio. */
+  readonly trimStartSec: number;
+  /** Container-PTS atrim end: origin + endSec. */
+  readonly trimEndSec: number;
+  /** Output samples of real silence before the track begins; the legal leading delay is preserved, never dropped. */
+  readonly leadSilenceSamples: number;
+  /** Last source-media second covered by audio: streamOffsetSec + stream duration. */
+  readonly coverageEndSec: number;
+}
+
+/**
+ * AUD-12 time mapping, explicit and testable:
+ *   source media time = container time − timestampOriginSec
+ *   audio track time  = source media time − streamOffsetSec
+ *   output time zero  = the requested range start in source media time
+ * A range starting before the track begins keeps the gap as real output
+ * silence (`leadSilenceSamples`); a negative offset simply means the track
+ * has content before the media origin, which the PTS-based trim ignores.
+ */
+export function normalizeRangeWindow(
+  params: { readonly startSec: number; readonly endSec: number },
+  timing: { readonly timestampOriginSec: number; readonly streamOffsetSec: number },
+  streamDurationSec: number,
+): NormalizeRangeWindow {
+  const audioFromSec = Math.max(params.startSec, timing.streamOffsetSec);
+  return {
+    trimStartSec: timing.timestampOriginSec + audioFromSec,
+    trimEndSec: timing.timestampOriginSec + params.endSec,
+    leadSilenceSamples: Math.max(0, Math.round((timing.streamOffsetSec - params.startSec) * SAMPLE_RATE)),
+    coverageEndSec: timing.streamOffsetSec + streamDurationSec,
+  };
+}
+
+export function exactRangeFilters(
+  params: NormalizeAudioParams,
+  sampleCount: number,
+  timing: { readonly timestampOriginSec: number; readonly streamOffsetSec: number },
+  streamDurationSec: number,
+): string {
   const layout = params.channels === 1 ? "mono" : "stereo";
+  const window = normalizeRangeWindow(params, timing, streamDurationSec);
   return [
-    `atrim=start=${formatSeconds(timestampOriginSec + params.startSec)}:end=${formatSeconds(timestampOriginSec + params.endSec)}`,
+    `atrim=start=${formatSeconds(window.trimStartSec)}:end=${formatSeconds(window.trimEndSec)}`,
     "asetpts=PTS-STARTPTS",
     `aresample=${SAMPLE_RATE}:async=0:first_pts=0`,
     `aformat=sample_rates=${SAMPLE_RATE}:channel_layouts=${layout}`,
+    ...(window.leadSilenceSamples > 0 ? [`adelay=delays=${window.leadSilenceSamples}S:all=1`] : []),
     `apad=whole_len=${sampleCount}`,
     `atrim=end_sample=${sampleCount}`,
   ].join(",");
@@ -253,21 +354,42 @@ function loudnormOptions(params: NormalizeAudioParams): string {
   return `I=${params.targetLufs}:TP=${params.truePeakDbtp}:LRA=${params.loudnessRangeLu}`;
 }
 
+/**
+ * Incremental parser for ffmpeg `-progress pipe:1` blocks. Both out_time_us
+ * and out_time_ms report microseconds (a documented ffmpeg quirk), and blocks
+ * can split across chunk boundaries, so keep a small tail buffer.
+ */
+export function createFfmpegProgressWatcher(totalSec: number, report: (fraction: number) => void): (chunk: Buffer) => void {
+  let tail = "";
+  return (chunk: Buffer) => {
+    tail = `${tail}${chunk.toString("latin1")}`.slice(-512);
+    const matches = [...tail.matchAll(/out_time_(?:us|ms)=(\d+)/g)];
+    const last = matches.at(-1);
+    if (!last || !(totalSec > 0)) return;
+    const seconds = Number(last[1]) / 1_000_000;
+    if (Number.isFinite(seconds)) report(Math.min(1, Math.max(0, seconds / totalSec)));
+  };
+}
+
 async function runMeasure(
   ffmpeg: string,
   sourcePath: string,
   streamIndex: number,
   params: NormalizeAudioParams,
   sampleCount: number,
-  timestampOriginSec: number,
+  timing: { readonly timestampOriginSec: number; readonly streamOffsetSec: number },
+  streamDurationSec: number,
+  progress: ((percent: number) => void) | undefined,
   signal?: AbortSignal,
 ): Promise<LoudnormPassResult> {
-  const filter = `${exactRangeFilters(params, sampleCount, timestampOriginSec)},loudnorm=${loudnormOptions(params)}:print_format=json`;
+  const durationSec = params.endSec - params.startSec;
+  const filter = `${exactRangeFilters(params, sampleCount, timing, streamDurationSec)},loudnorm=${loudnormOptions(params)}:print_format=json`;
+  const watcher = progress ? createFfmpegProgressWatcher(durationSec, (fraction) => progress(0.05 + 0.45 * fraction)) : undefined;
   try {
     const result = await runToolProcess(ffmpeg, [
       "-hide_banner", "-nostdin", "-nostats", "-v", "info", "-copyts", "-i", sourcePath,
-      "-map", `0:${streamIndex}`, "-vn", "-af", filter, "-f", "null", "-",
-    ], { signal });
+      "-map", `0:${streamIndex}`, "-vn", "-af", filter, "-progress", "pipe:1", "-f", "null", "-",
+    ], { signal, timeoutMs: audioNormalizePassTimeoutMs(durationSec), ...(watcher ? { onStdoutChunk: watcher } : {}) });
     return parseLoudnorm(result.stderr);
   } catch (error) {
     if (signal?.aborted) fail("JOB_FAILED", "Cancelled");
@@ -283,12 +405,15 @@ async function writeNormalizedWav(
   outputPath: string,
   params: NormalizeAudioParams,
   sampleCount: number,
-  timestampOriginSec: number,
+  timing: { readonly timestampOriginSec: number; readonly streamOffsetSec: number },
+  streamDurationSec: number,
   firstPass: LoudnormPassResult,
+  progress: ((percent: number) => void) | undefined,
   signal?: AbortSignal,
 ): Promise<LoudnormMode> {
+  const durationSec = params.endSec - params.startSec;
   const filter = [
-    exactRangeFilters(params, sampleCount, timestampOriginSec),
+    exactRangeFilters(params, sampleCount, timing, streamDurationSec),
     `loudnorm=${loudnormOptions(params)}:measured_I=${firstPass.measurement.integratedLufs}:measured_TP=${firstPass.measurement.truePeakDbtp}:measured_LRA=${firstPass.measurement.loudnessRangeLu}:measured_thresh=${firstPass.measurement.thresholdLufs}:offset=${firstPass.targetOffset}:linear=true:print_format=json`,
     `aresample=${SAMPLE_RATE}:async=0:first_pts=0`,
     `aformat=sample_rates=${SAMPLE_RATE}`,
@@ -296,13 +421,14 @@ async function writeNormalizedWav(
     `atrim=end_sample=${sampleCount}`,
     "asetpts=PTS-STARTPTS",
   ].join(",");
+  const watcher = progress ? createFfmpegProgressWatcher(durationSec, (fraction) => progress(0.5 + 0.4 * fraction)) : undefined;
   try {
     const result = await runToolProcess(ffmpeg, [
       "-hide_banner", "-nostdin", "-nostats", "-v", "info", "-copyts", "-i", sourcePath,
       "-map", `0:${streamIndex}`, "-vn", "-af", filter,
       "-ar", String(SAMPLE_RATE), "-ac", String(params.channels), "-c:a", "pcm_s24le",
       "-f", "wav", "-y", outputPath,
-    ], { signal });
+    ], { signal, timeoutMs: audioNormalizePassTimeoutMs(durationSec), ...(watcher ? { onStdoutChunk: watcher } : {}) });
     const blocks = result.stderr.match(/\{\s*"input_i"[\s\S]*?\}/g) ?? [];
     const block = blocks.at(-1);
     if (!block) fail("JOB_FAILED", "second-pass loudnorm returned no measurement block");
@@ -341,13 +467,21 @@ async function measurePublishedSamples(ffprobe: string, wavPath: string, expecte
   }
 }
 
-async function measureOutput(ffmpeg: string, wavPath: string, params: NormalizeAudioParams, signal?: AbortSignal): Promise<NormalizeAudioMeasurement> {
+async function measureOutput(
+  ffmpeg: string,
+  wavPath: string,
+  params: NormalizeAudioParams,
+  progress: ((percent: number) => void) | undefined,
+  signal?: AbortSignal,
+): Promise<NormalizeAudioMeasurement> {
   const filter = `loudnorm=${loudnormOptions(params)}:print_format=json`;
+  const durationSec = params.endSec - params.startSec;
+  const watcher = progress ? createFfmpegProgressWatcher(durationSec, (fraction) => progress(0.9 + 0.08 * fraction)) : undefined;
   try {
     const result = await runToolProcess(ffmpeg, [
       "-hide_banner", "-nostdin", "-nostats", "-v", "info", "-i", wavPath,
-      "-map", "0:a:0", "-vn", "-af", filter, "-f", "null", "-",
-    ], { signal });
+      "-map", "0:a:0", "-vn", "-af", filter, "-progress", "pipe:1", "-f", "null", "-",
+    ], { signal, timeoutMs: audioNormalizePassTimeoutMs(durationSec), ...(watcher ? { onStdoutChunk: watcher } : {}) });
     return parseLoudnorm(result.stderr).measurement;
   } catch (error) {
     if (signal?.aborted) fail("JOB_FAILED", "Cancelled");
@@ -433,6 +567,31 @@ export async function discardNormalizedAudioArtifact(artifact: NormalizeAudioArt
  * Normalize one selected source range and publish an immutable WAV plus its
  * provenance JSON under the first configured media root.
  */
+/** Strictly validate a reuse candidate's recorded measurements; null → recompute. */
+function readReusableMeasurements(provenance: Record<string, unknown>, expectedSourceSha256: string): {
+  before: NormalizeAudioMeasurement;
+  after: NormalizeAudioMeasurement;
+  normalizationMode: LoudnormMode;
+  firstPassTargetOffset: number;
+} | null {
+  const isMeasurement = (value: unknown): value is NormalizeAudioMeasurement =>
+    typeof value === "object" && value !== null &&
+    Number.isFinite((value as NormalizeAudioMeasurement).integratedLufs) &&
+    Number.isFinite((value as NormalizeAudioMeasurement).truePeakDbtp) &&
+    Number.isFinite((value as NormalizeAudioMeasurement).loudnessRangeLu) &&
+    Number.isFinite((value as NormalizeAudioMeasurement).thresholdLufs);
+  const finiteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+  if (provenance.sourceSha256 !== expectedSourceSha256) return null;
+  if (!isMeasurement(provenance.before) || !isMeasurement(provenance.after)) return null;
+  if ((provenance.normalizationMode !== "linear" && provenance.normalizationMode !== "dynamic") || !finiteNumber(provenance.firstPassTargetOffset)) return null;
+  return {
+    before: provenance.before,
+    after: provenance.after,
+    normalizationMode: provenance.normalizationMode,
+    firstPassTargetOffset: provenance.firstPassTargetOffset,
+  };
+}
+
 export async function produceNormalizedAudio(input: ProduceNormalizedAudioParams): Promise<NormalizeAudioArtifact> {
   const sampleCount = validateParams(input.params);
   throwIfCancelled(input.signal);
@@ -454,31 +613,89 @@ export async function produceNormalizedAudio(input: ProduceNormalizedAudioParams
   const binaries = await resolveToolFfmpeg();
   if (!binaries) fail("UNSUPPORTED", "FFmpeg and FFprobe are required (install them on PATH or configure REELTERMINAL_FFMPEG_PATH / REELTERMINAL_FFPROBE_PATH)");
   throwIfCancelled(input.signal);
+  input.progress?.(0.02);
 
-  const { durationSec, streamIndex, timestampOriginSec } = await probeAudioStreams(binaries.ffprobe, sourcePath, input.params.audioStream, input.signal);
-  if (input.params.endSec > durationSec + 1 / SAMPLE_RATE) {
-    fail("INVALID_PARAMS", `source range ends after the selected audio stream (${durationSec.toFixed(3)} seconds)`);
+  const { durationSec, streamIndex, timestampOriginSec, streamStartSec, streamOffsetSec } = await probeAudioStreams(binaries.ffprobe, sourcePath, input.params.audioStream, input.signal, { allowStreamOffset: true });
+  const rangeWindow = normalizeRangeWindow(input.params, { timestampOriginSec, streamOffsetSec }, durationSec);
+  if (input.params.endSec > rangeWindow.coverageEndSec + 1 / SAMPLE_RATE) {
+    fail("INVALID_PARAMS", `source range ends after the selected audio stream (audio covers source time ${streamOffsetSec.toFixed(3)}–${rangeWindow.coverageEndSec.toFixed(3)} seconds; stream duration ${durationSec.toFixed(3)})`);
+  }
+  if (input.params.endSec <= streamOffsetSec) {
+    fail("INVALID_PARAMS", `source range ends before the selected audio track starts (the track begins at source time ${streamOffsetSec.toFixed(3)} seconds); the output would contain no audio`);
   }
   const sourceFingerprint = await fingerprintFile(sourcePath);
   if (sourceFingerprint.sha256 === null) fail("NOT_FOUND", "source could not be fingerprinted");
-  const firstPass = await runMeasure(binaries.ffmpeg, sourcePath, streamIndex, input.params, sampleCount, timestampOriginSec, input.signal);
-  const before = firstPass.measurement;
-  throwIfCancelled(input.signal);
+  const timing = { timestampOriginSec, streamOffsetSec };
+  const ffmpegVersion = await resolveFfmpegVersion();
+  const algorithmVersion = `normalize@${AUDIO_NORMALIZE_CHAIN_VERSION}+${ffmpegVersion}`;
+  const cacheKey = computeAudioReuseKey({
+    verb: VERB,
+    sourceSha256: sourceFingerprint.sha256,
+    audioStream: input.params.audioStream,
+    startSec: formatSeconds(input.params.startSec),
+    endSec: formatSeconds(input.params.endSec),
+    targetLufs: input.params.targetLufs,
+    truePeakDbtp: input.params.truePeakDbtp,
+    loudnessRangeLu: input.params.loudnessRangeLu,
+    sampleRate: input.params.sampleRate,
+    channels: input.params.channels,
+    leadSilenceSamples: rangeWindow.leadSilenceSamples,
+    algorithm: algorithmVersion,
+  });
 
   const root = resolvePath(input.mediaRoots[0]!);
   const outputParent = join(root, "generated-assets", "audio-normalize");
   const outputDir = join(outputParent, input.artifactId);
-  const stagingDir = join(outputParent, `.${input.artifactId}.${randomUUID()}.pending`);
+  const stagingDir = join(outputParent, `.${input.artifactId}.${process.pid}.${randomUUID()}.pending`);
   const stagedWavPath = join(stagingDir, "normalized.wav");
   const stagedProvenancePath = join(stagingDir, "provenance.json");
   let publishedByThisAttempt = false;
 
+  let before: NormalizeAudioMeasurement | null = null;
+  let after: NormalizeAudioMeasurement | null = null;
+  let normalizationMode: LoudnormMode | null = null;
+  let firstPassTargetOffset: number | null = null;
+  let reusedFrom: { cacheKey: string; artifactId: string } | null = null;
+
   try {
     await prepareArtifactDir(stagingDir, root, VERB);
-    const normalizationMode = await writeNormalizedWav(binaries.ffmpeg, sourcePath, streamIndex, stagedWavPath, input.params, sampleCount, timestampOriginSec, firstPass, input.signal);
+    // AUD-13 content-addressed reuse: a validated byte-identical prior result
+    // is copied instead of recomputing; its recorded measurements describe
+    // exactly these bytes. Any doubt recomputes. A same-artifactId retry keeps
+    // the compute-then-compare semantics below, so reuse only applies to a
+    // fresh artifactId.
+    const outputDirExists = (await lstat(outputDir).catch(() => null)) !== null;
+    const reuseHit = outputDirExists ? null : await findReusableAudioArtifact({
+      root, kind: "audio-normalize", cacheKey, algorithmVersion, wavFilename: "normalized.wav",
+    });
+    if (reuseHit !== null) {
+      const reusableMeasurements = readReusableMeasurements(reuseHit.provenance, sourceFingerprint.sha256);
+      if (reusableMeasurements !== null) {
+        await stageReusableAudioWav(reuseHit, stagedWavPath);
+        before = reusableMeasurements.before;
+        after = reusableMeasurements.after;
+        normalizationMode = reusableMeasurements.normalizationMode;
+        firstPassTargetOffset = reusableMeasurements.firstPassTargetOffset;
+        reusedFrom = { cacheKey, artifactId: reuseHit.artifactId };
+        input.progress?.(0.9);
+      }
+    }
+    if (reusedFrom === null) {
+      const firstPass = await runMeasure(binaries.ffmpeg, sourcePath, streamIndex, input.params, sampleCount, timing, durationSec, input.progress, input.signal);
+      before = firstPass.measurement;
+      throwIfCancelled(input.signal);
+      normalizationMode = await writeNormalizedWav(binaries.ffmpeg, sourcePath, streamIndex, stagedWavPath, input.params, sampleCount, timing, durationSec, firstPass, input.progress, input.signal);
+      firstPassTargetOffset = firstPass.targetOffset;
+      input.progress?.(0.9);
+    }
     const verifiedStagedWav = await assertContainedWrittenFile(stagedWavPath, root, VERB);
     await measurePublishedSamples(binaries.ffprobe, verifiedStagedWav, sampleCount, input.params.channels, input.signal);
-    const after = await measureOutput(binaries.ffmpeg, verifiedStagedWav, input.params, input.signal);
+    if (reusedFrom === null) {
+      after = await measureOutput(binaries.ffmpeg, verifiedStagedWav, input.params, input.progress, input.signal);
+    }
+    if (before === null || after === null || normalizationMode === null || firstPassTargetOffset === null) {
+      fail("JOB_FAILED", "internal: normalization measurements were not established");
+    }
     throwIfCancelled(input.signal);
     const integratedDeviation = Math.abs(after.integratedLufs - input.params.targetLufs);
     const truePeakOvershoot = after.truePeakDbtp - input.params.truePeakDbtp;
@@ -521,13 +738,14 @@ export async function produceNormalizedAudio(input: ProduceNormalizedAudioParams
       ...(input.sourceWorkspaceId !== undefined ? { workspaceId: input.sourceWorkspaceId } : {}),
       revision: input.sourceRevision,
     };
-    const timing = {
+    const timingFacts = {
       sampleRate: SAMPLE_RATE as 48_000,
       channels: input.params.channels,
       sampleCount,
       durationSec: sampleCount / SAMPLE_RATE,
       outputStartSec: 0 as const,
       processingDelaySamples: 0 as const,
+      leadSilenceSamples: rangeWindow.leadSilenceSamples,
     };
     const artifact: NormalizeAudioArtifact = {
       path: join(outputDir, "normalized.wav"),
@@ -536,18 +754,24 @@ export async function produceNormalizedAudio(input: ProduceNormalizedAudioParams
       parameters: input.params,
       before,
       after,
-      timing,
+      timing: timingFacts,
       bytes: wavStat.size,
       sha256,
     };
     const provenance = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       ...artifact,
       sourceSha256: sourceFingerprint.sha256,
-      firstPassTargetOffset: firstPass.targetOffset,
+      firstPassTargetOffset,
       normalizationMode,
       sourceTimestampOriginSec: timestampOriginSec,
-      method: "FFmpeg two-pass loudnorm; source range is trimmed then mapped to output time zero; exact 48 kHz sample window; PCM s24le WAV; final measurements are from the written WAV",
+      sourceStreamStartSec: streamStartSec,
+      sourceStreamOffsetSec: streamOffsetSec,
+      algorithmVersion,
+      ...(reusedFrom !== null ? { reusedFrom } : {}),
+      method: `${reusedFrom !== null
+        ? "Byte-identical reuse of a validated prior artifact (content-addressed cache hit; the loudnorm passes were not re-run — the recorded measurements describe exactly these bytes)."
+        : "FFmpeg two-pass loudnorm; source range is trimmed then mapped to output time zero; exact 48 kHz sample window; PCM s24le WAV; final measurements are from the written WAV."} Audio-track offset relative to the media origin is mapped explicitly: a range starting before the track begins keeps the gap as real output silence (timing.leadSilenceSamples), so nothing is silently shifted.`,
     };
     await writeFile(stagedProvenancePath, `${JSON.stringify(provenance, null, 2)}\n`, { flag: "wx" });
     throwIfCancelled(input.signal);
@@ -575,6 +799,12 @@ export async function produceNormalizedAudio(input: ProduceNormalizedAudioParams
     }
     if (!publishedByThisAttempt) await cleanupOwnedDirectory(stagingDir, root);
     throwIfCancelled(input.signal);
+    // AUD-13: name this published artifact as the reusable result for the
+    // computed key. Best-effort — an indexing failure never fails the job.
+    await recordReusableAudioArtifact({
+      root, kind: "audio-normalize", cacheKey, artifactId: input.artifactId,
+      wavFilename: "normalized.wav", wavSha256: sha256, algorithmVersion,
+    }).catch(() => {});
     return {
       ...artifact,
       path: published.wavPath,

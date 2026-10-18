@@ -1325,7 +1325,7 @@ function liveNotes(
   const live = ctx.live!;
   return [
     "The renderer's project store is the canonical state; this session holds NO project copy and reaches it only through the CAS-guarded LiveProjectStore seam — every read is an on-demand snapshot, every mutation one action batch applied as one undo unit.",
-    `Session access "${live.access}" is enforced independently at this boundary: read-only access rejects write verbs with FORBIDDEN. CLI and MCP clients share the desktop host's external writer identity; workspace revisions and per-target queues serialize their commits. The human never takes the lease and can always edit.`,
+    `Session access "${live.access}" is enforced independently at this boundary: read-only access rejects write verbs with FORBIDDEN. CLI clients share the desktop host's external writer identity; workspace revisions and per-target queues serialize their commits. The human never takes the lease and can always edit.`,
     caps.preview.available
       ? "Text overlays render to real pixels via the configured render provider; pixel claims are E2E-verified only through preview.render_frame + verify.artifact."
       : "Text overlays are model-state only in this session: no render provider passed preflight, so pixel rendering is NOT claimed.",
@@ -1335,6 +1335,6 @@ function liveNotes(
     `${live.workspaceLibraryAvailable ? "project.create creates a durable project and default workspace without switching the GUI; project.save creates an immutable node in the requested workspace." : "Project, workspace, and node commands are unavailable because no workspace manager bridge was supplied."} project.open remains unavailable because the GUI owns project-file opening. Workspace-scoped commands require explicit projectId/workspaceId, and writes require expectedRevision. ${caps.mediaImport.available ? "media.import validates and imports an absolute local file through the live store bridge" : "media.import is unavailable until the live host provides media roots and its store bridge"}. Preview, visual inspection, analysis, and export use fixed snapshots of the requested project/workspace.`,
     `editor.get_context reports the real ephemeral editor context (selection, playhead, time range, canvas point) with a monotonic contextRevision; edit.apply's expectedContextRevision CAS-guards ops derived from it. ${caps.editorControl.available ? "editor.control can play, pause, seek and select/reveal without changing project revision or undo history." : "editor.control is unavailable because this is a headless session."}`,
     "export.start snapshots the project synchronously (sourceRevision) and returns a jobId immediately; the same idempotencyKey+payload replays the same jobId. job.cancel is cooperative and always settles to a terminal state; failed/cancelled jobs never carry an artifact.",
-    "CLI and MCP clients share the desktop host's external writer identity; workspace queues, revisions, and idempotency ledgers isolate commits by explicit project/workspace target.",
+    "CLI clients share the desktop host's external writer identity; workspace queues, revisions, and idempotency ledgers isolate commits by explicit project/workspace target.",
   ];
 }

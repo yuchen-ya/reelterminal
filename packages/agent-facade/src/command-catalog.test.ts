@@ -64,7 +64,7 @@ describe("protocol-neutral command catalog", () => {
     expect(getCommandCatalogEntry("editor.control", "live")?.effects).toContain("write");
   });
 
-  it("resolves canonical dotted names without accepting MCP aliases", () => {
+  it("resolves canonical dotted names without accepting compatibility aliases", () => {
     expect(getCommandCatalogEntry("edit.apply", "live")?.toolName).toBe("edit_apply");
     expect(getCommandCatalogEntry("edit_apply", "live")).toBeUndefined();
     expect(getCommandCatalogEntry("unknown.command", "live")).toBeUndefined();

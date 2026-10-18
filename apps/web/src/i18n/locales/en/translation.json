@@ -296,7 +296,7 @@
       "copyStartupPrompt": "Copy startup prompt",
       "startupCopied": "Startup prompt copied",
       "startupCopyFailed": "Could not copy startup prompt",
-      "startupPrompt": "Work with the currently open ReelTerminal desktop project through its live CLI.\nRun these commands in {{shell}}.\nCLI command prefix (use this full path for every call): {{cliCommand}}\nAgent workspace: {{workspaceRoot}}\nThese are the active paths at copy time. After changing the installation or storage location, restart the GUI and copy a fresh prompt. An explicit Agent workspace environment override takes precedence.\n\nFirst run:\n{{cliCommand}} status\n{{cliCommand}} call capabilities.get\n{{cliCommand}} context --compact\n{{cliCommand}} requirements list --status ready --compact\nApply edits using the latest revision and safety guards, checking {{cliCommand}} schema <command> for parameters when needed. When asked how to use features or navigate the UI, query the built-in manual on demand via {{cliCommand}} call help.search --query '<keyword>' instead of guessing. Keep the open project's format and existing state; do not create or replace a project unless I request it.\n\nUse the recommendedRoot returned by capabilities.get as the authoritative workspace. Create jobs/<YYYY-MM-DD>-<short-slug>/ there, containing brief.md, source/, generated/, work/, project/, output/, and evidence/. Keep all generated media and helper scripts in that job, outside the source repository. Preview and verify before delivering exports in output/. The CLI reads the live endpoint descriptor automatically; never print or copy its token.\n\nRead the current context and ready requirements, then continue with my task. If the task is missing, ask me what to edit.",
+      "startupPrompt": "Collaborate on the current ReelTerminal desktop project through its live CLI. Use {{shell}} and this complete prefix on every invocation: {{cliCommand}}\n\nFirst run:\n{{cliCommand}} status\n{{cliCommand}} call capabilities.get\n{{cliCommand}} context --compact\n\nIf context reports enabled collaboration instructions, read their complete text with collaboration.instructions.get. Read pending tasks with requirements list/get. Bind related reads and edits to the same projectId and workspaceId. Refresh context before each round of work and before edits; reread instructions when their summary changes.\n\nUse the revision from the planning read, project identity and supported safety guards. Discover parameters with schema <command>. On conflicts, resolve the target and plan again rather than blindly retrying. Preserve the project format and existing state unless I request changes or replacement.\n\nUse capabilities.get recommendedRoot for files (path at copy time: {{workspaceRoot}}) and follow its directory and import boundaries. The CLI reads credentials automatically; never print or copy tokens. Copy a fresh prompt after installation or storage paths change.\n\nContinue with my request after reading context; if no specific request is present, ask what I want to do.",
       "readOnly": "Read-only",
       "restoreWrite": "Enable editing",
       "restoreWriteDescription": "Allow the agent to edit this project",
@@ -1128,5 +1128,76 @@
     "empty": "Clipboard is empty.",
     "readOnly": "Preview is read-only.",
     "missingDependencies": "Missing saved dependencies: {{names}}"
+  },
+  "collaborationInstructions": {
+    "title": "Collaboration instructions",
+    "tasks": "Tasks",
+    "emptyTitle": "Make collaboration feel like you",
+    "emptyDescription": "Add habits you want the Agent to follow in this project. Start with one, or leave this empty.",
+    "fromPresets": "Add from presets",
+    "writeOwn": "Write your own",
+    "enabledCount": "{{count}} enabled · This project",
+    "add": "Add",
+    "back": "Back",
+    "presetHint": "Choose a preset, edit its wording, then add it to this project. Nothing is enabled automatically.",
+    "fieldTitle": "Title",
+    "description": "Detailed instruction",
+    "references": "Reference assets and ranges (optional)",
+    "startSeconds": "Start (seconds)",
+    "endSeconds": "End (seconds)",
+    "noReferences": "No assets or clips are available in this project.",
+    "removeReference": "Remove reference",
+    "missingReference": "Missing reference",
+    "save": "Save changes",
+    "addToProject": "Add to project",
+    "cancel": "Cancel",
+    "delete": "Delete instruction",
+    "toggle": "Enable {{title}}",
+    "saved": "Saved · Available on the Agent’s next read",
+    "scope": "This project only · Added by you",
+    "historyLabel": "Edit collaboration instructions",
+    "required": "Enter a title and detailed instruction.",
+    "placeholder": "Fill in the preset placeholders marked with 【】 first.",
+    "conflict": "This instruction has changed. Return to the list and reopen it before editing.",
+    "limit": "A project can have at most 20 collaboration instructions.",
+    "saveFailed": "Could not save collaboration instructions.",
+    "presets": {
+      "visual": {
+        "title": "Guide me visually",
+        "description": "When I dislike the overall direction or cannot describe my preferences, offer a few distinct key frames or short motion prototypes. Let me compare one design question at a time before expanding production."
+      },
+      "explain": {
+        "title": "Explain through visual changes",
+        "description": "Use the creation, connection, transformation and comparison of graphics to explain ideas. Use text for labels and emphasis; avoid relying mainly on successive static title cards."
+      },
+      "sample": {
+        "title": "Try a short segment first",
+        "description": "For changes to overall style, structure or motion language, produce a representative short segment for direction review before expanding production."
+      },
+      "compare": {
+        "title": "Offer comparable alternatives",
+        "description": "Offer a few alternatives for the same content, describe their main differences and focus each round on one design question. Let me express preferences by choosing and pointing."
+      },
+      "preserve": {
+        "title": "Preserve what I approved",
+        "description": "Keep approved design choices in subsequent edits and limit the scope of changes. Explain the reason and impact before changing an approved part."
+      },
+      "review": {
+        "title": "Review inside the project",
+        "description": "Locate and preview edits on the current timeline. Export the whole video only when I request file delivery. Rendering intermediate animation assets is still allowed."
+      },
+      "resources": {
+        "title": "Check existing assets and methods",
+        "description": "Check relevant project assets and the personal library when planning. Reuse suitable resources and methods, and verify tool availability rather than assuming library notes prove it."
+      },
+      "tool": {
+        "title": "Prefer a specific tool",
+        "description": "For 【purpose, such as concept images】, prefer 【tool, such as local Moss-Image】. Check availability first. Explain when it is unavailable or unsuitable and propose an alternative."
+      },
+      "skill": {
+        "title": "Use a specific animation skill",
+        "description": "For code animation, use 【skill name or path】. Reference 【asset and range, plus the qualities to borrow】 for visual direction. The skill handles implementation; the reference informs design."
+      }
+    }
   }
 }

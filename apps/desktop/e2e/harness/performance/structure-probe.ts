@@ -5,7 +5,7 @@ import type { LaunchedApp } from "../launch";
 import { LiveCommandClient, validateLoopbackUrl, type LiveEndpoint } from "../../../src/reelctl/client";
 
 /**
- * One preparation-only read for the 64 MiB structural fixture. The shipped MCP
+ * One preparation-only read for the 64 MiB structural fixture. The shipped Command API
  * client caps responses at 64 MiB; JSON overhead exceeds that cap. This harness
  * client accepts at most 80 MiB and returns only a number, never project bytes.
  * Credentials are read only from the explicitly owned endpoint, never logged.

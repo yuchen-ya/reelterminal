@@ -67,7 +67,7 @@ jobs:
         run: |
           ulimit -c 0
           pnpm --filter @reelterminal/runtime-chromium test:run
-      - name: Run agent-transport tests (serve/run/doctor over the real binary, e2e-gated)
+      - name: Run agent-transport tests (run/doctor over the real binary, e2e-gated)
         run: |
           ulimit -c 0
           pnpm --filter @reelterminal/agent-transport test:run

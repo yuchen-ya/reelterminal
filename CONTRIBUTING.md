@@ -50,7 +50,7 @@ pnpm build
 For focused work, run the affected package checks. Desktop live collaboration
 tests are in `apps/desktop`; the GitHub workflows show the CI checks and
 platforms.
-The root `pnpm test` runs the packages' default Vitest suites. Desktop GUI/CLI/MCP
+The root `pnpm test` runs the packages' default Vitest suites. Desktop GUI/CLI
 acceptance uses a separate config: build the desktop, then run
 `pnpm --filter @reelterminal/desktop test:e2e`. Native C++ tests and the Python
 filter-tool checks are separate as well; see `.github/workflows/ci.yml`.

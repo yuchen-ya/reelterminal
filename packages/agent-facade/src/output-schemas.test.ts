@@ -4,7 +4,7 @@ import { FACADE_VERBS } from "./types";
 
 type Schema = Record<string, unknown>;
 
-describe("emitted MCP output schemas", () => {
+describe("emitted command output schemas", () => {
   it("covers every facade verb with a closed successful envelope", () => {
     expect(Object.keys(EMITTED_VERB_OUTPUT_JSON_SCHEMAS).sort()).toEqual(
       [...FACADE_VERBS].sort(),

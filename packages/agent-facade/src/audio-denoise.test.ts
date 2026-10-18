@@ -73,7 +73,7 @@ describe("audio denoise asset lifecycle (isolated headless project)", () => {
     expect(artifact.processing.alignmentCheck).toMatchObject({ lagSamples: 0, verdict: "aligned" });
     expect(artifact.path).toContain(join("generated-assets", "audio-denoise"));
     const provenance = JSON.parse(await readFile(artifact.provenancePath, "utf8")) as Record<string, unknown>;
-    expect(provenance).toMatchObject({ schemaVersion: 1, chainLabel: "afftdn=nr=12:nf=-25", method: expect.stringContaining("measured chain delay") });
+    expect(provenance).toMatchObject({ schemaVersion: 2, chainLabel: "afftdn=nr=12:nf=-25", method: expect.stringContaining("measured chain delay") });
     expect(provenance).toMatchObject({ processing: { measuredFilterDelaySamples: 1200 }, timing: { sampleCount: expectedSamples } });
 
     const registered = await facade["audio.process.register"]({ jobId: done.jobId, expectedRevision: 1 });
@@ -96,6 +96,32 @@ describe("audio denoise asset lifecycle (isolated headless project)", () => {
     expect(artifact.processing.measuredFilterDelaySamples).toBe(1200);
     expect(artifact.processing.alignmentCheck.verdict).toBe("aligned");
     expect(artifact.processing.alignmentCheck.lagSamples).toBe(0);
+  }, 60000);
+
+  it("checks alignment against the selected audio stream in a multitrack video", async () => {
+    const tools = (await resolveToolFfmpeg())!;
+    const source = join(root, "two-audio-tracks.mkv");
+    await runToolProcess(tools.ffmpeg, [
+      "-hide_banner", "-v", "error",
+      "-f", "lavfi", "-i", "color=size=16x16:rate=1:duration=4",
+      "-f", "lavfi", "-i", "aevalsrc=0.2*sin(2*PI*(220+80*t)*t):d=4:s=48000",
+      "-filter_complex", "[1:a]asplit[first][second];[second]adelay=50[delayed]",
+      "-map", "0:v", "-map", "[first]", "-map", "[delayed]",
+      "-c:v", "ffv1", "-c:a", "pcm_s16le", source,
+    ]);
+    const imported = await facade["media.import"]({ path: source });
+    if (!imported.ok) throw new Error(imported.error.message);
+    const started = await facade["audio.process.denoise"]({
+      ...params, mediaId: imported.value.mediaId, audioStream: 1,
+      startSec: 0.5, endSec: 2.5, expectedRevision: 2, idempotencyKey: "denoise-second-track",
+    });
+    if (!started.ok) throw new Error(started.error.message);
+    const done = await settle(facade, started.value.jobId);
+    expect(done.state, JSON.stringify(done)).toBe("done");
+    const artifact = done.result as DenoiseAudioArtifact;
+    expect(artifact.source.audioStream).toBe(1);
+    expect(artifact.processing.alignmentCheck).toMatchObject({ lagSamples: 0, verdict: "aligned" });
+    expect(artifact.timing.sampleCount).toBe(96000);
   }, 60000);
 
   it("gates ranges and sources without leaving partial assets", async () => {

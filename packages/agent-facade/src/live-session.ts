@@ -1,3 +1,4 @@
+import { collaborationInstructionsSummary, collaborationInstructionsView, type CollaborationInstructionsResult } from "./collaboration-instructions";
 import { AUDIO_NORMALIZE_MAX_RANGE_SEC } from "./audio-normalize";
 import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
 import { AUDIO_SEPARATE_MAX_RANGE_SEC, assertDemucsModelReady } from "./audio-separate";
@@ -26,7 +27,7 @@ import { withValidatedFacadeCalls } from "./request-validation";
  *    headless, then
  *    committed through `store.applyActions` as ONE undo unit with CAS
  *    preconditions (Decisions 3/4).
- *  - CLI and MCP clients share the desktop host's external writer identity;
+ *  - CLI clients share the desktop host's external writer identity;
  *    construction acquires the `LiveWriterLease` for write-enabled sessions;
  *    a session without it runs
  *    read-only and its write verbs fail CONFLICT naming the holder. The
@@ -359,6 +360,9 @@ const MAX_LIVE_IMPORT_FILE_BYTES = 256 * 1024 * 1024;
 /** Shared live export/analysis lane stays bounded while edits commit immediately. */
 const MAX_ACTIVE_LIVE_TASKS = 2;
 
+/** Audio-process verbs whose durable task receipts are replayed after a restart (AUD-13). */
+const AUDIO_PROCESS_VERBS = ["audio.process.normalize", "audio.process.denoise", "audio.process.separate"] as const;
+
 /**
  * Verbs that exist in the contract but are honestly unavailable in live
  * mode (Decision 11). The GUI still owns opening project files; project
@@ -523,7 +527,12 @@ export class LiveFacadeSession {
               payloadHash: item.payloadHash,
             });
           } else if (record.status.kind === "audio-process") {
-            this.ledger.record(scope, "audio.process.normalize", item.idempotencyKey, {
+            // AUD-13: replay under the record's OWN verb. Legacy records that
+            // predate the persisted verb field were all normalize receipts.
+            const verb = typeof item.verb === "string" && (AUDIO_PROCESS_VERBS as readonly string[]).includes(item.verb)
+              ? item.verb as (typeof AUDIO_PROCESS_VERBS)[number]
+              : "audio.process.normalize";
+            this.ledger.record(scope, verb, item.idempotencyKey, {
               revision: record.status.sourceRevision,
               value: { jobId: record.status.jobId, sourceRevision: record.status.sourceRevision },
               payloadHash: item.payloadHash,
@@ -724,6 +733,15 @@ export class LiveFacadeSession {
       const { project, revision } = await this.config.store.getState();
       // The SAME projection as headless (projection.ts, single logic).
       return ok(projectStateView(project, revision));
+    });
+  }
+
+  async collaborationInstructionsGet(params: Record<string, never> = {}): Promise<FacadeResult<CollaborationInstructionsResult>> {
+    return this.enqueue(async () => {
+      validateObject(params, EMPTY_PARAMS_SCHEMA, "collaboration.instructions.get params");
+      const identity = await this.config.store.getIdentity();
+      const { project, revision } = await this.config.store.getState();
+      return ok(collaborationInstructionsView(project, revision, identity.workspaceId));
     });
   }
 
@@ -971,6 +989,7 @@ export class LiveFacadeSession {
         timeRange: context.timeRange ? { ...context.timeRange } : null,
         canvasPoint: context.canvasPoint ? { ...context.canvasPoint } : null,
         references: context.references ? { ...context.references } : {},
+        collaborationInstructions: collaborationInstructionsSummary(state.project),
         requirements: {
           ready: requirementItems.filter((item) => item.status === "ready").length,
           inProgress: requirementItems.filter((item) => item.status === "in_progress").length,
@@ -1576,7 +1595,7 @@ export class LiveFacadeSession {
       this.gate("audio.process.normalize");
       const valid = validateObject<AudioProcessNormalizeParams>(params, AUDIO_PROCESS_NORMALIZE_SCHEMA, "audio.process.normalize params");
       if (!(valid.endSec > valid.startSec) || valid.endSec - valid.startSec > AUDIO_NORMALIZE_MAX_RANGE_SEC) {
-        throw new FacadeError("INVALID_PARAMS", "audio.process.normalize requires startSec < endSec and a range of at most 120 seconds");
+        throw new FacadeError("INVALID_PARAMS", `audio.process.normalize requires startSec < endSec and a range of at most ${AUDIO_NORMALIZE_MAX_RANGE_SEC} seconds`);
       }
       const { expectedRevision, idempotencyKey, ...parameters } = valid;
       const identity = await this.config.store.getIdentity();
@@ -1615,7 +1634,7 @@ export class LiveFacadeSession {
       await this.createTrackedTask({
         jobId, kind: "audio-process", projectId: state.project.id, workspaceId,
         sourceRevision: state.revision, inputProject: structuredClone(state.project),
-        parameters: { ...parameters, idempotencyKey, payloadHash: stableStringify(parameters) },
+        parameters: { verb: "audio.process.normalize", ...parameters, idempotencyKey, payloadHash: stableStringify(parameters) },
       });
       const controller = new AbortController();
       this.analysisControllers.set(jobId, controller);
@@ -1678,7 +1697,7 @@ export class LiveFacadeSession {
       await this.createTrackedTask({
         jobId, kind: "audio-process", projectId: state.project.id, workspaceId,
         sourceRevision: state.revision, inputProject: structuredClone(state.project),
-        parameters: { ...parameters, idempotencyKey, payloadHash: stableStringify(parameters) },
+        parameters: { verb: "audio.process.denoise", ...parameters, idempotencyKey, payloadHash: stableStringify(parameters) },
       });
       const controller = new AbortController();
       this.analysisControllers.set(jobId, controller);
@@ -1744,7 +1763,7 @@ export class LiveFacadeSession {
       await this.createTrackedTask({
         jobId, kind: "audio-process", projectId: state.project.id, workspaceId,
         sourceRevision: state.revision, inputProject: structuredClone(state.project),
-        parameters: { ...parameters, idempotencyKey, payloadHash: stableStringify(parameters) },
+        parameters: { verb: "audio.process.separate", ...parameters, idempotencyKey, payloadHash: stableStringify(parameters) },
       });
       const controller = new AbortController();
       this.analysisControllers.set(jobId, controller);
@@ -1879,9 +1898,18 @@ export class LiveFacadeSession {
       if (diarizationParams) diarizationModelDir = await assertDiarizationModelReady(diarizationParams);
       const startSec = valid.startSec ?? 0;
       const endSec = valid.endSec ?? media.metadata.duration;
-      if (!(endSec > startSec) || endSec > media.metadata.duration ||
-          (audioBackedTypes.length > 0 && endSec - startSec > AUDIO_LIMITS.maxRangeSec)) {
-        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration; audioSummary, silence, beatGrid, speechActivity, speechTranscript and syncOffset ranges are at most 120 seconds. Split longer sources into explicit ranges.");
+      if (!(endSec > startSec) || endSec > media.metadata.duration) {
+        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration.");
+      }
+      // AUD-11: the three streamed local analyses accept hour-level ranges;
+      // model-backed speech analyses and syncOffset keep the bounded 120 s cap.
+      const analysisRangeSec = endSec - startSec;
+      const modelBackedTypes = audioBackedTypes.filter((type) => type !== "audioSummary" && type !== "silence" && type !== "beatGrid");
+      if (modelBackedTypes.length > 0 && analysisRangeSec > AUDIO_LIMITS.maxModelRangeSec) {
+        throw new FacadeError("INVALID_PARAMS", `speechActivity, speechTranscript, speakerDiarization and syncOffset ranges are at most ${AUDIO_LIMITS.maxModelRangeSec} seconds; split longer sources into explicit ranges.`);
+      }
+      if (audioBackedTypes.length > 0 && analysisRangeSec > AUDIO_LIMITS.maxRangeSec) {
+        throw new FacadeError("INVALID_PARAMS", `audioSummary, silence and beatGrid ranges are at most ${AUDIO_LIMITS.maxRangeSec} seconds.`);
       }
       const payload = {
         mediaId: valid.mediaId,
@@ -4633,6 +4661,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "project.save": (params) => session.projectSave(params),
     "project.rename": (params) => session.projectRename(params),
     "project.get_state": () => session.projectGetState(),
+    "collaboration.instructions.get": (params) => session.collaborationInstructionsGet(params),
     "requirements.list": (params) => session.requirementsList(params),
     "requirements.get": (params) => session.requirementsGet(params),
     "project.changes": (params) => session.projectChanges(params),

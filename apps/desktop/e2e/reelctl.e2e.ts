@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { DESKTOP_DIR } from "./harness/paths";
-import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
+import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import {
   createProjectViaUI,
   createTextClipViaUI,
@@ -47,26 +47,26 @@ describe("reelctl against a real desktop project", () => {
   });
   afterAll(async () => { await agent?.close(); await launched?.close(); });
 
-  test("separate CLI processes and MCP read the same live project", async () => {
+  test("separate CLI processes read the same live project", async () => {
     const status = await cli(["status"]);
     const context = await cli(["context", "--compact"]);
-    const mcp = await agent.callTool<Context>("editor_get_context");
+    const other = await agent.callCommand<Context>("editor.get_context");
     expect(status.code).toBe(0);
     expect(context.code).toBe(0);
     expect(context.result.value.identity.projectId).toBe(status.result.value.projectId);
     expect(context.result.value.identity.projectEpoch).toBe(status.result.value.projectEpoch);
-    expect(mcp.value?.identity).toEqual(context.result.value.identity);
+    expect(other.value?.identity).toEqual(context.result.value.identity);
   });
 
-  test("CLI applies one shared undo unit and MCP replays its idempotency key", async () => {
+  test("CLI applies one shared undo unit and another CLI process replays its idempotency key", async () => {
     const context = (await cli(["context"])).result.value as Context;
     expect(context.selectedTextIds).toHaveLength(1);
     const args = {
       projectId: context.identity.projectId, workspaceId: context.identity.workspaceId,
-      ops: [{ op: "text.update", overlayId: context.selectedTextIds[0], text: "CLI and MCP share one project" }],
+      ops: [{ op: "text.update", overlayId: context.selectedTextIds[0], text: "CLI processes share one project" }],
       expectedRevision: context.projectRevision,
       expectedContextRevision: context.contextRevision,
-      idempotencyKey: "cli-mcp-one-commit",
+      idempotencyKey: "cli-retry-one-commit",
     };
     const file = path.join(launched.runDir, "edit.json");
     writeFileSync(file, JSON.stringify({
@@ -77,8 +77,8 @@ describe("reelctl against a real desktop project", () => {
     const applied = await cli(["edit", "apply", "--file", file]);
     expect(applied.code).toBe(0);
     expect(applied.result.ok).toBe(true);
-    await timelineTextClip(launched.page, "CLI and MCP share one project").waitFor();
-    const replay = await agent.callTool<{ revision: number }>("edit_apply", args);
+    await timelineTextClip(launched.page, "CLI processes share one project").waitFor();
+    const replay = await agent.callCommand<{ revision: number }>("edit.apply", args);
     expect(replay.ok).toBe(true);
     expect(replay.value?.revision).toBe(applied.result.value.revision);
     const next = (await cli(["context"])).result.value as Context;
@@ -123,10 +123,10 @@ describe("reelctl against a real desktop project", () => {
     const importedCard = launched.page.locator(`[data-live-media-id="${imported.result.value.mediaId}"]`);
     await importedCard.waitFor();
 
-    const beforeSave = await agent.callTool<{
+    const beforeSave = await agent.callCommand<{
       project: { mediaLibrary: { items: Array<{ id: string; name: string; originalUrl?: string }> } };
       revision: number;
-    }>("project_get_state", target);
+    }>("project.get_state", target);
     const media = beforeSave.value?.project.mediaLibrary.items.find(
       (item) => item.id === imported.result.value.mediaId,
     );
@@ -147,9 +147,9 @@ describe("reelctl against a real desktop project", () => {
     await launched.waitForEndpointFile();
     agent = await connectExternalAgent(launched.endpointFile);
 
-    const afterReopen = await agent.callTool<{
+    const afterReopen = await agent.callCommand<{
       project: { mediaLibrary: { items: Array<{ id: string; name: string; originalUrl?: string }> } };
-    }>("project_get_state", target);
+    }>("project.get_state", target);
     expect(afterReopen.value?.project.mediaLibrary.items.find(
       (item) => item.id === imported.result.value.mediaId,
     )).toMatchObject({ name: "reelctl-import.png", originalUrl: sourcePath });

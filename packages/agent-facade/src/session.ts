@@ -1,3 +1,4 @@
+import { collaborationInstructionsSummary, collaborationInstructionsView, type CollaborationInstructionsResult } from "./collaboration-instructions";
 import { AUDIO_NORMALIZE_MAX_RANGE_SEC } from "./audio-normalize";
 import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
 import { AUDIO_SEPARATE_MAX_RANGE_SEC, assertDemucsModelReady } from "./audio-separate";
@@ -418,6 +419,14 @@ export class AgentFacadeSession {
     return ok(this.projectState());
   }
 
+  async collaborationInstructionsGet(params: Record<string, never> = {}): Promise<FacadeResult<CollaborationInstructionsResult>> {
+    return this.enqueue(async () => {
+      validateObject(params, EMPTY_PARAMS_SCHEMA, "collaboration.instructions.get params");
+      if (!this.project) return this.noProject();
+      return ok(collaborationInstructionsView(this.project, this.revision));
+    });
+  }
+
   async requirementsList(params: RequirementsListParams = {}): Promise<FacadeResult<RequirementsListResult>> {
     return this.enqueue(async () => {
       const valid = validateObject<RequirementsListParams>(params, REQUIREMENTS_LIST_SCHEMA, "requirements.list params");
@@ -592,6 +601,7 @@ export class AgentFacadeSession {
         canvasPoint: null,
         references: {},
         requirements: { ready: 0, inProgress: 0, ids: [] },
+        collaborationInstructions: collaborationInstructionsSummary(this.project),
         identity: {
           projectId: this.project?.id ?? null,
           projectName: this.project?.name ?? null,
@@ -1243,7 +1253,7 @@ export class AgentFacadeSession {
     return this.enqueue<AudioProcessNormalizeResult>(async () => {
       const valid = validateObject<AudioProcessNormalizeParams>(params, AUDIO_PROCESS_NORMALIZE_SCHEMA, "audio.process.normalize params");
       if (!(valid.endSec > valid.startSec) || valid.endSec - valid.startSec > AUDIO_NORMALIZE_MAX_RANGE_SEC) {
-        throw new FacadeError("INVALID_PARAMS", "audio.process.normalize requires startSec < endSec and a range of at most 120 seconds");
+        throw new FacadeError("INVALID_PARAMS", `audio.process.normalize requires startSec < endSec and a range of at most ${AUDIO_NORMALIZE_MAX_RANGE_SEC} seconds`);
       }
       if (!this.project) return this.noProject();
       const { expectedRevision, idempotencyKey, ...parameters } = valid;
@@ -1485,9 +1495,18 @@ export class AgentFacadeSession {
       if (valid.analysisTypes.includes("videoReview") && media.type !== "video") throw new FacadeError("UNSUPPORTED", "videoReview requires video media");
       const startSec = valid.startSec ?? 0;
       const endSec = valid.endSec ?? media.metadata.duration;
-      if (!(endSec > startSec) || endSec > media.metadata.duration ||
-          (audioBackedTypes.length > 0 && endSec - startSec > AUDIO_LIMITS.maxRangeSec)) {
-        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration; audioSummary, silence, beatGrid, speechActivity and syncOffset ranges are at most 120 seconds. Split longer sources into explicit ranges.");
+      if (!(endSec > startSec) || endSec > media.metadata.duration) {
+        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration.");
+      }
+      // AUD-11: the three streamed local analyses accept hour-level ranges;
+      // model-backed speech analyses and syncOffset keep the bounded 120 s cap.
+      const analysisRangeSec = endSec - startSec;
+      const modelBackedTypes = audioBackedTypes.filter((type) => type !== "audioSummary" && type !== "silence" && type !== "beatGrid");
+      if (modelBackedTypes.length > 0 && analysisRangeSec > AUDIO_LIMITS.maxModelRangeSec) {
+        throw new FacadeError("INVALID_PARAMS", `speechActivity, speechTranscript, speakerDiarization and syncOffset ranges are at most ${AUDIO_LIMITS.maxModelRangeSec} seconds; split longer sources into explicit ranges.`);
+      }
+      if (audioBackedTypes.length > 0 && analysisRangeSec > AUDIO_LIMITS.maxRangeSec) {
+        throw new FacadeError("INVALID_PARAMS", `audioSummary, silence and beatGrid ranges are at most ${AUDIO_LIMITS.maxRangeSec} seconds.`);
       }
       const payload = {
         mediaId: valid.mediaId,

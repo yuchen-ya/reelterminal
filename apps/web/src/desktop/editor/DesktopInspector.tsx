@@ -7,7 +7,7 @@ import { InspectorPanel } from "../../components/editor/InspectorPanel";
 import { workspaceManager } from "../../services/workspace-manager";
 import { toast } from "../../stores/notification-store";
 import { VersionNodeTrack } from "./VersionNodeTrack";
-import { RequirementBoardDialog } from "./RequirementBoardDialog";
+import { CollaborationBoardPanel } from "./CollaborationBoardPanel";
 
 /** Keep each project's panel forms mounted for this editor session. */
 export function DesktopInspector() {
@@ -48,7 +48,7 @@ export function DesktopInspector() {
         <VersionNodeTrack projectId={id} workspaceId={context.workspaceId} active={id === projectId && tab === "archives"} onClose={() => useUIStore.getState().setDesktopInspectorTab("properties")} />
       </div>
       <div hidden={tab !== "board"} className="h-full min-h-0">
-        <RequirementBoardDialog store={context.store} active={id === projectId && context.workspaceId === workspaceId && tab === "board"} onClose={() => useUIStore.getState().setDesktopInspectorTab("properties")} />
+        <CollaborationBoardPanel key={`${id}:${context.workspaceId}`} store={context.store} active={id === projectId && context.workspaceId === workspaceId && tab === "board"} onClose={() => useUIStore.getState().setDesktopInspectorTab("properties")} />
       </div>
     </div>)}
   </div>;

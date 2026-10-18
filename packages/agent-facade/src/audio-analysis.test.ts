@@ -139,7 +139,7 @@ describe("local audio analysis", () => {
       const result = await analyzeLocalAudio(path, { startSec: 0, endSec: 6 }, new AbortController().signal);
       expect(result.channels).toBe(2); expect(result.sampleRate).toBe(8000);
       expect(result.integratedLufs).not.toBeNull(); expect(result.truePeakDbtp).not.toBeNull();
-      await expect(analyzeLocalAudio(path, { startSec: 0, endSec: 121 }, new AbortController().signal)).rejects.toThrow("120");
+      await expect(analyzeLocalAudio(path, { startSec: 0, endSec: 3601 }, new AbortController().signal)).rejects.toThrow("3600");
       const silentPath = join(root, "silence.wav");
       await writeFile(silentPath, wav(pcm([])));
       const silentResult = await analyzeLocalAudio(silentPath, { startSec: 1, endSec: 3 }, new AbortController().signal);
@@ -206,7 +206,7 @@ describe("local audio analysis", () => {
       const wide = await analyzeSilence(path, { startSec: 0, endSec: 6 }, { paddingSec: 2 }, signal);
       expect(wide.silentRegions).toEqual([]);
       // Range validation and source offsets both apply.
-      await expect(analyzeSilence(path, { startSec: 0, endSec: 121 }, undefined, signal)).rejects.toThrow("120");
+      await expect(analyzeSilence(path, { startSec: 0, endSec: 3601 }, undefined, signal)).rejects.toThrow("3600");
       const offset = await analyzeSilence(path, { startSec: 1, endSec: 5 }, undefined, signal);
       expect(offset.silentRegions[0]).toEqual({ startSec: 1.1, endSec: 1.9, durationSec: 0.8 });
       expect(offset.silentRegions[1]!.startSec).toBeCloseTo(4.1, 5);
@@ -263,7 +263,7 @@ describe("local audio analysis", () => {
       expect(result.beats[0]!.index).toBe(0);
       expect(Math.abs(result.beats[0]!.timeSec - 0.5)).toBeLessThan(0.15);
       expect(result.beats.every((b) => Number.isFinite(b.timeSec) && b.strength > 0)).toBe(true);
-      await expect(analyzeBeatGrid(path, { startSec: 0, endSec: 121 }, signal)).rejects.toThrow("120");
+      await expect(analyzeBeatGrid(path, { startSec: 0, endSec: 3601 }, signal)).rejects.toThrow("3600");
       const artifactRoot = join(root, "artifacts");
       const facade = createAgentFacade({ mediaRoots: [root], artifactRoot });
       await facade["project.create"]({ name: "Beat test" });

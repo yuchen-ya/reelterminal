@@ -14,10 +14,10 @@ export const DESKTOP_DIR = path.resolve(E2E_DIR, "..");
 export const ARTIFACTS_DIR = path.join(E2E_DIR, ".artifacts");
 /** The built main-process bundle — must exist before the suite runs. */
 export const MAIN_BUNDLE_PATH = path.join(DESKTOP_DIR, "dist", "main", "index.js");
-/** The shipped stdio MCP connector used by real external Agent clients. */
-export const LIVE_MCP_CONNECTOR_PATH = path.join(
+/** The shipped live CLI used by external Agent clients. */
+export const REELCTL_PATH = path.join(
   DESKTOP_DIR,
   "dist",
-  "live-mcp",
+  "reelctl",
   "index.js",
 );

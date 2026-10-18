@@ -23,7 +23,7 @@
 - [`CLOUD-VIDEO-REVIEW.md`](CLOUD-VIDEO-REVIEW.md) — opt-in cloud video review.
 - [`MATERIAL-ANALYSIS.md`](MATERIAL-ANALYSIS.md) and
   [`MATERIAL-LIBRARY.md`](MATERIAL-LIBRARY.md) — material inspection and reuse.
-- [`AUDIO-NORMALIZATION.md`](AUDIO-NORMALIZATION.md) — local two-pass loudness processing, remeasurement and explicit derived-asset registration.
+- [`AUDIO-NORMALIZATION.md`](AUDIO-NORMALIZATION.md) — local two-pass loudness processing (up to 3600 s per range), offset audio-track mapping, remeasurement, explicit derived-asset registration, content-addressed reuse and staging cleanup.
 - [`AUDIO-DENOISE.md`](AUDIO-DENOISE.md) — tiered local FFmpeg denoise, measured delay compensation, alignment verification and derived-asset lifecycle.
 - [`AUDIO-TRANSCRIPT.md`](AUDIO-TRANSCRIPT.md) — optional local SenseVoice transcription, external-VAD timestamps, model consent and record-driven subtitle import.
 - [`AUDIO-SEPARATION-DIARIZATION.md`](AUDIO-SEPARATION-DIARIZATION.md) — anonymous CAM++ speaker clustering and optional Demucs vocal/instrumental separation, timing and limits.

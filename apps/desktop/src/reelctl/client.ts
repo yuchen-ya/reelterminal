@@ -392,49 +392,6 @@ export class LiveCommandClient {
     throw lastError;
   }
 
-  async artifact(pathname: string, sha256: string): Promise<{ readonly data: string; readonly mimeType: "image/png" | "image/jpeg" } | null> {
-    if (!/^[a-f0-9]{64}$/i.test(sha256)) return null;
-    let base: URL;
-    try {
-      base = validateLoopbackUrl(this.endpoint.commandApi.url);
-    } catch {
-      return null;
-    }
-    const target = `${base.pathname.replace(/\/$/, "")}/artifact?path=${encodeURIComponent(pathname)}&sha256=${encodeURIComponent(sha256)}`;
-    return new Promise((resolve) => {
-      const req = httpRequest({
-        hostname: base.hostname,
-        port: base.port || 80,
-        path: target,
-        method: "GET",
-        headers: { Accept: "image/png, image/jpeg", Authorization: `Bearer ${this.endpoint.token}` },
-      }, (res) => {
-        const chunks: Buffer[] = [];
-        let size = 0;
-        res.on("data", (chunk: Buffer) => {
-          size += chunk.length;
-          if (size > 8 * 1024 * 1024) {
-            req.destroy();
-            return;
-          }
-          chunks.push(chunk);
-        });
-        res.on("end", () => {
-          if (res.statusCode !== 200) return resolve(null);
-          const mimeType = res.headers["content-type"]?.split(";")[0]?.trim();
-          if (mimeType !== "image/png" && mimeType !== "image/jpeg") return resolve(null);
-          const bytes = Buffer.concat(chunks);
-          const validPng = mimeType === "image/png" && bytes.length >= 8 && bytes.readUInt32BE(0) === 0x89504e47 && bytes.readUInt32BE(4) === 0x0d0a1a0a;
-          const validJpeg = mimeType === "image/jpeg" && bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-          if (!validPng && !validJpeg) return resolve(null);
-          resolve({ data: bytes.toString("base64"), mimeType });
-        });
-      });
-      req.setTimeout(defaultRequestTimeoutMs(), () => req.destroy());
-      req.on("error", () => resolve(null));
-      req.end();
-    });
-  }
 }
 
 function cryptoRandomId(): string {

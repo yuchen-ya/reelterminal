@@ -272,6 +272,8 @@ export class InverseActionGenerator {
           ...projectBefore.settings,
         });
 
+      case "project/setCollaborationInstructions":
+        return this.createInverseAction(action, "project/setCollaborationInstructions", { instructions: structuredClone(projectBefore.collaborationInstructions) });
       case "project/setRenderFonts":
         return this.createInverseAction(action, "project/setRenderFonts", {
           fonts: projectBefore.renderFonts,

@@ -12,7 +12,7 @@ them.
 - Agent entry point: `reelctl call material.<verb>` in a live desktop session
   (`material.list`, `material.get`, `material.create`, `material.update`,
   `material.batch_update`, `material.remove`, `material.attach`,
-  `material.undo`). The optional MCP adapter exposes compatibility aliases.
+  `material.undo`). CLI schema discovery also exposes the catalog's compatibility aliases.
   Headless sessions honestly report them UNSUPPORTED —
   the library lives in the GUI renderer's persistent storage.
 

@@ -41,11 +41,19 @@ function makeClient(commands: CommandCatalogEntry[], result: unknown = { ok: tru
       return found;
     }),
     command: vi.fn().mockResolvedValue(result),
-    artifact: vi.fn(),
   } as unknown as LiveCommandClient;
 }
 
 describe("reelctl command parsing and safety", () => {
+  it("does not advertise or dispatch the removed MCP adapter", async () => {
+    const output: string[] = [];
+    const client = makeClient([]);
+    expect(await runReelctl(["--help"], { client, stdout: (line) => output.push(line) })).toBe(0);
+    expect(output.join("\n")).not.toContain("mcp serve");
+    await expect(runReelctl(["mcp", "serve"], { client })).rejects.toThrow();
+    expect(client.command).not.toHaveBeenCalled();
+  });
+
   it("supports the approved command shortcuts and array query selectors", () => {
     const query = parseInvocation(["query", "--ref", "R3", "--ref", "A2", "--fields", "id,startTime,duration"]);
     expect(query).toMatchObject({

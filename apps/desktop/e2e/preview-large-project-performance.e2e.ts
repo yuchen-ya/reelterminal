@@ -3,7 +3,7 @@
  *
  * This is intentionally excluded from ordinary E2E cost by an environment
  * switch. It creates the project through the UI, creates all stress content
- * through the shipped live MCP edit_apply path, and performs the measured
+ * through the shipped live CLI edit.apply path, and performs the measured
  * preview move with Playwright's real mouse input.
  *
  * Run against an existing desktop build:
@@ -15,7 +15,7 @@ import { launchApp, type LaunchedApp } from "./harness/launch";
 import {
   connectExternalAgent,
   type ExternalAgent,
-} from "./harness/mcp-client";
+} from "./harness/cli-client";
 import { createEvidence } from "./harness/evidence";
 import {
   createProjectViaUI,
@@ -216,7 +216,7 @@ async function stopRendererSampling(
 }
 
 performanceDescribe("preview large-project GUI performance", () => {
-  test("measures a real canvas drag with 1,000 MCP-created text clips", async () => {
+  test("measures a real canvas drag with 1,000 CLI-created text clips", async () => {
     let launched: LaunchedApp | undefined;
     let agent: ExternalAgent | undefined;
     let evidence: ReturnType<typeof createEvidence> | undefined;
@@ -229,9 +229,9 @@ performanceDescribe("preview large-project GUI performance", () => {
       await launched.waitForEndpointFile();
       agent = await connectExternalAgent(launched.endpointFile);
 
-      const capabilities = await agent.callTool("capabilities_get");
+      const capabilities = await agent.callCommand("capabilities.get");
       expect(capabilities.ok, JSON.stringify(capabilities)).toBe(true);
-      const context = await agent.callTool<EditorContext>("editor_get_context");
+      const context = await agent.callCommand<EditorContext>("editor.get_context");
       expect(context.ok, JSON.stringify(context)).toBe(true);
       let revision = context.value!.projectRevision;
 
@@ -239,7 +239,7 @@ performanceDescribe("preview large-project GUI performance", () => {
         { length: TRACK_COUNT },
         (_, index) => `preview-perf-text-${index}`,
       );
-      const tracks = await agent.callTool<EditResult>("edit_apply", {
+      const tracks = await agent.callCommand<EditResult>("edit.apply", {
         ops: trackIds.map((trackId) => ({
           op: "track.add",
           trackType: "text",
@@ -269,8 +269,8 @@ performanceDescribe("preview large-project GUI performance", () => {
       });
 
       for (let offset = 0; offset < textOps.length; offset += EDIT_BATCH_SIZE) {
-        const batch = await agent.callTool<EditResult>(
-          "edit_apply",
+        const batch = await agent.callCommand<EditResult>(
+          "edit.apply",
           {
             ops: textOps.slice(offset, offset + EDIT_BATCH_SIZE),
             expectedRevision: revision,
@@ -282,8 +282,8 @@ performanceDescribe("preview large-project GUI performance", () => {
         revision = batch.value!.revision;
       }
 
-      const timelineBefore = await agent.callTool<TimelineView>(
-        "timeline_get",
+      const timelineBefore = await agent.callCommand<TimelineView>(
+        "timeline.get",
         {},
         { timeoutMs: 60_000 },
       );
@@ -344,8 +344,8 @@ performanceDescribe("preview large-project GUI performance", () => {
       await launched.page.waitForTimeout(1_000);
       const rendererSample = await stopRendererSampling(launched.page);
 
-      const timelineAfter = await agent.callTool<TimelineView>(
-        "timeline_get",
+      const timelineAfter = await agent.callCommand<TimelineView>(
+        "timeline.get",
         {},
         { timeoutMs: 60_000 },
       );

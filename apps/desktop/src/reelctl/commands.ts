@@ -376,7 +376,6 @@ Usage:
   reelctl schema <command>
   reelctl schema --domain <domain>
   reelctl call <command> [--file request.json | --stdin] [--name value ...]
-  reelctl mcp serve
 
 Complex requests use JSON files or stdin. For edits, include projectId,
 workspaceId, expectedRevision, and expectedProjectEpoch, or pass --project-id,

@@ -8,7 +8,7 @@ Everything cloud-specific (credential env var, endpoint allowlist, request shape
 
 ## Configure the desktop host
 
-Install FFmpeg/ffprobe on PATH with libx264 and AAC encoders. These steps configure the **default qwen3.5-omni-flash provider** (see the provider seam above). Set `DASHSCOPE_API_KEY` in the **ReelTerminal desktop process environment**, then launch/restart that process. Setting it only in an external Agent/MCP client's environment does not configure the desktop host. Do not send a key in tool parameters, commit it, or put it in a project file.
+Install FFmpeg/ffprobe on PATH with libx264 and AAC encoders. These steps configure the **default qwen3.5-omni-flash provider** (see the provider seam above). Set `DASHSCOPE_API_KEY` in the **ReelTerminal desktop process environment**, then launch/restart that process. Setting it only in an external Agent/CLI client's environment does not configure the desktop host. Do not send a key in tool parameters, commit it, or put it in a project file.
 
 For development on macOS, launch the desktop from a shell with the key in its
 environment:
