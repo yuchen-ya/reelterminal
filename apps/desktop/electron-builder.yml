@@ -77,6 +77,11 @@ mac:
   files:
     # Keep only the darwin bindings. The mac targets ship arm64 and x64, so
     # both darwin trees stay; other OS binaries would never be loaded.
+    # electron-builder prepends a default **/* matcher when a platform-specific
+    # files list contains only negations, which would re-include sources,
+    # tests and e2e evidence; the explicit dist pattern keeps that matcher
+    # scoped to the app payload.
+    - "dist/**/*"
     - "!node_modules/onnxruntime-node/bin/napi-v6/win32{,/**}"
     - "!node_modules/onnxruntime-node/bin/napi-v6/linux{,/**}"
   extraResources:
@@ -100,7 +105,10 @@ mac:
 win:
   files:
     # Windows x64 only: drop the other OS trees and the unused win32/arm64
-    # binding (~69 MB unpacked) from every installer.
+    # binding (~69 MB unpacked) from every installer. The positive pattern
+    # keeps electron-builder from adding a default **/* matcher for a
+    # negations-only platform list (which would package src/e2e/tests).
+    - "dist/**/*"
     - "!node_modules/onnxruntime-node/bin/napi-v6/darwin{,/**}"
     - "!node_modules/onnxruntime-node/bin/napi-v6/linux{,/**}"
     - "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64{,/**}"
@@ -127,7 +135,9 @@ nsis:
 linux:
   files:
     # Linux x64 only: keep the x64 binding, drop the other OS trees and the
-    # unused linux/arm64 binding.
+    # unused linux/arm64 binding. The positive pattern avoids a default **/*
+    # matcher for this negations-only platform list.
+    - "dist/**/*"
     - "!node_modules/onnxruntime-node/bin/napi-v6/win32{,/**}"
     - "!node_modules/onnxruntime-node/bin/napi-v6/darwin{,/**}"
     - "!node_modules/onnxruntime-node/bin/napi-v6/linux/arm64{,/**}"

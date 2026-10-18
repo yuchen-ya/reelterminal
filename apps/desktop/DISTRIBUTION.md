@@ -37,6 +37,10 @@ pnpm --filter @reelterminal/desktop dist
 the current host platform: macOS (arm64 and x64), Windows (x64), or Linux (x64).
 It does not build and sign all three operating systems in one invocation; use
 appropriate build hosts and signing credentials for each release target.
+Keep a positive `dist/**/*` entry in every platform-specific `files` list:
+electron-builder adds a default `**/*` matcher to a negations-only list, which
+silently packages `src/`, `e2e/` evidence and tests into `app.asar`. The app
+asar should contain only `dist/`, `package.json` and production `node_modules`.
 `build:wasm` generates the core WASM assets omitted from Git. These commands do not download
 or include FFmpeg or Blender binaries, even when a developer has fetched them
 locally. Install FFmpeg/ffprobe separately and put them on PATH. For desktop
