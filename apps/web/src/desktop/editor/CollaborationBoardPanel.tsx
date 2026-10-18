@@ -35,7 +35,7 @@ export function CollaborationBoardPanel({ store, active, onClose }: {
       </div>
     </header>
     {preview.active && tab === "instructions" && <p className="shrink-0 border-b border-border px-4 py-2 text-[11px] leading-relaxed text-fg-2">{t("requirementBoard.editingTargetHint")}</p>}
-    <div role="tabpanel" id={`board-panel-${project.id}-instructions`} aria-labelledby={`board-${project.id}-instructions`} hidden={tab !== "instructions"} className="min-h-0 flex-1 overflow-hidden"><CollaborationInstructionsPanel key={project.id} store={store} /></div>
+    <div role="tabpanel" id={`board-panel-${project.id}-instructions`} aria-labelledby={`board-${project.id}-instructions`} hidden={tab !== "instructions"} className="min-h-0 flex-1 overflow-hidden"><CollaborationInstructionsPanel key={project.id} store={store} active={active && tab === "instructions"} /></div>
     <div role="tabpanel" id={`board-panel-${project.id}-tasks`} aria-labelledby={`board-${project.id}-tasks`} hidden={tab !== "tasks"} className="min-h-0 flex-1 overflow-hidden"><div className="px-4 pt-2"><CaptionJobStatus /></div><RequirementBoardDialog store={store} active={active && tab === "tasks"} /></div>
   </section>;
 }

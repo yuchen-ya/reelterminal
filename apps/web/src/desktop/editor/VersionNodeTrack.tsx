@@ -8,7 +8,7 @@ import { toast, useNotificationStore } from "../../stores/notification-store";
 import { createHistoryFrameRenderer } from "../../components/editor/preview/history-frame-renderer";
 import { activateHistoryComparison } from "../../components/editor/preview/ReferenceComparisonPanel";
 import { VersionPreviewLoadingStatus } from "./VersionPreviewLoadingStatus";
-const PALETTE = ["#69aaa0", "#b493bc", "#c59b67", "#779ac5", "#a7ad73", "#c7838c", "#8fa3af", "#aa987b"];
+import { NODE_PALETTE as PALETTE } from "./node-palette";
 const ROW_HEIGHT = 30;
 const feedback = "transition-[color,background-color,opacity] duration-150 motion-reduce:transition-none";
 

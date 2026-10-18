@@ -5,7 +5,7 @@ import { getMaterialLibraryService } from "../../../services/material-library/li
 import { useMaterialLibraryStore } from "../../../stores/material-library-store";
 import { InstructionFields } from "./InstructionFields";
 
-const PRESETS = ["visual", "explain", "sample", "compare", "preserve", "review", "resources", "tool", "skill"] as const;
+export const INSTRUCTION_PRESETS = ["visual", "explain", "sample", "compare", "preserve", "review", "resources", "tool", "skill"] as const;
 
 export function InstructionLibraryPicker({ onSelect }: { onSelect?: (record: MaterialRecord) => void }) {
   const { t } = useTranslation();
@@ -44,7 +44,7 @@ export function InstructionLibraryPicker({ onSelect }: { onSelect?: (record: Mat
     {draft ? <><InstructionFields {...draft} onChange={setDraft} /><button className={button} disabled={busy} onClick={() => void save()}>{t("collaborationInstructions.saveLibrary")}</button> <button className={button} disabled={busy} onClick={() => setDraft(null)}>{t("collaborationInstructions.cancel")}</button></> : <>
       <div className="flex gap-2"><input aria-label={t("material.instructionSearch")} placeholder={t("material.instructionSearch")} className="min-w-0 flex-1 rounded border border-border bg-bg p-2 text-xs" value={query} onChange={e => setQuery(e.target.value)} /><button className={button} onClick={() => setDraft({ title: "", description: "" })}>{t("collaborationInstructions.writeOwn")}</button></div>
       <div className="flex flex-wrap gap-2">{items.map(item => <button key={item.id} className={button} title={item.kind === "instruction" ? item.prompt : item.title} onClick={() => onSelect ? onSelect(item) : useMaterialLibraryStore.getState().openDetail(item.id)}>{item.title}</button>)}</div>
-      <details><summary className="cursor-pointer text-xs text-fg-2">{t("material.builtinInstructions")}</summary><div className="mt-2 flex flex-wrap gap-2">{PRESETS.map(id => <button key={id} className={button} onClick={() => setDraft({ title: t(`collaborationInstructions.presets.${id}.title`), description: t(`collaborationInstructions.presets.${id}.description`) })}>{t(`collaborationInstructions.presets.${id}.title`)}</button>)}</div></details>
+      <details><summary className="cursor-pointer text-xs text-fg-2">{t("material.builtinInstructions")}</summary><div className="mt-2 flex flex-wrap gap-2">{INSTRUCTION_PRESETS.map(id => <button key={id} className={button} onClick={() => setDraft({ title: t(`collaborationInstructions.presets.${id}.title`), description: t(`collaborationInstructions.presets.${id}.description`) })}>{t(`collaborationInstructions.presets.${id}.title`)}</button>)}</div></details>
     </>}
     {error && <p role="alert" className="text-xs text-status-error">{error}</p>}
   </div>;

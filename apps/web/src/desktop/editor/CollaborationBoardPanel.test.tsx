@@ -1,13 +1,28 @@
+import { cloneElement, type ReactElement, type ReactNode } from "react";
 import { addLibraryInstruction } from "../../services/material-library/instructions";
 import { buildMaterialRecord } from "@reelterminal/core";
 import { MaterialLibraryService, setMaterialLibraryServiceForTests } from "../../services/material-library/library-service";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectStore } from "../../stores/project-store";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { useUIStore } from "../../stores/ui-store";
 import { CollaborationBoardPanel } from "./CollaborationBoardPanel";
 import type { MediaItem } from "@reelterminal/core";
+
+// State/history contracts run without Radix's layout and focus scheduling in JSDOM.
+// Real portal placement, hover, dismissal and focus are exercised in desktop E2E.
+vi.mock("@reelterminal/ui", async importOriginal => {
+  const actual = await importOriginal<typeof import("@reelterminal/ui")>();
+  return {
+    ...actual,
+    ToolcraftPopover: ({ children, content, isOpen, onOpenChange, label }: {
+      children: ReactElement<{ onClick?: () => void }>; content: ReactNode;
+      isOpen: boolean; onOpenChange: (open: boolean) => void; label: string;
+    }) => <>{cloneElement(children, { onClick: () => onOpenChange(!isOpen) })}{isOpen && <div role="dialog" aria-label={label}>{content}</div>}</>,
+    Tooltip: ({ children }: { children: ReactNode }) => <actual.Tooltip open={false}>{children}</actual.Tooltip>,
+  };
+});
 
 const createStore = () => createProjectStore({ initialProject: createEmptyProject("Board"), isForeground: false });
 beforeEach(() => {
@@ -20,56 +35,42 @@ beforeEach(() => {
 });
 
 describe("collaboration board", () => {
-  it("starts empty, saves a preset only explicitly, preserves a draft across tabs and supports disable/delete/undo", async () => {
+  it("has one empty-state entry and adds a built-in directly without writing to the library", async () => {
     const store = createStore();
     render(<CollaborationBoardPanel store={store} active onClose={() => {}} />);
-    expect(screen.getByRole("tab", { name: "Collaboration instructions" })).toHaveAttribute("aria-selected", "true");
-    expect(store.getState().project.collaborationInstructions).toBeUndefined();
-    fireEvent.click(screen.getByRole("button", { name: "Add from library" }));
-    fireEvent.click(screen.getByText("Built-in presets"));
-    fireEvent.click(screen.getByRole("button", { name: /Guide me visually/ }));
-    expect(store.getState().project.collaborationInstructions).toBeUndefined();
-    fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Show me a prototype" } });
-    fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
-    expect(screen.getByRole("button", { name: "New requirement" })).toBeVisible();
-    fireEvent.click(screen.getByRole("tab", { name: "Collaboration instructions" }));
-    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Show me a prototype");
-    fireEvent.click(screen.getByRole("button", { name: "Save to library" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Add to project" })).toBeVisible());
-    fireEvent.click(screen.getByRole("button", { name: "Add to project" }));
+    expect(screen.getAllByRole("button", { name: "Add instruction" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "New instruction" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add instruction" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guide me visually" }));
     await waitFor(() => expect(store.getState().project.collaborationInstructions?.items).toHaveLength(1));
-    const saved = store.getState().project.collaborationInstructions!.items[0];
-    expect(saved.description).toContain("direction");
-    expect(store.getState().project.requirements).toBeUndefined();
-    fireEvent.click(screen.getByRole("button", { name: "Show me a prototype" }));
+    expect(screen.queryByRole("textbox", { name: "Title" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Guide me visually" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Unpublished draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(store.getState().project.collaborationInstructions?.items[0]).toEqual(saved);
-    fireEvent.click(screen.getByRole("switch", { name: "Enable Show me a prototype" }));
+    expect(store.getState().project.collaborationInstructions?.items[0].title).toBe("Guide me visually");
+    fireEvent.click(screen.getByRole("switch", { name: "Enable Guide me visually" }));
     await waitFor(() => expect(store.getState().project.collaborationInstructions?.items[0].enabled).toBe(false));
     await act(() => store.getState().undo());
     expect(store.getState().project.collaborationInstructions?.items[0].enabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Show me a prototype" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete instruction" }));
-    await waitFor(() => expect(store.getState().project.collaborationInstructions?.items).toEqual([]));
-    await act(() => store.getState().undo());
-    expect(store.getState().project.collaborationInstructions?.items[0].title).toBe(saved.title);
   });
 
-  it("reorders compact chips by drag and supports context-menu removal with undo", async () => {
+  it("preserves chip colors while reordering and supports removal with undo", async () => {
     const store = createStore();
     for (const title of ["First", "Second"]) await addLibraryInstruction(store, buildMaterialRecord({ kind: "instruction", actor: "user", title, prompt: `${title} instruction` }));
     render(<CollaborationBoardPanel store={store} active onClose={() => {}} />);
     const first = screen.getByRole("button", { name: "First" });
     const second = screen.getByRole("button", { name: "Second" });
-    fireEvent.dragStart(first.parentElement!);
-    fireEvent.dragOver(second.parentElement!);
-    fireEvent.drop(second.parentElement!);
+    const firstColor = first.closest("[data-instruction-id]")!.getAttribute("style");
+    expect(firstColor).not.toBe(second.closest("[data-instruction-id]")!.getAttribute("style"));
+    fireEvent.dragStart(first.closest("[data-instruction-id]")!, { dataTransfer: { setData: () => {} } });
+    fireEvent.dragOver(second.closest("[data-instruction-id]")!);
+    fireEvent.drop(second.closest("[data-instruction-id]")!);
     await waitFor(() => expect(store.getState().project.collaborationInstructions?.items.map(item => item.title)).toEqual(["Second", "First"]));
+    expect(first.closest("[data-instruction-id]")!.getAttribute("style")).toBe(firstColor);
     await act(() => store.getState().undo());
     expect(store.getState().project.collaborationInstructions?.items.map(item => item.title)).toEqual(["First", "Second"]);
-    fireEvent.contextMenu(first);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete instruction" }));
+    fireEvent.click(first);
+    fireEvent.click(screen.getByRole("button", { name: "Delete instruction" }));
     await waitFor(() => expect(store.getState().project.collaborationInstructions?.items).toHaveLength(1));
     await act(() => store.getState().undo());
     expect(store.getState().project.collaborationInstructions?.items).toHaveLength(2);
@@ -90,10 +91,9 @@ describe("collaboration board", () => {
   it("does not publish incomplete tool presets", () => {
     const store = createStore();
     render(<CollaborationBoardPanel store={store} active onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Add from library" }));
-    fireEvent.click(screen.getByText("Built-in presets"));
+    fireEvent.click(screen.getByRole("button", { name: "Add instruction" }));
     fireEvent.click(screen.getByRole("button", { name: /Prefer a specific tool/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Save to library" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to project" }));
     expect(screen.getByRole("alert")).toHaveTextContent("placeholders");
     expect(store.getState().project.collaborationInstructions).toBeUndefined();
   });
@@ -105,6 +105,7 @@ describe("collaboration board", () => {
       mediaLibrary: { items: [{ id: "reference-media", name: "Motion reference", type: "video" } as MediaItem] },
     } }));
     render(<CollaborationBoardPanel store={store} active onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add instruction" }));
     fireEvent.click(screen.getByRole("button", { name: "New instruction" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Explain visually" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Detailed instruction" }), { target: { value: "Use the reference's visual continuity." } });

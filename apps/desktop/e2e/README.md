@@ -24,6 +24,14 @@ audio configuration file. `local-captions.e2e.ts` is opt-in with
 into an isolated project, generates captions through the real UI and model,
 then verifies a single undo removes the captions while preserving source audio.
 
+`instruction-design.e2e.ts` switches the real UI to Chinese and narrows the
+inspector to exercise the empty state, default preset selector, hover details,
+anchored editor, context menu, drag placement, muted colors and library navigation.
+It captures settled screenshots in `.artifacts/instruction-design-zh--*.png`;
+inspect these in addition to the assertions. Chip colors remain unchanged after
+dragging. The English workflow also checks direct preset insertion, search,
+duplicate prevention, edit/cancel, removal/undo and Escape focus restoration.
+
 Requires the built desktop renderer/main, Electron, and (for pixel/export specs)
 Chromium plus ffmpeg/ffprobe. Run specs selectively using the separate
 `e2e/vitest.config.ts`. Test fixture files stay in isolated run directories;

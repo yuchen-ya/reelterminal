@@ -1206,8 +1206,17 @@
     "saveLibrary": "Save to library",
     "details": "Details",
     "moveEarlier": "Move earlier",
-    "moveLater": "Move later"
+    "moveLater": "Move later",
+    "addInstruction": "Add instruction",
+    "emptyHint": "Add an instruction to guide collaboration in this project.",
+    "editTitle": "Edit instruction",
+    "manageLibrary": "Manage library",
+    "personal": "Personal library",
+    "noMatches": "No matching instructions",
+    "disable": "Disable",
+    "enable": "Enable"
   },
+
   "audioEnvironment": {
     "title": "Models & environment",
     "captions": "Automatic captions",

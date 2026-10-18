@@ -1206,8 +1206,17 @@
     "saveLibrary": "存入素材库",
     "details": "详情",
     "moveEarlier": "前移",
-    "moveLater": "后移"
+    "moveLater": "后移",
+    "addInstruction": "添加指令",
+    "emptyHint": "添加指令，约定这个项目的协作方式。",
+    "editTitle": "编辑指令",
+    "manageLibrary": "管理素材库",
+    "personal": "个人素材库",
+    "noMatches": "没有匹配的指令",
+    "disable": "停用",
+    "enable": "启用"
   },
+
   "audioEnvironment": {
     "title": "模型与环境",
     "captions": "自动字幕",

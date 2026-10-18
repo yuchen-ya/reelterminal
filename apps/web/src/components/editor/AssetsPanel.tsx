@@ -729,6 +729,12 @@ export const AssetsPanel: React.FC = () => {
     setActiveTabRaw(tab);
   }, []);
 
+  useEffect(() => {
+    const openLibrary = () => setActiveTabRaw("library");
+    window.addEventListener("reelterminal:open-instruction-library", openLibrary);
+    return () => window.removeEventListener("reelterminal:open-instruction-library", openLibrary);
+  }, []);
+
   // Live editor control keeps panel ownership local while allowing the
   // renderer bridge to ask the media tab to reveal a selected library item.
   useEffect(() => {
