@@ -757,6 +757,7 @@ export const MEDIA_ANALYSIS_TYPES = [  "technicalQuality",
   "beatGrid",
   "speechActivity",
   "speechTranscript",
+  "syncOffset",
   "loudness",
   "blackFrames",
   "duplicateFrames",
@@ -797,6 +798,23 @@ export interface MediaSpeechVadParams {
   readonly padSec?: number;
 }
 
+/**
+ * Tuning for the "syncOffset" analysis type (AUD-10): correlate the analyzed
+ * target range against an explicitly named reference media range. A positive
+ * reported offset means the target lags the reference; the analysis never
+ * moves a clip and never silently corrects clock drift.
+ */
+export interface MediaSyncOffsetParams {
+  /** The media-library id of the reference signal. */
+  readonly referenceMediaId: string;
+  /** Reference source seconds where the comparison starts. Default 0. */
+  readonly referenceStartSec?: number;
+  /** Lag search half-width in seconds, in (0, 5]. Default 2. */
+  readonly searchRangeSec?: number;
+  /** Correlation window in seconds, in [10, 60] and ≥ 4 × searchRangeSec. Default 30. */
+  readonly windowSec?: number;
+}
+
 export interface MediaAnalyzeStartParams {
   /** Explicit consent to send this range to the configured Alibaba cloud service. */
   readonly cloudUpload?: boolean;
@@ -810,6 +828,8 @@ export interface MediaAnalyzeStartParams {
   readonly silenceParams?: MediaSilenceAnalysisParams;
   /** Speech-activity (Silero VAD) tuning; valid only when analysisTypes includes "speechActivity". Omitted fields keep Silero-reference defaults. */
   readonly vadParams?: MediaSpeechVadParams;
+  /** Sync-offset tuning; valid only when analysisTypes includes "syncOffset". The reference media is required. */
+  readonly syncOffsetParams?: MediaSyncOffsetParams;
   /**
    * Re-check linkage: the id of a previous analysis record. The new run uses
    * the same configuration discipline and its record links back via

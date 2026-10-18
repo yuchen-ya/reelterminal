@@ -393,11 +393,18 @@ export const MEDIA_SPEECH_VAD_PARAMS_SCHEMA: ObjectSchema = {
   padSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1, describe: "seconds each region extends on both sides (clamped to the range), in [0, 1]; default 0.03 (Silero reference)", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } } },
 };
 
+export const MEDIA_SYNC_OFFSET_PARAMS_SCHEMA: ObjectSchema = {
+  referenceMediaId: { check: isNonEmptyString, describe: "media-library id of the reference signal (required)", required: true, emits: { kind: "leaf", schema: { type: "string", minLength: 1 } } },
+  referenceStartSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0, describe: "reference source seconds where the comparison starts; default 0", emits: { kind: "leaf", schema: { type: "number", minimum: 0 } } },
+  searchRangeSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 5, describe: "lag search half-width in (0, 5] seconds; default 2", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0, maximum: 5 } } },
+  windowSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 10 && v <= 60, describe: "correlation window in [10, 60] seconds and at least 4 × searchRangeSec; default 30", emits: { kind: "leaf", schema: { type: "number", minimum: 10, maximum: 60 } } },
+};
+
 export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
   cloudUpload: { check: (v) => typeof v === "boolean", describe: "must be true for videoReview: uploads the selected range to Alibaba", emits: { kind: "leaf", schema: { type: "boolean" } } },
   reviewQuestion: { check: (v) => typeof v === "string" && v.length <= 1000, describe: "optional video review focus, at most 1000 characters", emits: { kind: "leaf", schema: { type: "string", maxLength: 1000 } } },
   startSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0, describe: "nonnegative source seconds", emits: { kind: "leaf", schema: { type: "number", minimum: 0 } } },
-  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary/silence/beatGrid/speechActivity range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
+  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary/silence/beatGrid/speechActivity/syncOffset range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
   mediaId: {
     check: isNonEmptyString,
     describe: "a non-empty media-library id",
@@ -444,6 +451,17 @@ export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
       ),
     describe: "optional speech-activity tuning {threshold, minSpeechSec, minSilenceSec, padSec}; valid only when analysisTypes includes \"speechActivity\"; defaults follow the Silero reference (0.5, 0.25 s, 0.1 s, 0.03 s)",
     emits: { kind: "object", schema: MEDIA_SPEECH_VAD_PARAMS_SCHEMA },
+  },
+  syncOffsetParams: {
+    check: (value) =>
+      value !== null && typeof value === "object" && !Array.isArray(value) &&
+      typeof (value as { referenceMediaId?: unknown }).referenceMediaId === "string" &&
+      (value as { referenceMediaId: string }).referenceMediaId.length > 0 &&
+      Object.entries(value).every(([key, val]) =>
+        key in MEDIA_SYNC_OFFSET_PARAMS_SCHEMA && MEDIA_SYNC_OFFSET_PARAMS_SCHEMA[key]!.check(val),
+      ),
+    describe: "optional sync-offset tuning {referenceMediaId, referenceStartSec, searchRangeSec, windowSec}; required when analysisTypes includes \"syncOffset\"; positive offsets mean the target lags the reference and drift is reported, never corrected",
+    emits: { kind: "object", schema: MEDIA_SYNC_OFFSET_PARAMS_SCHEMA },
   },
   expectedRevision: {
     check: isNonNegativeInteger,

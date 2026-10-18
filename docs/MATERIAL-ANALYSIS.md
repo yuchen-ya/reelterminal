@@ -28,9 +28,9 @@ FFmpeg and ffprobe. It reports stream facts, integrated loudness, true peak,
 loudness range, bounded waveform levels, silence intervals, and onset
 candidates. It does not upload audio or modify the project.
 
-Audio analysis (`audioSummary`, `silence`, `beatGrid`, `speechActivity`)
-requires `artifactRoot`. Without it, capabilities report these types
-unavailable and the start request is rejected before creating a job.
+Audio analysis (`audioSummary`, `silence`, `beatGrid`, `speechActivity`,
+`syncOffset`) requires `artifactRoot`. Without it, capabilities report these
+types unavailable and the start request is rejected before creating a job.
 `job.status` returns audio counts and scalar measurements plus
 `summary.analysisRecord.id`; use that ID to read details. Restored jobs and
 batch checkpoints use the same compact audio view.
@@ -80,6 +80,38 @@ windows and cursors as the other series. Speech regions are acoustic model
 inferences, not semantic understanding: singing and speech-like sounds can be
 missed or falsely included, and non-speech intervals are not automatically
 deletable gaps.
+
+### Sync offset between two media
+
+`media.analyze_start` with `analysisTypes: ["syncOffset"]` correlates the
+analyzed media range against an explicit reference media from the same
+project, using local FFmpeg PCM decoding and a GCC-PHAT kernel (no model). The
+required tuning is
+`syncOffsetParams {referenceMediaId, referenceStartSec, searchRangeSec, windowSec}`
+(defaults 0 s, 2 s, 30 s). The reference range starts at `referenceStartSec`
+and spans the same duration as the target range; it is resolved inside the
+configured media roots and must exist in the media library.
+
+`offsetSec`/`offsetMs` are measured in source seconds and follow one locked
+sign convention: **positive means the target is later than the reference
+(target lags reference), negative means the target leads**. The raw GCC lag has
+the opposite sign; the implementation and tests pin the public contract. A
+result is only reported as `verdict: "ok"` when the correlation peak stands at
+least 6 dB above the median |correlation| and the best competing local peak
+outside a ±50 ms guard is at least 3 dB below the main peak; otherwise the
+verdict is `ambiguous` or `no-match`. Prominence and margin are correlation
+statistics, not a calibrated confidence score.
+
+Ranges are split into windows (10–60 s, at least 4 × the search range, at most
+12 windows). Three or more usable windows are linearly regressed; a strong
+monotonic trend is reported as `verdict: "clock-drift"` with `driftPpm`,
+`rSquared` and per-window offsets. Version 1 reports drift but never silently
+corrects it, and `fixedOffsetSupported` is false. Silent windows are disclosed
+and skipped, a short decode is marked `truncated`, and a reference file that
+changes during the run fails the job instead of publishing a stale
+measurement. The analysis reads only the first audio stream (`0:a:0`) of each
+media and never moves clips, gain, markers or project revision; acting on the
+measured offset remains an explicit `edit.apply` decision.
 
 ### Reading durable analysis records
 

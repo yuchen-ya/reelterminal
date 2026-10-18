@@ -672,6 +672,34 @@ export async function buildCapabilities(
                         changesProject: false,
                       },
                     }
+            : type === "syncOffset"
+              ? !ctx.mediaRoots.length
+                ? {
+                    available: false,
+                    reason: "No media roots are configured, so the target and reference files cannot be read for sync-offset analysis.",
+                    requires: "configured media roots containing both the target and the reference media",
+                  }
+                : noArtifactRoot
+                  ? { available: false, reason: "Audio analysis requires artifactRoot to persist the complete analysis record.", requires: "artifactRoot" }
+                  : !audioReady.available
+                    ? (audioReady.probed === false ? audioReady : { available: false, reason: audioReady.reason })
+                    : {
+                        available: true,
+                        details: {
+                          ...AUDIO_LIMITS,
+                          maxSourceFileBytes: 2 * 1024 * 1024 * 1024,
+                          provider: "local-ffmpeg-pcm-gcc-phat",
+                          fields: ["verdict", "offsetSec", "offsetMs", "fixedOffsetSupported", "peaks", "windows", "drift", "reference", "parameters"],
+                          signConvention: "positive offsetSec means the target is later than the reference (target lags reference); negative means the target leads",
+                          decisionRule: "GCC-PHAT peak must stand ≥6 dB over the median |correlation| and the best competing local peak outside a ±50 ms guard must be ≥3 dB below it; otherwise the verdict is ambiguous or no-match instead of a guess",
+                          defaults: { referenceStartSec: 0, searchRangeSec: 2, windowSec: 30 },
+                          tuning: "media.analyze_start syncOffsetParams {referenceMediaId, referenceStartSec, searchRangeSec, windowSec}; the reference media must be in the same project and media roots",
+                          drift: ">=3 usable windows are linearly regressed and reported as clock-drift; v1 never silently corrects drift and does not claim one fixed offset is valid for a drifting pair",
+                          workflow: "read verdict/offsetSec as evidence, then move the target clip manually with edit.apply if appropriate; no clip, gain, marker or project revision is changed by the analysis",
+                          coordinateSpace: "source",
+                          changesProject: false,
+                        },
+                      }
             : type === "silence" || type === "beatGrid"
               ? !ctx.mediaRoots.length
                 ? {

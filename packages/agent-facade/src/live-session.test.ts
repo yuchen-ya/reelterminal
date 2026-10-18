@@ -2857,6 +2857,63 @@ describe("live local audio analysis parity", () => {
     }
   }, 30000);
 
+  it("runs syncOffset against an explicit reference media and reports the sign convention", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-sync-"));
+    const referenceDir = path.join(mediaRoot, "ref");
+    const targetDir = path.join(mediaRoot, "tgt");
+    await mkdir(referenceDir, { recursive: true });
+    await mkdir(targetDir, { recursive: true });
+    // Four identical decaying bursts; the target's bursts are 350 ms later.
+    const referencePath = await writeFloatWav(referenceDir, 6, [0.5, 1.5, 2.5, 3.5]);
+    const targetPath = await writeFloatWav(targetDir, 6, [0.85, 1.85, 2.85, 3.85]);
+    const facade = liveFacade({ store: new FakeLiveStore(), mediaRoots: [mediaRoot] });
+    try {
+      const referenceImport = await facade["media.import"]({ path: referencePath });
+      const targetImport = await facade["media.import"]({ path: targetPath });
+      if (!referenceImport.ok || !targetImport.ok) throw new Error("import failed");
+      const missingType = await facade["media.analyze_start"]({
+        mediaId: targetImport.value.mediaId,
+        analysisTypes: ["silence"],
+        syncOffsetParams: { referenceMediaId: referenceImport.value.mediaId },
+      });
+      expect(missingType).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
+      const started = await facade["media.analyze_start"]({
+        mediaId: targetImport.value.mediaId,
+        analysisTypes: ["syncOffset"],
+        startSec: 0,
+        endSec: 5,
+        syncOffsetParams: { referenceMediaId: referenceImport.value.mediaId, searchRangeSec: 1, windowSec: 10 },
+      });
+      if (!started.ok) throw new Error(started.error.message);
+      const job = await waitForJob(facade, started.value.jobId, 20000);
+      expect(job).toMatchObject({ state: "done" });
+      const result = job.result;
+      if (!result || !("summary" in result)) throw new Error("syncOffset returned no analysis result");
+      const summary = result.summary as Record<string, any>;
+      expect(summary.syncOffset).toMatchObject({
+        verdict: "ok",
+        fixedOffsetSupported: true,
+        reference: { mediaId: referenceImport.value.mediaId },
+      });
+      expect(Math.abs(summary.syncOffset.offsetMs - 350)).toBeLessThan(2);
+      const recordId = (summary.analysisRecord as { id: string }).id;
+      const record = await facade["analysis.get"]({ recordId });
+      expect(record).toMatchObject({
+        ok: true,
+        value: {
+          config: { syncOffsetParams: { searchRangeSec: 1, windowSec: 10 } },
+          provenance: expect.arrayContaining([
+            { kind: "local-measurement", provider: "local-ffmpeg-pcm-gcc-phat", analysisType: "syncOffset" },
+          ]),
+          inferences: expect.arrayContaining([expect.objectContaining({ source: "syncOffset", driftDetected: false })]),
+        },
+      });
+    } finally {
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 40000);
+
   it("runs speechActivity with the shared Silero kernel path, compact status and paged regions", async () => {
     // Hermetic: a deterministic amplitude-threshold stand-in replaces the
     // onnxruntime session, so this test pins the live wiring, not the model.

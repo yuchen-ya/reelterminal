@@ -69,6 +69,8 @@ export interface AnalysisRecord {
     readonly silenceParams?: Required<MediaSilenceAnalysisParams>;
     /** Effective speech-activity (Silero VAD) tuning, including defaults; absent on historical records. */
     readonly vadParams?: { readonly threshold: number; readonly exitThreshold: number; readonly minSpeechSec: number; readonly minSilenceSec: number; readonly padSec: number };
+    /** Effective sync-offset tuning, including defaults; absent on historical records. */
+    readonly syncOffsetParams?: { readonly referenceMediaId: string; readonly referenceStartSec: number; readonly searchRangeSec: number; readonly windowSec: number; readonly guardSec: number };
   };
   readonly provenance: readonly {
     readonly kind: AnalysisProvenance;
@@ -119,6 +121,7 @@ export interface AnalysisReplayParams {
   readonly endSec: number;
   readonly silenceParams?: Required<MediaSilenceAnalysisParams>;
   readonly vadParams?: { readonly threshold: number; readonly minSpeechSec: number; readonly minSilenceSec: number; readonly padSec: number };
+  readonly syncOffsetParams?: { readonly referenceMediaId: string; readonly referenceStartSec: number; readonly searchRangeSec: number; readonly windowSec: number };
 }
 
 export function analysisReplayParams(record: AnalysisRecord): AnalysisReplayParams {
@@ -135,6 +138,16 @@ export function analysisReplayParams(record: AnalysisRecord): AnalysisReplayPara
             minSpeechSec: vadParams.minSpeechSec,
             minSilenceSec: vadParams.minSilenceSec,
             padSec: vadParams.padSec,
+          },
+        }
+      : {}),
+    ...(record.config.syncOffsetParams
+      ? {
+          syncOffsetParams: {
+            referenceMediaId: record.config.syncOffsetParams.referenceMediaId,
+            referenceStartSec: record.config.syncOffsetParams.referenceStartSec,
+            searchRangeSec: record.config.syncOffsetParams.searchRangeSec,
+            windowSec: record.config.syncOffsetParams.windowSec,
           },
         }
       : {}),

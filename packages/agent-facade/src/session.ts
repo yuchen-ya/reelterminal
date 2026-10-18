@@ -5,6 +5,7 @@ import { AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA } from ".
 import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { analyzeLocalAudio, analyzeSilence, analyzeBeatGrid, audioAnalysisPreflight, resolveSilenceAnalysisParams, AUDIO_LIMITS } from "./audio-analysis";
 import { analyzeSpeechActivity, resolveSpeechVadParams, speechVadRuntimePreflight } from "./speech-vad";
+import { analyzeSyncOffset, resolveSyncOffsetParams, SYNC_OFFSET_ANALYSIS_RATE, type ResolvedSyncOffsetParams, type SyncOffsetReference } from "./sync-offset";
 import { runVideoCandidateAnalyses, videoCandidatesPreflight, type VideoCandidateBundle } from "./video-candidates";
 import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
 import { probeVideoFacts } from "./media/frame-exact";
@@ -1314,8 +1315,13 @@ export class AgentFacadeSession {
       }
       const vadParams = valid.analysisTypes.includes("speechActivity")
         ? resolveSpeechVadParams(valid.vadParams) : undefined;
+      if (valid.syncOffsetParams !== undefined && !valid.analysisTypes.includes("syncOffset")) {
+        throw new FacadeError("INVALID_PARAMS", "syncOffsetParams apply only when analysisTypes includes \"syncOffset\"");
+      }
+      const syncOffsetParams = valid.analysisTypes.includes("syncOffset")
+        ? resolveSyncOffsetParams(valid.syncOffsetParams) : undefined;
       const audioBackedTypes = valid.analysisTypes.filter(
-        (type) => type === "audioSummary" || type === "silence" || type === "beatGrid" || type === "speechActivity",
+        (type) => type === "audioSummary" || type === "silence" || type === "beatGrid" || type === "speechActivity" || type === "syncOffset",
       );
       if (audioBackedTypes.length > 0) {
         requireArtifactRoot(this.config.artifactRoot, "media.analyze_start audio analysis");
@@ -1337,7 +1343,7 @@ export class AgentFacadeSession {
       }
       const unavailable = valid.analysisTypes.filter(
         (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview" && type !== "silence" && type !== "beatGrid" &&
-          type !== "speechActivity" && type !== "sceneCuts" && type !== "blackFrames" && type !== "duplicateFrames",
+          type !== "speechActivity" && type !== "syncOffset" && type !== "sceneCuts" && type !== "blackFrames" && type !== "duplicateFrames",
       );
       if (unavailable.length > 0) {
         throw new FacadeError(
@@ -1345,7 +1351,7 @@ export class AgentFacadeSession {
           `media.analyze_start: unavailable analysis types: ${unavailable.join(", ")}`,
           {
             unavailableTypes: unavailable,
-            availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid", "speechActivity", "sceneCuts", "blackFrames", "duplicateFrames"],
+            availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid", "speechActivity", "syncOffset", "sceneCuts", "blackFrames", "duplicateFrames"],
           },
         );
       }
@@ -1364,7 +1370,7 @@ export class AgentFacadeSession {
       const endSec = valid.endSec ?? media.metadata.duration;
       if (!(endSec > startSec) || endSec > media.metadata.duration ||
           (audioBackedTypes.length > 0 && endSec - startSec > AUDIO_LIMITS.maxRangeSec)) {
-        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration; audioSummary, silence, beatGrid and speechActivity ranges are at most 120 seconds. Split longer sources into explicit ranges.");
+        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration; audioSummary, silence, beatGrid, speechActivity and syncOffset ranges are at most 120 seconds. Split longer sources into explicit ranges.");
       }
       const payload = {
         mediaId: valid.mediaId,
@@ -1372,6 +1378,7 @@ export class AgentFacadeSession {
         startSec: valid.startSec, endSec: valid.endSec, cloudUpload: valid.cloudUpload, reviewQuestion: valid.reviewQuestion,
         silenceParams,
         vadParams,
+        syncOffsetParams,
       };
       const prior = this.beginMutation<{
         jobId: string;
@@ -1411,6 +1418,36 @@ export class AgentFacadeSession {
           `media.analyze_start: media "${valid.mediaId}" is not backed by a readable source file`,
         );
       }
+      let syncReference: SyncOffsetReference | undefined;
+      if (syncOffsetParams) {
+        const referenceMedia = this.project.mediaLibrary.items.find((item) => item.id === syncOffsetParams.referenceMediaId);
+        if (!referenceMedia) {
+          throw new FacadeError("NOT_FOUND", `syncOffset: reference media "${syncOffsetParams.referenceMediaId}" is not in this project's media library`, { referenceMediaId: syncOffsetParams.referenceMediaId });
+        }
+        const targetDurationSec = endSec - startSec;
+        const referenceEndSec = syncOffsetParams.referenceStartSec + targetDurationSec;
+        if (referenceEndSec > referenceMedia.metadata.duration + 1 / SYNC_OFFSET_ANALYSIS_RATE) {
+          throw new FacadeError("INVALID_PARAMS", `syncOffset: reference range ${syncOffsetParams.referenceStartSec.toFixed(3)}–${referenceEndSec.toFixed(3)}s exceeds reference media duration ${referenceMedia.metadata.duration.toFixed(3)}s`, { referenceMediaId: referenceMedia.id, referenceDurationSec: referenceMedia.metadata.duration });
+        }
+        const referenceUrl = typeof referenceMedia.originalUrl === "string" ? referenceMedia.originalUrl : "";
+        const referenceResolution = resolveContainedPathDetailed(referenceUrl, this.config.mediaRoots ?? []);
+        if (referenceResolution.kind !== "ok") {
+          throw new FacadeError("UNSUPPORTED", `syncOffset: reference media "${referenceMedia.id}" is outside configured media roots or unreadable`);
+        }
+        const referenceStat = await stat(referenceResolution.path).catch(() => null);
+        if (!referenceStat?.isFile() || referenceStat.size > MAX_MEDIA_FILE_BYTES) {
+          throw new FacadeError("UNSUPPORTED", `syncOffset: reference media "${referenceMedia.id}" is not backed by a readable source file`);
+        }
+        syncReference = {
+          mediaId: referenceMedia.id,
+          name: referenceMedia.name,
+          path: referenceResolution.path,
+          startSec: syncOffsetParams.referenceStartSec,
+          endSec: referenceEndSec,
+          durationSec: referenceMedia.metadata.duration,
+          sourceFingerprint: { size: referenceStat.size, lastModified: Math.round(referenceStat.mtimeMs) },
+        };
+      }
       if (valid.analysisTypes.includes("videoReview")) {
         const ready = await videoReviewPreflight();
         if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
@@ -1446,6 +1483,8 @@ export class AgentFacadeSession {
         valid.recheckOfRecordId,
         silenceParams,
         vadParams,
+        syncOffsetParams,
+        syncReference,
       );
       return ok<MediaAnalyzeStartResult>({
         ...ledgerValue,
@@ -2836,6 +2875,8 @@ export class AgentFacadeSession {
     recheckOfRecordId?: string,
     silenceParams?: import("./types").MediaSilenceAnalysisParams,
     vadParams?: import("./types").MediaSpeechVadParams,
+    syncOffsetParams?: ResolvedSyncOffsetParams,
+    syncReference?: SyncOffsetReference,
   ): Promise<void> {
     let persistedRecordId: string | null = null;
     try {
@@ -2868,6 +2909,8 @@ export class AgentFacadeSession {
         ? await analyzeBeatGrid(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("beatGrid", percent) })) : undefined;
       const speechActivity = analysisTypes.includes("speechActivity")
         ? await analyzeSpeechActivity(sourcePath, range, vadParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("speechActivity", percent) })) : undefined;
+      const syncOffset = analysisTypes.includes("syncOffset")
+        ? await analyzeSyncOffset(sourcePath, range, syncReference!.path, syncOffsetParams!, syncReference!, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("syncOffset", percent) })) : undefined;
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
       const videoCandidateTypes = analysisTypes.filter(
         (type) => type === "sceneCuts" || type === "blackFrames" || type === "duplicateFrames",
@@ -2905,6 +2948,7 @@ export class AgentFacadeSession {
         ...(silence ? { silence: { ...silence, mediaId, sourceFingerprint } } : {}),
         ...(beatGrid ? { beatGrid: { ...beatGrid, mediaId, sourceFingerprint } } : {}),
         ...(speechActivity ? { speechActivity: { ...speechActivity, mediaId, sourceFingerprint } } : {}),
+        ...(syncOffset ? { syncOffset: { ...syncOffset, mediaId, sourceFingerprint } } : {}),
         technicalQuality: {
           mediaId,
           name,
@@ -2942,6 +2986,7 @@ export class AgentFacadeSession {
         ...(silence ? { silence: compactAnalysisFacts("silence", summary.silence!) } : {}),
         ...(beatGrid ? { beatGrid: compactAnalysisFacts("beatGrid", summary.beatGrid!) } : {}),
         ...(speechActivity ? { speechActivity: compactAnalysisFacts("speechActivity", summary.speechActivity!) } : {}),
+        ...(syncOffset ? { syncOffset: compactAnalysisFacts("syncOffset", summary.syncOffset!) } : {}),
       };
       // Durable, traceable record: audio analysis requires artifactRoot so
       // full event facts remain readable; non-audio analyses can still return
@@ -2971,6 +3016,7 @@ export class AgentFacadeSession {
           cloudUpload: analysisTypes.includes("videoReview"),
           ...(silence ? { silenceParams: silence.parameters } : {}),
           ...(speechActivity ? { vadParams: speechActivity.parameters } : {}),
+          ...(syncOffset ? { syncOffsetParams: syncOffset.parameters } : {}),
           ...(reviewQuestion !== undefined ? { reviewQuestion } : {}),
         },
         provenance: [
@@ -2989,6 +3035,9 @@ export class AgentFacadeSession {
           ...(analysisTypes.includes("speechActivity")
             ? [{ kind: "local-measurement" as const, provider: "local-silero-vad-onnx", analysisType: "speechActivity" }]
             : []),
+          ...(analysisTypes.includes("syncOffset")
+            ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-pcm-gcc-phat", analysisType: "syncOffset" }]
+            : []),
           ...(analysisTypes.includes("sceneCuts")
             ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-scene-score", analysisType: "sceneCuts" }]
             : []),
@@ -3006,6 +3055,7 @@ export class AgentFacadeSession {
           ...(silence ? [{ source: "silence", facts: silence }] : []),
           ...(beatGrid ? [{ source: "beatGrid", facts: beatGrid }] : []),
           ...(speechActivity ? [{ source: "speechActivity", facts: speechActivity }] : []),
+          ...(syncOffset ? [{ source: "syncOffset", facts: syncOffset }] : []),
           ...(candidates?.sceneCuts ? [{ source: "sceneCuts", facts: candidates.sceneCuts }] : []),
           ...(candidates?.blackFrames ? [{ source: "blackFrames", facts: candidates.blackFrames }] : []),
           ...(candidates?.duplicateFrames ? [{ source: "duplicateFrames", facts: candidates.duplicateFrames }] : []),
@@ -3019,6 +3069,9 @@ export class AgentFacadeSession {
             : []),
           ...(speechActivity
             ? [{ source: "speechActivity", note: "speech regions are Silero model inferences from speech probability, not semantic understanding; non-speech gaps are not automatically deletable", regionCount: speechActivity.regionCount, totalSpeechDurationSec: speechActivity.totalSpeechDurationSec }]
+            : []),
+          ...(syncOffset
+            ? [{ source: "syncOffset", note: "GCC-PHAT correlation statistics, not a calibrated confidence; a positive offset means the target lags the reference; clock drift is reported, never silently corrected", verdict: syncOffset.verdict, offsetSec: syncOffset.offsetSec, prominenceDb: syncOffset.peaks.prominenceDb, marginToSecondPeakDb: syncOffset.peaks.marginToSecondPeakDb, driftDetected: syncOffset.drift.detected }]
             : []),
         ],
         recommendations: [],
