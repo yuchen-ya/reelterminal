@@ -189,3 +189,17 @@ P3ï¼šSenseVoice ä¸ç°æœ‰ Whisper å­—å¹•å·¥ä½œæµå¯¹æ¥ã€DeepFilterNetï¼Œå†ä¾
   - ÕæÊµÑù±¾ÑéÊÕ£¨¸´ÓÃ `E:\1my_projects\audio-eval\audio`£¬CI È±Ñù±¾Ê±Õû×éÌø¹ı£©£º¦Ğ ÓïÒô +350 ms / ?200 ms ¹À¼ÆÎó²î <0.5 ms£»+350 ms ¼Ó 10 dB ÔëÉùÎó²î <1 ms£»¦Ğ BGM ´² +250 ms ¾«È·£»ÓëÖĞÎÄÓïÒôÎŞ¹²Í¬ÄÚÈİÅĞ·Ç `ok` ÇÒ `fixedOffsetSupported:false`£»0.1% Ê±ÖÓÆ¯ÒÆ£¨120 s¡¢30 s¡Á4 ´°£©ÅĞ `clock-drift`£¬»Ø¹éĞ±ÂÊÔ¼ ?1000 ppm¡£
   - `git diff --check` Í¨¹ı¡£Î´·ÃÎÊÓÃ»§ live API¡¢Î´´ò¿ªÓÃ»§¹¤³Ì¡¢Î´ push¡¢Î´·¢²¼¡¢Î´´ò°ü¡£
 - ÏŞÖÆÓë±£Áô£ºÈÔÏŞ 120 s ·ÖÎöÇø¼ä£»Ö»Ïà¹Ø¸÷×ÔµÚÒ»ÌõÒôÆµÁ÷£¨0:a:0£©£»ÖØ¸´ÒôÀÖ/»ìÏìÈÔ¿ÉÄÜÅĞ ambiguous£»Æ¯ÒÆãĞÖµÒÀÀµ ¡İ3 ¸ö¿ÉÓÃ´°£¬¶ÌËØ²ÄÖ»±¨¹Ì¶¨Æ«ÒÆ£»²Î¿¼Ö¸ÎÆ±ä»¯½öÊ¹ÈÎÎñÊ§°Ü£¬¼ÇÂ¼Ïû·Ñ²àÔİÎŞ×Ô¶¯¹ıÆÚ¼ì²é£¨ÎŞÏû·ÑÕß op£©¡£¹´Ñ¡´ıÓÃ»§ÑéÊÕºó½øĞĞ¡£
+
+## AUD-08£º·Ö¼¶½µÔë£¨2026-10-18£¬Ìá½» `40c41e00`£¬´ıÓÃ»§ÑéÊÕ£©
+
+ĞÂÔö **`audio.process.denoise`**£¨live/headless ¹²ÓÃ£©£¬°´ [AUDIO-MODEL-EVAL-2026-10-18.md](AUDIO-MODEL-EVAL-2026-10-18.md) µÄ½áÂÛÖ»½ÓÈë FFmpeg ÎÈÌ¬µµ£¬²»°Ñ¶¯Ì¬´¦Àí»ìÈë½µÔë£»DeepFilterNet3 µµÒòÔËĞĞÊ±¼æÈİ/ÒÀÀµ¾ö²ßÎ´½ÓÈë£¬ÄÜÁ¦²»Ğû³Æ¾ß±¸¡£Ê¹ÓÃËµÃ÷¼û [AUDIO-DENOISE.md](AUDIO-DENOISE.md)¡£
+
+- ²ÎÊı£º`mediaId`¡¢`audioStream`¡¢`startSec/endSec`£¨¡Ü120s£©¡¢`sampleRate:48000`¡¢`channels:1|2`¡¢`profile:"light"|"strong"`¡¢`idempotencyKey`£»¿ÉÑ¡ `declick`¡¢`expectedRevision`¡£`light = afftdn=nr=12:nf=-25`£¬`strong = afftdn=nr=24:nf=-35`£¬`declick = adeclick=window=55:overlap=75` Ç°ÖÃ¡£
+- **ÑÓ³Ù²¹³¥ÎªÊµÏÖºËĞÄ**£º²»Ó²±àÂë 1200 Ñù±¾£»ÓÃÈ·¶¨ĞÔ°×ÔëÉùÌ½ÕëÅÜÊµ¼ÊÍêÕûÁ´²¢»¥Ïà¹Ø²âÑÓ³Ù£¨¡İ6 dB Í»³ö¶È£¬·ñÔò JOB_FAILED ²»·¢²¼£©£¬½âÂë·¶Î§ÑÓ³¤¸ÃÑÓ³Ù¡¢Á´ºó `atrim=start_sample` È¥³ı¡¢`apad` ²¹»Ø¾«È·Ñù±¾Êı£»ffprobe ¸´ºË²ÉÑùÂÊ/ÉùµÀ/Ñù±¾Êı£»·¢²¼Ç°ÔÙÓÃÊä³öÓëÔ´Çø¼ä»¥Ïà¹Ø£¬¿É²âÇÒ·Ç 0 ÖÍºó¼´Ê§°Ü£¬Ïà¹Ø¶È²»×ãÔòÈçÊµ¼Ç `alignmentCheck.verdict:"unverified"`£¨ÈÔ±£ÁôÒÑ²¹³¥µÄ²âÁ¿ÑÓ³Ù£©¡£`timing.processingDelaySamples` Îª 0¡£
+- ²úÎï/ÉúÃüÖÜÆÚ£º`generated-assets/audio-denoise/<jobId>/denoised.wav` + `provenance.json`£¨Ô´Ö¸ÎÆ¡¢·¶Î§/ÉùµÀ¡¢Á´¡¢²âÁ¿ÑÓ³Ù¡¢¶ÔÆë¼ì²é¡¢before/after loudnorm ¸´²â¡¢·½·¨£©£»staging Ä¿Â¼ + Ô­×Ó rename + ¹şÏ£ÃİµÈ£»È¡Ïû/Ê§°Ü/Î´Ìá½» checkpoint ÇåÀí±¾´ÎÄ¿Â¼£»ÑØÓÃ `audio.process.register` revision CAS ×¢²á£¬²»Ìæ»»Æ¬¶Î¡£`jobs.result` Óë register/verify ÀàĞÍÀ©Õ¹Îª normalize/denoise ÁªºÏ£¬¹«¹²×Ö¶ÎĞ£Ñé¹²ÓÃ¡£
+- ½ÓÈëÃæ£ºFACADE_VERBS/index/live Ó³Éä¡¢verb-schemas/corpus¡¢output-schemas¡¢command-catalog£¨task/filesystem/retry£©¡¢jsonschema guard ¼¯¡¢request-validation¡¢tool-catalog Á½ÖÖÄ£Ê½ÃèÊö¡¢capabilities `audioDenoise`£¨ãĞÖµ/ÑÓ³Ù/Î´½ÓÈëÏîÅûÂ¶£©¡¢types/jobs¡¢AUDIO-DENOISE.md Óë README¡£
+- ÑéÖ¤£¨Windows£¬Node 22.22.0¡¢FFmpeg 8.1.1£©£º
+  - `pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2`£º88 ÎÄ¼ş¡¢2277 Í¨¹ı¡¢12 ¼ÈÓĞÌø¹ı¡£ĞÂÔö `audio-denoise.test.ts` 4 Ïî£º¾«È·Ñù±¾Êı/²âÁ¿ÑÓ³Ù 1200/¶ÔÆë lag 0/¸´²âÓë provenance¡¢strong+declick Á´¡¢·¶Î§ÃÅ¿ØÎŞ²ĞÁô¡¢È¡ÏûÎŞ pending£»live-session ĞÂÔö 1 Ïî live Éú²ú¡ú×¢²á¡úÃİµÈÖØ·Å¡£²Ö¿â¼¶ `pnpm -r typecheck` Í¨¹ı£»desktop ¶¨Ïò 75 Í¨¹ı£»agent-transport 14 ÎÄ¼ş 702 Í¨¹ı¡¢3 Ìø¹ı¡£
+  - ±¾»úÊµ²â `afftdn`/`adeclick` Á´ÑÓ³Ù 1200 Ñù±¾£¨48 kHz£©£¬Êä³ö»¥Ïà¹Ø¶ÔÆë lag 0£»ºÏ³É chirp+pink ÔëÉùÓïÒôÑù±¾ÉÏÊä³öÏì¶ÈÓëÑù±¾´°¿Ú±»¸´²â¡£
+  - `git diff --check` Í¨¹ı¡£Î´·ÃÎÊÓÃ»§ live API¡¢Î´´ò¿ªÓÃ»§¹¤³Ì¡¢Î´ push¡¢Î´·¢²¼¡¢Î´´ò°ü¡£
+- ÏŞÖÆÓë±£Áô£ºÖ»´¦Àí ¡Ü120s ÓëËùÑ¡ÒôÆµÁ÷£»afftdn ¶Ôµ÷ĞÔºßÉù/·ÇÎÈÌ¬ÒôÀÖÓĞÏŞ£¬¸ß SNR ¸É¾»ÓïÒô¿ÉÄÜ²»Ğè´¦Àí£»¶¯Ì¬´¦Àí¿ÌÒâ²»°üº¬£»**DeepFilterNet3 µµÎ´½ÓÈë**£¨ÑéÖ¤³ÆÆäÎª¸´ÔÓÔëÉù×îÓÅ½â£¬µ« Python °üĞèÊÊÅä torchaudio¡İ2.9£¬ONNX/rust ÔËĞĞÊ±ÊôÎ´¾ö¹¤³ÌÑ¡Ôñ£©£»`declick` Ö»Õë¶ÔÂö³åµã»÷¡£¹´Ñ¡´ıÓÃ»§ÑéÊÕºó½øĞĞ¡£

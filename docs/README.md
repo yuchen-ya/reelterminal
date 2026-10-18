@@ -24,6 +24,7 @@
 - [`MATERIAL-ANALYSIS.md`](MATERIAL-ANALYSIS.md) and
   [`MATERIAL-LIBRARY.md`](MATERIAL-LIBRARY.md) — material inspection and reuse.
 - [`AUDIO-NORMALIZATION.md`](AUDIO-NORMALIZATION.md) — local two-pass loudness processing, remeasurement and explicit derived-asset registration.
+- [`AUDIO-DENOISE.md`](AUDIO-DENOISE.md) — tiered local FFmpeg denoise, measured delay compensation, alignment verification and derived-asset lifecycle.
 - [`AUDIO-SPEED.md`](AUDIO-SPEED.md) — audio speed behavior and rendering limits.
 - [`MEDIA-REVIEW-WORKFLOWS.md`](MEDIA-REVIEW-WORKFLOWS.md) — reference comparison and media
   replacement workflows.
@@ -57,7 +58,7 @@
 
 ## Historical acceptance records
 
-- [`AUDIO-PIPELINE-EXECUTION-PLAN.md`](AUDIO-PIPELINE-EXECUTION-PLAN.md) — completed audio batches A–C plus the AUD-01–AUD-06 records (Silero VAD, record-driven ducking, domain-filtered schema/capabilities, silence cutting, beat-snapped splits) and the AUD-10 sync-offset record, commits and validation evidence.
+- [`AUDIO-PIPELINE-EXECUTION-PLAN.md`](AUDIO-PIPELINE-EXECUTION-PLAN.md) — completed audio batches A–C plus the AUD-01–AUD-06 records (Silero VAD, record-driven ducking, domain-filtered schema/capabilities, silence cutting, beat-snapped splits), the AUD-08 denoise record and the AUD-10 sync-offset record, commits and validation evidence.
 
 Dated records are kept as evidence and are not overwritten by newer rounds.
 Treat them as history, not current specs; the current specs are the documents

@@ -8,6 +8,8 @@
 
 > 2026-10-18：AUD-10 已按验收口径实现并完成本地验证（提交 `3e4ebbd5`）：新增 `syncOffset` 分析类型，本地 FFmpeg + GCC-PHAT（无模型）比较目标与显式参考媒体；**正 offset = 目标落后参考**（验证脚本原始相关式符号相反，实现取反并用 ±已知延迟钉住），≥6 dB 突出度且 ±50 ms 外次峰低 ≥3 dB 才判 ok，否则 ambiguous/no-match；等长分窗 + 线性回归报 `clock-drift`，首版只报漂移不静默修正；参考文件运行中变化即 CONFLICT。真实样本：+350/−200 ms 误差 <0.5 ms、10 dB 噪声 <1 ms、BGM +250 ms 精确、无共同内容拒绝、0.1% 漂移判 clock-drift。执行记录见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md) AUD-10 一节；勾选待用户验收。
 
+> 2026-10-18：AUD-08 的 FFmpeg 分级档已实现并完成本地验证（提交 `40c41e00`）：新增 `audio.process.denoise`（`light`/`strong` afftdn + 可选 adeclick），**实测并补偿**链的固定 1200 样本延迟（白噪声探针互相关，输出再与源互相关验证对齐），保留持久衍生资产、复测响度、取消清理与 `audio.process.register` 注册路径；动态处理刻意不包含。**DeepFilterNet3 档未接入**（需先决定 torchaudio/ONNX/rust 运行时），能力与文档不做宣称。执行记录见 AUD-08 一节；勾选待用户验收。
+
 > 2026-10-18 复审修复（提交 `3f714ea9`）：AUD-04 的 `motionTools.align`/`track` 在 motion 域未请求时补齐 `probed:false`，与文档的三态契约一致；AUD-06 的 `clip.splitAtBeat` 只接受裁剪源范围 `(inPoint, outPoint)` 内的节拍，范围外节拍不再被 clamp 成片段边缘候选，距离并列时选时间线更早者；AUD-05 的 leading/trailing/whole-clip 翻译分支补了真实 `edit.apply` 回归。验证与提交细节见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md)复审修复节；勾选仍待用户验收。
 
 > 2026-10-17：AUD-01 已按推荐批次实现并完成本地验证（提交 `40ce355b`：Silero VAD v5.1.2 + onnxruntime-node 1.30.0，锁版本、锁 sha，复用现有分析任务与记录协议），执行记录与量化验收证据见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md) AUD-01 一节；勾选待用户验收后进行。AUD-02 同日实现完毕并完成本地验证（提交 `0c91fcff`，新增 `clip.setDuckingFromAnalysis` 编辑操作，记录驱动映射 + 既有 setDucking/包络内核，全部门控与撤销/幂等回归见执行记录 AUD-02 一节），勾选同样待验收。下一步为 AUD-05 或独立排期的 AUD-03/04。
