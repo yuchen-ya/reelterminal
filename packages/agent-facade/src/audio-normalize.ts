@@ -147,7 +147,7 @@ function parseFiniteMetric(value: unknown, key: string): number {
   return metric;
 }
 
-function parseLoudnorm(stderr: string): LoudnormPassResult {
+export function parseLoudnorm(stderr: string): LoudnormPassResult {
   const jsonBlocks = stderr.match(/\{\s*"input_i"[\s\S]*?\}/g) ?? [];
   const last = jsonBlocks.at(-1);
   if (!last) fail("JOB_FAILED", "FFmpeg loudnorm returned no measurement block");
@@ -206,7 +206,7 @@ function throwIfCancelled(signal?: AbortSignal): void {
   if (signal?.aborted) fail("JOB_FAILED", "Cancelled");
 }
 
-async function probeAudioStreams(ffprobe: string, sourcePath: string, audioStream: number, signal?: AbortSignal): Promise<{ durationSec: number; streamIndex: number; timestampOriginSec: number }> {
+export async function probeAudioStreams(ffprobe: string, sourcePath: string, audioStream: number, signal?: AbortSignal): Promise<{ durationSec: number; streamIndex: number; timestampOriginSec: number }> {
   let result: ProbeFile;
   try {
     const { stdout } = await runToolProcess(ffprobe, [

@@ -52,16 +52,17 @@ function validateFacadeFields(verb: string, params: unknown, mode: "headless" | 
       validateTimelineQueryTimeRange(valid as unknown as TimelineQueryParams);
       return;
     case "audio.process.normalize":
+    case "audio.process.denoise":
       if ((valid.endSec as number) <= (valid.startSec as number)) {
         throw new FacadeError(
           "INVALID_PARAMS",
-          "audio.process.normalize: endSec must be greater than startSec",
+          `${verb}: endSec must be greater than startSec`,
         );
       }
       if ((valid.endSec as number) - (valid.startSec as number) > 120) {
         throw new FacadeError(
           "INVALID_PARAMS",
-          "audio.process.normalize: the selected source range cannot exceed 120 seconds",
+          `${verb}: the selected source range cannot exceed 120 seconds`,
         );
       }
       return;

@@ -603,8 +603,39 @@ async function writeFloatWav(
   return filePath;
 }
 
-const TEXT_BATCH = [
-  { op: "track.add", trackType: "text", trackId: "t1" },
+/** Continuous chirp+noise f32 WAV: measurably loud and non-periodic enough. */
+async function writeNoisyToneWav(root: string, filename: string, durationSec: number): Promise<string> {
+  const sampleRate = 8000;
+  const data = Buffer.alloc(sampleRate * durationSec * 4);
+  let state = 0x12345678;
+  for (let index = 0; index < sampleRate * durationSec; index++) {
+    const time = index / sampleRate;
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    const white = (((t ^ (t >>> 14)) >>> 0) / 4294967296) * 2 - 1;
+    data.writeFloatLE(0.2 * Math.sin(2 * Math.PI * (220 + 80 * time) * time) + 0.02 * white, index * 4);
+  }
+  const header = Buffer.alloc(44);
+  header.write("RIFF");
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write("WAVEfmt ", 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(3, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 4, 28);
+  header.writeUInt16LE(4, 32);
+  header.writeUInt16LE(32, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(data.length, 40);
+  const filePath = path.join(root, filename);
+  await writeFile(filePath, Buffer.concat([header, data]));
+  return filePath;
+}
+
+const TEXT_BATCH = [  { op: "track.add", trackType: "text", trackId: "t1" },
   { op: "text.create", text: "Hello live", startTime: 0, duration: 2 },
 ] as const;
 
@@ -2913,6 +2944,50 @@ describe("live local audio analysis parity", () => {
       await rm(mediaRoot, { recursive: true, force: true });
     }
   }, 40000);
+
+  it("runs the denoise producer through the live task path and registers the aligned artifact", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-denoise-"));
+    const sourcePath = await writeNoisyToneWav(mediaRoot, "noisy.wav", 6);
+    const facade = liveFacade({ store: new FakeLiveStore(), mediaRoots: [mediaRoot] });
+    try {
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const request = {
+        mediaId: imported.value.mediaId,
+        audioStream: 0,
+        startSec: 0.5,
+        endSec: 4.5,
+        sampleRate: 48000 as const,
+        channels: 1 as const,
+        profile: "light" as const,
+        expectedRevision: imported.value.revision,
+        idempotencyKey: "live-denoise",
+      };
+      const started = await facade["audio.process.denoise"](request);
+      if (!started.ok) throw new Error(started.error.message);
+      const job = await waitForJob(facade, started.value.jobId, 30000);
+      expect(job).toMatchObject({ state: "done" });
+      const artifact = job.result as {
+        path: string;
+        timing: { sampleCount: number; processingDelaySamples: number };
+        processing: { measuredFilterDelaySamples: number; alignmentCheck: { lagSamples: number } };
+      };
+      expect(artifact.path).toContain(path.join("generated-assets", "audio-denoise"));
+      expect(artifact.timing.sampleCount).toBe((4.5 - 0.5) * 48000);
+      expect(artifact.timing.processingDelaySamples).toBe(0);
+      expect(artifact.processing.measuredFilterDelaySamples).toBe(1200);
+      expect(artifact.processing.alignmentCheck.lagSamples).toBe(0);
+      const registered = await facade["audio.process.register"]({ jobId: job.jobId, expectedRevision: request.expectedRevision });
+      if (!registered.ok) throw new Error(registered.error.message);
+      expect(registered.value.mediaId).not.toBe(imported.value.mediaId);
+      const replay = await facade["audio.process.denoise"](request);
+      if (!replay.ok) throw new Error(replay.error.message);
+      expect(replay.value).toMatchObject({ jobId: job.jobId, replayed: true });
+    } finally {
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 60000);
 
   it("runs speechActivity with the shared Silero kernel path, compact status and paged regions", async () => {
     // Hermetic: a deterministic amplitude-threshold stand-in replaces the

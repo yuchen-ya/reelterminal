@@ -2,7 +2,8 @@ import { stat } from "node:fs/promises";
 import { FacadeError } from "./errors";
 import { sha256File } from "./artifact-io";
 import { produceNormalizedAudio, discardNormalizedAudioArtifact, type NormalizeAudioArtifact } from "./audio-normalize";
-import { JobRegistry } from "./jobs";
+import { produceDenoisedAudio, discardDenoisedAudioArtifact, type DenoiseAudioArtifact } from "./audio-denoise";
+import { JobRegistry, type ProcessedAudioArtifact } from "./jobs";
 import { resolveContainedPathDetailed } from "./media/path-roots";
 
 /** Processing only: project mutations are an explicit, revision-guarded import. */
@@ -47,17 +48,56 @@ export async function runAudioNormalizationTask(
   }
 }
 
-export function completedAudioArtifact(jobs: JobRegistry, jobId: string): NormalizeAudioArtifact {
+export async function runAudioDenoiseTask(
+  jobs: JobRegistry,
+  controllers: Map<string, AbortController>,
+  jobId: string,
+  controller: AbortController,
+  input: Omit<Parameters<typeof produceDenoisedAudio>[0], "signal" | "artifactId">,
+): Promise<void> {
+  let artifact: DenoiseAudioArtifact | undefined;
+  let failed = false;
+  try {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    if (controller.signal.aborted) return;
+    jobs.markRunning(jobId);
+    if (jobs.get(jobId)?.state !== "running") return;
+    artifact = await produceDenoisedAudio({ ...input, signal: controller.signal, artifactId: jobId });
+    if (!controller.signal.aborted) jobs.markAudioProcessDone(jobId, artifact);
+    if (jobs.get(jobId)?.state === "done") artifact = undefined;
+  } catch (error) {
+    if (!controller.signal.aborted || error instanceof FacadeError && error.details?.cleanupFailed === true) {
+      failed = true;
+      jobs.markError(jobId, {
+        code: error instanceof FacadeError ? error.code : "JOB_FAILED",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  } finally {
+    try {
+      if (artifact) {
+        await discardDenoisedAudioArtifact(artifact, input.mediaRoots);
+      }
+    } catch (error) {
+      failed = true;
+      jobs.markAudioProcessCleanupFailed(jobId, String(error));
+    }
+    if (controller.signal.aborted && !failed) jobs.markCancelled(jobId);
+    controllers.delete(jobId);
+  }
+}
+
+export function completedAudioArtifact(jobs: JobRegistry, jobId: string): ProcessedAudioArtifact {
   const job = jobs.get(jobId);
   if (!job) throw new FacadeError("NOT_FOUND", `audio.process.register: unknown jobId "${jobId}"`);
   if (job.kind !== "audio-process" || job.state !== "done" || !job.result) {
     throw new FacadeError("CONFLICT", "audio.process.register requires a completed audio-process job");
   }
-  return job.result as NormalizeAudioArtifact;
+  return job.result as ProcessedAudioArtifact;
 }
 
 /** Measurements describe these exact output bytes, not a subsequently replaced file. */
-export async function verifyAudioArtifact(artifact: NormalizeAudioArtifact, mediaRoots: readonly string[]): Promise<void> {
+export async function verifyAudioArtifact(artifact: ProcessedAudioArtifact, mediaRoots: readonly string[]): Promise<void> {
   const resolution = resolveContainedPathDetailed(artifact.path, mediaRoots);
   if (resolution.kind !== "ok") {
     throw new FacadeError("INVALID_PARAMS", "audio.process.register: output is missing or outside configured media roots");

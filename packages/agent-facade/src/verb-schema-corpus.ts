@@ -277,6 +277,26 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "channel count must be mono or stereo", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 1, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 10, sampleRate: 48000, channels: 6, idempotencyKey: "n1" }, expectValid: false },
     { name: "unknown field", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 1, targetLufs: -16, truePeakDbtp: -1, loudnessRangeLu: 10, sampleRate: 48000, channels: 2, idempotencyKey: "n1", limiter: true }, expectValid: false },
   ],
+  "audio.process.denoise": [
+    {
+      name: "valid light denoise",
+      params: { mediaId: "m1", audioStream: 0, startSec: 1, endSec: 6, sampleRate: 48000, channels: 2, profile: "light", idempotencyKey: "denoise-1" },
+      expectValid: true,
+    },
+    {
+      name: "valid strong denoise with declick",
+      params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 5, sampleRate: 48000, channels: 1, profile: "strong", declick: true, expectedRevision: 3, idempotencyKey: "denoise-2" },
+      expectValid: true,
+    },
+    { name: "missing profile", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 1, sampleRate: 48000, channels: 2, idempotencyKey: "d1" }, expectValid: false },
+    { name: "unknown profile", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 1, sampleRate: 48000, channels: 2, profile: "aggressive", idempotencyKey: "d1" }, expectValid: false },
+    { name: "missing idempotency key", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 1, sampleRate: 48000, channels: 2, profile: "light" }, expectValid: false },
+    { name: "sample rate is fixed at 48000 Hz", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 1, sampleRate: 44100, channels: 2, profile: "light", idempotencyKey: "d1" }, expectValid: false },
+    { name: "channel count must be mono or stereo", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 1, sampleRate: 48000, channels: 6, profile: "light", idempotencyKey: "d1" }, expectValid: false },
+    { name: "end must follow start", params: { mediaId: "m1", audioStream: 0, startSec: 2, endSec: 2, sampleRate: 48000, channels: 2, profile: "light", idempotencyKey: "d1" }, schemaValid: true, expectValid: false },
+    { name: "source range maximum is 120 seconds", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 120.1, sampleRate: 48000, channels: 2, profile: "light", idempotencyKey: "d1" }, schemaValid: true, expectValid: false },
+    { name: "unknown field", params: { mediaId: "m1", audioStream: 0, startSec: 0, endSec: 1, sampleRate: 48000, channels: 2, profile: "light", idempotencyKey: "d1", noiseFloorDb: -40 }, expectValid: false },
+  ],
   "audio.process.register": [
     { name: "valid completed job registration", params: { jobId: "audio-job-1", expectedRevision: 7 }, expectValid: true },
     { name: "missing completed job id", params: { expectedRevision: 7 }, expectValid: false },

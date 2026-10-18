@@ -11,6 +11,7 @@ import {
   AUDIO_NORMALIZE_MAX_TRUE_PEAK_OVERSHOOT_DBTP,
   AUDIO_NORMALIZE_MAX_RANGE_SEC,
 } from "./audio-normalize";
+import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
 import { COLOR_POLICY as COLOR_POLICY_DISCLOSURE } from "./color-policy";
 import { PLUGIN_TOOLS } from "./plugins";
 import { MAX_TIMELINE_SOURCE_MAP_POINTS } from "./timeline-source-map";
@@ -1059,6 +1060,32 @@ export async function buildCapabilities(
         },
         storage: "mediaRoots[0]/generated-assets/audio-normalize/<jobId>/ (persistent, outside analysis cache)",
         registration: "Explicit revision-guarded media import into the source project/workspace; does not replace clips",
+      },
+    },
+    audioDenoise: {
+      available: audioReady.available && mediaImportAvailable,
+      ...(!audioReady.available
+        ? {
+            reason: audioReady.reason ?? "Local FFmpeg/ffprobe unavailable",
+            ...(audioReady.probed === false ? { probed: false as const } : {}),
+          }
+        : !mediaImportAvailable ? { reason: "A media root and an operational media import bridge are required" } : {}),
+      details: {
+        command: "audio.process.denoise",
+        registrationCommand: "audio.process.register",
+        profiles: {
+          light: "afftdn=nr=12:nf=-25 (steady low-level broadband noise)",
+          strong: "afftdn=nr=24:nf=-35 (heavier stationary noise)",
+          declick: "optional adeclick=window=55:overlap=75 before afftdn",
+        },
+        delayCompensation: "the exact chain's fixed delay is measured with a deterministic white-noise probe, trimmed and tail-padded; the published output is cross-correlated against the source and the sample count is re-verified",
+        route: "local FFmpeg afftdn tier; output is independently loudness-remeasured",
+        output: "48 kHz PCM 24-bit WAV; explicit mono or stereo, sample-aligned to the requested source range",
+        maximumRangeSec: AUDIO_DENOISE_MAX_RANGE_SEC,
+        notIncluded: "dynamic processing (de-esser/compressor/EQ voice chain) is deliberately separate: the 2026-10-18 audit measured SI-SDR degradation across every case; loudness normalization remains audio.process.normalize",
+        storage: "mediaRoots[0]/generated-assets/audio-denoise/<jobId>/ (persistent, outside analysis cache)",
+        registration: "Explicit revision-guarded media import into the source project/workspace; does not replace clips",
+        unverifiedAlignment: "if correlation prominence is too low to prove alignment, processing.alignmentCheck.verdict is \"unverified\" with the measured delay still compensated",
       },
     },
     preview,

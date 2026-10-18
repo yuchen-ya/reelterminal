@@ -1,7 +1,8 @@
 import { AUDIO_NORMALIZE_MAX_RANGE_SEC } from "./audio-normalize";
-import { runAudioNormalizationTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
-import type { AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult } from "./types";
-import { AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA } from "./verb-schemas";
+import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
+import { runAudioNormalizationTask, runAudioDenoiseTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
+import type { AudioProcessDenoiseParams, AudioProcessDenoiseResult, AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult } from "./types";
+import { AUDIO_PROCESS_DENOISE_SCHEMA, AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA } from "./verb-schemas";
 import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { AUDIO_LIMITS, analyzeBeatGrid, analyzeLocalAudio, analyzeSilence, audioAnalysisPreflight, resolveSilenceAnalysisParams } from "./audio-analysis";
 import { analyzeSpeechActivity, resolveSpeechVadParams, speechVadRuntimePreflight } from "./speech-vad";
@@ -1617,6 +1618,69 @@ export class LiveFacadeSession {
       const value = { jobId, sourceRevision: state.revision };
       receipt?.commit(value, state.revision);
       const task = runAudioNormalizationTask(this.jobs, this.analysisControllers, jobId, controller, {
+        sourcePath: resolution.path, mediaRoots: roots, params: parameters,
+        sourceProjectId: state.project.id, sourceWorkspaceId: workspaceId, sourceRevision: state.revision,
+      });
+      this.audioProcessTasks.set(jobId, task);
+      void task.then(
+        () => this.audioProcessTasks.delete(jobId),
+        () => this.audioProcessTasks.delete(jobId),
+      );
+      return ok({ ...value, kind: "audio-process", state: "queued", replayed: false });
+    });
+  }
+
+  async audioProcessDenoise(params: AudioProcessDenoiseParams): Promise<FacadeResult<AudioProcessDenoiseResult>> {
+    return this.enqueue<AudioProcessDenoiseResult>(async () => {
+      this.gate("audio.process.denoise");
+      const valid = validateObject<AudioProcessDenoiseParams>(params, AUDIO_PROCESS_DENOISE_SCHEMA, "audio.process.denoise params");
+      if (!(valid.endSec > valid.startSec) || valid.endSec - valid.startSec > AUDIO_DENOISE_MAX_RANGE_SEC) {
+        throw new FacadeError("INVALID_PARAMS", "audio.process.denoise requires startSec < endSec and a range of at most 120 seconds");
+      }
+      const { expectedRevision, idempotencyKey, ...parameters } = valid;
+      const identity = await this.config.store.getIdentity();
+      const receipt = this.ledger.lookup<{ jobId: string; sourceRevision: number }>(
+        this.ledgerScope(identity.projectId, identity.workspaceId),
+        "audio.process.denoise", idempotencyKey, parameters,
+      );
+      if (receipt?.prior) {
+        const job = this.jobs.get(receipt.prior.value.jobId);
+        if (!job) throw new FacadeError("NOT_FOUND", "audio.process.denoise: prior job is no longer available");
+        return ok({ ...receipt.prior.value, kind: "audio-process", state: job.state, replayed: true });
+      }
+      const state = await this.config.store.getState();
+      if (expectedRevision !== undefined && expectedRevision !== state.revision) {
+        throw new FacadeError("CONFLICT", `revision conflict: expected ${expectedRevision}, current is ${state.revision}`, { currentRevision: state.revision });
+      }
+      if (identity.projectId !== state.project.id) throw new FacadeError("CONFLICT", "audio.process.denoise: target project changed while preparing input");
+      const media = state.project.mediaLibrary.items.find((item) => item.id === valid.mediaId);
+      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.denoise: media "${valid.mediaId}" not found`);
+      if (valid.endSec > media.metadata.duration) throw new FacadeError("INVALID_PARAMS", "audio.process.denoise: range exceeds source duration");
+      const roots = this.config.mediaRoots ?? [];
+      if (roots.length === 0 || typeof this.config.store.importMedia !== "function") throw new FacadeError("UNSUPPORTED", "audio.process.denoise requires media roots and a live media import bridge for generated assets");
+      const sourcePath = await this.resolveLiveMediaItemFile(media);
+      const resolution = resolveContainedPathDetailed(sourcePath ?? "", roots);
+      if (resolution.kind !== "ok") throw new FacadeError("UNSUPPORTED", "audio.process.denoise requires a readable source inside configured media roots");
+      const ready = await audioAnalysisPreflight();
+      if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
+      this.gate("audio.process.denoise");
+      this.assertTaskCapacity("audio.process.denoise");
+      const currentIdentity = await this.config.store.getIdentity();
+      if (currentIdentity.projectId !== identity.projectId || currentIdentity.workspaceId !== identity.workspaceId) {
+        throw new FacadeError("CONFLICT", "audio.process.denoise: target project/workspace changed while preparing input");
+      }
+      const jobId = `job-${crypto.randomUUID()}`;
+      const workspaceId = identity.workspaceId ?? "default";
+      await this.createTrackedTask({
+        jobId, kind: "audio-process", projectId: state.project.id, workspaceId,
+        sourceRevision: state.revision, inputProject: structuredClone(state.project),
+        parameters: { ...parameters, idempotencyKey, payloadHash: stableStringify(parameters) },
+      });
+      const controller = new AbortController();
+      this.analysisControllers.set(jobId, controller);
+      const value = { jobId, sourceRevision: state.revision };
+      receipt?.commit(value, state.revision);
+      const task = runAudioDenoiseTask(this.jobs, this.analysisControllers, jobId, controller, {
         sourcePath: resolution.path, mediaRoots: roots, params: parameters,
         sourceProjectId: state.project.id, sourceWorkspaceId: workspaceId, sourceRevision: state.revision,
       });
@@ -4403,6 +4467,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "media.render_html": (params) => session.mediaRenderHtml(params),
     "media.analyze_start": (params) => session.mediaAnalyzeStart(params),
     "audio.process.normalize": (params) => session.audioProcessNormalize(params),
+    "audio.process.denoise": (params) => session.audioProcessDenoise(params),
     "audio.process.register": (params) => session.audioProcessRegister(params),
     "timeline.get": () => session.timelineGet(),
     "timeline.query": (params) => session.timelineQuery(params),

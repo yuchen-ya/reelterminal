@@ -1,7 +1,8 @@
 import { AUDIO_NORMALIZE_MAX_RANGE_SEC } from "./audio-normalize";
-import { runAudioNormalizationTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
-import type { AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult } from "./types";
-import { AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA } from "./verb-schemas";
+import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
+import { runAudioNormalizationTask, runAudioDenoiseTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
+import type { AudioProcessDenoiseParams, AudioProcessDenoiseResult, AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult } from "./types";
+import { AUDIO_PROCESS_DENOISE_SCHEMA, AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA } from "./verb-schemas";
 import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { analyzeLocalAudio, analyzeSilence, analyzeBeatGrid, audioAnalysisPreflight, resolveSilenceAnalysisParams, AUDIO_LIMITS } from "./audio-analysis";
 import { analyzeSpeechActivity, resolveSpeechVadParams, speechVadRuntimePreflight } from "./speech-vad";
@@ -1268,6 +1269,47 @@ export class AgentFacadeSession {
       const value = { jobId, sourceRevision };
       this.ledger.set("audio.process.normalize", idempotencyKey, { revision: sourceRevision, value, payloadHash: stableStringify(parameters) });
       void runAudioNormalizationTask(this.jobs, this.analysisControllers, jobId, controller, {
+        sourcePath: resolution.path, mediaRoots: roots, params: parameters,
+        sourceProjectId: this.project.id, sourceRevision,
+      });
+      return ok({ ...value, kind: "audio-process", state: "queued", replayed: false });
+    });
+  }
+
+  async audioProcessDenoise(params: AudioProcessDenoiseParams): Promise<FacadeResult<AudioProcessDenoiseResult>> {
+    return this.enqueue<AudioProcessDenoiseResult>(async () => {
+      const valid = validateObject<AudioProcessDenoiseParams>(params, AUDIO_PROCESS_DENOISE_SCHEMA, "audio.process.denoise params");
+      if (!(valid.endSec > valid.startSec) || valid.endSec - valid.startSec > AUDIO_DENOISE_MAX_RANGE_SEC) {
+        throw new FacadeError("INVALID_PARAMS", "audio.process.denoise requires startSec < endSec and a range of at most 120 seconds");
+      }
+      if (!this.project) return this.noProject();
+      const { expectedRevision, idempotencyKey, ...parameters } = valid;
+      const prior = this.beginMutation<{ jobId: string; sourceRevision: number }>(
+        "audio.process.denoise", expectedRevision, idempotencyKey, parameters,
+      );
+      if (prior) {
+        const job = this.jobs.get(prior.value.jobId);
+        if (!job) throw new FacadeError("NOT_FOUND", "audio.process.denoise: prior job is no longer available");
+        return ok({ ...prior.value, kind: "audio-process", state: job.state, replayed: true });
+      }
+      const media = this.project.mediaLibrary.items.find((item) => item.id === valid.mediaId);
+      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.denoise: media "${valid.mediaId}" not found`);
+      if (valid.endSec > media.metadata.duration) throw new FacadeError("INVALID_PARAMS", "audio.process.denoise: range exceeds source duration");
+      const roots = this.config.mediaRoots ?? [];
+      if (roots.length === 0) throw new FacadeError("UNSUPPORTED", "audio.process.denoise requires media roots for persistent generated assets");
+      const resolution = resolveContainedPathDetailed(typeof media.originalUrl === "string" ? media.originalUrl : "", roots);
+      if (resolution.kind !== "ok") throw new FacadeError("UNSUPPORTED", "audio.process.denoise requires a readable source inside configured media roots");
+      const ready = await audioAnalysisPreflight();
+      if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
+      if (this.analysisControllers.size >= AUDIO_LIMITS.maxConcurrentPerSession) throw new FacadeError("UNSUPPORTED", "At most two audio/analysis jobs per session; wait or cancel an existing job.");
+      const sourceRevision = this.revision;
+      const jobId = `job-${crypto.randomUUID()}`;
+      this.jobs.create(jobId, sourceRevision, "audio-process");
+      const controller = new AbortController();
+      this.analysisControllers.set(jobId, controller);
+      const value = { jobId, sourceRevision };
+      this.ledger.set("audio.process.denoise", idempotencyKey, { revision: sourceRevision, value, payloadHash: stableStringify(parameters) });
+      void runAudioDenoiseTask(this.jobs, this.analysisControllers, jobId, controller, {
         sourcePath: resolution.path, mediaRoots: roots, params: parameters,
         sourceProjectId: this.project.id, sourceRevision,
       });

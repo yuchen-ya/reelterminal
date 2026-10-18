@@ -307,6 +307,7 @@ const capabilities = (): OutputSchemaNode =>
       projectChanges: capabilityStatus(),
       history: capabilityStatus(),
       audioNormalize: capabilityStatus(),
+      audioDenoise: capabilityStatus(),
       pluginTools: openObject(),
       mediaAnalysis: objectSchema(
         {
@@ -376,7 +377,7 @@ const capabilities = (): OutputSchemaNode =>
       export: capabilityStatus(),
       verify: capabilityStatus(),
     },
-    ["runtime", "stateModel", "mediaImport", "projectChanges", "history", "audioNormalize", "mediaAnalysis", "professionalEditing", "editOps", "manual", "textOverlay", "preview", "visualInspection", "editorControl", "export", "verify"],
+    ["runtime", "stateModel", "mediaImport", "projectChanges", "history", "audioNormalize", "audioDenoise", "mediaAnalysis", "professionalEditing", "editOps", "manual", "textOverlay", "preview", "visualInspection", "editorControl", "export", "verify"],
   );
 
 const mediaImportResult = (): OutputSchemaNode =>
@@ -835,6 +836,7 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "project.changes": projectChangesResult(),
   "media.import": mediaImportResult(),
   "audio.process.normalize": audioProcessNormalizeResult(),
+  "audio.process.denoise": audioProcessNormalizeResult(),
   "audio.process.register": mediaImportResult(),
   "media.render_html": objectSchema(
     {

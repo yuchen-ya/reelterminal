@@ -41,6 +41,7 @@ import type {
   VerifyReport,
 } from "./providers";
 import type { NormalizeAudioArtifact } from "./audio-normalize";
+import type { DenoiseAudioArtifact } from "./audio-denoise";
 import { WORKSPACE_VERBS } from "./workspace-library";
 export { WORKSPACE_VERBS } from "./workspace-library";
 export type { WorkspaceVerb } from "./workspace-library";
@@ -69,6 +70,7 @@ export const FACADE_VERBS = [
   "media.render_html",
   "media.analyze_start",
   "audio.process.normalize",
+  "audio.process.denoise",
   "audio.process.register",
   "analysis.list",
   "analysis.get",
@@ -346,6 +348,8 @@ export interface Capabilities {
   readonly history: CapabilityStatus;
   /** Local two-pass FFmpeg loudness normalization and post-render measurement. */
   readonly audioNormalize: CapabilityStatus;
+  /** Local tiered FFmpeg denoise with measured delay compensation and remeasurement. */
+  readonly audioDenoise: CapabilityStatus;
   /** User-level material library (material.* verbs); headless reports unavailable. */
   readonly materialLibrary: import("./material-library").MaterialLibraryCapability;
   /** User-level custom fonts (font.* verbs); headless reports unavailable. */
@@ -682,6 +686,24 @@ export interface AudioProcessNormalizeResult {
   readonly sourceRevision: number;
   readonly replayed: boolean;
 }
+
+/** Denoise tuning; the produced WAV is sample-aligned to the source range. */
+export interface AudioProcessDenoiseParams {
+  readonly mediaId: string;
+  readonly audioStream: number;
+  readonly startSec: number;
+  readonly endSec: number;
+  readonly sampleRate: 48000;
+  readonly channels: 1 | 2;
+  /** light = afftdn nr=12/nf=-25 (steady low-level noise); strong = afftdn nr=24/nf=-35. */
+  readonly profile: "light" | "strong";
+  /** Optional adeclick before afftdn; the measured fixed delay is compensated either way. */
+  readonly declick?: boolean;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey: string;
+}
+
+export type AudioProcessDenoiseResult = AudioProcessNormalizeResult;
 
 export interface AudioProcessRegisterParams {
   readonly jobId: string;
@@ -2564,7 +2586,7 @@ export interface JobStatusView {
    */
   readonly artifact: ArtifactRef | null;
   /** Present for completed analysis or audio-processing jobs; null otherwise. */
-  readonly result: AnalysisJobResult | NormalizeAudioArtifact | null;
+  readonly result: AnalysisJobResult | NormalizeAudioArtifact | DenoiseAudioArtifact | null;
   readonly error: { readonly code: string; readonly message: string } | null;
   /**
    * export.start destinationPath outcome (both null when no destination was

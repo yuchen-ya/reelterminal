@@ -365,6 +365,67 @@ export const AUDIO_PROCESS_NORMALIZE_SCHEMA: ObjectSchema = {
   },
 };
 
+export const AUDIO_PROCESS_DENOISE_SCHEMA: ObjectSchema = {
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "a non-empty media-library id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  audioStream: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative audio stream index",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  startSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative finite source time in seconds",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  endSec: {
+    check: isPositiveNumber,
+    describe: "a positive finite source end time in seconds, greater than startSec",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  sampleRate: {
+    check: (value) => value === 48_000,
+    describe: "48000 Hz",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 48_000, maximum: 48_000 } },
+  },
+  channels: {
+    check: (value) => value === 1 || value === 2,
+    describe: "1 or 2 output channels",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: [1, 2] } },
+  },
+  profile: {
+    check: (value) => value === "light" || value === "strong",
+    describe: '"light" (afftdn nr=12/nf=-25, steady low-level noise) or "strong" (afftdn nr=24/nf=-35)',
+    required: true,
+    emits: { kind: "leaf", schema: { enum: ["light", "strong"] } },
+  },
+  declick: {
+    check: (value) => typeof value === "boolean",
+    describe: "optional adeclick pass before afftdn; the measured fixed delay is compensated",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative project revision",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty key that replays the same denoise job",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
 export const AUDIO_PROCESS_REGISTER_SCHEMA: ObjectSchema = {
   jobId: {
     check: isNonEmptyString,
@@ -2108,6 +2169,7 @@ export const VERB_PARAM_SCHEMAS: {
   "project.changes": PROJECT_CHANGES_SCHEMA,
   "media.import": MEDIA_IMPORT_SCHEMA,
   "audio.process.normalize": AUDIO_PROCESS_NORMALIZE_SCHEMA,
+  "audio.process.denoise": AUDIO_PROCESS_DENOISE_SCHEMA,
   "audio.process.register": AUDIO_PROCESS_REGISTER_SCHEMA,
   "media.render_html": MEDIA_RENDER_HTML_SCHEMA,
   "media.analyze_start": MEDIA_ANALYZE_START_SCHEMA,

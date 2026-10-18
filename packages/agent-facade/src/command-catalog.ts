@@ -38,6 +38,7 @@ export interface CommandCatalogEntry {
 const TASK_VERBS = new Set<FacadeVerb>([
   "media.analyze_start",
   "audio.process.normalize",
+  "audio.process.denoise",
   "preview.render_frame",
   "preview.render_comparison",
   "visual.inspect",
@@ -53,6 +54,7 @@ const FILESYSTEM_VERBS = new Set<FacadeVerb>([
   "media.render_html",
   "media.analyze_start",
   "audio.process.normalize",
+  "audio.process.denoise",
   "audio.process.register",
   "preview.render_frame",
   "preview.render_comparison",

@@ -22,7 +22,11 @@ import type {
 } from "./providers";
 import { compactAnalysisFacts } from "./analysis-records";
 import type { NormalizeAudioArtifact } from "./audio-normalize";
+import type { DenoiseAudioArtifact } from "./audio-denoise";
 import type { AnalysisJobResult, JobStatusView } from "./types";
+
+/** Completed derived-audio results share these registration/verification fields. */
+export type ProcessedAudioArtifact = NormalizeAudioArtifact | DenoiseAudioArtifact;
 
 function compactAnalysisJobResult(result: AnalysisJobResult): AnalysisJobResult {
   const summary: Record<string, unknown> = {};
@@ -99,7 +103,7 @@ export interface JobRecord {
   readonly state: JobState;
   readonly progress: JobProgressView | null;
   readonly artifact: ArtifactRef | null;
-  readonly result: AnalysisJobResult | NormalizeAudioArtifact | null;
+  readonly result: AnalysisJobResult | ProcessedAudioArtifact | null;
   readonly error: { readonly code: string; readonly message: string } | null;
   /** destinationPath delivery outcome (both null when none was requested). */
   readonly deliveredTo: string | null;
@@ -317,7 +321,7 @@ export class JobRegistry {
     });
   }
 
-  markAudioProcessDone(jobId: string, result: NormalizeAudioArtifact): void {
+  markAudioProcessDone(jobId: string, result: ProcessedAudioArtifact): void {
     this.transition(jobId, (job) => {
       if (TERMINAL.has(job.state)) return job;
       return {
