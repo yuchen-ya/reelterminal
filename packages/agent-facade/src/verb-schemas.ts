@@ -427,6 +427,67 @@ export const AUDIO_PROCESS_DENOISE_SCHEMA: ObjectSchema = {
   },
 };
 
+export const AUDIO_PROCESS_SEPARATE_SCHEMA: ObjectSchema = {
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "a non-empty media-library id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  audioStream: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative audio stream index",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  startSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative finite source time in seconds",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  endSec: {
+    check: isPositiveNumber,
+    describe: "a positive finite source end time in seconds, greater than startSec",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  sampleRate: {
+    check: (value) => value === 48_000,
+    describe: "48000 Hz",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 48_000, maximum: 48_000 } },
+  },
+  channels: {
+    check: (value) => value === 1 || value === 2,
+    describe: "1 or 2 output channels",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: [1, 2] } },
+  },
+  target: {
+    check: (value) => value === "vocals" || value === "instrumental",
+    describe: '"vocals" keeps the vocal stem; "instrumental" sums drums+bass+other',
+    required: true,
+    emits: { kind: "leaf", schema: { enum: ["vocals", "instrumental"] } },
+  },
+  allowModelDownload: {
+    check: (value) => typeof value === "boolean",
+    describe: "explicit consent to download the pinned ~84 MB htdemucs weights on first use; default false",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative project revision",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty key that replays the same separation job",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
 export const AUDIO_PROCESS_REGISTER_SCHEMA: ObjectSchema = {
   jobId: {
     check: isNonEmptyString,
@@ -455,6 +516,12 @@ export const MEDIA_SPEECH_VAD_PARAMS_SCHEMA: ObjectSchema = {
   padSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1, describe: "seconds each region extends on both sides (clamped to the range), in [0, 1]; default 0.03 (Silero reference)", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } } },
 };
 
+export const MEDIA_DIARIZATION_PARAMS_SCHEMA: ObjectSchema = {
+  threshold: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.3 && v <= 0.95, describe: "cosine similarity threshold in [0.3, 0.95]; default 0.7", emits: { kind: "leaf", schema: { type: "number", minimum: 0.3, maximum: 0.95 } } },
+  maxSpeakers: { check: (v) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 20, describe: "maximum anonymous clusters in [1, 20]; default 8; exceeding it is rejected", emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: 20 } } },
+  allowModelDownload: { check: (v) => typeof v === "boolean", describe: "explicit consent to download the pinned ~28 MB CAM++ model on first use; default false", emits: { kind: "leaf", schema: { type: "boolean" } } },
+};
+
 export const MEDIA_TRANSCRIPT_PARAMS_SCHEMA: ObjectSchema = {
   language: { check: (v) => typeof v === "string" && ["auto", "zh", "en", "yue", "ja", "ko"].includes(v), describe: 'language hint: "auto" | "zh" | "en" | "yue" | "ja" | "ko"; default "auto"', emits: { kind: "leaf", schema: { enum: ["auto", "zh", "en", "yue", "ja", "ko"] } } },
   useItn: { check: (v) => typeof v === "boolean", describe: "inverse text normalization; default true", emits: { kind: "leaf", schema: { type: "boolean" } } },
@@ -472,7 +539,7 @@ export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
   cloudUpload: { check: (v) => typeof v === "boolean", describe: "must be true for videoReview: uploads the selected range to Alibaba", emits: { kind: "leaf", schema: { type: "boolean" } } },
   reviewQuestion: { check: (v) => typeof v === "string" && v.length <= 1000, describe: "optional video review focus, at most 1000 characters", emits: { kind: "leaf", schema: { type: "string", maxLength: 1000 } } },
   startSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0, describe: "nonnegative source seconds", emits: { kind: "leaf", schema: { type: "number", minimum: 0 } } },
-  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary/silence/beatGrid/speechActivity/speechTranscript/syncOffset range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
+  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary/silence/beatGrid/speechActivity/speechTranscript/speakerDiarization/syncOffset range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
   mediaId: {
     check: isNonEmptyString,
     describe: "a non-empty media-library id",
@@ -528,6 +595,15 @@ export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
       ),
     describe: "optional local SenseVoice transcript tuning {language, useItn, allowModelDownload}; valid only when analysisTypes includes \"speechTranscript\"; model download needs explicit allowModelDownload:true",
     emits: { kind: "object", schema: MEDIA_TRANSCRIPT_PARAMS_SCHEMA },
+  },
+  diarizationParams: {
+    check: (value) =>
+      value !== null && typeof value === "object" && !Array.isArray(value) &&
+      Object.entries(value).every(([key, val]) =>
+        key in MEDIA_DIARIZATION_PARAMS_SCHEMA && MEDIA_DIARIZATION_PARAMS_SCHEMA[key]!.check(val),
+      ),
+    describe: "optional anonymous CAM++ diarization tuning {threshold, maxSpeakers, allowModelDownload}; valid only when analysisTypes includes \"speakerDiarization\"; labels are clusters, not identities",
+    emits: { kind: "object", schema: MEDIA_DIARIZATION_PARAMS_SCHEMA },
   },
   syncOffsetParams: {
     check: (value) =>
@@ -2187,6 +2263,7 @@ export const VERB_PARAM_SCHEMAS: {
   "media.import": MEDIA_IMPORT_SCHEMA,
   "audio.process.normalize": AUDIO_PROCESS_NORMALIZE_SCHEMA,
   "audio.process.denoise": AUDIO_PROCESS_DENOISE_SCHEMA,
+  "audio.process.separate": AUDIO_PROCESS_SEPARATE_SCHEMA,
   "audio.process.register": AUDIO_PROCESS_REGISTER_SCHEMA,
   "media.render_html": MEDIA_RENDER_HTML_SCHEMA,
   "media.analyze_start": MEDIA_ANALYZE_START_SCHEMA,

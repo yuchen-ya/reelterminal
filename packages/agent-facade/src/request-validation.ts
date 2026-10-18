@@ -53,6 +53,7 @@ function validateFacadeFields(verb: string, params: unknown, mode: "headless" | 
       return;
     case "audio.process.normalize":
     case "audio.process.denoise":
+    case "audio.process.separate":
       if ((valid.endSec as number) <= (valid.startSec as number)) {
         throw new FacadeError(
           "INVALID_PARAMS",

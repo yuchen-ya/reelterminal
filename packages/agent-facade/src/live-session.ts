@@ -1,13 +1,15 @@
 import { AUDIO_NORMALIZE_MAX_RANGE_SEC } from "./audio-normalize";
 import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
-import { runAudioNormalizationTask, runAudioDenoiseTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
-import type { AudioProcessDenoiseParams, AudioProcessDenoiseResult, AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult } from "./types";
-import { AUDIO_PROCESS_DENOISE_SCHEMA, AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA } from "./verb-schemas";
+import { AUDIO_SEPARATE_MAX_RANGE_SEC, assertDemucsModelReady } from "./audio-separate";
+import { runAudioNormalizationTask, runAudioDenoiseTask, runAudioSeparationTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
+import type { AudioProcessDenoiseParams, AudioProcessDenoiseResult, AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult, AudioProcessSeparateParams, AudioProcessSeparateResult } from "./types";
+import { AUDIO_PROCESS_DENOISE_SCHEMA, AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA, AUDIO_PROCESS_SEPARATE_SCHEMA } from "./verb-schemas";
 import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { AUDIO_LIMITS, analyzeBeatGrid, analyzeLocalAudio, analyzeSilence, audioAnalysisPreflight, resolveSilenceAnalysisParams } from "./audio-analysis";
 import { analyzeSpeechActivity, resolveSpeechVadParams, speechVadRuntimePreflight } from "./speech-vad";
 import { transcribeSpeechRegions, resolveTranscriptParams, assertTranscriptModelReady, type ResolvedTranscriptParams } from "./speech-transcript";
-import { probeAudioModelsRuntime } from "./media/audio-models-runner";
+import { analyzeSpeakerDiarization, resolveDiarizationParams, assertDiarizationModelReady, type ResolvedDiarizationParams } from "./speaker-diarization";
+import { probeAudioModelsRuntime, requiredAudioModelPackages } from "./media/audio-models-runner";
 import { analyzeSyncOffset, resolveSyncOffsetParams, SYNC_OFFSET_ANALYSIS_RATE, type ResolvedSyncOffsetParams, type SyncOffsetReference } from "./sync-offset";
 import { runVideoCandidateAnalyses, videoCandidatesPreflight, type VideoCandidateBundle } from "./video-candidates";
 import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
@@ -1695,6 +1697,69 @@ export class LiveFacadeSession {
     });
   }
 
+  async audioProcessSeparate(params: AudioProcessSeparateParams): Promise<FacadeResult<AudioProcessSeparateResult>> {
+    return this.enqueue<AudioProcessSeparateResult>(async () => {
+      this.gate("audio.process.separate");
+      const valid = validateObject<AudioProcessSeparateParams>(params, AUDIO_PROCESS_SEPARATE_SCHEMA, "audio.process.separate params");
+      if (!(valid.endSec > valid.startSec) || valid.endSec - valid.startSec > AUDIO_SEPARATE_MAX_RANGE_SEC) {
+        throw new FacadeError("INVALID_PARAMS", "audio.process.separate requires startSec < endSec and a range of at most 120 seconds");
+      }
+      const { expectedRevision, idempotencyKey, ...parameters } = valid;
+      const identity = await this.config.store.getIdentity();
+      const receipt = this.ledger.lookup<{ jobId: string; sourceRevision: number }>(
+        this.ledgerScope(identity.projectId, identity.workspaceId),
+        "audio.process.separate", idempotencyKey, parameters,
+      );
+      if (receipt?.prior) {
+        const job = this.jobs.get(receipt.prior.value.jobId);
+        if (!job) throw new FacadeError("NOT_FOUND", "audio.process.separate: prior job is no longer available");
+        return ok({ ...receipt.prior.value, kind: "audio-process", state: job.state, replayed: true });
+      }
+      const state = await this.config.store.getState();
+      if (expectedRevision !== undefined && expectedRevision !== state.revision) {
+        throw new FacadeError("CONFLICT", `revision conflict: expected ${expectedRevision}, current is ${state.revision}`, { currentRevision: state.revision });
+      }
+      if (identity.projectId !== state.project.id) throw new FacadeError("CONFLICT", "audio.process.separate: target project changed while preparing input");
+      const media = state.project.mediaLibrary.items.find((item) => item.id === valid.mediaId);
+      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.separate: media "${valid.mediaId}" not found`);
+      if (valid.endSec > media.metadata.duration) throw new FacadeError("INVALID_PARAMS", "audio.process.separate: range exceeds source duration");
+      const roots = this.config.mediaRoots ?? [];
+      if (roots.length === 0 || typeof this.config.store.importMedia !== "function") throw new FacadeError("UNSUPPORTED", "audio.process.separate requires media roots and a live media import bridge for generated assets");
+      const sourcePath = await this.resolveLiveMediaItemFile(media);
+      const resolution = resolveContainedPathDetailed(sourcePath ?? "", roots);
+      if (resolution.kind !== "ok") throw new FacadeError("UNSUPPORTED", "audio.process.separate requires a readable source inside configured media roots");
+      const ready = await audioAnalysisPreflight();
+      if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
+      const models = await probeAudioModelsRuntime(requiredAudioModelPackages("separate"), "separate");
+      if (!models.available) throw new FacadeError("UNSUPPORTED", models.reason);
+      await assertDemucsModelReady(valid);
+      this.gate("audio.process.separate");
+      this.assertTaskCapacity("audio.process.separate");
+      const currentIdentity = await this.config.store.getIdentity();
+      if (currentIdentity.projectId !== identity.projectId || currentIdentity.workspaceId !== identity.workspaceId) {
+        throw new FacadeError("CONFLICT", "audio.process.separate: target project/workspace changed while preparing input");
+      }
+      const jobId = `job-${crypto.randomUUID()}`;
+      const workspaceId = identity.workspaceId ?? "default";
+      await this.createTrackedTask({
+        jobId, kind: "audio-process", projectId: state.project.id, workspaceId,
+        sourceRevision: state.revision, inputProject: structuredClone(state.project),
+        parameters: { ...parameters, idempotencyKey, payloadHash: stableStringify(parameters) },
+      });
+      const controller = new AbortController();
+      this.analysisControllers.set(jobId, controller);
+      const value = { jobId, sourceRevision: state.revision };
+      receipt?.commit(value, state.revision);
+      const task = runAudioSeparationTask(this.jobs, this.analysisControllers, jobId, controller, {
+        sourcePath: resolution.path, mediaRoots: roots, params: parameters,
+        sourceProjectId: state.project.id, sourceWorkspaceId: workspaceId, sourceRevision: state.revision,
+      });
+      this.audioProcessTasks.set(jobId, task);
+      void task.then(() => this.audioProcessTasks.delete(jobId), () => this.audioProcessTasks.delete(jobId));
+      return ok({ ...value, kind: "audio-process", state: "queued", replayed: false });
+    });
+  }
+
   async audioProcessRegister(params: AudioProcessRegisterParams): Promise<FacadeResult<AudioProcessRegisterResult>> {
     return this.enqueue(async () => {
       this.gate("audio.process.register");
@@ -1733,16 +1798,21 @@ export class LiveFacadeSession {
       }
       const silenceParams = valid.analysisTypes.includes("silence")
         ? resolveSilenceAnalysisParams(valid.silenceParams) : undefined;
-      if (valid.vadParams !== undefined && !valid.analysisTypes.includes("speechActivity") && !valid.analysisTypes.includes("speechTranscript")) {
-        throw new FacadeError("INVALID_PARAMS", "vadParams apply only when analysisTypes includes \"speechActivity\" or \"speechTranscript\"");
+      if (valid.vadParams !== undefined && !valid.analysisTypes.includes("speechActivity") && !valid.analysisTypes.includes("speechTranscript") && !valid.analysisTypes.includes("speakerDiarization")) {
+        throw new FacadeError("INVALID_PARAMS", "vadParams apply only when analysisTypes includes \"speechActivity\", \"speechTranscript\" or \"speakerDiarization\"");
       }
-      const vadParams = valid.analysisTypes.includes("speechActivity") || valid.analysisTypes.includes("speechTranscript")
+      const vadParams = valid.analysisTypes.includes("speechActivity") || valid.analysisTypes.includes("speechTranscript") || valid.analysisTypes.includes("speakerDiarization")
         ? resolveSpeechVadParams(valid.vadParams) : undefined;
       if (valid.transcriptParams !== undefined && !valid.analysisTypes.includes("speechTranscript")) {
         throw new FacadeError("INVALID_PARAMS", "transcriptParams apply only when analysisTypes includes \"speechTranscript\"");
       }
       const transcriptParams = valid.analysisTypes.includes("speechTranscript")
         ? resolveTranscriptParams(valid.transcriptParams) : undefined;
+      if (valid.diarizationParams !== undefined && !valid.analysisTypes.includes("speakerDiarization")) {
+        throw new FacadeError("INVALID_PARAMS", "diarizationParams apply only when analysisTypes includes \"speakerDiarization\"");
+      }
+      const diarizationParams = valid.analysisTypes.includes("speakerDiarization")
+        ? resolveDiarizationParams(valid.diarizationParams) : undefined;
       if (valid.syncOffsetParams !== undefined && !valid.analysisTypes.includes("syncOffset")) {
         throw new FacadeError("INVALID_PARAMS", "syncOffsetParams apply only when analysisTypes includes \"syncOffset\"");
       }
@@ -1750,17 +1820,17 @@ export class LiveFacadeSession {
         ? resolveSyncOffsetParams(valid.syncOffsetParams) : undefined;
       const unavailable = valid.analysisTypes.filter(
         (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview" && type !== "silence" && type !== "beatGrid" &&
-          type !== "speechActivity" && type !== "speechTranscript" && type !== "syncOffset" && type !== "sceneCuts" && type !== "blackFrames" && type !== "duplicateFrames",
+          type !== "speechActivity" && type !== "speechTranscript" && type !== "speakerDiarization" && type !== "syncOffset" && type !== "sceneCuts" && type !== "blackFrames" && type !== "duplicateFrames",
       );
       if (unavailable.length > 0) {
         throw new FacadeError(
           "UNSUPPORTED",
           `media.analyze_start: unavailable analysis types: ${unavailable.join(", ")}`,
-          { unavailableTypes: unavailable, availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid", "speechActivity", "speechTranscript", "syncOffset", "sceneCuts", "blackFrames", "duplicateFrames"] },
+          { unavailableTypes: unavailable, availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid", "speechActivity", "speechTranscript", "speakerDiarization", "syncOffset", "sceneCuts", "blackFrames", "duplicateFrames"] },
         );
       }
       const audioBackedTypes = valid.analysisTypes.filter(
-        (type) => type === "audioSummary" || type === "silence" || type === "beatGrid" || type === "speechActivity" || type === "speechTranscript" || type === "syncOffset",
+        (type) => type === "audioSummary" || type === "silence" || type === "beatGrid" || type === "speechActivity" || type === "speechTranscript" || type === "speakerDiarization" || type === "syncOffset",
       );
       if (audioBackedTypes.length > 0) {
         requireArtifactRoot(this.config.artifactRoot, "media.analyze_start audio analysis");
@@ -1775,6 +1845,12 @@ export class LiveFacadeSession {
           const vadRuntime = await speechVadRuntimePreflight();
           if (!vadRuntime.available) throw new FacadeError("UNSUPPORTED", vadRuntime.reason);
           const models = await probeAudioModelsRuntime();
+          if (!models.available) throw new FacadeError("UNSUPPORTED", models.reason);
+        }
+        if (valid.analysisTypes.includes("speakerDiarization")) {
+          const vadRuntime = await speechVadRuntimePreflight();
+          if (!vadRuntime.available) throw new FacadeError("UNSUPPORTED", vadRuntime.reason);
+          const models = await probeAudioModelsRuntime(requiredAudioModelPackages("diarize"));
           if (!models.available) throw new FacadeError("UNSUPPORTED", models.reason);
         }
       }
@@ -1799,6 +1875,8 @@ export class LiveFacadeSession {
       if (valid.analysisTypes.includes("videoReview") && media.type !== "video") throw new FacadeError("UNSUPPORTED", "videoReview requires video media");
       let transcriptModelDir: string | null | undefined;
       if (transcriptParams) transcriptModelDir = await assertTranscriptModelReady(transcriptParams);
+      let diarizationModelDir: string | null | undefined;
+      if (diarizationParams) diarizationModelDir = await assertDiarizationModelReady(diarizationParams);
       const startSec = valid.startSec ?? 0;
       const endSec = valid.endSec ?? media.metadata.duration;
       if (!(endSec > startSec) || endSec > media.metadata.duration ||
@@ -1813,6 +1891,7 @@ export class LiveFacadeSession {
         vadParams,
         syncOffsetParams,
         transcriptParams,
+        diarizationParams,
       };
       const receipt = await this.replayLookup<{
         jobId: string;
@@ -1940,6 +2019,8 @@ export class LiveFacadeSession {
         syncReference,
         transcriptParams,
         transcriptModelDir,
+        diarizationParams,
+        diarizationModelDir,
       );
       return ok<MediaAnalyzeStartResult>({
         ...ledgerValue,
@@ -4066,6 +4147,8 @@ export class LiveFacadeSession {
     syncReference?: SyncOffsetReference,
     transcriptParams?: ResolvedTranscriptParams,
     transcriptModelDir?: string | null,
+    diarizationParams?: ResolvedDiarizationParams,
+    diarizationModelDir?: string | null,
   ): Promise<void> {
     let persistedRecordId: string | null = null;
     try {
@@ -4098,12 +4181,14 @@ export class LiveFacadeSession {
         ? await analyzeBeatGrid(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("beatGrid", percent) })) : undefined;
       const wantsSpeechActivity = analysisTypes.includes("speechActivity");
       const wantsTranscript = analysisTypes.includes("speechTranscript");
-      const speechActivity = wantsSpeechActivity || wantsTranscript
+      const wantsDiarization = analysisTypes.includes("speakerDiarization");
+      const vadStage = wantsSpeechActivity ? "speechActivity" : wantsTranscript ? "speechTranscript" : "speakerDiarization";
+      const speechActivity = wantsSpeechActivity || wantsTranscript || wantsDiarization
         ? await analyzeSpeechActivity(sourcePath, range, vadParams, controller.signal, (percent) => this.jobs.markProgress(jobId, {
             phase: "rendering",
             percent: wantsSpeechActivity
               ? progressPlan.percent("speechActivity", percent)
-              : progressPlan.percent("speechTranscript", percent * 0.2),
+              : progressPlan.percent(vadStage, percent * 0.2),
           })) : undefined;
       const speechTranscript = wantsTranscript
         ? await transcribeSpeechRegions(
@@ -4117,6 +4202,19 @@ export class LiveFacadeSession {
             (percent) => this.jobs.markProgress(jobId, {
               phase: "rendering",
               percent: progressPlan.percent("speechTranscript", (wantsSpeechActivity ? 0 : 0.2) + (wantsSpeechActivity ? 1 : 0.8) * percent),
+            }),
+          ) : undefined;
+      const speakerDiarization = wantsDiarization
+        ? await analyzeSpeakerDiarization(
+            sourcePath,
+            range,
+            speechActivity!.speechRegions,
+            diarizationParams!,
+            diarizationModelDir ?? null,
+            controller.signal,
+            (percent) => this.jobs.markProgress(jobId, {
+              phase: "rendering",
+              percent: progressPlan.percent("speakerDiarization", (wantsSpeechActivity || wantsTranscript ? 0 : 0.2) + (wantsSpeechActivity || wantsTranscript ? 1 : 0.8) * percent),
             }),
           ) : undefined;
       const syncOffset = analysisTypes.includes("syncOffset")
@@ -4155,6 +4253,7 @@ export class LiveFacadeSession {
         ...(beatGrid ? { beatGrid: { ...beatGrid, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         ...(speechActivity ? { speechActivity: { ...speechActivity, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         ...(speechTranscript ? { speechTranscript: { ...speechTranscript, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
+        ...(speakerDiarization ? { speakerDiarization: { ...speakerDiarization, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         ...(syncOffset ? { syncOffset: { ...syncOffset, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         technicalQuality: {
           mediaId,
@@ -4192,6 +4291,7 @@ export class LiveFacadeSession {
         ...(beatGrid ? { beatGrid: compactAnalysisFacts("beatGrid", summary.beatGrid!) } : {}),
         ...(speechActivity ? { speechActivity: compactAnalysisFacts("speechActivity", summary.speechActivity!) } : {}),
         ...(speechTranscript ? { speechTranscript: compactAnalysisFacts("speechTranscript", summary.speechTranscript!) } : {}),
+        ...(speakerDiarization ? { speakerDiarization: compactAnalysisFacts("speakerDiarization", summary.speakerDiarization!) } : {}),
         ...(syncOffset ? { syncOffset: compactAnalysisFacts("syncOffset", summary.syncOffset!) } : {}),
       };
       // Durable, traceable record: audio analysis requires artifactRoot so
@@ -4224,6 +4324,7 @@ export class LiveFacadeSession {
           ...(silence ? { silenceParams: silence.parameters } : {}),
           ...(speechActivity ? { vadParams: speechActivity.parameters } : {}),
           ...(speechTranscript ? { transcriptParams: speechTranscript.parameters } : {}),
+          ...(speakerDiarization ? { diarizationParams: speakerDiarization.parameters } : {}),
           ...(syncOffset ? { syncOffsetParams: syncOffset.parameters } : {}),
         },
         provenance: [
@@ -4244,6 +4345,9 @@ export class LiveFacadeSession {
             : []),
           ...(analysisTypes.includes("speechTranscript")
             ? [{ kind: "local-measurement" as const, provider: "local-sensevoice-funasr-python", analysisType: "speechTranscript" }]
+            : []),
+          ...(analysisTypes.includes("speakerDiarization")
+            ? [{ kind: "local-measurement" as const, provider: "local-campplus-modelscope-python", analysisType: "speakerDiarization" }]
             : []),
           ...(analysisTypes.includes("syncOffset")
             ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-pcm-gcc-phat", analysisType: "syncOffset" }]
@@ -4266,6 +4370,7 @@ export class LiveFacadeSession {
           ...(beatGrid ? [{ source: "beatGrid", facts: beatGrid }] : []),
           ...(speechActivity ? [{ source: "speechActivity", facts: speechActivity }] : []),
           ...(speechTranscript ? [{ source: "speechTranscript", facts: speechTranscript }] : []),
+          ...(speakerDiarization ? [{ source: "speakerDiarization", facts: speakerDiarization }] : []),
           ...(syncOffset ? [{ source: "syncOffset", facts: syncOffset }] : []),
           ...(candidates?.sceneCuts ? [{ source: "sceneCuts", facts: candidates.sceneCuts }] : []),
           ...(candidates?.blackFrames ? [{ source: "blackFrames", facts: candidates.blackFrames }] : []),
@@ -4283,6 +4388,9 @@ export class LiveFacadeSession {
             : []),
           ...(speechTranscript
             ? [{ source: "speechTranscript", note: "transcript text/emotion/event tags are SenseVoice model output; timestamps come from the external Silero VAD sentence segmentation, not word-level ASR timing; emotion/event labels are segment-level, not precise intervals", segmentCount: speechTranscript.segmentCount, languageCounts: speechTranscript.languageCounts }]
+            : []),
+          ...(speakerDiarization
+            ? [{ source: "speakerDiarization", note: "speaker labels are anonymous CAM++ cosine clusters, not identities; overlapping speech is not separated and boundaries are external VAD boundaries", speakerCount: speakerDiarization.speakerCount, threshold: speakerDiarization.parameters.threshold }]
             : []),
           ...(syncOffset
             ? [{ source: "syncOffset", note: "GCC-PHAT correlation statistics, not a calibrated confidence; a positive offset means the target lags the reference; clock drift is reported, never silently corrected", verdict: syncOffset.verdict, offsetSec: syncOffset.offsetSec, prominenceDb: syncOffset.peaks.prominenceDb, marginToSecondPeakDb: syncOffset.peaks.marginToSecondPeakDb, driftDetected: syncOffset.drift.detected }]
@@ -4304,6 +4412,13 @@ export class LiveFacadeSession {
                 { field: "speechTranscript.wordTimestamps", note: "SenseVoice-Small emits no timestamps; stored segment boundaries are external Silero VAD sentence boundaries" },
                 { field: "speechTranscript.confidence", note: "The model returns no confidence; no confidence value is fabricated" },
                 { field: "speechTranscript.modelRevision", note: "The pinned model file is sha-verified, but the upstream repository may publish newer revisions under the same name" },
+              ]
+            : []),
+          ...(analysisTypes.includes("speakerDiarization")
+            ? [
+                { field: "speakerDiarization.identity", note: "Labels are anonymous clusters; no real speaker identity is inferred" },
+                { field: "speakerDiarization.overlap", note: "Overlapping speakers are not separated; a mixed segment is assigned to its dominant cluster" },
+                { field: "speakerDiarization.confidence", note: "Cosine similarity is a thresholding statistic, not a calibrated confidence" },
               ]
             : []),
         ],
@@ -4526,6 +4641,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "media.analyze_start": (params) => session.mediaAnalyzeStart(params),
     "audio.process.normalize": (params) => session.audioProcessNormalize(params),
     "audio.process.denoise": (params) => session.audioProcessDenoise(params),
+    "audio.process.separate": (params) => session.audioProcessSeparate(params),
     "audio.process.register": (params) => session.audioProcessRegister(params),
     "timeline.get": () => session.timelineGet(),
     "timeline.query": (params) => session.timelineQuery(params),

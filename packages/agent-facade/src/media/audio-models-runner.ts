@@ -19,7 +19,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { stat, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +36,24 @@ export const SENSEVOICE_MODEL = {
   license: "Apache-2.0 (FunAudioLLM/SenseVoiceSmall)",
 } as const;
 
+/** The single validated CAM++ speaker-verification model. */
+export const SPEAKER_DIARIZATION_MODEL = {
+  repo: "iic/speech_campplus_sv_zh-cn_16k-common",
+  file: "campplus_cn_common.bin",
+  bytes: 28_036_335,
+  sha256: "3388cf5fd3493c9ac9c69851d8e7a8badcfb4f3dc631020c4961371646d5ada8",
+  license: "Apache-2.0 (3D-Speaker / iic)",
+} as const;
+
+/** Demucs htdemucs bag-of-models weight file (HF adefossez/HTDemucs). */
+export const DEMUCS_MODEL = {
+  repo: "adefossez/HTDemucs",
+  file: "955717e8.safetensors",
+  bytes: 84_025_440,
+  sha256: "d9fa14133cfcc034a6758923bb3a8ca9f8dfd0b582134643bbf83f72c17576dd",
+  license: "MIT (demucs; model weights released by the Demucs authors)",
+} as const;
+
 /** Optional component manifest shown before any download is authorized. */
 export const AUDIO_MODEL_COMPONENTS = {
   speechTranscript: {
@@ -49,14 +67,24 @@ export const AUDIO_MODEL_COMPONENTS = {
     timestampSource: "external-vad-silero",
   },
   speakerDiarization: {
-    implemented: false,
-    reason: "Not wired into a facade verb yet; the shared worker seam is in place for a later round.",
+    implemented: true,
+    task: "diarize",
+    model: { ...SPEAKER_DIARIZATION_MODEL, displayName: "CAM++ speaker verification" },
     validatedPackages: { modelscope: "1.34.0", torch: "2.10.0", soundfile: "0.13.1", numpy: "1.26.4" },
+    requiredPackages: ["modelscope", "torch", "soundfile", "numpy"],
+    downloadBytes: SPEAKER_DIARIZATION_MODEL.bytes,
+    estimatedDiskBytes: 60_000_000,
+    timestampSource: "external-vad-silero",
   },
   separation: {
-    implemented: false,
-    reason: "Not wired into a facade verb yet; the shared worker seam is in place for a later round.",
-    validatedPackages: { demucs: "4.x", torch: "2.9.0", soundfile: "0.13.1" },
+    implemented: true,
+    task: "separate",
+    model: { ...DEMUCS_MODEL, displayName: "Demucs htdemucs" },
+    validatedPackages: { demucs: "4.1.0", torch: "2.9.1", soundfile: "0.14.0", numpy: "1.26.4" },
+    requiredPackages: ["demucs", "torch", "soundfile", "numpy"],
+    downloadBytes: DEMUCS_MODEL.bytes,
+    estimatedDiskBytes: 120_000_000,
+    timestampSource: "source-range-start",
   },
   denoiseDeep: {
     implemented: false,
@@ -89,9 +117,11 @@ async function findOnPath(name: string): Promise<string | null> {
   return null;
 }
 
-async function candidateInterpreters(): Promise<InterpreterCandidate[]> {
+async function candidateInterpreters(task?: unknown): Promise<InterpreterCandidate[]> {
   const candidates: InterpreterCandidate[] = [];
-  const explicit = process.env.REELTERMINAL_AUDIO_MODELS_PYTHON ?? process.env.REELTERMINAL_PYTHON_PATH;
+  const explicit = task === "separate"
+    ? process.env.REELTERMINAL_SEPARATION_PYTHON ?? process.env.REELTERMINAL_AUDIO_MODELS_PYTHON ?? process.env.REELTERMINAL_PYTHON_PATH
+    : process.env.REELTERMINAL_AUDIO_MODELS_PYTHON ?? process.env.REELTERMINAL_PYTHON_PATH;
   if (explicit && explicit.length > 0) candidates.push({ python: explicit });
   for (const name of ["python3", "python"]) {
     const onPath = await findOnPath(name);
@@ -153,6 +183,32 @@ export function senseVoiceModelDir(): string {
   return join(audioModelsCacheDir(), "models", "iic", "SenseVoiceSmall");
 }
 
+/** The exact local CAM++ directory; env override must still match the pinned weights. */
+export function speakerDiarizationModelDir(): string {
+  const override = process.env.REELTERMINAL_CAMPP_SV_MODEL_DIR;
+  if (override && override.length > 0) return override;
+  return join(audioModelsCacheDir(), "models", "iic", "speech_campplus_sv_zh-cn_16k-common");
+}
+
+/** Hugging Face cache root used for the optional Demucs weights. */
+export function demucsCacheDir(): string {
+  const override = process.env.REELTERMINAL_DEMUCS_CACHE;
+  if (override && override.length > 0) return override;
+  return join(homedir(), ".reelterminal", "models", "demucs");
+}
+
+/** Locate the htdemucs weight file inside the HF snapshot layout. */
+async function findDemucsWeight(): Promise<string | null> {
+  const snapshots = join(demucsCacheDir(), "hub", "models--adefossez--HTDemucs", "snapshots");
+  const entries = await readdir(snapshots, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const candidate = join(snapshots, entry.name, DEMUCS_MODEL.file);
+    if ((await stat(candidate).catch(() => null))?.isFile()) return candidate;
+  }
+  return null;
+}
+
 async function sha256File(path: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const hash = createHash("sha256");
@@ -163,66 +219,124 @@ async function sha256File(path: string): Promise<string> {
   });
 }
 
-export interface SenseVoiceModelStatus {
+export interface PinnedAudioModelStatus {
   readonly path: string;
   readonly present: boolean;
   readonly bytes: number;
   readonly verified: boolean;
   readonly reason: string | null;
 }
+/** Backwards-compatible name used by the transcript capability. */
+export type SenseVoiceModelStatus = PinnedAudioModelStatus;
 
-let modelStatusCache: { readonly key: string; readonly value: SenseVoiceModelStatus } | null = null;
+const modelStatusCaches = new Map<string, { readonly key: string; readonly value: PinnedAudioModelStatus }>();
 
-/** Cheap presence/size check for capability reporting (no 936 MB hash). */
-export async function senseVoiceModelPresence(): Promise<{ path: string; present: boolean; bytes: number }> {
-  const path = join(senseVoiceModelDir(), SENSEVOICE_MODEL.file);
+async function pinnedModelStatus(
+  model: { readonly repo: string; readonly file: string; readonly bytes: number; readonly sha256: string },
+  directory: string,
+  envHint: string,
+  allowDownloadHint: string,
+): Promise<PinnedAudioModelStatus> {
+  const path = join(directory, model.file);
   const info = await stat(path).catch(() => null);
-  return { path, present: info?.isFile() === true, bytes: info?.size ?? 0 };
-}
-
-/** Verify the pinned weights once per path/size/mtime (hashing 936 MB is cached). */
-export async function senseVoiceModelStatus(): Promise<SenseVoiceModelStatus> {
-  const directory = senseVoiceModelDir();
-  const path = join(directory, SENSEVOICE_MODEL.file);
-  const info = await stat(path).catch(() => null);
-  const key = `${path}|${info?.size ?? 0}|${Math.round(info?.mtimeMs ?? 0)}`;
-  if (modelStatusCache?.key === key) return modelStatusCache.value;
-  let value: SenseVoiceModelStatus;
+  const key = `${model.file}|${path}|${info?.size ?? 0}|${Math.round(info?.mtimeMs ?? 0)}`;
+  const cached = modelStatusCaches.get(key);
+  if (cached) return cached.value;
+  let value: PinnedAudioModelStatus;
   if (!info?.isFile()) {
     value = {
       path,
       present: false,
       bytes: 0,
       verified: false,
-      reason: `SenseVoice model is not present at ${path}. First use needs ${SENSEVOICE_MODEL.bytes} bytes (≈${Math.round(SENSEVOICE_MODEL.bytes / 1_000_000)} MB download, ≈${Math.round(AUDIO_MODEL_COMPONENTS.speechTranscript.estimatedDiskBytes / 1_000_000)} MB disk) from ${SENSEVOICE_MODEL.repo}; set REELTERMINAL_SENSEVOICE_MODEL_DIR to a local copy or authorize the download with transcriptParams.allowModelDownload:true`,
+      reason: `${model.repo} is not present at ${path}. First use needs ${model.bytes} bytes (≈${Math.round(model.bytes / 1_000_000)} MB download) from ModelScope; set ${envHint} to a local copy or authorize the download with ${allowDownloadHint}`,
     };
-  } else if (info.size !== SENSEVOICE_MODEL.bytes) {
+  } else if (info.size !== model.bytes) {
     value = {
       path,
       present: true,
       bytes: info.size,
       verified: false,
-      reason: `SenseVoice model at ${path} has ${info.size} bytes, expected ${SENSEVOICE_MODEL.bytes} (${SENSEVOICE_MODEL.repo}); replace it with the pinned weights`,
+      reason: `${model.repo} at ${path} has ${info.size} bytes, expected ${model.bytes}; replace it with the pinned weights`,
     };
   } else {
     const digest = await sha256File(path);
-    value = digest === SENSEVOICE_MODEL.sha256
+    value = digest === model.sha256
       ? { path, present: true, bytes: info.size, verified: true, reason: null }
       : {
           path,
           present: true,
           bytes: info.size,
           verified: false,
-          reason: `SenseVoice model at ${path} does not match the pinned ${SENSEVOICE_MODEL.repo} weights (sha256 ${digest.slice(0, 12)}…); replace it from the pinned source`,
+          reason: `${model.repo} at ${path} does not match the pinned weights (sha256 ${digest.slice(0, 12)}…); replace it from the pinned source`,
         };
   }
-  modelStatusCache = { key, value };
+  modelStatusCaches.set(key, { key, value });
   return value;
 }
 
-/** Clear the sha cache after tests change the model path or file. */
+/** Cheap presence/size check for capability reporting (no model hashing). */
+export async function senseVoiceModelPresence(): Promise<{ path: string; present: boolean; bytes: number }> {
+  const path = join(senseVoiceModelDir(), SENSEVOICE_MODEL.file);
+  const info = await stat(path).catch(() => null);
+  return { path, present: info?.isFile() === true, bytes: info?.size ?? 0 };
+}
+
+export async function speakerDiarizationModelPresence(): Promise<{ path: string; present: boolean; bytes: number }> {
+  const path = join(speakerDiarizationModelDir(), SPEAKER_DIARIZATION_MODEL.file);
+  const info = await stat(path).catch(() => null);
+  return { path, present: info?.isFile() === true, bytes: info?.size ?? 0 };
+}
+
+/** Verify the pinned SenseVoice weights once per path/size/mtime. */
+export async function senseVoiceModelStatus(): Promise<PinnedAudioModelStatus> {
+  return pinnedModelStatus(SENSEVOICE_MODEL, senseVoiceModelDir(), "REELTERMINAL_SENSEVOICE_MODEL_DIR", "transcriptParams.allowModelDownload:true");
+}
+
+/** Verify the pinned CAM++ weights once per path/size/mtime. */
+export async function speakerDiarizationModelStatus(): Promise<PinnedAudioModelStatus> {
+  return pinnedModelStatus(SPEAKER_DIARIZATION_MODEL, speakerDiarizationModelDir(), "REELTERMINAL_CAMPP_SV_MODEL_DIR", "diarizationParams.allowModelDownload:true");
+}
+
+/** Cheap Demucs presence check (no 84 MB hash). */
+export async function demucsModelPresence(): Promise<{ path: string | null; present: boolean; bytes: number }> {
+  const path = await findDemucsWeight();
+  const info = path ? await stat(path).catch(() => null) : null;
+  return { path, present: info?.isFile() === true, bytes: info?.size ?? 0 };
+}
+
+/** Verify the pinned htdemucs weights once per path/size/mtime. */
+export async function demucsModelStatus(): Promise<PinnedAudioModelStatus> {
+  const path = await findDemucsWeight();
+  if (!path) {
+    return {
+      path: join(demucsCacheDir(), "hub", "models--adefossez--HTDemucs", "snapshots", "<hash>", DEMUCS_MODEL.file),
+      present: false,
+      bytes: 0,
+      verified: false,
+      reason: `Demucs ${DEMUCS_MODEL.repo} is not present in ${demucsCacheDir()}. First use needs ${DEMUCS_MODEL.bytes} bytes (≈${Math.round(DEMUCS_MODEL.bytes / 1_000_000)} MB download) from Hugging Face; set REELTERMINAL_DEMUCS_CACHE to a populated HF cache or authorize the download with separationParams.allowModelDownload:true`,
+    };
+  }
+  const info = await stat(path);
+  const key = `demucs|${path}|${info.size}|${Math.round(info.mtimeMs)}`;
+  const cached = modelStatusCaches.get(key);
+  if (cached) return cached.value;
+  let value: PinnedAudioModelStatus;
+  if (info.size !== DEMUCS_MODEL.bytes) {
+    value = { path, present: true, bytes: info.size, verified: false, reason: `Demucs weights at ${path} have ${info.size} bytes, expected ${DEMUCS_MODEL.bytes}; replace them with the pinned file` };
+  } else {
+    const digest = await sha256File(path);
+    value = digest === DEMUCS_MODEL.sha256
+      ? { path, present: true, bytes: info.size, verified: true, reason: null }
+      : { path, present: true, bytes: info.size, verified: false, reason: `Demucs weights at ${path} do not match the pinned ${DEMUCS_MODEL.repo} file (sha256 ${digest.slice(0, 12)}…); replace them` };
+  }
+  modelStatusCaches.set(key, { key, value });
+  return value;
+}
+
+/** Clear the sha caches after tests change a model path or file. */
 export function clearSenseVoiceModelStatusCacheForTests(): void {
-  modelStatusCache = null;
+  modelStatusCaches.clear();
 }
 
 interface WorkerOptions {
@@ -339,18 +453,31 @@ export async function runAudioModelProcess(
   });
 }
 
+export const DEFAULT_AUDIO_MODEL_PACKAGES = ["funasr", "modelscope", "torch", "soundfile"] as const;
+
+/** Per-task import requirements; transcript and diarization need different packages. */
+export function requiredAudioModelPackages(task: unknown): readonly string[] {
+  if (task === "diarize") return ["modelscope", "torch", "soundfile", "numpy"];
+  if (task === "separate") return ["demucs", "torch", "soundfile", "numpy"];
+  if (task === "deepfilter") return ["deepfilternet", "torch", "soundfile", "numpy"];
+  return DEFAULT_AUDIO_MODEL_PACKAGES;
+}
+
 /** Test seam for the process runner (the transcript kernel takes an injected transcribe). */
 export async function runAudioModelTask(
   request: Record<string, unknown>,
   options: WorkerOptions = {},
 ): Promise<Record<string, unknown>> {
-  const runtime = await probeAudioModelsRuntime();
+  const runtime = await probeAudioModelsRuntime(requiredAudioModelPackages(request.task), request.task);
   if (!runtime.available) throw new FacadeError("UNSUPPORTED", runtime.reason);
   return runAudioModelProcess(runtime.details.python, join(runtime.details.scriptDir, "audio_models.py"), request, options);
 }
 
 /** Probe once per process: interpreter + script + import availability. */
-export async function probeAudioModelsRuntime(): Promise<
+export async function probeAudioModelsRuntime(
+  requiredPackages: readonly string[] = DEFAULT_AUDIO_MODEL_PACKAGES,
+  task?: unknown,
+): Promise<
   { available: true; details: AudioModelProbeResult } | { available: false; reason: string }
 > {
   if (probeOverride) return probeOverride();
@@ -358,20 +485,21 @@ export async function probeAudioModelsRuntime(): Promise<
   if (!script) {
     return { available: false, reason: "the audio-model worker script audio_models.py was not found beside this build — set REELTERMINAL_AUDIO_MODELS_SCRIPT_DIR or restore packages/agent-facade/python" };
   }
-  const candidates = await candidateInterpreters();
+  const candidates = await candidateInterpreters(task);
   if (candidates.length === 0) {
-    return { available: false, reason: "no Python interpreter is available for optional audio models — set REELTERMINAL_AUDIO_MODELS_PYTHON to an interpreter with funasr/modelscope/torch/soundfile" };
+    return { available: false, reason: "no Python interpreter is available for optional audio models — set REELTERMINAL_AUDIO_MODELS_PYTHON to an interpreter with the required packages" };
   }
   const scriptInfo = await stat(script);
-  const key = `${candidates.map((candidate) => candidate.python).join("|")}|${script}|${scriptInfo.size}|${Math.round(scriptInfo.mtimeMs)}`;
+  const key = `${requiredPackages.join(",")}|${task ?? "default"}|${candidates.map((candidate) => candidate.python).join("|")}|${script}|${scriptInfo.size}|${Math.round(scriptInfo.mtimeMs)}`;
   if (probeCache?.key === key) return probeCache.result;
   let lastReason = "no candidate interpreter could run the audio-model probe";
   for (const candidate of candidates) {
     try {
       const result = await runAudioModelProcess(candidate.python, script, { task: "probe" }, { timeoutMs: 180_000 });
       const packages = (result.packages ?? {}) as Record<string, boolean>;
-      if (!packages.funasr || !packages.modelscope || !packages.torch || !packages.soundfile) {
-        lastReason = `interpreter "${candidate.python}" cannot import the required audio-model packages (funasr/modelscope/torch/soundfile); install them or point REELTERMINAL_AUDIO_MODELS_PYTHON at an environment that has them`;
+      const missing = requiredPackages.filter((name) => !packages[name]);
+      if (missing.length > 0) {
+        lastReason = `interpreter "${candidate.python}" cannot import the required audio-model packages (${missing.join(", ")}); install them or point REELTERMINAL_AUDIO_MODELS_PYTHON at an environment that has them`;
         continue;
       }
       const details: AudioModelProbeResult = {

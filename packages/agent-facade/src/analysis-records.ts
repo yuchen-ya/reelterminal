@@ -78,6 +78,8 @@ export interface AnalysisRecord {
       readonly allowModelDownload: boolean;
       readonly vadParams: { readonly threshold: number; readonly exitThreshold: number; readonly minSpeechSec: number; readonly minSilenceSec: number; readonly padSec: number };
     };
+    /** Effective anonymous-diarization tuning; absent on historical records. */
+    readonly diarizationParams?: { readonly threshold: number; readonly maxSpeakers: number; readonly allowModelDownload: boolean };
   };
   readonly provenance: readonly {
     readonly kind: AnalysisProvenance;
@@ -130,6 +132,7 @@ export interface AnalysisReplayParams {
   readonly vadParams?: { readonly threshold: number; readonly minSpeechSec: number; readonly minSilenceSec: number; readonly padSec: number };
   readonly syncOffsetParams?: { readonly referenceMediaId: string; readonly referenceStartSec: number; readonly searchRangeSec: number; readonly windowSec: number };
   readonly transcriptParams?: { readonly language: string; readonly useItn: boolean; readonly allowModelDownload: boolean };
+  readonly diarizationParams?: { readonly threshold: number; readonly maxSpeakers: number; readonly allowModelDownload: boolean };
 }
 
 export function analysisReplayParams(record: AnalysisRecord): AnalysisReplayParams {
@@ -168,6 +171,7 @@ export function analysisReplayParams(record: AnalysisRecord): AnalysisReplayPara
           },
         }
       : {}),
+    ...(record.config.diarizationParams ? { diarizationParams: record.config.diarizationParams } : {}),
   };
 }
 
@@ -266,6 +270,7 @@ const AUDIO_SERIES = {
   "beatGrid.beats": { source: "beatGrid", field: "beats", count: "beatCount" },
   "speechActivity.speechRegions": { source: "speechActivity", field: "speechRegions", count: "regionCount" },
   "speechTranscript.segments": { source: "speechTranscript", field: "segments", count: "segmentCount" },
+  "speakerDiarization.segments": { source: "speakerDiarization", field: "segments", count: "segmentCount" },
 } as const;
 type AudioSeries = keyof typeof AUDIO_SERIES;
 
@@ -274,7 +279,8 @@ export function compactAnalysisFacts(source: string, facts: Record<string, unkno
   const omitted = source === "audioSummary" ? ["waveform", "onsets", "silence"]
     : source === "silence" ? ["silentRegions"] : source === "beatGrid" ? ["beats"]
     : source === "speechActivity" ? ["speechRegions"]
-    : source === "speechTranscript" ? ["segments"] : [];
+    : source === "speechTranscript" ? ["segments"]
+    : source === "speakerDiarization" ? ["segments"] : [];
   return Object.fromEntries(Object.entries(facts).filter(([key]) => !omitted.includes(key)));
 }
 

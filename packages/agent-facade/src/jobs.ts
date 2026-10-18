@@ -23,15 +23,16 @@ import type {
 import { compactAnalysisFacts } from "./analysis-records";
 import type { NormalizeAudioArtifact } from "./audio-normalize";
 import type { DenoiseAudioArtifact } from "./audio-denoise";
+import type { SeparatedAudioArtifact } from "./audio-separate";
 import type { AnalysisJobResult, JobStatusView } from "./types";
 
 /** Completed derived-audio results share these registration/verification fields. */
-export type ProcessedAudioArtifact = NormalizeAudioArtifact | DenoiseAudioArtifact;
+export type ProcessedAudioArtifact = NormalizeAudioArtifact | DenoiseAudioArtifact | SeparatedAudioArtifact;
 
 function compactAnalysisJobResult(result: AnalysisJobResult): AnalysisJobResult {
   const summary: Record<string, unknown> = {};
   for (const [source, value] of Object.entries(result.summary)) {
-    const projected = (source === "audioSummary" || source === "silence" || source === "beatGrid" || source === "speechActivity" || source === "speechTranscript") &&
+    const projected = (source === "audioSummary" || source === "silence" || source === "beatGrid" || source === "speechActivity" || source === "speechTranscript" || source === "speakerDiarization") &&
       value !== null && typeof value === "object" && !Array.isArray(value)
       ? compactAnalysisFacts(source, value as Record<string, unknown>)
       : value;

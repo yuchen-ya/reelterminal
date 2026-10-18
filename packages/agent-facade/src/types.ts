@@ -42,6 +42,7 @@ import type {
 } from "./providers";
 import type { NormalizeAudioArtifact } from "./audio-normalize";
 import type { DenoiseAudioArtifact } from "./audio-denoise";
+import type { SeparatedAudioArtifact } from "./audio-separate";
 import { WORKSPACE_VERBS } from "./workspace-library";
 export { WORKSPACE_VERBS } from "./workspace-library";
 export type { WorkspaceVerb } from "./workspace-library";
@@ -71,6 +72,7 @@ export const FACADE_VERBS = [
   "media.analyze_start",
   "audio.process.normalize",
   "audio.process.denoise",
+  "audio.process.separate",
   "audio.process.register",
   "analysis.list",
   "analysis.get",
@@ -350,6 +352,8 @@ export interface Capabilities {
   readonly audioNormalize: CapabilityStatus;
   /** Local tiered FFmpeg denoise with measured delay compensation and remeasurement. */
   readonly audioDenoise: CapabilityStatus;
+  /** Optional local Demucs htdemucs vocal/instrumental separation. */
+  readonly audioSeparation: CapabilityStatus;
   /** User-level material library (material.* verbs); headless reports unavailable. */
   readonly materialLibrary: import("./material-library").MaterialLibraryCapability;
   /** User-level custom fonts (font.* verbs); headless reports unavailable. */
@@ -705,6 +709,24 @@ export interface AudioProcessDenoiseParams {
 
 export type AudioProcessDenoiseResult = AudioProcessNormalizeResult;
 
+/** Demucs htdemucs separation tuning; the produced WAV is sample-aligned to the source range. */
+export interface AudioProcessSeparateParams {
+  readonly mediaId: string;
+  readonly audioStream: number;
+  readonly startSec: number;
+  readonly endSec: number;
+  readonly sampleRate: 48000;
+  readonly channels: 1 | 2;
+  /** "vocals" keeps the vocal stem; "instrumental" sums drums+bass+other. */
+  readonly target: "vocals" | "instrumental";
+  /** Explicit consent to download the pinned ~84 MB htdemucs weights on first use. Default false. */
+  readonly allowModelDownload?: boolean;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey: string;
+}
+
+export type AudioProcessSeparateResult = AudioProcessNormalizeResult;
+
 export interface AudioProcessRegisterParams {
   readonly jobId: string;
   readonly expectedRevision: number;
@@ -779,6 +801,7 @@ export const MEDIA_ANALYSIS_TYPES = [  "technicalQuality",
   "beatGrid",
   "speechActivity",
   "speechTranscript",
+  "speakerDiarization",
   "syncOffset",
   "loudness",
   "blackFrames",
@@ -852,11 +875,25 @@ export interface MediaTranscriptParams {
   readonly allowModelDownload?: boolean;
 }
 
+/**
+ * Tuning for the "speakerDiarization" analysis type (AUD-09): anonymous CAM++
+ * clustering over externally detected VAD segments. Labels are clusters, not
+ * identities; overlapping speech is not separated.
+ */
+export interface MediaDiarizationParams {
+  /** Cosine similarity threshold in [0.3, 0.95]; default 0.7. */
+  readonly threshold?: number;
+  /** Maximum accepted anonymous clusters in [1, 20]; default 8. Exceeding it is rejected, never silently merged. */
+  readonly maxSpeakers?: number;
+  /** Explicit consent to download the pinned ~28 MB CAM++ model on first use. Default false. */
+  readonly allowModelDownload?: boolean;
+}
+
 export interface MediaAnalyzeStartParams {
   /** Explicit consent to send this range to the configured Alibaba cloud service. */
   readonly cloudUpload?: boolean;
   readonly reviewQuestion?: string;
-  /** Original media seconds; audioSummary/silence/beatGrid/speechActivity/speechTranscript/syncOffset maximum 120s, videoReview explicit range maximum 20s. */
+  /** Original media seconds; audioSummary/silence/beatGrid/speechActivity/speechTranscript/speakerDiarization/syncOffset maximum 120s, videoReview explicit range maximum 20s. */
   readonly startSec?: number;
   readonly endSec?: number;
   readonly mediaId: string;
@@ -869,6 +906,8 @@ export interface MediaAnalyzeStartParams {
   readonly syncOffsetParams?: MediaSyncOffsetParams;
   /** Local SenseVoice transcript tuning; valid only when analysisTypes includes "speechTranscript". */
   readonly transcriptParams?: MediaTranscriptParams;
+  /** Anonymous CAM++ diarization tuning; valid only when analysisTypes includes "speakerDiarization". */
+  readonly diarizationParams?: MediaDiarizationParams;
   /**
    * Re-check linkage: the id of a previous analysis record. The new run uses
    * the same configuration discipline and its record links back via
@@ -2507,6 +2546,7 @@ export const ANALYSIS_EVENT_SERIES = [
   "beatGrid.beats",
   "speechActivity.speechRegions",
   "speechTranscript.segments",
+  "speakerDiarization.segments",
 ] as const;
 
 export type AnalysisEventSeries = (typeof ANALYSIS_EVENT_SERIES)[number];
@@ -2624,7 +2664,7 @@ export interface JobStatusView {
    */
   readonly artifact: ArtifactRef | null;
   /** Present for completed analysis or audio-processing jobs; null otherwise. */
-  readonly result: AnalysisJobResult | NormalizeAudioArtifact | DenoiseAudioArtifact | null;
+  readonly result: AnalysisJobResult | NormalizeAudioArtifact | DenoiseAudioArtifact | SeparatedAudioArtifact | null;
   readonly error: { readonly code: string; readonly message: string } | null;
   /**
    * export.start destinationPath outcome (both null when no destination was

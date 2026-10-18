@@ -37,6 +37,8 @@ import type {
   MediaAnalyzeStartResult,
   AudioProcessDenoiseParams,
   AudioProcessDenoiseResult,
+  AudioProcessSeparateParams,
+  AudioProcessSeparateResult,
   AudioProcessNormalizeParams,
   AudioProcessNormalizeResult,
   AudioProcessRegisterParams,
@@ -116,6 +118,9 @@ export interface AgentFacade extends BundledToolBindings {
   readonly "audio.process.denoise": (
     params: AudioProcessDenoiseParams,
   ) => Promise<FacadeResult<AudioProcessDenoiseResult>>;
+  readonly "audio.process.separate": (
+    params: AudioProcessSeparateParams,
+  ) => Promise<FacadeResult<AudioProcessSeparateResult>>;
   readonly "audio.process.register": (
     params: AudioProcessRegisterParams,
   ) => Promise<FacadeResult<AudioProcessRegisterResult>>;
@@ -272,6 +277,7 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "media.analyze_start": (params) => session.mediaAnalyzeStart(params),
     "audio.process.normalize": (params) => session.audioProcessNormalize(params),
     "audio.process.denoise": (params) => session.audioProcessDenoise(params),
+    "audio.process.separate": (params) => session.audioProcessSeparate(params),
     "audio.process.register": (params) => session.audioProcessRegister(params),
     "timeline.get": () => session.timelineGet(),
     "timeline.query": (params) => session.timelineQuery(params),

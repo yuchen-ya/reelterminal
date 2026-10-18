@@ -120,7 +120,7 @@ export const EMITTED_VERB_JSON_SCHEMAS: Readonly<
 const PROJECT_WORKSPACE_VERBS = new Set<FacadeVerb>([
   "project.save", "project.rename", "project.get_state", "project.changes",
   "requirements.list", "requirements.get",
-  "media.import", "media.analyze_start", "audio.process.normalize", "audio.process.denoise", "audio.process.register", "timeline.get", "timeline.query",
+  "media.import", "media.analyze_start", "audio.process.normalize", "audio.process.denoise", "audio.process.separate", "audio.process.register", "timeline.get", "timeline.query",
   "timeline.mapSourceTimes", "editor.control",
   "edit.validate", "edit.apply", "history.get", "history.control",
   "preview.render_frame", "preview.render_comparison", "visual.inspect",
@@ -129,7 +129,7 @@ const PROJECT_WORKSPACE_VERBS = new Set<FacadeVerb>([
 ]);
 
 const REVISION_GUARDED_VERBS = new Set<FacadeVerb>([
-  "project.save", "project.rename", "media.import", "media.analyze_start", "audio.process.normalize", "audio.process.denoise", "audio.process.register",
+  "project.save", "project.rename", "media.import", "media.analyze_start", "audio.process.normalize", "audio.process.denoise", "audio.process.separate", "audio.process.register",
   "edit.apply", "history.control", "preview.render_frame",
   "preview.render_comparison", "visual.inspect", "export.start",
   "material.attach", "preset.apply",

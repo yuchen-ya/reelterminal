@@ -16,9 +16,11 @@ Tasks:
   probe       report import/version/CUDA availability without loading weights
   transcribe  SenseVoice-Small over caller-supplied segment boundaries
               (timestamps come from the caller's VAD, never from SenseVoice)
+  diarize     CAM++ embeddings + cosine-threshold clustering over caller-supplied
+              VAD segments; labels are anonymous clusters, never real identities
 
-Only this task is part of the current product; the probe already reports which
-other optional packages a later round could use, without claiming they work.
+The remaining AUD-09 separation task is added in the next step and uses the same
+one-process-per-task contract.
 """
 import json
 import os
@@ -103,13 +105,13 @@ def probe(_request):
     }})
 
 
-def _load_audio(path):
+def _load_audio(path, expected_rate=16000, mono=True):
     import soundfile as sf
     pcm, sr = sf.read(path, dtype="float32", always_2d=False)
-    if pcm.ndim > 1:
+    if mono and pcm.ndim > 1:
         pcm = pcm.mean(axis=1)
-    if sr != 16000:
-        raise RuntimeError(f"worker expects 16 kHz mono WAV, got {sr} Hz")
+    if expected_rate is not None and sr != expected_rate:
+        raise RuntimeError(f"worker expects {expected_rate} Hz audio, got {sr} Hz")
     return pcm
 
 
@@ -156,9 +158,164 @@ def _sensevoice(request):
     }})
 
 
+def _diarize(request):
+    import numpy as np
+    import torch
+    from modelscope.pipelines import pipeline
+
+    pcm = _load_audio(request["wavPath"])
+    segments = request.get("segments") or []
+    device = request.get("device") or ("cuda:0" if torch.cuda.is_available() else "cpu")
+    model_ref = request.get("modelDir") or "iic/speech_campplus_sv_zh-cn_16k-common"
+    threshold = float(request.get("threshold", 0.7))
+    max_speakers = int(request.get("maxSpeakers", 8))
+    max_chunk = 10.0
+    progress(0.02, "load")
+    started = time.time()
+    sv = pipeline(task="speaker-verification", model=model_ref, device=device)
+    load_seconds = time.time() - started
+    progress(0.12, "segments")
+    chunks = []
+    spans = []
+    for index, segment in enumerate(segments):
+        start = max(0.0, float(segment["startSec"]))
+        end = min(len(pcm) / 16000.0, float(segment["endSec"]))
+        cursor = start
+        while cursor < end - 1e-6:
+            chunk_end = min(end, cursor + max_chunk)
+            chunks.append(np.ascontiguousarray(pcm[int(round(cursor * 16000)):int(round(chunk_end * 16000))]))
+            spans.append((cursor, chunk_end, index))
+            cursor = chunk_end
+        if (index + 1) % 20 == 0:
+            progress(0.12 + 0.08 * (index + 1) / max(1, len(segments)), "segments")
+    if len(chunks) == 0:
+        emit({"event": "done", "result": {"labels": [], "spans": [], "speakerCount": 0, "model": model_ref, "device": device, "threshold": threshold}})
+        return
+    if len(chunks) > 400:
+        raise RuntimeError(f"too many diarization chunks ({len(chunks)}); analyze a shorter range or raise VAD minSpeechSec")
+    embeddings = []
+    batch_size = 32
+    inference_started = time.time()
+    with torch.no_grad():
+        for offset in range(0, len(chunks), batch_size):
+            batch = sv.preprocess(chunks[offset:offset + batch_size])
+            embeddings.append(sv.forward(batch).detach().cpu())
+            progress(0.2 + 0.7 * min(1.0, (offset + len(batch)) / max(1, len(chunks))), "embed")
+    matrix = torch.nn.functional.normalize(torch.cat(embeddings, dim=0), dim=1)
+    similarity = (matrix @ matrix.T).cpu().numpy()
+    # Union-find at the requested cosine threshold; labels are anonymous and
+    # numbered by first appearance.
+    parent = list(range(len(chunks)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i in range(len(chunks)):
+        for j in range(i + 1, len(chunks)):
+            if float(similarity[i][j]) >= threshold:
+                parent[find(j)] = find(i)
+    roots = {}
+    labels = []
+    for index in range(len(chunks)):
+        root = find(index)
+        labels.append(roots.setdefault(root, len(roots)))
+    if len(roots) > max_speakers:
+        raise RuntimeError(f"clustering produced {len(roots)} speakers, above maxSpeakers {max_speakers}; raise maxSpeakers or the similarity threshold")
+    progress(0.98, "done")
+    emit({"event": "done", "result": {
+        "labels": labels,
+        "spans": [{"startSec": round(a, 6), "endSec": round(b, 6), "segmentIndex": s} for a, b, s in spans],
+        "speakerCount": len(roots),
+        "threshold": threshold,
+        "maxSpeakers": max_speakers,
+        "model": model_ref,
+        "device": device,
+        "loadSeconds": round(load_seconds, 3),
+        "inferenceSeconds": round(time.time() - inference_started, 3),
+    }})
+
+
+def _separate(request):
+    # Demucs 4.1 loads htdemucs from the Hugging Face cache; point it at the
+    # dedicated optional-component cache before importing demucs.
+    cache_dir = request.get("cacheDir")
+    if cache_dir:
+        os.environ["HF_HOME"] = cache_dir
+    if request.get("offline"):
+        # The pinned file is already verified locally; never wait on Hugging
+        # Face HEAD requests just to discover that.
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    import soundfile as sf
+    import torch
+    from demucs.apply import apply_model
+    from demucs.pretrained import get_model
+
+    pcm = _load_audio(request["wavPath"], expected_rate=None, mono=False)
+    # Demucs models are stereo; duplicate mono input.
+    stereo = np_stereo(pcm)
+    output_dir = request["outputDir"]
+    os.makedirs(output_dir, exist_ok=True)
+    device = request.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
+    progress(0.02, "load")
+    started = time.time()
+    model = get_model(name=request.get("model", "htdemucs"))
+    model.to(device)
+    model.eval()
+    load_seconds = time.time() - started
+    tensor = torch.from_numpy(stereo).unsqueeze(0)
+    if device == "cuda":
+        tensor = tensor.cuda()
+    progress(0.2, "separate")
+    inference_started = time.time()
+    with torch.no_grad():
+        stems = apply_model(model, tensor, device=device, shifts=1, split=True, overlap=0.25)[0]
+    inference_seconds = time.time() - inference_started
+    names = list(model.sources)
+    outputs = []
+    for index, name in enumerate(names):
+        path = os.path.join(output_dir, f"{name}.wav")
+        sf.write(path, stems[index].detach().cpu().numpy().T, model.samplerate, subtype="FLOAT")
+        outputs.append({"stem": name, "path": path})
+        progress(0.2 + 0.75 * (index + 1) / max(1, len(names)), "write")
+    peak_gpu = None
+    if torch.cuda.is_available():
+        peak_gpu = int(torch.cuda.max_memory_allocated() / (1024 * 1024))
+    peak_rss = None
+    try:
+        import resource
+        peak_rss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024) if os.name != "nt" else None
+    except ImportError:
+        peak_rss = None
+    emit({"event": "done", "result": {
+        "stems": outputs,
+        "sampleRate": model.samplerate,
+        "device": device,
+        "loadSeconds": round(load_seconds, 3),
+        "inferenceSeconds": round(inference_seconds, 3),
+        "realtimeFactor": round(inference_seconds / max(1e-9, len(pcm) / 44100.0), 4),
+        "peakGpuMemoryMb": peak_gpu,
+        "peakRssMb": peak_rss,
+    }})
+
+
+def np_stereo(pcm):
+    import numpy as np
+    if pcm.ndim == 1:
+        return np.stack([pcm, pcm], axis=0).astype("float32")
+    if pcm.shape[1] == 1:
+        return np.repeat(pcm, 2, axis=1).T.astype("float32")
+    return np.ascontiguousarray(pcm[:, :2].T.astype("float32"))
+
+
 TASKS = {
     "probe": probe,
     "transcribe": _sensevoice,
+    "diarize": _diarize,
+    "separate": _separate,
 }
 
 

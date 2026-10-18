@@ -52,6 +52,8 @@ import { resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
 import { saveAnalysisRecord } from "./analysis-records";
 import { setSpeechVadModelFactoryForTests } from "./speech-vad";
 import { setSpeechTranscriptModelForTests, setTranscriptModelReadyForTests } from "./speech-transcript";
+import { setDiarizationModelForTests, setDiarizationModelReadyForTests } from "./speaker-diarization";
+import { setDemucsModelReadyForTests, setSeparationWorkerForTests } from "./audio-separate";
 import { setAudioModelsProbeForTests } from "./media/audio-models-runner";
 
 const LIVE_AUDIO_TOOLCHAIN = await resolveToolFfmpeg();
@@ -3063,6 +3065,107 @@ describe("live local audio analysis parity", () => {
     }
   }, 40000);
 
+  it("runs speakerDiarization and audio separation through the live task paths", async () => {
+    setSpeechVadModelFactoryForTests(async () => ({
+      async detect(chunk: Float32Array) {
+        let sum = 0;
+        for (const sample of chunk) sum += sample * sample;
+        return Math.sqrt(sum / chunk.length) > 0.02 ? 0.9 : 0.05;
+      },
+    }));
+    setAudioModelsProbeForTests(async () => ({
+      available: true,
+      details: {
+        python: "/fake/python",
+        pythonVersion: "3.10.19",
+        scriptDir: "/fake/python",
+        packages: { modelscope: true, torch: true, soundfile: true, numpy: true, demucs: true },
+        versions: { modelscope: "1.34.0", demucs: "4.1.0" },
+      },
+    }));
+    setDiarizationModelReadyForTests(async () => null);
+    setDiarizationModelForTests(async (request) => ({
+      labels: request.segments.map((_segment, index) => index % 2),
+      spans: request.segments.map((segment, index) => ({ ...segment, segmentIndex: index })),
+      speakerCount: 2,
+      model: "iic/speech_campplus_sv_zh-cn_16k-common",
+      device: "cpu",
+      loadSeconds: 0.1,
+      inferenceSeconds: 0.1,
+    }));
+    setDemucsModelReadyForTests(async () => ({ verified: true, present: true, reason: null }));
+    setSeparationWorkerForTests(async (request) => {
+      const wavPath = String(request.wavPath);
+      return {
+        stems: ["drums", "bass", "other", "vocals"].map((stem) => ({ stem, path: wavPath })),
+        device: "cpu",
+        loadSeconds: 0.1,
+        inferenceSeconds: 0.2,
+        realtimeFactor: 0.1,
+        peakGpuMemoryMb: null,
+        peakRssMb: null,
+      };
+    });
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-diarize-"));
+    const sourcePath = await writeNoisyToneWav(mediaRoot, "speech.wav", 6);
+    const facade = liveFacade({ store: new FakeLiveStore(), mediaRoots: [mediaRoot] });
+    try {
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const diarizeStart = await facade["media.analyze_start"]({
+        mediaId: imported.value.mediaId,
+        analysisTypes: ["speakerDiarization"],
+        startSec: 0,
+        endSec: 6,
+        diarizationParams: { threshold: 0.7, maxSpeakers: 4 },
+      });
+      if (!diarizeStart.ok) throw new Error(diarizeStart.error.message);
+      const diarizeDone = await waitForJob(facade, diarizeStart.value.jobId, 20000);
+      expect(diarizeDone).toMatchObject({ state: "done" });
+      const diarizeResult = diarizeDone.result;
+      if (!diarizeResult || !("summary" in diarizeResult)) throw new Error("no diarization result");
+      const summary = (diarizeResult.summary as Record<string, any>).speakerDiarization;
+      expect(summary).toMatchObject({ anonymousClusters: true });
+      expect(summary.speakerCount).toBeGreaterThanOrEqual(1);
+      expect(summary.segmentCount).toBeGreaterThanOrEqual(1);
+      expect(summary).not.toHaveProperty("segments");
+      const recordId = (diarizeResult.summary as Record<string, any>).analysisRecord.id as string;
+      const events = await facade["analysis.get"]({ recordId, view: "events", series: "speakerDiarization.segments", startSec: 0, endSec: 6, limit: 10 });
+      if (!events.ok) throw new Error(events.error.message);
+      expect((events.value as import("./analysis-records").AnalysisAgentView).events!.items.length).toBe(summary.segmentCount);
+
+      const separateStart = await facade["audio.process.separate"]({
+        mediaId: imported.value.mediaId,
+        audioStream: 0,
+        startSec: 0.5,
+        endSec: 4.5,
+        sampleRate: 48000,
+        channels: 1,
+        target: "vocals",
+        expectedRevision: imported.value.revision,
+        idempotencyKey: "live-separate",
+      });
+      if (!separateStart.ok) throw new Error(separateStart.error.message);
+      const separateDone = await waitForJob(facade, separateStart.value.jobId, 30000);
+      expect(separateDone).toMatchObject({ state: "done" });
+      const artifact = separateDone.result as import("./audio-separate").SeparatedAudioArtifact;
+      expect(artifact.timing).toMatchObject({ sampleRate: 48000, channels: 1, sampleCount: 192000 });
+      expect(artifact.processing.model).toBe("htdemucs");
+      const registered = await facade["audio.process.register"]({ jobId: separateDone.jobId, expectedRevision: imported.value.revision });
+      if (!registered.ok) throw new Error(registered.error.message);
+      expect(registered.value.mediaId).not.toBe(imported.value.mediaId);
+    } finally {
+      setSpeechVadModelFactoryForTests(null);
+      setDiarizationModelForTests(null);
+      setDiarizationModelReadyForTests(null);
+      setDemucsModelReadyForTests(null);
+      setSeparationWorkerForTests(null);
+      setAudioModelsProbeForTests(null);
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 40000);
+
   it("runs speechActivity with the shared Silero kernel path, compact status and paged regions", async () => {
     // Hermetic: a deterministic amplitude-threshold stand-in replaces the
     // onnxruntime session, so this test pins the live wiring, not the model.
@@ -3383,6 +3486,7 @@ describe("live audio normalization task lifecycle", () => {
       if (!result || !("source" in result)) throw new Error("audio-process completed without normalized provenance");
       expect(result.source).toMatchObject({ mediaId: imported.value.mediaId, startSec: 0.1, endSec: 2.1, projectId: importedStore.project.id, workspaceId: "workspace-live-1", revision: sourceRevision });
       expect(Number.isFinite(result.before.integratedLufs)).toBe(true);
+      if (!result.after) throw new Error("normalize result has no after measurement");
       expect(Number.isFinite(result.after.integratedLufs)).toBe(true);
       expect(result.timing).toMatchObject({ sampleRate: 48_000, channels: 2, outputStartSec: 0, processingDelaySamples: 0 });
       expect(await stat(result.path)).toBeTruthy();

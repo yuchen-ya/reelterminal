@@ -6,7 +6,7 @@ import { MAX_PATCH_PROPAGATE_FRAMES } from "./plugins/patch-propagation";
 import { opencvToolPreflight } from "./media/opencv-runner";
 import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
 import { speechVadPreflight } from "./speech-vad";
-import { AUDIO_MODEL_COMPONENTS, SENSEVOICE_MODEL, probeAudioModelsRuntime, senseVoiceModelPresence } from "./media/audio-models-runner";
+import { AUDIO_MODEL_COMPONENTS, DEMUCS_MODEL, SENSEVOICE_MODEL, SPEAKER_DIARIZATION_MODEL, demucsModelPresence, probeAudioModelsRuntime, requiredAudioModelPackages, senseVoiceModelPresence, speakerDiarizationModelPresence } from "./media/audio-models-runner";
 import {
   AUDIO_NORMALIZE_MAX_INTEGRATED_DEVIATION_LU,
   AUDIO_NORMALIZE_MAX_TRUE_PEAK_OVERSHOOT_DBTP,
@@ -218,6 +218,22 @@ export async function buildCapabilities(
       )
     : { available: false as const, probed: false as const, reason: "The optional audio-model runtime was not probed because the audio domain was not requested." };
   const senseVoicePresence = wants("audio") ? await senseVoiceModelPresence() : null;
+  const diarizationModelsReady = wants("audio")
+    ? await probeAudioModelsRuntime(requiredAudioModelPackages("diarize")).then(
+        (result) => result.available
+          ? { available: true as const, details: result.details }
+          : { available: false as const, reason: result.reason },
+      )
+    : { available: false as const, probed: false as const, reason: "The optional audio-model runtime was not probed because the audio domain was not requested." };
+  const camppPresence = wants("audio") ? await speakerDiarizationModelPresence() : null;
+  const separationModelsReady = wants("audio")
+    ? await probeAudioModelsRuntime(requiredAudioModelPackages("separate"), "separate").then(
+        (result) => result.available
+          ? { available: true as const, details: result.details }
+          : { available: false as const, reason: result.reason },
+      )
+    : { available: false as const, probed: false as const, reason: "The optional audio-model runtime was not probed because the audio domain was not requested." };
+  const demucsPresence = wants("audio") ? await demucsModelPresence() : null;
   const videoReady: CapabilityStatus = wants("video") ? await videoReviewPreflight() : notProbed("video");
   const ffmpegReady: CapabilityStatus = wantsFfmpegTools ? await ffmpegToolPreflight() : notProbed("video", "frames", "motion");
   const labelFont = wants("frames") ? await probeLabelFont() : null;
@@ -682,6 +698,58 @@ export async function buildCapabilities(
                         changesProject: false,
                       },
                     }
+            : type === "speakerDiarization"
+              ? !ctx.mediaRoots.length
+                ? {
+                    available: false,
+                    reason: "No media roots are configured, so the source file cannot be read for speaker diarization.",
+                    requires: "a configured media root containing the source",
+                  }
+                : noArtifactRoot
+                  ? { available: false, reason: "Audio analysis requires artifactRoot to persist the complete analysis record.", requires: "artifactRoot" }
+                  : !audioReady.available
+                    ? (audioReady.probed === false ? audioReady : { available: false, reason: audioReady.reason })
+                    : !speechVadReady.available
+                      ? (speechVadReady.probed === false ? speechVadReady : { available: false, reason: speechVadReady.reason })
+                      : !diarizationModelsReady.available
+                        ? {
+                            available: false,
+                            ...("probed" in diarizationModelsReady && diarizationModelsReady.probed === false ? { probed: false as const } : {}),
+                            reason: diarizationModelsReady.reason,
+                            requires: "an optional Python interpreter with modelscope + torch + soundfile + numpy (REELTERMINAL_AUDIO_MODELS_PYTHON); no model is bundled",
+                          }
+                        : {
+                            available: true,
+                            details: {
+                              ...AUDIO_LIMITS,
+                              maxSourceFileBytes: 2 * 1024 * 1024 * 1024,
+                              agentAudioConsumption: false,
+                              provider: "local-campplus-modelscope-python",
+                              component: AUDIO_MODEL_COMPONENTS.speakerDiarization,
+                              runtime: diarizationModelsReady.details,
+                              model: {
+                                ...SPEAKER_DIARIZATION_MODEL,
+                                displayName: "CAM++ speaker verification",
+                                path: camppPresence?.path ?? null,
+                                present: camppPresence?.present === true,
+                                sizeMatches: camppPresence === null ? null : camppPresence.bytes === SPEAKER_DIARIZATION_MODEL.bytes,
+                                downloadBytes: SPEAKER_DIARIZATION_MODEL.bytes,
+                                estimatedDiskBytes: AUDIO_MODEL_COMPONENTS.speakerDiarization.estimatedDiskBytes,
+                                acquisition: "Explicit consent: diarizationParams.allowModelDownload:true downloads the pinned ~28 MB model from ModelScope into REELTERMINAL_MODELSCOPE_CACHE; or set REELTERMINAL_CAMPP_SV_MODEL_DIR to a local copy. The app never runs pip.",
+                              },
+                              anonymousClusters: true,
+                              timestampSource: "external-vad-silero",
+                              timestampGranularitySec: 0.032,
+                              defaults: { threshold: 0.7, maxSpeakers: 8 },
+                              fields: ["analysis.get events (segments)", "speakerCount", "anonymousClusters", "parameters", "model"],
+                              tuning: "media.analyze_start diarizationParams {threshold, maxSpeakers, allowModelDownload}; vadParams also apply (shared Silero VAD segmentation)",
+                              workflow: "page anonymous segments with analysis.get view:'events' series 'speakerDiarization.segments'; labels are review evidence and no automatic edit is applied",
+                              limits: "overlapping speech is not separated; very short segments and >4-speaker material are not quantitatively validated; labels are clusters, never real identities",
+                              isolation: "One Python child process per job; cancellation kills it; crash/nonzero/invalid JSON/oversized output fails the job without publishing anything.",
+                              coordinateSpace: "source",
+                              changesProject: false,
+                            },
+                          }
             : type === "speechTranscript"
               ? !ctx.mediaRoots.length
                 ? {
@@ -1145,6 +1213,39 @@ export async function buildCapabilities(
         storage: "mediaRoots[0]/generated-assets/audio-denoise/<jobId>/ (persistent, outside analysis cache)",
         registration: "Explicit revision-guarded media import into the source project/workspace; does not replace clips",
         unverifiedAlignment: "if correlation prominence is too low to prove alignment, processing.alignmentCheck.verdict is \"unverified\" with the measured delay still compensated",
+      },
+    },
+    audioSeparation: {
+      available: separationModelsReady.available && mediaImportAvailable,
+      ...(!separationModelsReady.available
+        ? {
+            reason: separationModelsReady.reason,
+            ...("probed" in separationModelsReady && separationModelsReady.probed === false ? { probed: false as const } : {}),
+          }
+        : !mediaImportAvailable ? { reason: "A media root and an operational media import bridge are required" } : {}),
+      details: {
+        command: "audio.process.separate",
+        registrationCommand: "audio.process.register",
+        provider: "local-demucs-htdemucs-python",
+        component: AUDIO_MODEL_COMPONENTS.separation,
+        runtime: separationModelsReady.available ? separationModelsReady.details : null,
+        model: {
+          ...DEMUCS_MODEL,
+          displayName: "Demucs htdemucs",
+          path: demucsPresence?.path ?? null,
+          present: demucsPresence?.present === true,
+          sizeMatches: demucsPresence === null ? null : demucsPresence.bytes === DEMUCS_MODEL.bytes,
+          downloadBytes: DEMUCS_MODEL.bytes,
+          estimatedDiskBytes: AUDIO_MODEL_COMPONENTS.separation.estimatedDiskBytes,
+          acquisition: "Explicit consent: allowModelDownload:true downloads the pinned 84 MB weights into REELTERMINAL_DEMUCS_CACHE; or point that variable at a populated Hugging Face cache. The app never runs pip.",
+        },
+        targets: { vocals: "vocals stem", instrumental: "drums + bass + other (amix normalize=0)" },
+        output: "48 kHz PCM 24-bit WAV, exact source-range sample window",
+        maximumRangeSec: 120,
+        measured: "device, load/inference seconds, realtime factor and peak GPU memory are recorded in provenance",
+        limits: "bleed/artifacts are possible; overlapping speakers are not separated; no drift correction; the vocal stem is not a speech-enhancement guarantee",
+        storage: "mediaRoots[0]/generated-assets/audio-separate/<jobId>/ (persistent, outside analysis cache)",
+        registration: "Explicit revision-guarded media import into the source project/workspace; does not replace clips",
       },
     },
     preview,

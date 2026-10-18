@@ -308,6 +308,7 @@ const capabilities = (): OutputSchemaNode =>
       history: capabilityStatus(),
       audioNormalize: capabilityStatus(),
       audioDenoise: capabilityStatus(),
+      audioSeparation: capabilityStatus(),
       pluginTools: openObject(),
       mediaAnalysis: objectSchema(
         {
@@ -377,7 +378,7 @@ const capabilities = (): OutputSchemaNode =>
       export: capabilityStatus(),
       verify: capabilityStatus(),
     },
-    ["runtime", "stateModel", "mediaImport", "projectChanges", "history", "audioNormalize", "audioDenoise", "mediaAnalysis", "professionalEditing", "editOps", "manual", "textOverlay", "preview", "visualInspection", "editorControl", "export", "verify"],
+    ["runtime", "stateModel", "mediaImport", "projectChanges", "history", "audioNormalize", "audioDenoise", "audioSeparation", "mediaAnalysis", "professionalEditing", "editOps", "manual", "textOverlay", "preview", "visualInspection", "editorControl", "export", "verify"],
   );
 
 const mediaImportResult = (): OutputSchemaNode =>
@@ -837,6 +838,7 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "media.import": mediaImportResult(),
   "audio.process.normalize": audioProcessNormalizeResult(),
   "audio.process.denoise": audioProcessNormalizeResult(),
+  "audio.process.separate": audioProcessNormalizeResult(),
   "audio.process.register": mediaImportResult(),
   "media.render_html": objectSchema(
     {
@@ -938,11 +940,12 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
         "beatGrid.beats",
         "speechActivity.speechRegions",
         "speechTranscript.segments",
+        "speakerDiarization.segments",
       ]),
       totalCount: nullable(integerSchema(0)),
       storedCount: integerSchema(0),
       complete: booleanSchema(),
-    }, ["series", "totalCount", "storedCount", "complete"]), { maxItems: 6 }),
+    }, ["series", "totalCount", "storedCount", "complete"]), { maxItems: 7 }),
     events: objectSchema({
       series: enumSchema([
         "audioSummary.onsets",
@@ -951,6 +954,7 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
         "beatGrid.beats",
         "speechActivity.speechRegions",
         "speechTranscript.segments",
+        "speakerDiarization.segments",
       ]),
       window: objectSchema({ startSec: numberSchema(0), endSec: numberSchema(0) }, ["startSec", "endSec"]),
       limit: integerSchema(1, 256),
