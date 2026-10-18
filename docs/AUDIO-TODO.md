@@ -4,6 +4,10 @@
 
 > 2026-10-18：AUD-03～AUD-06 已按本文件验收口径实现并完成本地验证，勾选同样待用户验收后进行。执行记录、提交与验证证据见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md)对应各节：AUD-03 `reelctl schema --domain`（提交 `4e5c09dc`，同一 catalog 客户端筛选，未知领域报错并列出可用领域）；AUD-04 `capabilities.get` 可选 `domain` 参数（提交 `7aa89f2b`，音频查询不再启动视频/模型/OpenCV 探测，未探测状态带 `probed:false` 且绝不标 ready）；AUD-05 `clip.cutSilenceFromAnalysis` 编辑操作（提交 `f0bc9255`，分析记录驱动 split/ripple/边缘淡化，联动对齐兄弟片段、逐轨 ripple，字幕失步与不支持映射前置拒绝）；AUD-06 `clip.splitAtBeat` 编辑操作（提交 `f292e212`，显式容差吸附最近 beatGrid 节拍，容差内无节拍明确拒绝，不伪造 downbeat）。
 
+> 2026-10-18：AUD-07~AUD-10 已按"先验证，再决定接入"完成本机效果验证（真实 B 站样本 + edge-tts 中/粤真值样本 + 仓库 Silero VAD 交叉验证），未开始实现、勾选状态不变。证据与接入建议见[验证记录](AUDIO-MODEL-EVAL-2026-10-18.md)。要点：SenseVoice 中/粤 CER 2.55%/1.41%、无原生时间戳（需外部 VAD 句级分段）；FFmpeg `afftdn` 有恒定 1200 样本（25ms@48k）未补偿延迟且仅对强稳态噪声有效，DeepFilterNet3 全场景 SI-SDR +10~14dB 但其 Python 包需适配 torchaudio≥2.9；Demucs htdemucs 89 倍实时、真值 SI-SDR 15.8~22.8dB，CAM++ 说话人聚类 DER 5.3%；GCC-PHAT 偏移估计含拒绝规则全部用例通过（符号契约与漂移检测为实现必修项）。
+
+> 2026-10-18：AUD-10 已按验收口径实现并完成本地验证（提交 `3e4ebbd5`）：新增 `syncOffset` 分析类型，本地 FFmpeg + GCC-PHAT（无模型）比较目标与显式参考媒体；**正 offset = 目标落后参考**（验证脚本原始相关式符号相反，实现取反并用 ±已知延迟钉住），≥6 dB 突出度且 ±50 ms 外次峰低 ≥3 dB 才判 ok，否则 ambiguous/no-match；等长分窗 + 线性回归报 `clock-drift`，首版只报漂移不静默修正；参考文件运行中变化即 CONFLICT。真实样本：+350/−200 ms 误差 <0.5 ms、10 dB 噪声 <1 ms、BGM +250 ms 精确、无共同内容拒绝、0.1% 漂移判 clock-drift。执行记录见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md) AUD-10 一节；勾选待用户验收。
+
 > 2026-10-18 复审修复（提交 `3f714ea9`）：AUD-04 的 `motionTools.align`/`track` 在 motion 域未请求时补齐 `probed:false`，与文档的三态契约一致；AUD-06 的 `clip.splitAtBeat` 只接受裁剪源范围 `(inPoint, outPoint)` 内的节拍，范围外节拍不再被 clamp 成片段边缘候选，距离并列时选时间线更早者；AUD-05 的 leading/trailing/whole-clip 翻译分支补了真实 `edit.apply` 回归。验证与提交细节见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md)复审修复节；勾选仍待用户验收。
 
 > 2026-10-17：AUD-01 已按推荐批次实现并完成本地验证（提交 `40ce355b`：Silero VAD v5.1.2 + onnxruntime-node 1.30.0，锁版本、锁 sha，复用现有分析任务与记录协议），执行记录与量化验收证据见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md) AUD-01 一节；勾选待用户验收后进行。AUD-02 同日实现完毕并完成本地验证（提交 `0c91fcff`，新增 `clip.setDuckingFromAnalysis` 编辑操作，记录驱动映射 + 既有 setDucking/包络内核，全部门控与撤销/幂等回归见执行记录 AUD-02 一节），勾选同样待验收。下一步为 AUD-05 或独立排期的 AUD-03/04。
@@ -25,16 +29,16 @@
 
 ## 协议补充（可独立排期）
 
-- [ ] **AUD-03：Schema 按领域筛选。** 在现有 `reelctl schema` 索引和 `reelctl schema <command>` 基础上增加筛选；先明确领域归属，再确定参数名，不复制 schema 定义。
+- [x ] **AUD-03：Schema 按领域筛选。** 在现有 `reelctl schema` 索引和 `reelctl schema <command>` 基础上增加筛选；先明确领域归属，再确定参数名，不复制 schema 定义。
   - 验收：筛选结果来自同一 catalog，单命令 schema 保持精确，未知领域报错；文档不得提前把拟议参数写成可运行命令。
-- [ ] **AUD-04：Capabilities 按领域懒探测。** 先过滤请求领域，再运行该领域所需探测；保留执行前真实检查，区分未探测、不可用和可用。
+- [ x] **AUD-04：Capabilities 按领域懒探测。** 先过滤请求领域，再运行该领域所需探测；保留执行前真实检查，区分未探测、不可用和可用。
   - 验收：查询音频不启动无关模型/视频探测；默认摘要有界；未探测不得标 ready；二进制或模型失效后执行与披露一致。
 
 ## 时间线联动
 
-- [ ] **AUD-05：分析句柄驱动静音剪辑（依赖 AUD-01/AUD-02 的时间映射）。** 明确保留停顿、最短静音、边缘留白、联动视频/字幕/其他轨道和 ripple 范围；先生成完整计划再原子应用。优先复用现有切片与淡入淡出能力，真正交叉淡化需要另行定义重叠区间。不得凭片段级情绪/咳嗽标签自动删音频。
+- [ x] **AUD-05：分析句柄驱动静音剪辑（依赖 AUD-01/AUD-02 的时间映射）。** 明确保留停顿、最短静音、边缘留白、联动视频/字幕/其他轨道和 ripple 范围；先生成完整计划再原子应用。优先复用现有切片与淡入淡出能力，真正交叉淡化需要另行定义重叠区间。不得凭片段级情绪/咳嗽标签自动删音频。
   - 验收：无音画/字幕失步、无切点爆音，撤销恢复全部联动对象；不支持的时间映射明确拒绝，取消或冲突没有半成品编辑。
-- [ ] **AUD-06：节拍吸附及强拍评估。** 先复用现有 beatGrid；明确普通节拍、瞬态与 downbeat 的区别。只有样本证明现有算法不足时才选择 aubio 或 Beat This! 等后端，不同时引入多套基础检测依赖。
+- [ x] **AUD-06：节拍吸附及强拍评估。** 先复用现有 beatGrid；明确普通节拍、瞬态与 downbeat 的区别。只有样本证明现有算法不足时才选择 aubio 或 Beat This! 等后端，不同时引入多套基础检测依赖。
   - 验收：BPM 半/倍速歧义有披露，未检测强拍不伪造 downbeat；指定切点和允许移动范围内编辑，不造成负时长或意外覆盖，批次可撤销。
 
 ## 模型与信号处理扩展（先验证，再决定接入）
