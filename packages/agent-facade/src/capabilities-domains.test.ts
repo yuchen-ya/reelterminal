@@ -97,6 +97,8 @@ describe("capabilities.get domain-scoped probing", () => {
     expect(caps.frameTools.ffmpeg).toMatchObject({ available: false, probed: false });
     expect(caps.frameTools.contactSheetLabelFont).toEqual({ path: null, probed: false });
     expect(caps.motionTools.opencv).toMatchObject({ available: false, probed: false });
+    expect(caps.motionTools.align).toMatchObject({ available: false, probed: false });
+    expect(caps.motionTools.track).toMatchObject({ available: false, probed: false });
     expect(caps.motionTools.maskRefine).toMatchObject({ available: false, probed: false });
     expect(caps.motionTools.patchPropagate).toMatchObject({ available: false, probed: false });
     expect(caps.preview).toMatchObject({ available: false, probed: false });
@@ -149,6 +151,64 @@ describe("capabilities.get domain-scoped probing", () => {
     expect(probes.probeLabelFont).not.toHaveBeenCalled();
     expect(probes.speechVadPreflight).not.toHaveBeenCalled();
     expect(res.value.frameTools.contactSheetLabelFont).toEqual({ path: null, probed: false });
+  });
+
+  it("a frames-domain query probes ffmpeg and the label font only", async () => {
+    const res = await facade["capabilities.get"]({ domain: "frames" });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    expect(probes.ffmpegToolPreflight).toHaveBeenCalledTimes(1);
+    expect(probes.probeLabelFont).toHaveBeenCalledTimes(1);
+    expect(probes.audioAnalysisPreflight).not.toHaveBeenCalled();
+    expect(probes.speechVadPreflight).not.toHaveBeenCalled();
+    expect(probes.videoReviewPreflight).not.toHaveBeenCalled();
+    expect(probes.opencvToolPreflight).not.toHaveBeenCalled();
+    expect(res.value.frameTools.ffmpeg.available).toBe(true);
+    expect(res.value.frameTools.contactSheetLabelFont).toEqual({ path: "DejaVuSans.ttf" });
+    expect(res.value.mediaAnalysis.types.audioSummary).toMatchObject({ available: false, probed: false });
+    expect(res.value.motionTools.opencv).toMatchObject({ available: false, probed: false });
+  });
+
+  it("a render-domain query probes only the render provider", async () => {
+    const res = await facade["capabilities.get"]({ domain: "render" });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    expect(probes.audioAnalysisPreflight).not.toHaveBeenCalled();
+    expect(probes.speechVadPreflight).not.toHaveBeenCalled();
+    expect(probes.videoReviewPreflight).not.toHaveBeenCalled();
+    expect(probes.ffmpegToolPreflight).not.toHaveBeenCalled();
+    expect(probes.probeLabelFont).not.toHaveBeenCalled();
+    expect(probes.opencvToolPreflight).not.toHaveBeenCalled();
+    // No provider is injected, so preview is a real probe result (not a
+    // scoped-out one); the other domains stay explicitly not-probed.
+    expect(res.value.preview).toMatchObject({ available: false });
+    expect(res.value.preview.probed).toBeUndefined();
+    expect(res.value.export).toMatchObject({ available: false, probed: false });
+    expect(res.value.frameTools.ffmpeg).toMatchObject({ available: false, probed: false });
+    expect(res.value.mediaAnalysis.types.audioSummary).toMatchObject({ available: false, probed: false });
+  });
+
+  it("an export-domain query probes only the delivery chain", async () => {
+    const res = await facade["capabilities.get"]({ domain: "export" });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    expect(probes.audioAnalysisPreflight).not.toHaveBeenCalled();
+    expect(probes.speechVadPreflight).not.toHaveBeenCalled();
+    expect(probes.videoReviewPreflight).not.toHaveBeenCalled();
+    expect(probes.ffmpegToolPreflight).not.toHaveBeenCalled();
+    expect(probes.probeLabelFont).not.toHaveBeenCalled();
+    expect(probes.opencvToolPreflight).not.toHaveBeenCalled();
+    // The export chain is probed for real (no provider injected here), while
+    // preview and the shared ffmpeg preflight are outside this domain.
+    expect(res.value.export.probed).toBeUndefined();
+    expect(res.value.verify.probed).toBeUndefined();
+    expect(res.value.preview).toMatchObject({ available: false, probed: false });
+    expect(res.value.frameTools.ffmpeg).toMatchObject({ available: false, probed: false });
+    expect(res.value.audioNormalize).toMatchObject({ available: false, probed: false });
+    expect(res.value.mediaAnalysis.types.videoReview).toMatchObject({ available: false, probed: false });
   });
 
   it("without the filter every probe runs and no status is marked not-probed", async () => {

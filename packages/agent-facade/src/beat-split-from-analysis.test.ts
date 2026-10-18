@@ -74,6 +74,26 @@ describe("beat snap kernel", () => {
     expect(findSnappedSplitTime(reversed, [{ timeSec: 5.5, index: 3 }], 13.4, 0.2))
       .toEqual({ snappedTimeSec: 13.5, shiftSec: 0.09999999999999964, beatIndex: 3 });
   });
+  it("ignores beats outside the clip's trimmed source span instead of clamping them to an edge", () => {
+    const clip = makeClip({ id: "music", startTime: 10, duration: 4, inPoint: 5, outPoint: 9 });
+    // Clamping would turn the pre-inPoint beat (4.9) into a clip-start beat at
+    // 10, which is closer to the request than the real in-range beat at 10.25.
+    const snap = findSnappedSplitTime(
+      clip,
+      [{ timeSec: 4.9, index: 0 }, { timeSec: 5.25, index: 1 }, { timeSec: 9.1, index: 2 }],
+      10.1,
+      0.2,
+    );
+    expect(snap).toMatchObject({ snappedTimeSec: 10.25, beatIndex: 1 });
+    // An out-of-range beat alone is not an edge candidate at all.
+    expect(findSnappedSplitTime(clip, [{ timeSec: 4.9, index: 0 }], 10.1, 0.5)).toBeNull();
+  });
+  it("breaks a tie toward the earlier beat on the timeline for reversed clips", () => {
+    const reversed = makeClip({ id: "music", startTime: 10, duration: 4, inPoint: 5, outPoint: 9, reversed: true });
+    // Source 6 → timeline 13, source 8 → timeline 11; both are 1 s from 12.
+    expect(findSnappedSplitTime(reversed, [{ timeSec: 6, index: 0 }, { timeSec: 8, index: 1 }], 12, 2))
+      .toMatchObject({ snappedTimeSec: 11, beatIndex: 1 });
+  });
   it("scales by constant speed", () => {
     const fast = makeClip({ id: "music", startTime: 0, duration: 2, inPoint: 0, outPoint: 4, speed: 2 });
     const snap = findSnappedSplitTime(fast, [{ timeSec: 3, index: 5 }], 1.4, 0.2)!;
@@ -176,6 +196,19 @@ describe("clip.splitAtBeat enrichment gates", () => {
     const enriched = await enrichSplitAtBeatOps([op()], artifactRoot, async () => await projectOf());
     expect(enriched).toEqual([{ op: "clip.split", clipId: "music", time: 12 }]);
   });
+  it("ignores a beat outside the clip's source range and uses the real in-range beat", async () => {
+    const edgeRecord = await writeRecord([
+      { timeSec: 4.9, index: 0 },
+      { timeSec: 5.25, index: 1 },
+    ]);
+    const enriched = await enrichSplitAtBeatOps(
+      [op({ recordId: edgeRecord, time: 10.1, maxShiftSec: 0.2 })],
+      artifactRoot,
+      async () => await projectOf(),
+    );
+    // The pre-inPoint beat must not clamp to the clip start (10) and win.
+    expect(enriched).toEqual([{ op: "clip.split", clipId: "music", time: 10.25 }]);
+  });
   it("rejects missing and stale records before any mutation", async () => {
     await expect(enrichSplitAtBeatOps([op({ recordId: "analysis-00000000-0000-4000-8000-000000000000" })], artifactRoot, async () => await projectOf()))
       .rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -183,12 +216,25 @@ describe("clip.splitAtBeat enrichment gates", () => {
     await expect(enrichSplitAtBeatOps([op()], artifactRoot, async () => await projectOf()))
       .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("stale") });
   });
-  it("rejects records that analyzed another media and non-zero audio streams", async () => {
+  it("rejects records that analyzed another media and clips on another audio stream", async () => {
     const otherMedia = await writeRecord([{ timeSec: 6, index: 0 }], "media-something-else");
     await expect(enrichSplitAtBeatOps([op({ recordId: otherMedia })], artifactRoot, async () => await projectOf()))
       .rejects.toMatchObject({ code: "INVALID_PARAMS", message: expect.stringContaining("analyzed media") });
+    const project = await projectOf();
+    const track = project.timeline.tracks.find((candidate) => candidate.clips.some((clip) => clip.id === "music"))!;
+    const music = track.clips.find((clip) => clip.id === "music")!;
+    const otherStream = {
+      ...project,
+      timeline: {
+        ...project.timeline,
+        tracks: project.timeline.tracks.map((candidate) =>
+          candidate.id === track.id ? { ...candidate, clips: [{ ...music, audioTrackIndex: 1 }] } : candidate),
+      },
+    };
+    await expect(enrichSplitAtBeatOps([op()], artifactRoot, async () => otherStream as unknown as Project))
+      .rejects.toMatchObject({ code: "UNSUPPORTED", message: expect.stringContaining("audioTrackIndex 1") });
   });
-  it("rejects speed curves, freeze frames and cut points outside the clip", async () => {
+  it("rejects speed curves and freeze frames", async () => {
     const project = await projectOf();
     const track = project.timeline.tracks.find((candidate) => candidate.clips.some((clip) => clip.id === "music"))!;
     const music = track.clips.find((clip) => clip.id === "music")!;
@@ -210,6 +256,24 @@ describe("clip.splitAtBeat enrichment gates", () => {
     };
     await expect(enrichSplitAtBeatOps([op()], artifactRoot, async () => curved as unknown as Project))
       .rejects.toMatchObject({ code: "UNSUPPORTED", message: expect.stringContaining("speed curves") });
+    const frozen = {
+      ...project,
+      timeline: {
+        ...project.timeline,
+        tracks: project.timeline.tracks.map((candidate) =>
+          candidate.id === track.id
+            ? {
+                ...candidate,
+                clips: [{
+                  ...music,
+                  freezeFrames: [{ id: "f0", clipId: "music", sourceTime: 1, startTime: 1, duration: 1 }],
+                }],
+              }
+            : candidate),
+      },
+    };
+    await expect(enrichSplitAtBeatOps([op()], artifactRoot, async () => frozen as unknown as Project))
+      .rejects.toMatchObject({ code: "UNSUPPORTED", message: expect.stringContaining("freeze frames") });
   });
   it("rejects a tolerance miss instead of cutting unsnapped", async () => {
     // Nearest beats are 12 (0.45 away) and 13 (0.55) — both outside 0.3.

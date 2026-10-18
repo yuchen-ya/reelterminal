@@ -1845,27 +1845,6 @@ export interface ClipSetDuckingFromAnalysisOp {
 }
 
 /**
- * clip.cutSilenceFromAnalysis — AUD-05: cut the silences of a clip from a
- * durable silence analysis record. The record's source-second silent
- * regions are mapped through the clip's placement/trim/speed/reverse timing
- * onto the timeline, and the full cut plan (split + rippleDelete + edge
- * fades, the same core actions the GUI silence-cut panel emits) is computed
- * BEFORE any mutation starts, then applied as one edit.apply batch/undo
- * unit. Regions below minSilenceSec stay as kept pauses; paddingSec keeps
- * extra audio on both cut edges; fadeSec protects cut points against clicks
- * (clip.fade is audio-gain only, so picture is untouched).
- *
- * Scope decisions made explicit: timing-identical aligned A/V siblings of
- * the same media are cut identically (picture stays in sync; an aligned
- * sibling with different timing is rejected, never desynced); ripple follows
- * clip/rippleDelete semantics (later clips on each affected track shift
- * left; other tracks stay); subtitle cues that would desync (ending after
- * the first cut) reject the batch — the facade cannot shift them. Speed
- * curves, freeze frames, non-positive speed and audioTrackIndex != 0 are
- * rejected because the core split/trim actions or the analyzed stream
- * cannot represent them.
- */
-/**
  * clip.splitAtBeat — AUD-06: snap a cut point to the nearest beat of a
  * durable beatGrid analysis record. The desired cut point (`time`, timeline
  * seconds) moves at most `maxShiftSec` to the nearest record beat mapped
@@ -1893,6 +1872,27 @@ export interface ClipSplitAtBeatOp {
   readonly maxShiftSec: number;
 }
 
+/**
+ * clip.cutSilenceFromAnalysis — AUD-05: cut the silences of a clip from a
+ * durable silence analysis record. The record's source-second silent
+ * regions are mapped through the clip's placement/trim/speed/reverse timing
+ * onto the timeline, and the full cut plan (split + rippleDelete + edge
+ * fades, the same core actions the GUI silence-cut panel emits) is computed
+ * BEFORE any mutation starts, then applied as one edit.apply batch/undo
+ * unit. Regions below minSilenceSec stay as kept pauses; paddingSec keeps
+ * extra audio on both cut edges; fadeSec protects cut points against clicks
+ * (clip.fade is audio-gain only, so picture is untouched).
+ *
+ * Scope decisions made explicit: timing-identical aligned A/V siblings of
+ * the same media are cut identically (picture stays in sync; an aligned
+ * sibling with different timing is rejected, never desynced); ripple follows
+ * clip/rippleDelete semantics (later clips on each affected track shift
+ * left; other tracks stay); subtitle cues that would desync (ending after
+ * the first cut) reject the batch — the facade cannot shift them. Speed
+ * curves, freeze frames, non-positive speed and audioTrackIndex != 0 are
+ * rejected because the core split/trim actions or the analyzed stream
+ * cannot represent them.
+ */
 export interface ClipCutSilenceFromAnalysisOp {
   readonly op: "clip.cutSilenceFromAnalysis";
   /** The clip whose silences are cut (aligned timing-identical siblings are cut with it). */

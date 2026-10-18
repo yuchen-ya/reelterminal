@@ -38,9 +38,11 @@ export interface BeatSnapCandidate {
 /**
  * Pure snap: map the record's source-second beats through ONE clip's
  * placement/trim/speed/reverse timing onto the timeline and return the
- * nearest beat within `maxShiftSec` of the requested cut point. Ties go to
- * the earlier beat. Returns null when no beat is inside the allowed
- * movement — callers must reject, never fall back to the unsnapped time.
+ * nearest beat within `maxShiftSec` of the requested cut point. Only beats
+ * strictly inside the clip's trimmed source span are candidates; ties go to
+ * the earlier beat on the timeline. Returns null when no beat is inside the
+ * allowed movement — callers must reject, never fall back to the unsnapped
+ * time.
  */
 export function findSnappedSplitTime(
   clip: Clip,
@@ -55,13 +57,21 @@ export function findSnappedSplitTime(
   const sourceSpan = Math.max(0, clip.outPoint - clip.inPoint);
   let best: BeatSnapCandidate | null = null;
   for (const beat of beats) {
-    const source = Math.max(0, Math.min(sourceSpan, beat.timeSec - clip.inPoint));
+    // A point beat outside the clip's trimmed source range is not a candidate:
+    // clamping it to the span would invent a beat at the clip edge, which can
+    // beat a real in-range beat and then be rejected as out of bounds.
+    const source = beat.timeSec - clip.inPoint;
+    if (!(source > 0 && source < sourceSpan)) continue;
     const playback = engine.getPlaybackTimeAtSourceTime(clip.id, source);
     if (playback === null || playback === undefined || !Number.isFinite(playback)) continue;
     const timeline = clip.startTime + playback;
     const shift = Math.abs(timeline - requestedTimeSec);
     if (shift > maxShiftSec + CLAMP_EPS) continue;
-    if (best === null || shift < best.shiftSec - CLAMP_EPS) {
+    if (
+      best === null ||
+      shift < best.shiftSec - CLAMP_EPS ||
+      (Math.abs(shift - best.shiftSec) <= CLAMP_EPS && timeline < best.snappedTimeSec)
+    ) {
       best = { snappedTimeSec: timeline, shiftSec: shift, beatIndex: beat.index ?? -1 };
     }
   }

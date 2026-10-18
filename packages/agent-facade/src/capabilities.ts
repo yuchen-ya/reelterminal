@@ -570,7 +570,12 @@ export async function buildCapabilities(
             limitations: "similarity-only short rigid-region propagation; not nonrigid character animation, automatic occlusion completion or guaranteed detection of every cut",
           } },
       align: !opencvReady.available
-        ? { available: false, reason: opencvReady.reason, requires: "a Python interpreter with opencv-python and numpy (REELTERMINAL_OPENCV_PYTHON or PATH)" }
+        ? {
+            available: false,
+            reason: opencvReady.reason,
+            requires: opencvReady.requires ?? "a Python interpreter with opencv-python and numpy (REELTERMINAL_OPENCV_PYTHON or PATH)",
+            ...(opencvReady.probed === false ? { probed: false as const } : {}),
+          }
         : {
             available: true,
             details: {
@@ -587,7 +592,12 @@ export async function buildCapabilities(
             },
           },
       track: !opencvReady.available
-        ? { available: false, reason: opencvReady.reason, requires: "a Python interpreter with opencv-python and numpy (REELTERMINAL_OPENCV_PYTHON or PATH)" }
+        ? {
+            available: false,
+            reason: opencvReady.reason,
+            requires: opencvReady.requires ?? "a Python interpreter with opencv-python and numpy (REELTERMINAL_OPENCV_PYTHON or PATH)",
+            ...(opencvReady.probed === false ? { probed: false as const } : {}),
+          }
         : {
             available: true,
             details: {

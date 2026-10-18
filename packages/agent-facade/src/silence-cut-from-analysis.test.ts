@@ -321,6 +321,8 @@ describe("clip.cutSilenceFromAnalysis end-to-end (headless edit.apply)", () => {
   let facade: ReturnType<typeof createAgentFacade>;
   let recordId: string;
   let mediaId: string;
+  let voiceWav: string;
+  let sourceRevision: number;
 
   async function currentClips(): Promise<Clip[]> {
     const state = await facade["project.get_state"]();
@@ -328,9 +330,36 @@ describe("clip.cutSilenceFromAnalysis end-to-end (headless edit.apply)", () => {
     return state.value.project.timeline.tracks.flatMap((track) => track.clips);
   }
 
+  async function writeSilenceRecord(regions: ReadonlyArray<{ startSec: number; endSec: number }>): Promise<string> {
+    const fileStat = await stat(voiceWav);
+    const saved = await saveAnalysisRecord(join(root, "artifacts"), {
+      projectId: "test-project",
+      sourceRevision,
+      coordinateSpace: "source",
+      subject: { mediaId, name: "voice.wav", sourcePath: voiceWav, sourceFingerprint: { size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) } },
+      analysisTypes: ["silence"],
+      rangeSec: { startSec: 0, endSec: 20 },
+      config: { analysisTypes: ["silence"], startSec: 0, endSec: 20, cloudUpload: false, silenceParams: { thresholdDb: -40, minDurationSec: 0.5, paddingSec: 0.1 } },
+      provenance: [{ kind: "local-measurement", provider: "local-ffmpeg-pcm-silence-kernel", analysisType: "silence" }],
+      observations: [{
+        source: "silence",
+        facts: {
+          silentRegions: regions.map((region) => ({ ...region, durationSec: region.endSec - region.startSec })),
+          regionCount: regions.length,
+        },
+      }],
+      inferences: [],
+      recommendations: [],
+      unknowns: [],
+      recheckOf: null,
+      cloudOpinion: null,
+    });
+    return saved.id;
+  }
+
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "rt-cut-silence-e2e-"));
-    const voiceWav = join(root, "voice.wav");
+    voiceWav = join(root, "voice.wav");
     const rate = 16000;
     const data = Buffer.alloc(rate * 20 * 8, 0);
     for (let i = rate * 6; i < rate * 8; i++) {
@@ -356,24 +385,8 @@ describe("clip.cutSilenceFromAnalysis end-to-end (headless edit.apply)", () => {
       ],
     });
     if (!seeded.ok) throw new Error(seeded.error.message);
-    const fileStat = await stat(voiceWav);
-    const saved = await saveAnalysisRecord(join(root, "artifacts"), {
-      projectId: "test-project",
-      sourceRevision: seeded.value.revision,
-      coordinateSpace: "source",
-      subject: { mediaId: mediaId, name: "voice.wav", sourcePath: voiceWav, sourceFingerprint: { size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) } },
-      analysisTypes: ["silence"],
-      rangeSec: { startSec: 0, endSec: 20 },
-      config: { analysisTypes: ["silence"], startSec: 0, endSec: 20, cloudUpload: false, silenceParams: { thresholdDb: -40, minDurationSec: 0.5, paddingSec: 0.1 } },
-      provenance: [{ kind: "local-measurement", provider: "local-ffmpeg-pcm-silence-kernel", analysisType: "silence" }],
-      observations: [{ source: "silence", facts: { silentRegions: [{ startSec: 7, endSec: 9, durationSec: 2 }, { startSec: 11, endSec: 13, durationSec: 2 }], regionCount: 2 } }],
-      inferences: [],
-      recommendations: [],
-      unknowns: [],
-      recheckOf: null,
-      cloudOpinion: null,
-    });
-    recordId = saved.id;
+    sourceRevision = seeded.value.revision;
+    recordId = await writeSilenceRecord([{ startSec: 7, endSec: 9 }, { startSec: 11, endSec: 13 }]);
   });
 
   afterEach(async () => {
@@ -412,6 +425,49 @@ describe("clip.cutSilenceFromAnalysis end-to-end (headless edit.apply)", () => {
     });
     expect(replay).toMatchObject({ ok: true, value: { replayed: true } });
     expect(await currentClips()).toHaveLength(3);
+  });
+
+  it("cuts a leading silence and fades in the retained tail", async () => {
+    const edgeRecord = await writeSilenceRecord([{ startSec: 5, endSec: 7 }]);
+    const applied = await facade["edit.apply"]({
+      ops: [{ op: "clip.cutSilenceFromAnalysis", clipId: "voice", recordId: edgeRecord }],
+    });
+    expect(applied).toMatchObject({ ok: true });
+    const clips = await currentClips();
+    expect(clips).toHaveLength(1);
+    expect(clips[0]).toMatchObject({
+      startTime: 10,
+      duration: 8,
+      inPoint: 7,
+      outPoint: 15,
+      fade: { fadeIn: DEFAULT_CUT_SILENCE_FADE_SEC, fadeOut: 0 },
+    });
+  });
+
+  it("cuts a trailing silence and fades out the retained head", async () => {
+    const edgeRecord = await writeSilenceRecord([{ startSec: 13, endSec: 15 }]);
+    const applied = await facade["edit.apply"]({
+      ops: [{ op: "clip.cutSilenceFromAnalysis", clipId: "voice", recordId: edgeRecord }],
+    });
+    expect(applied).toMatchObject({ ok: true });
+    const clips = await currentClips();
+    expect(clips).toHaveLength(1);
+    expect(clips[0]).toMatchObject({
+      startTime: 10,
+      duration: 8,
+      inPoint: 5,
+      outPoint: 13,
+      fade: { fadeIn: 0, fadeOut: DEFAULT_CUT_SILENCE_FADE_SEC },
+    });
+  });
+
+  it("deletes a clip whose whole span is silent", async () => {
+    const wholeRecord = await writeSilenceRecord([{ startSec: 5, endSec: 15 }]);
+    const applied = await facade["edit.apply"]({
+      ops: [{ op: "clip.cutSilenceFromAnalysis", clipId: "voice", recordId: wholeRecord }],
+    });
+    expect(applied).toMatchObject({ ok: true });
+    expect(await currentClips()).toHaveLength(0);
   });
 
   it("keeps pauses below minSilenceSec and honors edge padding", async () => {
