@@ -73,6 +73,7 @@ test("compact instructions copy through the library and settings expose Agent co
     const settings = page.getByRole("dialog", { name: "Settings", exact: true });
     await settings.getByRole("radio", { name: "Models & environment", exact: true }).click();
     await settings.getByText("Configuration required", { exact: true }).first().waitFor();
+    await settings.getByRole("button", { name: "Set up with Agent" }).click();
     await settings.getByRole("button", { name: "Copy setup prompt" }).click();
     await settings.getByText("Copied", { exact: true }).waitFor();
     const prompt = await launched.app.evaluate(({ clipboard }) => clipboard.readText());

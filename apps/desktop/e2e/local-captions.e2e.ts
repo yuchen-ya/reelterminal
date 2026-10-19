@@ -21,10 +21,15 @@ test.skipIf(!config || !speech)("human generates local captions and undoes the e
     await source.click();
     await page.getByRole("button", { name: "Editing Tools", exact: true }).click();
     await page.getByRole("button", { name: "Auto Captions", exact: true }).click();
+    expect(await page.getByText(/Whisper/).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /Qwen/ }).getAttribute("aria-pressed")).toBe("true");
+    await evidence.screenshot("ready");
     const generate = page.getByRole("button", { name: "Generate captions", exact: true });
     await vi.waitFor(async () => expect(await generate.isEnabled()).toBe(true), { timeout: 60_000 });
+    const actionBounds = (await generate.boundingBox())!;
+    expect(actionBounds.y + actionBounds.height).toBeLessThan((await page.getByTestId("timeline-tracks-scroll").boundingBox())!.y);
     await generate.click();
-    await page.getByText("Captions added · undo available", { exact: true }).first().waitFor({ timeout: 120_000 });
+    await page.getByText("Captions added · undo available", { exact: true }).first().waitFor({ timeout: 180_000 });
     const timeline = page.getByTestId("timeline-tracks-scroll");
     expect(await timeline.getByRole("button", { name: /^Select text clip / }).count()).toBeGreaterThan(0);
     await evidence.screenshot("generated");
@@ -35,4 +40,4 @@ test.skipIf(!config || !speech)("human generates local captions and undoes the e
     evidence.record("singleUndoPreservesSource", true);
     evidence.flush();
   } finally { await launched.close(); }
-}, 180_000);
+}, 240_000);

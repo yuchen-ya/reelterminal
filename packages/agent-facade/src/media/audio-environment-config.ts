@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-export const AUDIO_ENVIRONMENT_FIELDS = ["python", "separationPython", "senseVoiceModelDir", "speakerModelDir", "demucsCache", "vadModel", "ffmpeg", "ffprobe"] as const;
+export const AUDIO_ENVIRONMENT_FIELDS = ["python", "qwenPython", "qwenModelDir", "qwenAlignerModelDir", "separationPython", "senseVoiceModelDir", "speakerModelDir", "demucsCache", "vadModel", "ffmpeg", "ffprobe"] as const;
 export type AudioEnvironmentConfig = Partial<Record<typeof AUDIO_ENVIRONMENT_FIELDS[number], string>>;
 export function audioEnvironmentPath() {
   return process.env.REELTERMINAL_AUDIO_CONFIG ?? join(homedir(), ".reelterminal", "audio-environment.json");

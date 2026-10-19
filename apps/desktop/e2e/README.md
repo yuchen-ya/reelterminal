@@ -23,6 +23,11 @@ audio configuration file. `local-captions.e2e.ts` is opt-in with
 `REELTERMINAL_CAPTION_E2E_WAV` to a local speech fixture. It imports the fixture
 into an isolated project, generates captions through the real UI and model,
 then verifies a single undo removes the captions while preserving source audio.
+The fixture configuration must include `qwenPython`, `qwenModelDir` and
+`qwenAlignerModelDir`; Qwen and SenseVoice captions both run on CPU and use
+word alignment. `caption-design.e2e.ts` checks the Chinese empty state, visible
+primary action in the default narrow panel, model selection and Agent setup flow.
+Inspect its `caption-design-zh--*.png` evidence as well as the assertions.
 
 `instruction-design.e2e.ts` switches the real UI to Chinese and narrows the
 inspector to exercise the empty state, default preset selector, hover details,

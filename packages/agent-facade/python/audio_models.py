@@ -69,10 +69,17 @@ def probe(_request):
         "torchaudio": spec("torchaudio"),
         "soundfile": spec("soundfile"),
         "numpy": spec("numpy"),
+        "transformers": spec("transformers"),
+        "librosa": spec("librosa"),
         "demucs": spec("demucs"),
         "deepfilternet": spec("deepfilternet"),
     }
     versions = {}
+    if packages["transformers"] and _request.get("qwen"):
+        import transformers
+        from transformers import AutoProcessor, AutoModelForMultimodalLM, AutoModelForTokenClassification
+        from transformers.models.qwen3_asr.processing_qwen3_asr import Qwen3ASRProcessor
+        versions["transformers"] = transformers.__version__
     if packages["funasr"]:
         import funasr
         versions["funasr"] = getattr(funasr, "__version__", "unknown")
@@ -154,7 +161,7 @@ def _sensevoice(request):
     import numpy as np
 
     pcm = _load_audio(request["wavPath"])
-    device = request.get("device") or ("cuda:0" if __import__("torch").cuda.is_available() else "cpu")
+    device = request.get("device") or "cpu"
     model_ref = modelscope_model_directory(request)
     progress(0.02, "load")
     started = time.time()
@@ -348,11 +355,19 @@ def np_stereo(pcm):
     return np.ascontiguousarray(pcm[:, :2].T.astype("float32"))
 
 
+def _caption(request):
+    import runpy
+    module = runpy.run_path(os.path.join(os.path.dirname(__file__), "caption_models.py"))
+    emit({"event": "done", "result": module["run_caption"](request, progress)})
+
+
 TASKS = {
     "probe": probe,
     "transcribe": _sensevoice,
     "diarize": _diarize,
     "separate": _separate,
+    "caption-qwen": _caption,
+    "caption-align": _caption,
 }
 
 

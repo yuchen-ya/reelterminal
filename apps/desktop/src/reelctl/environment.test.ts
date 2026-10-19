@@ -8,7 +8,7 @@ beforeEach(() => { directory = mkdtempSync(join(tmpdir(), "rt-cli-env-")); vi.st
 afterEach(() => { vi.unstubAllEnvs(); rmSync(directory, { recursive: true, force: true }); });
 it("configures application audio through the CLI without contacting a live project", async () => {
   const output = vi.fn();
-  const config = { python: join(directory, "python.exe") };
+  const config = { python: join(directory, "python.exe"), qwenPython: join(directory, "qwen-python.exe"), qwenModelDir: join(directory, "qwen"), qwenAlignerModelDir: join(directory, "aligner") };
   const file = join(directory, "input.json"); writeFileSync(file, JSON.stringify(config));
   expect(await runReelctl(["environment", "set", "--file", file], { stdout: output })).toBe(0);
   expect(await runReelctl(["environment", "get"], { stdout: output })).toBe(0);
@@ -17,6 +17,7 @@ it("configures application audio through the CLI without contacting a live proje
 });
 
 it("refuses remote media URLs and invalid ranges before invoking a model", async () => {
+  await expect(runReelctl(["environment", "test", "--file", "speech.wav", "--duration", "5", "--engine", "whisper"])).rejects.toThrow("qwen or sensevoice");
   await expect(runReelctl(["environment", "test", "--file", "https://example.invalid/speech.wav", "--duration", "5"])).rejects.toThrow();
   await expect(runReelctl(["environment", "test", "--file", "speech.wav", "--duration", "121"])).rejects.toThrow("120 seconds");
 });

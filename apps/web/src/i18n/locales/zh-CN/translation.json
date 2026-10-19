@@ -1216,10 +1216,9 @@
     "disable": "停用",
     "enable": "启用"
   },
-
   "audioEnvironment": {
     "title": "模型与环境",
-    "captions": "自动字幕",
+    "captions": "一键字幕",
     "hint": "复制提示词交给 Agent 配置，完成后重新检测。",
     "copy": "复制配置提示词",
     "copied": "已复制",
@@ -1229,13 +1228,12 @@
     "missing": "需要配置",
     "advanced": "高级诊断",
     "desktopOnly": "本地环境配置需在桌面应用中使用。",
-    "settings": "设置",
+    "settings": "环境设置",
     "range": "所选片段 · 可见部分",
     "audioStream": "音轨选择",
     "streamIndex": "音轨序号（从 0 开始）",
     "generate": "生成字幕",
-    "captionHint": "句级时间定位。生成到新字幕轨道，保留已有字幕；可一次撤销。",
-    "browserEngine": "浏览器 Whisper（备用引擎）",
+    "captionHint": "生成到新轨道，保留已有字幕",
     "languages": {
       "auto": "自动识别",
       "zh": "中文",
@@ -1249,6 +1247,30 @@
       "done": "字幕已添加 · 可撤销",
       "cancelled": "已取消字幕生成",
       "error": "字幕生成失败"
-    }
+    },
+    "memoryHint": "可能占用数GB内存",
+    "lightweight": "轻量语音识别",
+    "selectClip": "选择一个视频或音频片段",
+    "visibleRange": "字幕将匹配时间线中的可见部分",
+    "selectFirst": "请先选择片段",
+    "recognitionModel": "识别模型",
+    "moreOptions": "更多选项",
+    "alignmentHint": "两种识别模型均使用 Qwen ForcedAligner 校准词级时间戳。",
+    "setupRequired": "所选模型或时间对齐环境尚未就绪，请先配置。",
+    "configure": "配置环境",
+    "wordAlignment": "词级对齐",
+    "localProcessing": "本地处理",
+    "qwenRuntime": "独立的 Qwen Python 环境",
+    "audioExtraction": "音频提取",
+    "backToEnvironment": "返回模型与环境",
+    "promptTitle": "把这段提示词发给你的 Agent",
+    "applicationScope": "应用级设置",
+    "afterSetup": "完成后返回此处重新检测",
+    "execution": "运行方式",
+    "noGpu": "无需配置显卡驱动",
+    "localEnvironment": "本地环境",
+    "paths": "查看配置路径",
+    "agentSetup": "让 Agent 配置",
+    "setupHint": "复用已有环境，完成检测与真实转录验收"
   }
 }

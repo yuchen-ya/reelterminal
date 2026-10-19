@@ -37,9 +37,7 @@ vi.mock("@reelterminal/core", async (importOriginal) => {
   };
 });
 
-// AutoCaptionPanel mounts a whisper Worker on effect (jsdom has no
-// Worker); the caption button under test lives in AiTab itself, so the
-// panel is stubbed exactly like AiTab.test does.
+// Keep desktop model environment checks out of this cloud-error regression.
 vi.mock("./inspector/AutoCaptionPanel", () => ({
   AutoCaptionPanel: () => null,
 }));

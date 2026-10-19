@@ -1216,10 +1216,9 @@
     "disable": "Disable",
     "enable": "Enable"
   },
-
   "audioEnvironment": {
     "title": "Models & environment",
-    "captions": "Automatic captions",
+    "captions": "Auto Captions",
     "hint": "Copy the setup prompt for your Agent, then run the check again.",
     "copy": "Copy setup prompt",
     "copied": "Copied",
@@ -1229,13 +1228,12 @@
     "missing": "Configuration required",
     "advanced": "Advanced diagnostics",
     "desktopOnly": "Local environment configuration is available in the desktop app.",
-    "settings": "Settings",
+    "settings": "Environment",
     "range": "Selected clip · visible range",
     "audioStream": "Audio stream",
     "streamIndex": "Stream index (starting at 0)",
     "generate": "Generate captions",
-    "captionHint": "Sentence-level timing. Adds a new caption track; existing captions are preserved. Undo removes the entire generated batch.",
-    "browserEngine": "Browser Whisper (alternative engine)",
+    "captionHint": "Adds a new track; keeps existing captions",
     "languages": {
       "auto": "Detect automatically",
       "zh": "Chinese",
@@ -1249,6 +1247,30 @@
       "done": "Captions added · undo available",
       "cancelled": "Caption generation cancelled",
       "error": "Caption generation failed"
-    }
+    },
+    "memoryHint": "May use several GB of RAM",
+    "lightweight": "Lightweight recognition",
+    "selectClip": "Select a video or audio clip",
+    "visibleRange": "Captions follow the visible timeline range",
+    "selectFirst": "Select a clip first",
+    "recognitionModel": "Recognition model",
+    "moreOptions": "More options",
+    "alignmentHint": "Qwen ForcedAligner calibrates word timestamps for both models.",
+    "setupRequired": "The selected model or alignment environment needs setup.",
+    "configure": "Configure environment",
+    "wordAlignment": "Word alignment",
+    "localProcessing": "Local processing",
+    "qwenRuntime": "Separate Qwen Python environment",
+    "audioExtraction": "Audio extraction",
+    "backToEnvironment": "Back to environment",
+    "promptTitle": "Send this prompt to your Agent",
+    "applicationScope": "Application settings",
+    "afterSetup": "After setup, return here and check again",
+    "execution": "Execution",
+    "noGpu": "No GPU drivers required",
+    "localEnvironment": "Local environment",
+    "paths": "Configuration paths",
+    "agentSetup": "Set up with Agent",
+    "setupHint": "Reuse local environments, then verify with real transcription"
   }
 }

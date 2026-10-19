@@ -120,11 +120,13 @@ async function findOnPath(name: string): Promise<string | null> {
 
 async function candidateInterpreters(task?: unknown): Promise<InterpreterCandidate[]> {
   const candidates: InterpreterCandidate[] = [];
-  const explicit = task === "separate"
+  const explicit = task === "caption-qwen" || task === "caption-align"
+    ? readAudioEnvironment().qwenPython
+    : task === "separate"
     ? readAudioEnvironment().separationPython ?? process.env.REELTERMINAL_SEPARATION_PYTHON ?? readAudioEnvironment().python ?? process.env.REELTERMINAL_AUDIO_MODELS_PYTHON ?? process.env.REELTERMINAL_PYTHON_PATH
     : readAudioEnvironment().python ?? process.env.REELTERMINAL_AUDIO_MODELS_PYTHON ?? process.env.REELTERMINAL_PYTHON_PATH;
   if (explicit && explicit.length > 0) candidates.push({ python: explicit });
-  if (explicit) return candidates;
+  if (explicit || task === "caption-qwen" || task === "caption-align") return candidates;
   for (const name of ["python3", "python"]) {
     const onPath = await findOnPath(name);
     if (onPath) candidates.push({ python: onPath });
@@ -466,6 +468,7 @@ export const DEFAULT_AUDIO_MODEL_PACKAGES = ["funasr", "modelscope", "torch", "s
 
 /** Per-task import requirements; transcript and diarization need different packages. */
 export function requiredAudioModelPackages(task: unknown): readonly string[] {
+  if (task === "caption-qwen" || task === "caption-align") return ["transformers", "torch", "soundfile", "numpy", "librosa"];
   if (task === "diarize") return ["modelscope", "torch", "soundfile", "numpy"];
   if (task === "separate") return ["demucs", "torch", "soundfile", "numpy"];
   if (task === "deepfilter") return ["deepfilternet", "torch", "soundfile", "numpy"];
@@ -512,7 +515,7 @@ export async function probeAudioModelsRuntime(
   let lastReason = "no candidate interpreter could run the audio-model probe";
   for (const candidate of candidates) {
     try {
-      const result = await runAudioModelProcess(candidate.python, script, { task: "probe" }, { timeoutMs: 180_000 });
+      const result = await runAudioModelProcess(candidate.python, script, { task: "probe", qwen: task === "caption-qwen" || task === "caption-align" }, { timeoutMs: 180_000 });
       const packages = (result.packages ?? {}) as Record<string, boolean>;
       const missing = requiredPackages.filter((name) => !packages[name]);
       if (missing.length > 0) {

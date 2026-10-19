@@ -22,7 +22,7 @@ const api = {
   publicOrigin: "",
   audioEnvironment: { check: () => ipcRenderer.invoke(CHANNELS.audioEnvironmentCheck) },
   captions: {
-    transcribe: (id: string, samples: Float32Array, language: string) => ipcRenderer.invoke(CHANNELS.captionTranscribe, { id, samples, language }),
+    transcribe: (id: string, samples: Float32Array, language: string, engine: "qwen" | "sensevoice" = "qwen") => ipcRenderer.invoke(CHANNELS.captionTranscribe, { id, samples, language, engine }),
     cancel: (id: string) => ipcRenderer.invoke(CHANNELS.captionCancel, { id }),
   },
   probeHardware: () => ipcRenderer.invoke(CHANNELS.probeHardware, undefined),

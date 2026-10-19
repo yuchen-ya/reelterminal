@@ -1887,7 +1887,7 @@ export const AssetsPanel: React.FC = () => {
 
         {/* Dynamic Section Content */}
         <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden">
-          {activeTab !== "media" && activeTab !== "library" && (
+          {activeTab !== "media" && activeTab !== "library" && activeTab !== "tools" && (
             <div className="min-w-0 px-4 pt-[18px] pb-0 shrink-0">
               <div
                 className="truncate font-bold text-[18px] text-fg"

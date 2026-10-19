@@ -10,7 +10,7 @@ import type {
 } from "@reelterminal/agent-facade/desktop-protocol";
 
 import type { AudioEnvironmentReport } from "@reelterminal/agent-facade/media/audio-environment";
-import type { TranscriptSegment } from "@reelterminal/agent-facade/speech-transcript";
+import type { AlignedCaption, CaptionEngine } from "@reelterminal/agent-facade/media/qwen-captions";
 export {};
 
 export interface OpenReelHardwareInfo {
@@ -304,7 +304,7 @@ interface ReelTerminalDesktopBridge {
       platform: "desktop";
       publicOrigin: string;
       audioEnvironment?: { check(): Promise<AudioEnvironmentReport> };
-      captions?: { transcribe(id: string, samples: Float32Array, language: string): Promise<TranscriptSegment[]>; cancel(id: string): Promise<void> };
+      captions?: { transcribe(id: string, samples: Float32Array, language: string, engine?: CaptionEngine): Promise<AlignedCaption[]>; cancel(id: string): Promise<void> };
       probeHardware(): Promise<OpenReelHardwareInfo>;
       onMenuAction(cb: (id: string) => void): () => void;
       fs: {

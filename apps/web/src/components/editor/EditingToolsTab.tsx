@@ -137,6 +137,7 @@ export const EditingToolsTab: React.FC = () => {
   };
 
   if (activeFeature) {
+    if (activeFeature === "captions") return <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"><AutoCaptionPanel onBack={() => navigateAway(null)} /></div>;
     return (
       <div className="flex-1 flex flex-col overflow-y-auto w-full min-w-0">
         <Button

@@ -24,25 +24,37 @@ or grant Agent editing access:
 reelctl environment get
 reelctl environment set --file audio-config.json
 reelctl environment check
-reelctl environment test --file speech.wav --duration 5 --language auto
+reelctl environment test --file speech.wav --duration 30 --language auto --engine qwen
+reelctl environment test --file speech.wav --duration 30 --language auto --engine sensevoice
 ```
 
 `get` returns the saved configuration and supported fields. `set` replaces the
 whole configuration atomically: read it first and preserve unrelated fields.
-Supported fields are `python`, `separationPython`, `senseVoiceModelDir`,
+Supported fields are `python`, `qwenPython`, `qwenModelDir`, `qwenAlignerModelDir`, `separationPython`, `senseVoiceModelDir`,
 `speakerModelDir`, `demucsCache`, `vadModel`, `ffmpeg`, and `ffprobe`; each value
 must be an absolute path. An empty object clears the saved overrides. The file
 lives at `~/.reelterminal/audio-environment.json`, independently of project files;
 `REELTERMINAL_AUDIO_CONFIG` redirects it for isolated testing. Saved fields take
 precedence over legacy environment variables. Changes apply without restarting.
 
-`check` verifies dependency imports, pinned model weights, a real VAD session and
+`python` selects SenseVoice's interpreter; `qwenPython` selects the separate
+Qwen recognition/alignment interpreter. Both caption engines run on CPU.
+Use the official `Qwen/Qwen3-ASR-1.7B-hf` and
+`Qwen/Qwen3-ForcedAligner-0.6B-hf` local directories, with compatible Transformers
+(at least 5.13.0), PyTorch, soundfile, numpy and librosa. No model is bundled or
+downloaded by the caption action. Recognition and alignment load sequentially.
+
+`check` verifies dependency imports, pinned SenseVoice weights, Qwen model files
+and safetensors data lengths, a real VAD session and
 FFmpeg availability, without downloading anything. Its `components` manifest
 lists validated package versions, model sources, expected weights and space
-requirements. `ready` describes subtitle readiness; optional speaker/separation
+requirements. `ready` describes default Qwen subtitle readiness;
+`captionEngines.qwen` and `captionEngines.sensevoice` report each engine separately,
+including their shared aligner. Optional speaker/separation
 diagnostics are also returned. Exit code 3 means the requested readiness check
 did not pass. `test` actually transcribes up to 120 seconds of a supplied local
-speech file, returns sentence-level text and timing, and never edits a project.
+16 kHz mono speech WAV (use its actual duration), returns grouped captions with
+word timestamps, the selected engine, CPU device and elapsed time, and never edits a project.
 A successful dependency check is not transcription acceptance: inspect the test
 output against the speech. Obtain user consent before downloading missing models
 or dependencies, and reuse existing environments where possible.
@@ -52,9 +64,11 @@ range, divides long audio into contiguous chunks of at most 120 seconds (preferr
 quiet boundaries), and writes a fresh editable caption track in one undo batch.
 It preserves existing captions. Cancellation, inference failure, and changed
 source/project identity prevent partial publication. Constant forward speed is
-supported; reverse playback and speed keyframes are rejected. SenseVoice timing
-comes from external VAD sentence boundaries, not word alignment. Browser Whisper
-remains an explicit alternative engine. Jobs survive panel navigation, not app
+supported; reverse playback and speed keyframes are rejected. Both engines use
+Qwen ForcedAligner word timing; unsupported detected alignment languages fail
+explicitly. Decimal points and punctuation from the recognized text are preserved.
+The old browser Whisper engine and download UI have been removed.
+Jobs survive panel navigation, not app
 restart.
 
 ### Instruction presets
