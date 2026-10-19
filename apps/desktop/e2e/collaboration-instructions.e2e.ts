@@ -39,15 +39,24 @@ describe("collaboration instructions in the existing board", () => {
     expect((await cli(["call", "collaboration.instructions.get"])).ok).toBe(false);
     expect((await cli(["call", "collaboration.instructions.get", "--project-id", context.value.identity.projectId, "--workspace-id", "missing-workspace"])).ok).toBe(false);
     await page.getByTestId("requirement-board-entry").click();
-    await page.getByRole("button", { name: "Add from presets" }).waitFor();
+    await page.getByRole("tab", { name: "Collaboration instructions", exact: true }).click();
+    await page.getByRole("button", { name: "Add instruction", exact: true }).waitFor();
     await evidence.screenshot("empty");
-    await page.getByRole("button", { name: "Add from presets" }).click();
-    await page.getByRole("button", { name: /Guide me visually/ }).click();
+    await page.getByRole("button", { name: "Add instruction", exact: true }).click();
+    await page.getByRole("button", { name: "Guide me visually", exact: true }).click();
+    // Complete built-ins are now added directly. Edit the resulting chip;
+    // keep proving that draft changes do not reach CLI reads before Save.
+    await page.getByRole("switch", { name: "Enable Guide me visually", exact: true }).waitFor();
+    const preset = await read();
+    expect(preset.ok, JSON.stringify(preset.error)).toBe(true);
+    expect(preset.value.instructions).toHaveLength(1);
+    expect(preset.value.instructions[0].title).toBe("Guide me visually");
+    await page.getByRole("button", { name: "Guide me visually", exact: true }).click();
     await page.getByRole("textbox", { name: "Title", exact: true }).fill("Show me a prototype");
     await page.getByRole("textbox", { name: "Detailed instruction" }).fill("When I dislike the direction, show two short visual prototypes before remaking the whole video.");
-    expect((await read()).value.instructions).toEqual([]);
+    expect((await read()).value.instructions).toEqual(preset.value.instructions);
     await evidence.screenshot("edit");
-    await page.getByRole("button", { name: "Add to project" }).click();
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
     await page.getByRole("switch", { name: "Enable Show me a prototype" }).waitFor();
     const saved = await read();
     expect(saved.ok, JSON.stringify(saved.error)).toBe(true);
@@ -79,6 +88,7 @@ describe("collaboration instructions in the existing board", () => {
     expect(reopened.value.instructions).toEqual(saved.value.instructions);
     evidence.bindPage(page);
     await page.getByTestId("requirement-board-entry").click();
+    await page.getByRole("tab", { name: "Collaboration instructions", exact: true }).click();
     await page.getByRole("button", { name: "Show me a prototype" }).waitFor();
     await evidence.screenshot("reopened");
     evidence.record("instructionCount", reopened.value.instructions.length);
