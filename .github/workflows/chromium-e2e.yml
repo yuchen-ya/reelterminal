@@ -23,6 +23,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record tested commit
+        run: git rev-parse HEAD
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
@@ -72,12 +77,19 @@ jobs:
         run: |
           ulimit -c 0
           pnpm --filter @reelterminal/agent-transport test:run
-      - name: Upload machine-readable evidence
+      - name: Check evidence privacy and size before upload
+        id: evidence-check
         if: always()
+        run: node scripts/security/check-ci-artifacts.mjs packages/runtime-chromium/.artifacts/
+      - name: Upload machine-readable evidence
+        if: ${{ always() && steps.evidence-check.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: chromium-e2e-evidence
-          path: packages/runtime-chromium/.artifacts/
+          path: |
+            packages/runtime-chromium/.artifacts/**/*.json
+            packages/runtime-chromium/.artifacts/**/*.png
+            packages/runtime-chromium/.artifacts/**/*.md
           include-hidden-files: true
           if-no-files-found: error
           overwrite: true
@@ -96,6 +108,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record tested commit
+        run: git rev-parse HEAD
 
       - name: Free disk space (Linux)
         if: runner.os == 'Linux'

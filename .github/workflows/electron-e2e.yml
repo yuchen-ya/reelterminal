@@ -29,7 +29,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Record tested commit
+        run: git rev-parse HEAD
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -80,12 +83,19 @@ jobs:
         run: |
           ulimit -c 0
           pnpm --filter @reelterminal/desktop test:e2e
-      - name: Upload machine-readable evidence
+      - name: Check evidence privacy and size before upload
+        id: evidence-check
         if: always()
+        run: node scripts/security/check-ci-artifacts.mjs apps/desktop/e2e/.artifacts/
+      - name: Upload machine-readable evidence
+        if: ${{ always() && steps.evidence-check.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: electron-e2e-evidence-${{ matrix.os }}
-          path: apps/desktop/e2e/.artifacts/
+          path: |
+            apps/desktop/e2e/.artifacts/**/*.json
+            apps/desktop/e2e/.artifacts/**/*.png
+            apps/desktop/e2e/.artifacts/**/*.md
           include-hidden-files: true
           if-no-files-found: error
           overwrite: true

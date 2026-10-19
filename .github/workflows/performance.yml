@@ -35,8 +35,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.commit || github.sha }}
+          ref: ${{ inputs.commit || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Record tested commit
+        run: git rev-parse HEAD
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -79,6 +81,8 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           persist-credentials: false
+      - name: Record tested commit
+        run: git rev-parse HEAD
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -120,12 +124,19 @@ jobs:
             Get-Content apps/desktop/e2e/.artifacts/performance-ci/report.md | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
           }
           exit $summaryExit
-      - name: Retain only anonymous summaries and small resource diagnostics
+      - name: Check evidence privacy and size before upload
+        id: evidence-check
         if: always()
+        run: node scripts/security/check-ci-artifacts.mjs apps/desktop/e2e/.artifacts/performance-ci/
+      - name: Retain only anonymous summaries and small resource diagnostics
+        if: ${{ always() && steps.evidence-check.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: performance-${{ inputs.profile }}-${{ inputs.commit }}-${{ github.run_attempt }}
-          path: apps/desktop/e2e/.artifacts/performance-ci/
+          path: |
+            apps/desktop/e2e/.artifacts/performance-ci/**/*.json
+            apps/desktop/e2e/.artifacts/performance-ci/**/*.png
+            apps/desktop/e2e/.artifacts/performance-ci/**/*.md
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 3
