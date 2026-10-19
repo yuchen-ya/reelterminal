@@ -181,6 +181,16 @@ describe("multi-project version nodes UX on the real desktop", () => {
       : toastRegion().getByText(text);
     await locator.first().waitFor({ timeout: timeoutMs });
   }
+  async function expectSingleSwitchToast(projectName: string): Promise<void> {
+    const title = `Switched to "${projectName}"`;
+    await waitForToast(title);
+    // AnimatePresence retains the replaced card during its exit animation.
+    // Check the settled DOM well before the new toast's 8-second expiry;
+    // persistent duplicates still fail rather than disappearing by timeout.
+    await vi.waitFor(async () => {
+      expect(await toastRegion().getByText(L.switchToast).allTextContents()).toEqual([title]);
+    }, { timeout: 1000, interval: 50 });
+  }
   /** Click the action card of a toast (the card carries the label as title). */
   async function clickToastAction(actionLabel: string): Promise<void> {
     await toastRegion().locator(`[title="${actionLabel}"]`).first().click();
@@ -548,8 +558,7 @@ describe("multi-project version nodes UX on the real desktop", () => {
 
     // Switch back to A: exactly one clickable notification.
     await switchToProjectViaMenu("Horizontal", a.projectId);
-    await waitForToast(/Switched to "Horizontal"/);
-    expect(await toastRegion().getByText(L.switchToast).count()).toBe(1);
+    await expectSingleSwitchToast("Horizontal");
 
     // Copy from the notification: target ids, no credentials.
     await clickToastAction(L.copyAgentPrompt);
@@ -570,8 +579,7 @@ describe("multi-project version nodes UX on the real desktop", () => {
 
     // Consecutive switches replace the notification instead of stacking.
     await switchToProjectViaMenu("Vertical", b.projectId);
-    await waitForToast(/Switched to "Vertical"/);
-    expect(await toastRegion().getByText(L.switchToast).count()).toBe(1);
+    await expectSingleSwitchToast("Vertical");
 
     // Preview isolation across switches: entering a node preview in A and
     // then switching to B drops the preview without leaking A's nodes.
