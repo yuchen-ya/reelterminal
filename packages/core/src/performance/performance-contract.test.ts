@@ -294,7 +294,7 @@ describe("performance contract (P0)", () => {
 
   describe("validatePerformanceResult", () => {
     const exampleUrl = new URL(
-      "../../../../docs/performance/result-example.json",
+      "../../../../docs/archive/performance/result-example.json",
       import.meta.url,
     );
 

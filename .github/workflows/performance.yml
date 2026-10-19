@@ -1,5 +1,5 @@
 name: Performance regression
-run-name: ${{ startsWith(inputs.profile, 'stability') && 'Cloud stability' || 'Performance' }} ${{ inputs.profile || 'contracts' }} @ ${{ inputs.commit || github.sha }}
+run-name: ${{ startsWith(inputs.profile, 'stability') && 'Cloud stability' || 'Performance' }} ${{ inputs.profile || 'contracts' }} @ ${{ inputs.commit || github.event.pull_request.head.sha || github.sha }}
 
 on:
   pull_request:
