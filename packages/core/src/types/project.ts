@@ -78,6 +78,8 @@ export interface Project {
    * This is a cache of immutable bytes, not editable project content.
    */
   readonly renderFonts?: readonly ProjectRenderFont[];
+  /** Faces whose bytes could not be captured; retained for diagnostics and retry. */
+  readonly renderFontMissingFaces?: readonly Omit<ProjectRenderFont, "dataUrl">[];
 }
 
 export interface MediaLibrary {

@@ -1,15 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "@reelterminal/core";
 import { CaptureController } from "../performance/capture-controller";
+import { editableProjectKey } from "./workspace-record-transforms";
 
 const fontStorage = vi.hoisted(() => ({
   families: new Set<string>(),
   bytes: new Map<string, ArrayBuffer>(),
+  unreadableFamilies: new Set<string>(),
+  familyQueryFails: false,
 }));
 
 vi.mock("./custom-font-storage", () => ({
-  getCustomFontBytes: async (family: string) => fontStorage.bytes.get(family)?.slice(0) ?? null,
-  listPersistedCustomFontFamilies: async () => fontStorage.families,
+  getCustomFontBytes: async (family: string) => {
+    if (fontStorage.unreadableFamilies.has(family)) throw new DOMException("Font cache read failed", "UnknownError");
+    return fontStorage.bytes.get(family)?.slice(0) ?? null;
+  },
+  listPersistedCustomFontFamilies: async () => {
+    if (fontStorage.familyQueryFails) throw new DOMException("Font family query failed", "UnknownError");
+    return fontStorage.families;
+  },
 }));
 
 import {
@@ -59,9 +68,163 @@ afterEach(() => {
   vi.unstubAllGlobals();
   fontStorage.families = new Set();
   fontStorage.bytes = new Map();
+  fontStorage.unreadableFamilies = new Set();
+  fontStorage.familyQueryFails = false;
 });
 
 describe("project render dependencies", () => {
+  it("continues other font sources after custom-cache read failures and still reports unavailable fonts", async () => {
+    setFontSources();
+    fontStorage.unreadableFamilies = new Set(["Inter", "Local Font", "Unavailable Font"]);
+    fontStorage.familyQueryFails = true;
+    fontStorage.bytes.set("Working Custom", new Uint8Array([0, 1, 0, 0]).buffer);
+    vi.stubGlobal("reelterminal", { platform: "desktop" });
+    vi.stubGlobal("queryLocalFonts", vi.fn().mockResolvedValue([
+      { family: "Local Font", style: "Regular", blob: async () => ({ arrayBuffer: async () => new Uint8Array([0, 1, 0, 0]).buffer }) },
+    ]));
+    const project = projectWith({
+      textClips: ["Inter", "Local Font", "Unavailable Font", "Working Custom"].map((fontFamily) => ({ style: { fontFamily } })),
+    });
+
+    const prepared = await prepareProjectRenderFonts(project);
+
+    expect(prepared.renderFonts?.map((font) => font.family).sort()).toEqual(["Inter", "Local Font", "Working Custom"]);
+    await expect(getMissingProjectRenderDependencyIds(prepared)).resolves.toEqual([
+      "font-render:Unavailable Font", "font:Unavailable Font",
+    ]);
+  });
+
+  it("persists partial local-face diagnostics and retries missing weights without rereading captured bytes", async () => {
+    setFontSources();
+    vi.stubGlobal("reelterminal", { platform: "desktop" });
+    const regular = vi.fn(async () => ({ arrayBuffer: async () => new Uint8Array([0, 1, 0, 0, 1]).buffer }));
+    const bold = vi.fn().mockRejectedValue(new DOMException("Bold font read failed", "NotReadableError"));
+    const query = vi.fn().mockResolvedValue([
+      { family: "Partial Font", style: "Regular", blob: regular },
+      { family: "Partial Font", style: "Bold", blob: bold },
+    ]);
+    vi.stubGlobal("queryLocalFonts", query);
+    const original = projectWith({ textClips: [{ style: { fontFamily: "Partial Font", fontWeight: "bold" } }] });
+    const prepared = await prepareProjectRenderFonts(original);
+    // Exercise the on-disk representation, not just an in-memory retry cache.
+    const reloaded = JSON.parse(JSON.stringify(prepared)) as Project;
+
+    expect(reloaded.renderFonts).toEqual([expect.objectContaining({ weight: "400" })]);
+    expect(reloaded.renderFontMissingFaces).toEqual([{ family: "Partial Font", style: "normal", weight: "700" }]);
+    expect(editableProjectKey(reloaded)).toBe(editableProjectKey(original));
+    query.mockRejectedValueOnce(new DOMException("Page needs to be visible.", "SecurityError"));
+    await expect(getMissingProjectRenderDependencyIds(reloaded)).resolves.toEqual(["font-render:Partial Font"]);
+
+    bold.mockResolvedValue({ arrayBuffer: async () => new Uint8Array([0, 1, 0, 0, 2]).buffer });
+    const completed = await prepareProjectRenderFonts(reloaded);
+
+    expect(completed.renderFonts?.map((font) => font.weight)).toEqual(["400", "700"]);
+    expect(completed.renderFontMissingFaces).toBeUndefined();
+    await expect(getMissingProjectRenderDependencyIds(completed)).resolves.toEqual([]);
+    expect(regular).toHaveBeenCalledTimes(1);
+    expect(bold).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries a failed bundled weight while retaining the captured regular face", async () => {
+    let boldAvailable = false;
+    const fetchFont = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("google-fonts.css")) return response(`
+        @font-face { font-family: 'Inter'; font-weight: 400; src: url(./regular.woff2); }
+        @font-face { font-family: 'Inter'; font-weight: 700; src: url(./bold.woff2); }
+      `);
+      if (url.endsWith("bold.woff2") && !boldAvailable) return { ok: false } as Response;
+      return response(new Uint8Array([0x77, 0x4f, 0x46, 0x32]).buffer);
+    });
+    vi.stubGlobal("fetch", fetchFont);
+    const prepared = await prepareProjectRenderFonts(projectWith({ textClips: [{ style: { fontFamily: "Inter" } }] }));
+
+    expect(prepared.renderFonts).toHaveLength(1);
+    await expect(getMissingProjectRenderDependencyIds(prepared)).resolves.toEqual(["font-render:Inter"]);
+    boldAvailable = true;
+    const completed = await prepareProjectRenderFonts(JSON.parse(JSON.stringify(prepared)));
+
+    expect(completed.renderFonts?.map((font) => font.weight)).toEqual(["400", "700"]);
+    expect(completed.renderFontMissingFaces).toBeUndefined();
+    await expect(getMissingProjectRenderDependencyIds(completed)).resolves.toEqual([]);
+    expect(fetchFont.mock.calls.filter(([url]) => String(url).endsWith("regular.woff2"))).toHaveLength(1);
+  });
+
+  it("clears a failed bundled Unicode subset when a full local face supplies its bytes", async () => {
+    vi.stubGlobal("reelterminal", { platform: "desktop" });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith("google-fonts.css")
+        ? response("@font-face { font-family: 'Inter'; font-weight: 700; src: url(./bold.woff2); unicode-range: U+0000-00FF; }")
+        : { ok: false } as Response));
+    vi.stubGlobal("queryLocalFonts", vi.fn().mockResolvedValue([
+      { family: "Inter", style: "Bold", blob: async () => ({ arrayBuffer: async () => new Uint8Array([0, 1, 0, 0]).buffer }) },
+    ]));
+
+    const prepared = await prepareProjectRenderFonts(projectWith({ textClips: [{ style: { fontFamily: "Inter" } }] }));
+
+    expect(prepared.renderFonts).toEqual([expect.objectContaining({ family: "Inter", weight: "700" })]);
+    expect(prepared.renderFontMissingFaces).toBeUndefined();
+    await expect(getMissingProjectRenderDependencyIds(prepared)).resolves.toEqual([]);
+  });
+
+  it.each([
+    ["SecurityError", "Page needs to be visible."],
+    ["NotAllowedError", "Local font access was denied."],
+  ])("keeps captured fonts and missing-family diagnostics when local enumeration fails with %s", async (name, message) => {
+    setFontSources();
+    vi.stubGlobal("reelterminal", { platform: "desktop" });
+    vi.stubGlobal("queryLocalFonts", vi.fn().mockRejectedValue(new DOMException(message, name)));
+    const savedFont = {
+      family: "Saved Font", style: "normal", weight: "400", dataUrl: "data:font/ttf;base64,AAEAAA==",
+    };
+    const project = projectWith({
+      textClips: ["Arial", "Missing Local Font", "Inter", "Saved Font"].map((fontFamily) => ({ style: { fontFamily } })),
+      renderFonts: [savedFont],
+    });
+
+    const prepared = await prepareProjectRenderFonts(project);
+
+    expect(prepared.textClips).toEqual(project.textClips);
+    expect(prepared.renderFonts).toEqual([
+      savedFont,
+      expect.objectContaining({ family: "Inter" }),
+    ]);
+    await expect(getMissingProjectRenderDependencyIds(prepared)).resolves.toEqual([
+      "font-render:Arial",
+      "font-render:Missing Local Font",
+      "font:Missing Local Font",
+    ]);
+  });
+
+  it.each(["blob", "arrayBuffer"])("continues capturing other local fonts when a font's %s read fails", async (failureStage) => {
+    setFontSources();
+    vi.stubGlobal("reelterminal", { platform: "desktop" });
+    const failedRead = vi.fn().mockRejectedValue(new DOMException("Font cannot be read.", "NotReadableError"));
+    vi.stubGlobal("queryLocalFonts", vi.fn().mockResolvedValue([
+      {
+        family: "Broken Local Font", style: "Regular",
+        blob: failureStage === "blob" ? failedRead : async () => ({ arrayBuffer: failedRead }),
+      },
+      {
+        family: "Working Local Font", style: "Regular",
+        blob: async () => ({ arrayBuffer: async () => new Uint8Array([0, 1, 0, 0]).buffer }),
+      },
+    ]));
+    const project = projectWith({
+      textClips: ["Broken Local Font", "Working Local Font"].map((fontFamily) => ({ style: { fontFamily } })),
+    });
+
+    const prepared = await prepareProjectRenderFonts(project);
+
+    expect(prepared.renderFonts).toEqual([
+      { family: "Working Local Font", style: "normal", weight: "400", dataUrl: "data:font/ttf;base64,AAEAAA==" },
+    ]);
+    await expect(getMissingProjectRenderDependencyIds(prepared)).resolves.toEqual([
+      "font-render:Broken Local Font", "font:Broken Local Font",
+    ]);
+  });
+
   it("captures the requested installed family and its real regular/bold faces", async () => {
     setFontSources();
     const regular = new Uint8Array([0, 1, 0, 0, 1]);

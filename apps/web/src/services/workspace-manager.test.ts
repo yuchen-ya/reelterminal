@@ -11,6 +11,7 @@ import {
 import { WorkspaceManager, WorkspaceManagerError, isSubstantiveProject, type WorkspaceContextHandle, type WorkspaceRecord } from "./workspace-manager";
 import { cloneProject } from "./workspace-record-transforms";
 import * as renderDependencies from "./project-render-dependencies";
+import * as customFontStorage from "./custom-font-storage";
 import * as mediaRecovery from "../utils/media-recovery";
 
 // Captured before any test spies on the module: re-capturing inside a test
@@ -497,6 +498,72 @@ describe("WorkspaceManager", () => {
       "font:Missing Custom Font",
       "image:assets/background.png",
     ]);
+  });
+
+  it.each(["local enumeration", "custom-cache reads", "partial local capture"])("persists action batches, GUI edits and version nodes after failed %s", async (failureSource) => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false })));
+    vi.stubGlobal("reelterminal", { platform: "desktop" });
+    const boldRead = vi.fn().mockRejectedValue(new DOMException("Bold font read failed", "NotReadableError"));
+    const queryLocalFonts = failureSource === "partial local capture"
+      ? vi.fn().mockResolvedValue([
+        { family: "Arial", style: "Regular", blob: async () => ({ arrayBuffer: async () => new Uint8Array([0, 1, 0, 0]).buffer }) },
+        { family: "Arial", style: "Bold", blob: boldRead },
+      ])
+      : vi.fn().mockRejectedValue(new DOMException("Page needs to be visible.", "SecurityError"));
+    vi.stubGlobal("queryLocalFonts", queryLocalFonts);
+    const customFontRead = failureSource === "custom-cache reads"
+      ? vi.spyOn(customFontStorage, "getCustomFontBytes").mockRejectedValue(new DOMException("Font cache read failed", "UnknownError"))
+      : undefined;
+    try {
+      const manager = new WorkspaceManager();
+      const created = await manager.createProject({
+        ...createEmptyProject("Font failure persistence"),
+        textClips: [{ style: { fontFamily: "Arial" } } as never],
+      });
+      const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+      const { store } = await manager.getWorkspaceContext(target);
+      const committed = await manager.commitActionBatch({
+        target,
+        expectedRevision: 0,
+        actions: [{ type: "track/add", id: "font-failure-track", timestamp: 1, params: { trackType: "video", position: 0 } }],
+        options: { groupLabel: "Add video track", historyOwner: "agent" },
+      });
+
+      expect(committed.batch.result.success).toBe(true);
+      expect(committed.revision).toBe(1);
+      expect(getProjectHistoryResourceCountsForStore(store).actionUndo).toBe(1);
+      const afterBatch = await new WorkspaceManager().getWorkspaceContext(target);
+      expect(afterBatch.revision).toBe(1);
+      expect(afterBatch.store.getState().project.timeline.tracks).toHaveLength(1);
+
+      store.setState({ project: { ...store.getState().project, name: "Saved GUI edit" } });
+      await manager.flushWorkspace(target);
+
+      const afterGuiEdit = await new WorkspaceManager().getWorkspaceContext(target);
+      expect(afterGuiEdit.store.getState().project.name).toBe("Saved GUI edit");
+      expect(afterGuiEdit.revision).toBe(store.getState().workspaceRevision);
+      expect(manager.readPerformanceResources().failedWriteCount).toBe(0);
+
+      const saved = await manager.saveNode({ target, expectedRevision: store.getState().workspaceRevision });
+      expect(saved.node.missingDependencies).toEqual(["font-render:Arial"]);
+      const node = await new WorkspaceManager().getNode(target.projectId, saved.node.id);
+      expect(node?.project.name).toBe("Saved GUI edit");
+      expect(node?.project.timeline.tracks).toHaveLength(1);
+      expect(node?.missingDependencies).toEqual(["font-render:Arial"]);
+      expect(queryLocalFonts).toHaveBeenCalled();
+      if (failureSource === "partial local capture") {
+        expect(node?.project.renderFonts).toHaveLength(1);
+        expect(node?.project.renderFontMissingFaces).toEqual([{ family: "Arial", style: "normal", weight: "700" }]);
+        boldRead.mockResolvedValue({ arrayBuffer: async () => new Uint8Array([0, 1, 0, 0, 1]).buffer });
+        const retried = await new WorkspaceManager().getNode(target.projectId, saved.node.id);
+        expect(retried?.project.renderFonts?.map((font) => font.weight)).toEqual(["400", "700"]);
+        expect(retried?.project.renderFontMissingFaces).toBeUndefined();
+        expect(retried?.missingDependencies).toEqual([]);
+      }
+    } finally {
+      customFontRead?.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("adds a title track and text clip as one queued, undoable GUI commit", async () => {

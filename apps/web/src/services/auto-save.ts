@@ -396,8 +396,12 @@ export class AutoSaveManager {
     await this.saveRecord(record);
 
     this.currentSlot = (this.currentSlot + 1) % this.config.maxSlots;
-    await this.cleanupOldSaves(project.id);
-
+    try {
+      await this.cleanupOldSaves(project.id);
+    } catch (error) {
+      // The new snapshot is already durable; housekeeping cannot undo the save.
+      console.warn("[AutoSave] Old backup cleanup failed:", error);
+    }
   }
 
   private saveRecord(record: AutoSaveRecord): Promise<void> {

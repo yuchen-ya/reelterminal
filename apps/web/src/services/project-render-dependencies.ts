@@ -52,6 +52,14 @@ interface BundledFontFace {
   readonly source: string;
 }
 
+interface LocalFontFace {
+  readonly family: string;
+  readonly style: string;
+  blob(): Promise<Blob>;
+}
+
+type RenderFontFace = Omit<ProjectRenderFont, "dataUrl">;
+
 /** Recursively collect every non-empty `fontFamily` string found in `value`. */
 export function collectFontFamilies(value: unknown, families: Set<string>): void {
   if (!value || typeof value !== "object") return;
@@ -163,16 +171,22 @@ function fontDataUrl(data: ArrayBuffer): string {
   return bufferToDataUrl(data, mime);
 }
 
-function validRenderFont(value: unknown): value is ProjectRenderFont {
+function validRenderFontFace(value: unknown): value is RenderFontFace {
   if (!value || typeof value !== "object") return false;
-  const font = value as Partial<ProjectRenderFont>;
+  const font = value as Partial<RenderFontFace>;
   return typeof font.family === "string" && font.family.trim().length > 0 &&
     typeof font.style === "string" && typeof font.weight === "string" &&
-    typeof font.dataUrl === "string" && /^data:font\/(?:woff2?|ttf|otf);base64,[A-Za-z0-9+/]+=*$/i.test(font.dataUrl) &&
     (font.unicodeRange === undefined || typeof font.unicodeRange === "string");
 }
 
-function renderFontKey(font: ProjectRenderFont): string {
+function validRenderFont(value: unknown): value is ProjectRenderFont {
+  if (!validRenderFontFace(value)) return false;
+  const font = value as ProjectRenderFont;
+  return typeof font.dataUrl === "string" &&
+    /^data:font\/(?:woff2?|ttf|otf);base64,[A-Za-z0-9+/]+=*$/i.test(font.dataUrl);
+}
+
+function renderFontKey(font: RenderFontFace): string {
   return `${font.family.toLowerCase()}\u0000${font.style}\u0000${font.weight}\u0000${font.unicodeRange ?? ""}`;
 }
 
@@ -229,25 +243,66 @@ export async function prepareProjectRenderFonts(
     const validFonts = validationResult.validFonts;
     endFontValidation(validation, rawFonts, validFonts, validationResult.cacheHit);
     const existing = validFonts.filter((font) => needed.has(font.family.toLowerCase()));
-    const capturedFamilies = new Set(existing.map((font) => font.family.toLowerCase()));
     const renderFonts = [...existing];
+    const capturedKeys = new Set(existing.map(renderFontKey));
+    const hasCapturedFace = (face: RenderFontFace): boolean =>
+      capturedKeys.has(renderFontKey(face)) || renderFonts.some((font) =>
+        font.unicodeRange === undefined && font.family.toLowerCase() === face.family.toLowerCase() &&
+        font.style === face.style && font.weight === face.weight);
+    const missingFaces = new Map(
+      (Array.isArray(project.renderFontMissingFaces) ? project.renderFontMissingFaces : [])
+        .filter(validRenderFontFace)
+        .filter((face) => needed.has(face.family.toLowerCase()) && !hasCapturedFace(face))
+        .map((face) => [renderFontKey(face), face]),
+    );
+    const capturedFamilies = new Set(existing.map((font) => font.family.toLowerCase()));
+    for (const face of missingFaces.values()) capturedFamilies.delete(face.family.toLowerCase());
+
+    const markMissingFace = (face: RenderFontFace): void => {
+      missingFaces.set(renderFontKey(face), face);
+      capturedFamilies.delete(face.family.toLowerCase());
+    };
+    const captureFont = (font: ProjectRenderFont): void => {
+      const key = renderFontKey(font);
+      if (!capturedKeys.has(key)) {
+        renderFonts.push(font);
+        capturedKeys.add(key);
+      }
+      // A full local face also supplies a failed bundled Unicode subset.
+      for (const [missingKey, face] of missingFaces) {
+        if (hasCapturedFace(face)) missingFaces.delete(missingKey);
+      }
+      const family = font.family.toLowerCase();
+      if (![...missingFaces.values()].some((face) => face.family.toLowerCase() === family)) {
+        capturedFamilies.add(family);
+      }
+    };
 
     const customLoad = operation
       ? beginPerfOperation("font.load-custom", operation)
       : undefined;
     let customLoaded = 0;
+    let customFailures = 0;
     try {
       for (const [normalizedFamily, family] of needed) {
         if (capturedFamilies.has(normalizedFamily) || isRuntimeSystemFontFamily(family)) continue;
-        const data = await getCustomFontBytes(family);
+        let data: ArrayBuffer | null;
+        try {
+          data = await getCustomFontBytes(family);
+        } catch {
+          // A font-cache read failure leaves the family available to the other
+          // sources below and must not prevent saving the project itself.
+          customFailures += 1;
+          continue;
+        }
         if (!data) continue;
-        renderFonts.push({ family, style: "normal", weight: "400", dataUrl: fontDataUrl(data) });
-        capturedFamilies.add(normalizedFamily);
+        captureFont({ family, style: "normal", weight: "400", dataUrl: fontDataUrl(data) });
         if (operation) customLoaded += 1;
       }
-      endPerfOperation(customLoad, "ok", customLoad ? {
+      endPerfOperation(customLoad, customFailures > 0 ? "error" : "ok", customLoad ? {
         candidates: needed.size,
         loaded: customLoaded,
+        failures: customFailures,
       } : undefined);
     } catch (error) {
       failPerfOperation(customLoad, error);
@@ -267,23 +322,27 @@ export async function prepareProjectRenderFonts(
           for (const face of stylesheet.faces) {
             const normalizedFamily = face.family.toLowerCase();
             if (!bundled.some(([candidate]) => candidate === normalizedFamily)) continue;
+            const descriptor: RenderFontFace = {
+              family: face.family,
+              style: face.style,
+              weight: face.weight,
+              ...(face.unicodeRange ? { unicodeRange: face.unicodeRange } : {}),
+            };
+            if (hasCapturedFace(descriptor)) continue;
+            let data: ArrayBuffer;
             try {
               const response = await fetch(new URL(face.source, stylesheet.cssUrl));
-              if (!response.ok) continue;
-              const data = await response.arrayBuffer();
-              const descriptor: ProjectRenderFont = {
-                family: face.family,
-                style: face.style,
-                weight: face.weight,
-                ...(face.unicodeRange ? { unicodeRange: face.unicodeRange } : {}),
-                dataUrl: bufferToDataUrl(data, renderFontMime(face.source)),
-              };
-              renderFonts.push(descriptor);
-              capturedFamilies.add(normalizedFamily);
-              if (operation) bundledLoaded += 1;
+              if (!response.ok) {
+                markMissingFace(descriptor);
+                continue;
+              }
+              data = await response.arrayBuffer();
             } catch {
-              // Keep unresolved faces visible as missing render dependencies.
+              markMissingFace(descriptor);
+              continue;
             }
+            captureFont({ ...descriptor, dataUrl: bufferToDataUrl(data, renderFontMime(face.source)) });
+            if (operation) bundledLoaded += 1;
           }
         }
       }
@@ -301,28 +360,49 @@ export async function prepareProjectRenderFonts(
     const unresolved = new Set([...needed].filter(([family, displayFamily]) =>
       !capturedFamilies.has(family) && !isRuntimeSystemFontFamily(displayFamily)).map(([family]) => family));
     const desktopWindow = typeof window === "undefined" ? undefined : window as Window & {
-      queryLocalFonts?: () => Promise<Array<{ family: string; style: string; blob(): Promise<Blob> }>>;
+      queryLocalFonts?: () => Promise<LocalFontFace[]>;
     };
     const localLoad = operation
       ? beginPerfOperation("font.load-local", operation)
       : undefined;
     let localLoaded = 0;
+    let localFailures = 0;
     try {
       if (unresolved.size > 0 && desktopWindow?.reelterminal && desktopWindow.queryLocalFonts) {
-        const localFonts = await desktopWindow.queryLocalFonts();
+        let localFonts: LocalFontFace[] = [];
+        try {
+          localFonts = await desktopWindow.queryLocalFonts();
+        } catch {
+          // Hidden pages and denied font access must not block ordinary saves.
+          // Uncaptured families remain visible in the dependency diagnostics.
+          localFailures += 1;
+        }
         for (const font of localFonts) {
           const family = font.family.toLowerCase();
           if (!unresolved.has(family) || isRuntimeSystemFontFamily(font.family)) continue;
-          const data = await (await font.blob()).arrayBuffer();
-          const style = /italic|oblique/i.test(font.style) ? "italic" : "normal";
-          const weight = /bold/i.test(font.style) ? "700" : /light/i.test(font.style) ? "300" : "400";
-          renderFonts.push({ family: needed.get(family)!, style, weight, dataUrl: fontDataUrl(data) });
+          const descriptor: RenderFontFace = {
+            family: needed.get(family)!,
+            style: /italic|oblique/i.test(font.style) ? "italic" : "normal",
+            weight: /bold/i.test(font.style) ? "700" : /light/i.test(font.style) ? "300" : "400",
+          };
+          if (hasCapturedFace(descriptor)) continue;
+          let data: ArrayBuffer;
+          try {
+            data = await (await font.blob()).arrayBuffer();
+          } catch {
+            // One unreadable face must not prevent capturing the other fonts.
+            localFailures += 1;
+            markMissingFace(descriptor);
+            continue;
+          }
+          captureFont({ ...descriptor, dataUrl: fontDataUrl(data) });
           if (operation) localLoaded += 1;
         }
       }
-      endPerfOperation(localLoad, "ok", localLoad ? {
+      endPerfOperation(localLoad, localFailures > 0 ? "error" : "ok", localLoad ? {
         unresolvedFamilies: unresolved.size,
         loaded: localLoaded,
+        failures: localFailures,
       } : undefined);
     } catch (error) {
       failPerfOperation(localLoad, error);
@@ -333,7 +413,11 @@ export async function prepareProjectRenderFonts(
       renderFonts.every((font, index) => font === rawFonts[index])
       ? rawFonts
       : renderFonts;
-    const result = { ...project, renderFonts: completeRenderFonts };
+    const result = {
+      ...project,
+      renderFonts: completeRenderFonts,
+      renderFontMissingFaces: missingFaces.size > 0 ? [...missingFaces.values()] : undefined,
+    };
     endPerfOperation(operation, "ok", operation ? {
       families: needed.size,
       capturedFonts: renderFonts.length,
@@ -504,7 +588,7 @@ export async function getMissingProjectRenderDependencyIds(
     const persistedFontsOperation = operation
       ? beginPerfOperation("font.persisted-family-query", operation)
       : undefined;
-    let persistedFamilyList: Set<string>;
+    let persistedFamilyList = new Set<string>();
     try {
       persistedFamilyList = await listPersistedCustomFontFamilies();
       endPerfOperation(persistedFontsOperation, "ok", persistedFontsOperation ? {
@@ -512,7 +596,6 @@ export async function getMissingProjectRenderDependencyIds(
       } : undefined);
     } catch (error) {
       failPerfOperation(persistedFontsOperation, error);
-      throw error;
     }
     const persistedFonts = new Set(
       [...persistedFamilyList].map((family) => family.toLowerCase()),
@@ -522,11 +605,16 @@ export async function getMissingProjectRenderDependencyIds(
     const availableFaces = new Set(
       (prepared.renderFonts ?? []).map((font) => font.family.toLowerCase()),
     );
+    const incompleteFamilies = new Set(
+      (prepared.renderFontMissingFaces ?? []).map((face) => face.family.toLowerCase()),
+    );
 
     const missing = new Set<string>();
     for (const family of fontFamilies) {
-      if (isRuntimeSystemFontFamily(family) || availableFaces.has(family.toLowerCase())) continue;
-      if (!isBuiltinFontFamily(family) && !persistedFonts.has(family.toLowerCase())) {
+      const normalizedFamily = family.toLowerCase();
+      const available = availableFaces.has(normalizedFamily);
+      if (isRuntimeSystemFontFamily(family) || (available && !incompleteFamilies.has(normalizedFamily))) continue;
+      if (!available && !isBuiltinFontFamily(family) && !persistedFonts.has(normalizedFamily)) {
         missing.add(`font:${family}`);
       }
       missing.add(`font-render:${family}`);

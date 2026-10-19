@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { IDBFactory } from "fake-indexeddb";
 import type { Project } from "@reelterminal/core";
 import { AutoSaveManager } from "./auto-save";
 import { createEmptyProject } from "../stores/project/project-helpers";
@@ -22,6 +23,8 @@ type TestableManager = {
   save(value: Project, snapshot?: string): Promise<void>;
   saveRecord(record: unknown): Promise<void>;
   openDatabase(): Promise<IDBDatabase>;
+  getAllSaves(): Promise<unknown[]>;
+  deleteRecord(id: string): Promise<void>;
   db: IDBDatabase | null;
 };
 
@@ -131,6 +134,58 @@ describe("AutoSaveManager", () => {
       expect.objectContaining({ error: failure, message: "Save failed" }),
     );
     manager.stop();
+  });
+
+  it.each(["read", "delete"])("keeps a durable save successful when old backup %s fails", async (failureStage) => {
+    const previousIndexedDB = globalThis.indexedDB;
+    globalThis.indexedDB = new IDBFactory();
+    const manager = new AutoSaveManager({ maxSlots: 1 });
+    const reloaded = new AutoSaveManager();
+    const savedListener = vi.fn();
+    const errorListener = vi.fn();
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await manager.initialize();
+      if (failureStage === "delete") {
+        const database = internals(manager).db!;
+        await new Promise<void>((resolve, reject) => {
+          const tx = database.transaction("autosaves", "readwrite");
+          tx.objectStore("autosaves").put({ id: "legacy-backup", projectId: "project-1", timestamp: 0, data: "{}" });
+          tx.oncomplete = () => resolve();
+          tx.onabort = () => reject(tx.error);
+        });
+      }
+      const failure = new DOMException("Backup cleanup failed", "UnknownError");
+      const cleanupFailure = failureStage === "read"
+        ? vi.spyOn(internals(manager), "getAllSaves").mockRejectedValue(failure)
+        : vi.spyOn(internals(manager), "deleteRecord").mockRejectedValue(failure);
+      manager.on("saved", savedListener);
+      manager.on("error", errorListener);
+      const edited = project("Saved despite cleanup failure");
+
+      await expect(manager.forceSave(edited)).resolves.toBeUndefined();
+
+      expect(cleanupFailure).toHaveBeenCalled();
+      expect(manager.getStatus()).toBe("saved");
+      expect(manager.hasUnsavedChanges(edited)).toBe(false);
+      expect(savedListener).toHaveBeenCalledOnce();
+      expect(errorListener).not.toHaveBeenCalled();
+      cleanupFailure.mockRestore();
+      const records = await reloaded.checkForRecovery(edited.id);
+      await expect(reloaded.recover(records.find((record) => record.projectName === edited.name)!.id))
+        .resolves.toMatchObject({ name: edited.name });
+
+      const next = { ...edited, name: "Next edit saves normally" };
+      await manager.forceSave(next);
+      expect(manager.hasUnsavedChanges(next)).toBe(false);
+      const afterNextSave = await reloaded.checkForRecovery(next.id);
+      expect(afterNextSave).toHaveLength(1);
+      await expect(reloaded.recover(afterNextSave[0].id)).resolves.toMatchObject({ name: next.name });
+    } finally {
+      manager.destroy();
+      reloaded.destroy();
+      globalThis.indexedDB = previousIndexedDB;
+    }
   });
 
   it("reports a queued forced save and returns the queue count to zero when drained", async () => {

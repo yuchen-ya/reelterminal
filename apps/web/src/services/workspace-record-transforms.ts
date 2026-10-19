@@ -96,6 +96,7 @@ export function editableProjectKey(project: Project, parent?: PerfOperation): st
     "sourceFile",
     "thumbnailUrl",
     "renderFonts",
+    "renderFontMissingFaces",
   ]);
   const normalize = (value: unknown, key?: string): unknown => {
     if (key && ignoredFields.has(key)) return undefined;
