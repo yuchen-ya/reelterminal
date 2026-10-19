@@ -200,7 +200,7 @@ starts a duplicate job.
 
 Headless cross-session job recovery beyond the existing durable live ledger,
 DeepFilterNet-tier denoising and further lifecycle automation are tracked in
-[AUDIO-TODO.md](AUDIO-TODO.md). VAD, denoising, transcription and source
+[AUDIO-BACKLOG-COMPLETE.md](archive/AUDIO-BACKLOG-COMPLETE.md). VAD, denoising, transcription and source
 separation are separate work; normalization does not imply those models are
 installed. This page describes implemented source behavior; query the
 running installation's catalog and capabilities before invoking it.

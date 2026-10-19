@@ -60,7 +60,7 @@
 * **镜头需要卡点**：Agent 可返回 BPM、节拍位置和置信度，并可用 `clip.splitAtBeat` 在显式容差内把切点吸附到记录节拍；GUI 提供节拍同步工具。检测结果供剪辑参考，仍需核对画面节奏。
 * **录音有稳定底噪**：GUI 的基础频谱降噪可用于风扇声、嘶声等较稳定噪声，处理后需试听，避免损伤人声。
 
-量化分析本身不修改时间线；语音区间只有经显式编辑（`clip.setDuckingFromAnalysis`）才会驱动 ducking，静音区间只有经显式编辑（`clip.cutSilenceFromAnalysis`）才会切割，分析结果不会自动删除气口或重排素材。[素材分析说明](docs/MATERIAL-ANALYSIS.md)列出接口和边界；人声分离与多轨同步偏移估计仍是[待办能力](docs/AUDIO-TODO.md)。配音的发音、音色或语气错误仍需回到生成源头解决。
+量化分析本身不修改时间线；语音区间只有经显式编辑（`clip.setDuckingFromAnalysis`）才会驱动 ducking，静音区间只有经显式编辑（`clip.cutSilenceFromAnalysis`）才会切割，分析结果不会自动删除气口或重排素材。[素材分析说明](docs/MATERIAL-ANALYSIS.md)列出接口和边界；人声分离与多轨同步偏移估计已经实现，接口与限制见素材分析说明。配音的发音、音色或语气错误仍需回到生成源头解决。
 
 ---
 

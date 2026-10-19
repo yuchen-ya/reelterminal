@@ -5,7 +5,7 @@ at 2026-10-15 14:28:47 UTC. Anonymous API readback returned HTTP 200.
 Non-draft, non-prerelease, Latest; annotated tag resolves to
 `3a5a47a8245ba5cf2187b892b71e458e7bd7d250`.
 
-The public body exactly matches the user-approved `docs/RELEASE-1.2.0-PUBLIC.md`
+The public body exactly matches the user-approved `docs/archive/RELEASE-1.2.0-PUBLIC.md`
 (normalized line endings/trailing newline). It contains the approved product,
 download and usage guidance, without added internal debugging details.
 Only these five custom assets were uploaded; each server SHA-256 digest and

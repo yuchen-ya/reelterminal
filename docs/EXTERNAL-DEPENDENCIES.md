@@ -78,12 +78,12 @@ applying the Windows-only prune, but those installers still need the same load
 check on their own platforms before they are represented as VAD-capable.
 
 Planned SenseVoice, DeepFilterNet, speaker separation and other audio backends
-in [AUDIO-TODO.md](AUDIO-TODO.md) are not installed or enabled. Their model
+in [AUDIO-BACKLOG-COMPLETE.md](archive/AUDIO-BACKLOG-COMPLETE.md) are not installed or enabled. Their model
 delivery, platform support, rights and network behavior must be verified and
 documented if implemented; the existing Whisper workflow above remains
 distinct.
 
-See [Asset rights review](ASSET-LICENSE-REVIEW.md). Removed sample footage and
+See [Asset rights review](archive/ASSET-LICENSE-REVIEW.md). Removed sample footage and
 retired private mirrors are not default release dependencies. FFmpeg core
 artifact/source/license records and the remaining npm notice gaps still need
 review before an installer is represented as fully cleared for distribution.

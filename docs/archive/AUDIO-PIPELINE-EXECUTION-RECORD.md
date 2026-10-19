@@ -2,7 +2,7 @@
 
 日期：2026-10-14。依据用户提供的《音频处理相关优化.txt》及当前代码审阅。
 
-当前状态：A、B、C 均已由协调会话验收；提交 `3fbba4b0`、`2a9cd248`、`8aa24f99` 已按用户后续要求推送到 `origin/main`。下文保留各执行批次的原始范围与验证记录，批次内“未 push”描述的是当时执行边界，不代表当前远端状态。剩余工作的统一待办入口为 [AUDIO-TODO.md](AUDIO-TODO.md)。
+当前状态：A、B、C 均已由协调会话验收；提交 `3fbba4b0`、`2a9cd248`、`8aa24f99` 已按用户后续要求推送到 `origin/main`。下文保留各执行批次的原始范围与验证记录，批次内“未 push”描述的是当时执行边界，不代表当前远端状态。剩余工作的统一待办入口为 [AUDIO-BACKLOG-COMPLETE.md](AUDIO-BACKLOG-COMPLETE.md)。
 
 ## 授权与执行规则
 
@@ -48,7 +48,7 @@
 
 ## 后续路线（不属于本轮 A–C 验收）
 
-下面是原始路线摘要；后续任务状态、依赖及验收以 [AUDIO-TODO.md](AUDIO-TODO.md) 为准。
+下面是原始路线摘要；后续任务状态、依赖及验收以 [AUDIO-BACKLOG-COMPLETE.md](AUDIO-BACKLOG-COMPLETE.md) 为准。
 
 P2：Silero VAD，分析句柄驱动已有 clip.setDucking 和静音剪辑；先支持正向恒速，明确联动轨道、ripple 和既有包络冲突策略。
 
@@ -101,7 +101,7 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
 
 ## AUD-01：本地 VAD 接入（2026-10-17，提交 `40ce355b`，待用户验收）
 
-按 [AUDIO-TODO.md](AUDIO-TODO.md) 推荐批次执行。运行时与模型锁定为单一组合：**Silero VAD v5.1.2 官方 ONNX 权重**（2327524 字节，sha256 `2623a2953f6ff3d2c1e61740c6cdb7168133479b267dfef114a4a3cc5bdd788f`，MIT，来源 `github.com/snakers4/silero-vad` tag v5.1.2）+ **onnxruntime-node 1.30.0**（MIT，`agent-facade` optionalDependency、`desktop` dependency，动态 import，缺失时如实报不可用）。未采用 sherpa-onnx：仅做 VAD 时其体积与原生依赖远超需要；后续若引入其 ASR/说话人能力再按 AUD-07/09 重新评测。
+按 [AUDIO-BACKLOG-COMPLETE.md](AUDIO-BACKLOG-COMPLETE.md) 推荐批次执行。运行时与模型锁定为单一组合：**Silero VAD v5.1.2 官方 ONNX 权重**（2327524 字节，sha256 `2623a2953f6ff3d2c1e61740c6cdb7168133479b267dfef114a4a3cc5bdd788f`，MIT，来源 `github.com/snakers4/silero-vad` tag v5.1.2）+ **onnxruntime-node 1.30.0**（MIT，`agent-facade` optionalDependency、`desktop` dependency，动态 import，缺失时如实报不可用）。未采用 sherpa-onnx：仅做 VAD 时其体积与原生依赖远超需要；后续若引入其 ASR/说话人能力再按 AUD-07/09 重新评测。
 
 - 新增 `speechActivity` 分析类型与 `speechActivity.speechRegions` 事件系列，完全复用 `media.analyze_start`、job 状态、analysis 记录、`analysis.get` 明细/分页与 recheck 机制，没有新任务协议。输入新增 `vadParams {threshold, minSpeechSec, minSilenceSec, padSec}`（默认对齐 Silero 参考 0.5/0.25s/0.1s/0.03s，退出阈值固定为 threshold−0.15），有效参数（含 exitThreshold）存入记录 config，桌面 recheck 透传。
 - 内核（`packages/agent-facade/src/speech-vad.ts`）：FFmpeg 解码 16 kHz 双声道 → 与 silence/BPM 相同的“逐采样取绝对值最大声道并保号”单声道混合（右声道独有语音可检出、反相声道不抵消）→ 512 样本（32 ms）分块推理并携带模型 state → 迟滞阈值 + 最短语音/静音时长 + 边缘 padding 的纯函数分段（`segmentsFromProbabilities`，可独立测试）→ 源时间秒区间。区间粒度与边界不确定度按 0.032 s 如实披露；末尾不足一块零填充、区间端点夹紧到分析范围；逐块检查取消。per-chunk 概率不持久化，合并区间即存储粒度，并在 limitations 中明确“非语音区间不等同可删除气口”。
@@ -192,7 +192,7 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
 
 ## AUD-08：分级降噪（2026-10-18，提交 `40c41e00`，待用户验收）
 
-新增 **`audio.process.denoise`**（live/headless 共用），按 [AUDIO-MODEL-EVAL-2026-10-18.md](AUDIO-MODEL-EVAL-2026-10-18.md) 的结论只接入 FFmpeg 稳态档，不把动态处理混入降噪；DeepFilterNet3 档因运行时兼容/依赖决策未接入，能力不宣称具备。使用说明见 [AUDIO-DENOISE.md](AUDIO-DENOISE.md)。
+新增 **`audio.process.denoise`**（live/headless 共用），按 [AUDIO-MODEL-EVAL-2026-10-18.md](AUDIO-MODEL-EVAL-2026-10-18.md) 的结论只接入 FFmpeg 稳态档，不把动态处理混入降噪；DeepFilterNet3 档因运行时兼容/依赖决策未接入，能力不宣称具备。使用说明见 [AUDIO-DENOISE.md](../AUDIO-DENOISE.md)。
 
 - 参数：`mediaId`、`audioStream`、`startSec/endSec`（≤120s）、`sampleRate:48000`、`channels:1|2`、`profile:"light"|"strong"`、`idempotencyKey`；可选 `declick`、`expectedRevision`。`light = afftdn=nr=12:nf=-25`，`strong = afftdn=nr=24:nf=-35`，`declick = adeclick=window=55:overlap=75` 前置。
 - **延迟补偿为实现核心**：不硬编码 1200 样本；用确定性白噪声探针跑实际完整链并互相关测延迟（≥6 dB 突出度，否则 JOB_FAILED 不发布），解码范围延长该延迟、链后 `atrim=start_sample` 去除、`apad` 补回精确样本数；ffprobe 复核采样率/声道/样本数；发布前再用输出与源区间互相关，可测且非 0 滞后即失败，相关度不足则如实记 `alignmentCheck.verdict:"unverified"`（仍保留已补偿的测量延迟）。`timing.processingDelaySamples` 为 0。
@@ -206,7 +206,7 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
 
 ## AUD-07：SenseVoice 转写与记录驱动字幕导入（2026-10-18，提交 `cd31816c`，待用户验收）
 
-按用户确认的“可选 Python sidecar”路线实现：不捆绑模型、不引入 Node ONNX 替代路线；应用从不执行 pip。使用说明与运行时契约见 [AUDIO-TRANSCRIPT.md](AUDIO-TRANSCRIPT.md)。
+按用户确认的“可选 Python sidecar”路线实现：不捆绑模型、不引入 Node ONNX 替代路线；应用从不执行 pip。使用说明与运行时契约见 [AUDIO-TRANSCRIPT.md](../AUDIO-TRANSCRIPT.md)。
 
 - 统一可选组件运行层（`media/audio-models-runner.ts` + `python/audio_models.py`）：解释器仅来自 `REELTERMINAL_AUDIO_MODELS_PYTHON` / `REELTERMINAL_PYTHON_PATH` / PATH；`probe` 任务只探测 import/版本/CUDA，不加载权重并按解释器缓存；任务协议为 stdin JSON + stdout 逐行 `progress`/`done`/`error`，funasr 的 banner 全部重定向到 stderr。每任务一个子进程；取消杀进程；崩溃、非零退出、超时、非法事件、超量输出均 JOB_FAILED，不发布任何产物。模型/版本锁定：`iic/SenseVoiceSmall`（936 291 369 B，sha256 `833ca2dc…a3ea`，Apache-2.0），验证组合 funasr 1.3.1 / modelscope 1.34.0 / torch 2.10.0 / soundfile 0.13.1 / numpy 1.26.4。
 - 模型获取诚实门控：默认位置 `~/.reelterminal/models/modelscope/models/iic/SenseVoiceSmall` 或 `REELTERMINAL_SENSEVOICE_MODEL_DIR`（仍校验 size+sha），下载缓存由 `REELTERMINAL_MODELSCOPE_CACHE` 控制；缺失时能力/错误提前给出 936 MB 下载与 1.1 GB 磁盘估算，只有 `transcriptParams.allowModelDownload:true` 才允许下载。**托管安装器未实现**，普通用户仍需自备 Python 环境；开发机跑通不作为发布验收。
@@ -220,7 +220,7 @@ P3：SenseVoice 与现有 Whisper 字幕工作流对接、DeepFilterNet，再依
 
 ## AUD-09：匿名说话人聚类与 Demucs 分离（2026-10-18，提交 `d3ad1217`，待用户验收）
 
-复用 AUD-07 的可选 Python 进程契约（显式解释器、probe 版本/CUDA、JSON-lines 进度、每任务进程、取消杀进程、崩溃/超时/非法输出失败隔离、从不 pip）。两个能力均固定模型与权重，模型缺失时只披露下载/磁盘需求，不自动下载。说明见 [AUDIO-SEPARATION-DIARIZATION.md](AUDIO-SEPARATION-DIARIZATION.md)。
+复用 AUD-07 的可选 Python 进程契约（显式解释器、probe 版本/CUDA、JSON-lines 进度、每任务进程、取消杀进程、崩溃/超时/非法输出失败隔离、从不 pip）。两个能力均固定模型与权重，模型缺失时只披露下载/磁盘需求，不自动下载。说明见 [AUDIO-SEPARATION-DIARIZATION.md](../AUDIO-SEPARATION-DIARIZATION.md)。
 
 - 新增分析类型 **`speakerDiarization`**：Silero VAD（AUD-01）句级分段 → CAM++ `iic/speech_campplus_sv_zh-cn_16k-common`（`campplus_cn_common.bin` 28 036 335 B、sha256 `3388cf5f…d5ada8`、Apache-2.0）192 维 embedding → 成对余弦阈值（`diarizationParams {threshold, maxSpeakers, allowModelDownload}`，默认 0.7/8）→ 连通分量聚类。>10 s 段按 10 s 切块（上限 400），同簇相邻块合并；标签为 `speaker-N` **匿名簇**，`anonymousClusters:true`，不宣称真实身份、不分离重叠说话。新增事件系列 `speakerDiarization.segments`，summary 省略 dense segments；记录 config/provenance/unknowns 明确“身份/重叠/置信度”三项未知。模型默认 `~/.reelterminal/models/modelscope/...` 或 `REELTERMINAL_CAMPP_SV_MODEL_DIR`；缺失且无同意时启动前拒绝。
 - 新增音频处理 **`audio.process.separate`**：Demucs 4.1 `htdemucs`（`adefossez/HTDemucs` 的 `955717e8.safetensors` 84 025 440 B、sha256 `d9fa1413…c17576dd`、MIT；默认缓存 `~/.reelterminal/models/demucs` 或 `REELTERMINAL_DEMUCS_CACHE`，分离可用 `REELTERMINAL_SEPARATION_PYTHON` 覆盖解释器）。`target:"vocals"` 取人声 stem，`target:"instrumental"` 用 `amix=inputs=3:normalize=0` 合并 drums+bass+other；worker 仍产出四 stem。输出 48 kHz PCM s24le、**精确请求样本数**、起点对齐源区间起点；ffprobe 复核采样率/声道/样本数，输出重新测量响度（人声过轻时为 null，不伪造）。provenance 记录模型/sha/许可、设备、加载/推理秒数、实时因子、峰值 GPU 显存（Windows RSS 为 null）、混音方式与限制。staging+原子 rename+哈希幂等；取消/失败清理；沿用 `audio.process.register` revision CAS，不替换片段。

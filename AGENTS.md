@@ -42,7 +42,7 @@ use `breakGroup` at external-edit boundaries while preserving owner-scoped gestu
 handles and ordinary adjacent-update grouping. 3D setters retain their existing
 non-undoable contract; injected engine-restoration faults remain a separate issue.
 
-Use [`docs/history-boundary-fix-2026-10-15.md`](docs/history-boundary-fix-2026-10-15.md)
+Use [`docs/archive/history-boundary-fix-2026-10-15.md`](docs/archive/history-boundary-fix-2026-10-15.md)
 for commands, evidence limits and the exact regression index: template component,
 store boundary/order, recipe and Motion preview tests; core `action-history.test.ts`;
 and isolated desktop `template-history.e2e.ts` / `whole-template-history.e2e.ts`.

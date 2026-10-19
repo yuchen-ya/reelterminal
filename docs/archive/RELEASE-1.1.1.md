@@ -86,7 +86,7 @@ advisories 列出以下 5 种公告（统计口径不同，不等同于 6 个独
 `sprintf-js` 尚无修复版，因此对实际使用的 Node 入口添加 pnpm 补丁：
 将数值格式精度限制在 JavaScript 支持的范围内，保留合法精度与字符串格式行为。
 测试沿 ONNX → global-agent → roarr 的真实依赖链验证补丁，并在无异常捕获的子进程内
-执行越界和万位精度输入。补丁说明与上游证据见 [SECURITY.md](../SECURITY.md)。
+执行越界和万位精度输入。补丁说明与上游证据见 [SECURITY.md](../../SECURITY.md)。
 
 `pnpm audit:dependencies` 已通过。审计仍显示两个版本级公告例外：原有的 braces
 和本轮的 sprintf-js；二者都有本地补丁及先于审计执行的回归测试。

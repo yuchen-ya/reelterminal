@@ -1,6 +1,6 @@
 # AUD-07~AUD-10 模型与信号处理验证记录（2026-10-18）
 
-按 [AUDIO-TODO.md](AUDIO-TODO.md) "模型与信号处理扩展（先验证，再决定接入）"的口径执行的效果验证。**本记录只含验证证据与接入建议，不代表任何能力已实现；AUD-07~10 勾选状态不变。**验证未访问用户 live API、未打开用户工程、未改动仓库源码。
+按 [AUDIO-BACKLOG-COMPLETE.md](AUDIO-BACKLOG-COMPLETE.md) "模型与信号处理扩展（先验证，再决定接入）"的口径执行的效果验证。**本记录只含验证证据与接入建议，不代表任何能力已实现；AUD-07~10 勾选状态不变。**验证未访问用户 live API、未打开用户工程、未改动仓库源码。
 
 - 验证机：Windows、RTX 5080 16GB、FFmpeg 8.1.1 full、Python 3.10 conda 环境（funasr 1.3.1 + torch 2.10 cu128；另一环境 demucs + DeepFilterNet 0.5.6 + torch 2.9 cu128）。
 - 主真实样本：用户提供的一段公开科普视频 mp4（3Blue1Brown τ 宣言主题官方双语搬运，352.7s，AAC 44.1kHz 立体声）。注意：该"官方双语"视频**音频为英文原声**（3Blue1Brown τ 宣言主题），中文仅在字幕；这使其成为真实英文语种样本而非中文样本。

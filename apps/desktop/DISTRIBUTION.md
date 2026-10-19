@@ -5,7 +5,7 @@
 This checkout builds version 1.2.3 as an unsigned Windows x64 installer and
 portable ZIP. Publication status and available assets are shown on Releases.
 The current audio batch (AUD-01–AUD-06) is recorded in the
-[audio execution plan](../../docs/AUDIO-PIPELINE-EXECUTION-PLAN.md); packaging
+[audio execution record](../../docs/archive/AUDIO-PIPELINE-EXECUTION-RECORD.md); packaging
 does not by itself add functional acceptance beyond those records.
 
 A release build must use a clean, frozen source commit and an independent output

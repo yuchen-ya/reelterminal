@@ -1,7 +1,7 @@
 /**
  * Tiered local denoising for durable derived audio (AUD-08).
  *
- * The evaluation round (docs/AUDIO-MODEL-EVAL-2026-10-18.md) measured a fixed
+ * The evaluation round (docs/archive/AUDIO-MODEL-EVAL-2026-10-18.md) measured a fixed
  * 1200-sample (25 ms at 48 kHz) processing delay for every FFmpeg chain
  * containing `afftdn`/`adeclick`; uncompensated it makes SI-SDR collapse and,
  * for real edits, shifts audio against picture. This producer therefore

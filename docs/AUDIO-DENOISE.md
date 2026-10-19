@@ -39,7 +39,7 @@
 ## 限制
 
 - 仅前 120 秒；只处理所选音频流。
-- `afftdn` 是**稳态**噪声抑制：对调性哼声、非稳态音乐、混响效果有限（验证记录：`docs/AUDIO-MODEL-EVAL-2026-10-18.md`）。高 SNR 的干净语音未必受益，可能被轻微损伤；`light` 是保守档。
+- `afftdn` 是**稳态**噪声抑制：对调性哼声、非稳态音乐、混响效果有限（验证记录：`docs/archive/AUDIO-MODEL-EVAL-2026-10-18.md`）。高 SNR 的干净语音未必受益，可能被轻微损伤；`light` 是保守档。
 - 动态处理（de-esser/压缩/EQ 的 "voice chain"）**刻意不包含**：验证显示它全面降低 SI-SDR。动态处理与降噪、响度标准化职责分开；响度标准化仍用 `audio.process.normalize`。
 - **DeepFilterNet3 尚未接入。** 验证显示它对复杂/非稳态噪声显著优于 FFmpeg 链（SI-SDR +10~14 dB），但其 Python 包需要适配 torchaudio≥2.9（或 ONNX/rust 运行时决策），属于待排期的运行时选择；当前能力不会宣称具备该档。
 - `declick` 也不是“修复所有爆音”：它针对脉冲点击；切点防爆音仍用片段淡化。

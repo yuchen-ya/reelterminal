@@ -45,8 +45,6 @@
 
 ## Distribution and attribution
 
-- [`RELEASE-1.1.1.md`](RELEASE-1.1.1.md) — 1.1.1 change summary, local validation, and remaining release checks.
-- [`ASSET-LICENSE-REVIEW.md`](ASSET-LICENSE-REVIEW.md) — review of artwork, fonts, and runtime model rights.
 - [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) — third-party code,
   assets, and optional sidecars.
 - [`../apps/desktop/DISTRIBUTION.md`](../apps/desktop/DISTRIBUTION.md) — desktop
@@ -54,22 +52,12 @@
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — setup, checks, and pull requests.
 - [`../SECURITY.md`](../SECURITY.md) — private security report instructions.
 
-## Current planning
+## Archive
 
-- [`AUDIO-TODO.md`](AUDIO-TODO.md) — current audio backlog, dependencies and acceptance criteria; planned features are not current capabilities.
-
-## Historical acceptance records
-
-- [`AUDIO-PIPELINE-EXECUTION-PLAN.md`](AUDIO-PIPELINE-EXECUTION-PLAN.md) — completed audio batches A–C plus the AUD-01–AUD-10 records (Silero VAD, record-driven ducking, domain-filtered schema/capabilities, silence cutting, beat-snapped splits, tiered denoise, SenseVoice transcript/subtitles, speaker diarization, Demucs separation, sync offsets), commits and validation evidence.
+- [`archive/README.md`](archive/README.md) — completed execution records, dated
+  acceptance and evaluation evidence, and retired plans (including the fully
+  implemented audio backlog; nothing is currently planned).
 
 Dated records are kept as evidence and are not overwritten by newer rounds.
 Treat them as history, not current specs; the current specs are the documents
 above.
-
-- [`NODE-UX-ACCEPTANCE-2026-10-09.md`](NODE-UX-ACCEPTANCE-2026-10-09.md) —
-  independent user acceptance of the node UX round (overall: not passed at the
-  time; preserved findings).
-- [`NODE-UX-FIXES-2026-10-09.md`](NODE-UX-FIXES-2026-10-09.md) — fix and
-  inspector implementation log responding to that acceptance round.
-- [`NODE-UX-RECHECK-2026-10-09.md`](NODE-UX-RECHECK-2026-10-09.md) — follow-up
-  independent recheck of the fixed package; latest conclusions at the end.

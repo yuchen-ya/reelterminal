@@ -45,7 +45,7 @@ Electron 源码测试在 Windows、macOS 各有 123 项通过、13 项显式选�
   Mac 音频标准化测试也曾在原 5 秒预算内超时，其他轮次通过；未认定已修复。
 - 外部素材、真实采集设备、签名/安装体验和长期运行不在本轮定向冒烟的完整覆盖范围。
 - 部分媒体处理依赖另行安装的 FFmpeg/ffprobe，Blender 也不随包提供。
-  详见[桌面构建与分发说明](../apps/desktop/DISTRIBUTION.md)。
+  详见[桌面构建与分发说明](../../apps/desktop/DISTRIBUTION.md)。
 
 ## 同源码 Mac 构建交接
 

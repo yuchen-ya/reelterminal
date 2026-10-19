@@ -58,7 +58,7 @@ Start with the problem you hear: Agent interfaces provide measurements and expli
 * **Cuts that need to follow music:** an Agent can return BPM, beat positions, and confidence, and can snap a cut point to a record beat with `clip.splitAtBeat` within an explicit tolerance; the GUI provides beat-sync tools. Use detections as editing references and review the visual rhythm.
 * **Steady background noise:** basic GUI spectral noise reduction can help with relatively steady fan noise or hiss. Listen afterward to check for damage to speech.
 
-Analysis alone does not modify the timeline; speech regions only drive ducking through an explicit edit (`clip.setDuckingFromAnalysis`), and silence regions only drive cuts through an explicit edit (`clip.cutSilenceFromAnalysis`); neither deletes gaps or rearranges clips automatically. See [material analysis](docs/MATERIAL-ANALYSIS.md) for interfaces and boundaries. Voice separation and multitrack sync-offset estimation remain [planned work](docs/AUDIO-TODO.md). Pronunciation, voice timbre, or delivery errors still need to be corrected at the generation source.
+Analysis alone does not modify the timeline; speech regions only drive ducking through an explicit edit (`clip.setDuckingFromAnalysis`), and silence regions only drive cuts through an explicit edit (`clip.cutSilenceFromAnalysis`); neither deletes gaps or rearranges clips automatically. See [material analysis](docs/MATERIAL-ANALYSIS.md) for interfaces and boundaries. Voice separation and multitrack sync-offset estimation are implemented; see material analysis above for interfaces and limits. Pronunciation, voice timbre, or delivery errors still need to be corrected at the generation source.
 
 ---
 

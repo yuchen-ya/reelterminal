@@ -70,7 +70,7 @@ from disposable analysis caches. Check the running catalog/capabilities rather
 than assuming a published package matches current source. Local VAD
 (`speechActivity`), record-driven ducking, silence cutting and beat-snapped
 splits are implemented; remaining model backends and analysis-driven work are
-tracked in [AUDIO-TODO.md](AUDIO-TODO.md).
+tracked in the completed [audio backlog](archive/AUDIO-BACKLOG-COMPLETE.md).
 
 ## Connection credentials
 

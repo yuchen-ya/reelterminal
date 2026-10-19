@@ -3,7 +3,7 @@
  *
  * The target media range is correlated against a second, explicitly named
  * reference media range with a GCC-PHAT (generalized cross-correlation with
- * phase transform) kernel. The evaluation round (docs/AUDIO-MODEL-EVAL-2026-10-18.md)
+ * phase transform) kernel. The evaluation round (docs/archive/AUDIO-MODEL-EVAL-2026-10-18.md)
  * established the decision rule used here: a peak must stand >= 6 dB above the
  * median |correlation| and the best competing local peak outside a ±50 ms
  * guard band must be >= 3 dB below the main peak, otherwise the result is

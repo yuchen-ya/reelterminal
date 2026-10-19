@@ -140,7 +140,7 @@ Insert after the software-development workflow rules:
 Related documents: [initial recipe repair](template-redo-branch-2026-10-15.md),
 [original boundary investigation](history-boundary-verification-2026-10-15.md),
 [native export protection](native-export-file-protection-2026-10-15.md), and
-[desktop E2E harness](../apps/desktop/e2e/README.md).
+[desktop E2E harness](../../apps/desktop/e2e/README.md).
 
 ## CI focus follow-up
 

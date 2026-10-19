@@ -254,6 +254,6 @@ installed, the core engine's internal every-4th-beat heuristic is a
 periodicity assumption deliberately not reported, and the record's BPM may
 be half or double the true tempo. New
 transcription/model backends remain planned. See the
-[audio TODO](AUDIO-TODO.md) for priorities and acceptance criteria, and the
-[completed execution record](AUDIO-PIPELINE-EXECUTION-PLAN.md) for A–C and
+[completed audio backlog](archive/AUDIO-BACKLOG-COMPLETE.md) for priorities and acceptance criteria, and the
+[completed execution record](archive/AUDIO-PIPELINE-EXECUTION-RECORD.md) for A–C and
 AUD-01/AUD-02 evidence.

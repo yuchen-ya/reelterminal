@@ -2,11 +2,11 @@
 
 更新：2026-10-18。本文件是音频后续工作的统一待办入口；勾选项表示已经实现并验收，未勾选项不是当前产品能力。这里只留存任务，不自动启动实现或下载模型。
 
-> 2026-10-18：AUD-03～AUD-06 已按本文件验收口径实现并完成本地验证，勾选同样待用户验收后进行。执行记录、提交与验证证据见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md)对应各节：AUD-03 `reelctl schema --domain`（提交 `4e5c09dc`，同一 catalog 客户端筛选，未知领域报错并列出可用领域）；AUD-04 `capabilities.get` 可选 `domain` 参数（提交 `7aa89f2b`，音频查询不再启动视频/模型/OpenCV 探测，未探测状态带 `probed:false` 且绝不标 ready）；AUD-05 `clip.cutSilenceFromAnalysis` 编辑操作（提交 `f0bc9255`，分析记录驱动 split/ripple/边缘淡化，联动对齐兄弟片段、逐轨 ripple，字幕失步与不支持映射前置拒绝）；AUD-06 `clip.splitAtBeat` 编辑操作（提交 `f292e212`，显式容差吸附最近 beatGrid 节拍，容差内无节拍明确拒绝，不伪造 downbeat）。
+> 2026-10-18：AUD-03～AUD-06 已按本文件验收口径实现并完成本地验证，勾选同样待用户验收后进行。执行记录、提交与验证证据见[执行记录](AUDIO-PIPELINE-EXECUTION-RECORD.md)对应各节：AUD-03 `reelctl schema --domain`（提交 `4e5c09dc`，同一 catalog 客户端筛选，未知领域报错并列出可用领域）；AUD-04 `capabilities.get` 可选 `domain` 参数（提交 `7aa89f2b`，音频查询不再启动视频/模型/OpenCV 探测，未探测状态带 `probed:false` 且绝不标 ready）；AUD-05 `clip.cutSilenceFromAnalysis` 编辑操作（提交 `f0bc9255`，分析记录驱动 split/ripple/边缘淡化，联动对齐兄弟片段、逐轨 ripple，字幕失步与不支持映射前置拒绝）；AUD-06 `clip.splitAtBeat` 编辑操作（提交 `f292e212`，显式容差吸附最近 beatGrid 节拍，容差内无节拍明确拒绝，不伪造 downbeat）。
 
 > 2026-10-18：AUD-07~AUD-10 已按"先验证，再决定接入"完成本机效果验证（真实 B 站样本 + edge-tts 中/粤真值样本 + 仓库 Silero VAD 交叉验证），未开始实现、勾选状态不变。证据与接入建议见[验证记录](AUDIO-MODEL-EVAL-2026-10-18.md)。要点：SenseVoice 中/粤 CER 2.55%/1.41%、无原生时间戳（需外部 VAD 句级分段）；FFmpeg `afftdn` 有恒定 1200 样本（25ms@48k）未补偿延迟且仅对强稳态噪声有效，DeepFilterNet3 全场景 SI-SDR +10~14dB 但其 Python 包需适配 torchaudio≥2.9；Demucs htdemucs 89 倍实时、真值 SI-SDR 15.8~22.8dB，CAM++ 说话人聚类 DER 5.3%；GCC-PHAT 偏移估计含拒绝规则全部用例通过（符号契约与漂移检测为实现必修项）。
 
-> 2026-10-18：AUD-10 已按验收口径实现并完成本地验证（提交 `3e4ebbd5`）：新增 `syncOffset` 分析类型，本地 FFmpeg + GCC-PHAT（无模型）比较目标与显式参考媒体；**正 offset = 目标落后参考**（验证脚本原始相关式符号相反，实现取反并用 ±已知延迟钉住），≥6 dB 突出度且 ±50 ms 外次峰低 ≥3 dB 才判 ok，否则 ambiguous/no-match；等长分窗 + 线性回归报 `clock-drift`，首版只报漂移不静默修正；参考文件运行中变化即 CONFLICT。真实样本：+350/−200 ms 误差 <0.5 ms、10 dB 噪声 <1 ms、BGM +250 ms 精确、无共同内容拒绝、0.1% 漂移判 clock-drift。执行记录见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md) AUD-10 一节；勾选待用户验收。
+> 2026-10-18：AUD-10 已按验收口径实现并完成本地验证（提交 `3e4ebbd5`）：新增 `syncOffset` 分析类型，本地 FFmpeg + GCC-PHAT（无模型）比较目标与显式参考媒体；**正 offset = 目标落后参考**（验证脚本原始相关式符号相反，实现取反并用 ±已知延迟钉住），≥6 dB 突出度且 ±50 ms 外次峰低 ≥3 dB 才判 ok，否则 ambiguous/no-match；等长分窗 + 线性回归报 `clock-drift`，首版只报漂移不静默修正；参考文件运行中变化即 CONFLICT。真实样本：+350/−200 ms 误差 <0.5 ms、10 dB 噪声 <1 ms、BGM +250 ms 精确、无共同内容拒绝、0.1% 漂移判 clock-drift。执行记录见[执行记录](AUDIO-PIPELINE-EXECUTION-RECORD.md) AUD-10 一节；勾选待用户验收。
 
 > 2026-10-18：AUD-08 的 FFmpeg 分级档已实现并完成本地验证（提交 `40c41e00`）：新增 `audio.process.denoise`（`light`/`strong` afftdn + 可选 adeclick），**实测并补偿**链的固定 1200 样本延迟（白噪声探针互相关，输出再与源互相关验证对齐），保留持久衍生资产、复测响度、取消清理与 `audio.process.register` 注册路径；动态处理刻意不包含。**DeepFilterNet3 档未接入**（需先决定 torchaudio/ONNX/rust 运行时），能力与文档不做宣称。执行记录见 AUD-08 一节；勾选待用户验收。
 
@@ -14,11 +14,11 @@
 
 > 2026-10-18：AUD-09 已实现并完成本地验证（提交 `d3ad1217`）：新增 `speakerDiarization`（Silero VAD 句级分段 + CAM++ embedding + 余弦阈值连通分量聚类，匿名 `speaker-N`，不宣称身份/不分离重叠说话，记录分页）与 `audio.process.separate`（Demucs htdemucs，`vocals`/`instrumental`，固定 84 MB 权重与 sha，显式下载同意，48 kHz 精确样本窗口，provenance 记录设备/RTF/峰值显存，取消清理与 revision CAS 注册）。真实 CAM++ 双人样本得 2 簇且标签交替；真实 Demucs 分离 vocals/instrumental 通过。环境音分类（PANNs）仍未实现；托管安装器仍未完成。执行记录见 AUD-09 一节；勾选待用户验收。
 
-> 2026-10-18 复审修复（提交 `3f714ea9`）：AUD-04 的 `motionTools.align`/`track` 在 motion 域未请求时补齐 `probed:false`，与文档的三态契约一致；AUD-06 的 `clip.splitAtBeat` 只接受裁剪源范围 `(inPoint, outPoint)` 内的节拍，范围外节拍不再被 clamp 成片段边缘候选，距离并列时选时间线更早者；AUD-05 的 leading/trailing/whole-clip 翻译分支补了真实 `edit.apply` 回归。验证与提交细节见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md)复审修复节；勾选仍待用户验收。
+> 2026-10-18 复审修复（提交 `3f714ea9`）：AUD-04 的 `motionTools.align`/`track` 在 motion 域未请求时补齐 `probed:false`，与文档的三态契约一致；AUD-06 的 `clip.splitAtBeat` 只接受裁剪源范围 `(inPoint, outPoint)` 内的节拍，范围外节拍不再被 clamp 成片段边缘候选，距离并列时选时间线更早者；AUD-05 的 leading/trailing/whole-clip 翻译分支补了真实 `edit.apply` 回归。验证与提交细节见[执行记录](AUDIO-PIPELINE-EXECUTION-RECORD.md)复审修复节；勾选仍待用户验收。
 
-> 2026-10-17：AUD-01 已按推荐批次实现并完成本地验证（提交 `40ce355b`：Silero VAD v5.1.2 + onnxruntime-node 1.30.0，锁版本、锁 sha，复用现有分析任务与记录协议），执行记录与量化验收证据见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md) AUD-01 一节；勾选待用户验收后进行。AUD-02 同日实现完毕并完成本地验证（提交 `0c91fcff`，新增 `clip.setDuckingFromAnalysis` 编辑操作，记录驱动映射 + 既有 setDucking/包络内核，全部门控与撤销/幂等回归见执行记录 AUD-02 一节），勾选同样待验收。下一步为 AUD-05 或独立排期的 AUD-03/04。
+> 2026-10-17：AUD-01 已按推荐批次实现并完成本地验证（提交 `40ce355b`：Silero VAD v5.1.2 + onnxruntime-node 1.30.0，锁版本、锁 sha，复用现有分析任务与记录协议），执行记录与量化验收证据见[执行记录](AUDIO-PIPELINE-EXECUTION-RECORD.md) AUD-01 一节；勾选待用户验收后进行。AUD-02 同日实现完毕并完成本地验证（提交 `0c91fcff`，新增 `clip.setDuckingFromAnalysis` 编辑操作，记录驱动映射 + 既有 setDucking/包络内核，全部门控与撤销/幂等回归见执行记录 AUD-02 一节），勾选同样待验收。下一步为 AUD-05 或独立排期的 AUD-03/04。
 
-> 2026-10-18：AUD-11～AUD-13 已按验收口径实现并完成本地验证（改动尚在工作区待提交——与并行的 live-mcp/collaboration 未提交工作共用部分文件,提交切分待协调；详见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md)对应三节及提交状态说明）。要点：AUD-11 将 audioSummary/silence/beatGrid 与 normalize 区间上限提到 3600 s——本地内核改为单进程流式有界解码（静音窗口/节拍能量帧锚定绝对索引，与整缓冲内核逐字节等价，跨分块事件不漏不重），整段 integrated LUFS 始终来自单次整区间 loudnorm 而非分块平均，逐遍超时/整流字节/输出磁盘预算显式化，normalize 任务接入 `-progress` 真实进度；模型类分析与 syncOffset 明确保持 120 s。AUD-12 定义源媒体时间/音轨时间/输出零点映射：前导延迟以 `adelay` 保留为真实输出静音（`timing.leadSilenceSamples` + provenance 记录），负偏移经 PTS trim 自然映射，denoise/separate 仍拒绝。AUD-13 修复重启回执一律钉在 normalize 的 verb bug、桌面启动只清扫精确命名且确认所属 PID 已退出的暂存目录（存活、权限未知和无 PID 旧目录均保留），并为三个生产者建立内容寻址复用（键含源内容 sha/音轨/样本级范围/参数/链版本/ffmpeg 或模型版本，绝不只靠 mediaId；命中必须验证文件存在+sha+版本，provenance 以 reusedFrom 披露；同 artifactId 重试与幂等/撤销语义不变）。勾选待用户验收后进行。
+> 2026-10-18：AUD-11～AUD-13 已按验收口径实现并完成本地验证（改动尚在工作区待提交——与并行的 live-mcp/collaboration 未提交工作共用部分文件,提交切分待协调；详见[执行记录](AUDIO-PIPELINE-EXECUTION-RECORD.md)对应三节及提交状态说明）。要点：AUD-11 将 audioSummary/silence/beatGrid 与 normalize 区间上限提到 3600 s——本地内核改为单进程流式有界解码（静音窗口/节拍能量帧锚定绝对索引，与整缓冲内核逐字节等价，跨分块事件不漏不重），整段 integrated LUFS 始终来自单次整区间 loudnorm 而非分块平均，逐遍超时/整流字节/输出磁盘预算显式化，normalize 任务接入 `-progress` 真实进度；模型类分析与 syncOffset 明确保持 120 s。AUD-12 定义源媒体时间/音轨时间/输出零点映射：前导延迟以 `adelay` 保留为真实输出静音（`timing.leadSilenceSamples` + provenance 记录），负偏移经 PTS trim 自然映射，denoise/separate 仍拒绝。AUD-13 修复重启回执一律钉在 normalize 的 verb bug、桌面启动只清扫精确命名且确认所属 PID 已退出的暂存目录（存活、权限未知和无 PID 旧目录均保留），并为三个生产者建立内容寻址复用（键含源内容 sha/音轨/样本级范围/参数/链版本/ffmpeg 或模型版本，绝不只靠 mediaId；命中必须验证文件存在+sha+版本，provenance 以 reusedFrom 披露；同 artifactId 重试与幂等/撤销语义不变）。勾选待用户验收后进行。
 
 ## 已完成基线
 
@@ -26,7 +26,7 @@
 - [x] B：完整音频事件持久化、默认紧凑摘要、时间窗分页和显式有界波形读取，覆盖旧任务及批处理恢复（`2a9cd248`）。
 - [x] C：两遍响度标准化、实际产物复测、持久衍生文件和显式幂等注册，包含取消、失败及项目隔离（`8aa24f99`）。
 
-三批均已验收并推送到 `origin/main`。验证证据见[执行记录](AUDIO-PIPELINE-EXECUTION-PLAN.md)，当前接口见[素材分析](MATERIAL-ANALYSIS.md)和[响度标准化](AUDIO-NORMALIZATION.md)。源码状态不代表已发布的安装包一定包含这些功能，以运行实例的 catalog/capabilities 为准。
+三批均已验收并推送到 `origin/main`。验证证据见[执行记录](AUDIO-PIPELINE-EXECUTION-RECORD.md)，当前接口见[素材分析](../MATERIAL-ANALYSIS.md)和[响度标准化](../AUDIO-NORMALIZATION.md)。源码状态不代表已发布的安装包一定包含这些功能，以运行实例的 catalog/capabilities 为准。
 
 ## 推荐下一批：VAD → 自动压低 BGM
 
