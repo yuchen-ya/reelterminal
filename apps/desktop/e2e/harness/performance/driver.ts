@@ -17,6 +17,7 @@ import { createPerformanceResult, type RawPerformanceOperation } from "./result"
 import { readHydratedStructureBytes } from "./structure-probe";
 import { extractProductMeasurements } from "./product-metrics";
 import { createActionWindowArtifactParts, type ActionWindowArtifactReference } from "./action-window-artifacts";
+import { stopCaptureWhenIdle } from "./idle-capture-stop";
 import {
   createPerformanceFixture,
   materializePerformanceFixtureAssets,
@@ -402,11 +403,11 @@ export async function runPerformanceScenario(scenarioId: TimelinePerformanceScen
       await launched!.page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
       // Product spans include queued persistence; observe its actual completion
       // within this operation's existing deadline before freezing evidence.
-      await launched!.page.waitForFunction(({ requireGestureFrame, requireFrame }) => {
-        const api = (globalThis as typeof globalThis & { __reelterminalPerformanceCapture: { pendingSpanCount: number; completedGestureFrameCount: number; committedFrameCount: number } }).__reelterminalPerformanceCapture;
-        return api.pendingSpanCount === 0 && (!requireGestureFrame || api.completedGestureFrameCount > 0) && (!requireFrame || api.committedFrameCount > 0);
-      }, { requireGestureFrame: scenarioId !== "P01" && /timeline_.*_(drag|trim)_verified/.test(metric), requireFrame: /seek/.test(metric) }, { timeout: options.operationTimeoutMs });
-      const evidence = await launched!.page.evaluate(() => (globalThis as ProbeGlobal).__reelterminalPerfDriver.stop("ok"));
+      const evidence = await stopCaptureWhenIdle(launched!.page, {
+        runId,
+        requireGestureFrame: scenarioId !== "P01" && /timeline_.*_(drag|trim)_verified/.test(metric),
+        requireFrame: /seek/.test(metric),
+      }, options.operationTimeoutMs);
       activeCapture = false;
       windows.push(evidence);
       if (!captureComplete(evidence)) throw new Error("capture incomplete or window hidden");

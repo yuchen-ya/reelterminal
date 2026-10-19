@@ -19,6 +19,8 @@ import { summarizeIdleMemory, type IdleResourceSample } from "./resource-trend";
 import { saturateHistory, HISTORY_WARMUP_INTERVAL_MS } from "./history-saturation";
 import { validateResultDocument } from "../../../../../scripts/performance/result-contract.mjs";
 import { writeResourceLogs } from "./resource-logs";
+import { stopCaptureWhenIdle } from "./idle-capture-stop";
+import { resourceCaptureDiagnostics, type CaptureTriggerAction } from "./capture-span-diagnostics";
 
 type ResourceGlobal = typeof globalThis & {
   __reelterminalPerformanceCapture: ProductPerformanceCaptureApi;
@@ -69,12 +71,25 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
   let measuredElapsedMs = 0;
   let saturation: { capacity: number; edits: number; plateauCounts: number[]; elapsed_ms: number; interval_ms: number } | null = null;
   let lastCapture: Record<string, unknown> | null = null;
+  let captureOperationId = "none";
+  let captureActions: CaptureTriggerAction[] = [];
   const correctness: Record<string, boolean | null> = { final_state_verified: null, target_frame_verified: null, resources_returned_verified: null, save_queue_drained_verified: null };
   const runDeadline = performance.now() + options.runTimeoutSeconds * 1000;
   const watchdog = setTimeout(() => {
     timedOut = true;
     void launched?.close({ keepRunDir: true }).catch((error) => { failure ??= error; });
   }, options.runTimeoutSeconds * 1000);
+  const snapshotFailedCapture = async () => {
+    if (!activeCapture || !launched || launched.page.isClosed()) return;
+    // Snapshot before screenshots/file I/O can let pending work finish. One
+    // cleanup attempt only; an uncertain reply is followed by owned-process close.
+    activeCapture = false;
+    try {
+      const evidence = await launched.page.evaluate(() => (globalThis as ResourceGlobal).__reelterminalPerfDriver.stop("error"));
+      lastCapture = resourceCaptureDiagnostics(evidence, captureOperationId, captureActions);
+      console.info("RESOURCE_CAPTURE_FAILURE", JSON.stringify(lastCapture));
+    } catch (error) { failure ??= error; reasons.push("capture_cleanup_failed"); }
+  };
   try {
     launched = await launchApp({ runDir, skipLocaleReload: true });
     const page = launched.page;
@@ -215,38 +230,33 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
         break;
       }
       const operationId = `edit-undo-redo-${rounds}`;
+      captureOperationId = operationId;
+      captureActions = [];
+      lastCapture = null;
       const cycleStart = performance.now();
       await page.evaluate(({ runId, operationId, seconds }) => (globalThis as ResourceGlobal).__reelterminalPerfDriver.start(runId, operationId, seconds), { runId, operationId, seconds: options.operationTimeoutMs / 1000 });
       activeCapture = true;
       const beforeTime = rounds % 2 === 0 ? clip.startTime : clip.startTime + 0.5;
       const afterTime = rounds % 2 === 0 ? clip.startTime + 0.5 : clip.startTime;
+      const moveAction: CaptureTriggerAction = { action: "clip.move", revisionBefore: revision, revisionAfter: null };
+      captureActions.push(moveAction);
       const moved = await agent.callCommand<{ revision: number }>("edit.apply", { ...target, expectedRevision: revision, ops: [{ op: "clip.move", clipId: clip.id, startTime: afterTime }] }, { timeoutMs: options.operationTimeoutMs });
       if (!moved.ok || moved.value!.revision !== revision + 1) throw new Error("soak edit did not commit one revision");
+      moveAction.revisionAfter = moved.value!.revision;
       revision = moved.value!.revision;
       await stateMatches(afterTime);
       for (const action of ["undo", "redo"] as const) {
+        const historyAction: CaptureTriggerAction = { action: `history.${action}`, revisionBefore: revision, revisionAfter: null };
+        captureActions.push(historyAction);
         const reply = await agent.callCommand<{ revision: number }>("history.control", { ...target, action, expectedRevision: revision, idempotencyKey: `${runId}-${rounds}-${action}` }, { timeoutMs: options.operationTimeoutMs });
         if (!reply.ok || reply.value!.revision !== revision + 1) throw new Error(`soak ${action} failed: ${reply.error?.code ?? `revision ${revision} -> ${reply.value!.revision}`}`);
+        historyAction.revisionAfter = reply.value!.revision;
         revision = reply.value!.revision;
         await stateMatches(action === "undo" ? beforeTime : afterTime);
       }
-      await page.waitForFunction(() => (globalThis as ResourceGlobal).__reelterminalPerformanceCapture.pendingSpanCount === 0, null, { timeout: options.operationTimeoutMs });
-      const evidence = await page.evaluate(() => (globalThis as ResourceGlobal).__reelterminalPerfDriver.stop("ok"));
+      const evidence = await stopCaptureWhenIdle(page, { runId }, options.operationTimeoutMs);
       activeCapture = false;
-      const main = evidence.main.ok ? evidence.main.mainCapture : null;
-      const ended = new Set(main?.events.filter(event => event.kind === "span_end").map(event => event.spanId));
-      const openDetails = main?.events.flatMap(event => event.kind === "span_begin" && !ended.has(event.spanId)
-        ? [{ phase: event.phase === "live.ipc.main.request" ? event.phase : "other", ageUs: Math.max(0, main.stoppedUs - event.tsUs) }] : []).slice(0, 8) ?? [];
-      lastCapture = {
-        status: evidence.report.status, reasonCodes: evidence.report.reasonCodes,
-        wallDurationUs: evidence.report.wallDurationUs, hiddenDuringAction: evidence.hiddenDuringAction,
-        rendererOpenSpans: evidence.report.openSpans,
-        mainStatus: evidence.main.ok ? evidence.main.mainCapture.status : "unavailable",
-        mainReasonCodes: evidence.main.ok ? evidence.main.mainCapture.reasonCodes : ["main_capture_unavailable"],
-        mainOpenSpans: evidence.main.ok ? evidence.main.mainCapture.openSpans : null,
-        mainOpenPhases: openDetails.map(detail => detail.phase),
-        mainOldestOpenSpanUs: Math.max(0, ...openDetails.map(detail => detail.ageUs)),
-      };
+      lastCapture = resourceCaptureDiagnostics(evidence, operationId, captureActions);
       eventsDropped += evidence.report.drops.eventsDropped + (evidence.main.ok ? evidence.main.mainCapture.eventsDropped : 0);
       endpointsDropped += evidence.report.drops.criticalEndpointsDropped;
       if (evidence.hiddenDuringAction || evidence.report.status !== "complete" || !evidence.main.ok || evidence.main.mainCapture.status !== "complete") {
@@ -283,17 +293,17 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
   } catch (error) {
     failure = error;
     reasons.push(error instanceof UserRequestedResourceStop ? "user_requested_stop" : timedOut ? "run_timeout" : "resource_soak_failed");
+    if (String(error).includes("capture ended before idle stop")) reasons.push("capture_ended_before_idle_stop");
+    if (String(error).includes("capture owner changed before idle stop")) reasons.push("capture_owner_changed");
     operations.push({ operation_id: `failed-${rounds}`, metric: "edit_undo_redo_content_verified_ms", outcome: error instanceof UserRequestedResourceStop ? "cancelled" : timedOut || (error as Error).name === "TimeoutError" ? "timeout" : "failed", duration_ms: null, waited_ms: started ? performance.now() - started : 0, target_verified: false });
+    await snapshotFailedCapture();
     const failureDirectory = path.join(ARTIFACTS_DIR, "performance");
     await mkdir(failureDirectory, { recursive: true });
-    await writeFile(path.join(failureDirectory, `${runId}.failure.json`), JSON.stringify({ error: String(error), completed_rounds: rounds, history_saturation: saturation, idle_samples: idle }, null, 2));
+    await writeFile(path.join(failureDirectory, `${runId}.failure.json`), JSON.stringify({ error: String(error), completed_rounds: rounds, capture: lastCapture, history_saturation: saturation, idle_samples: idle }, null, 2));
     await launched?.page.screenshot({ path: path.join(failureDirectory, `${runId}.failure.png`), timeout: 5_000 }).catch(() => undefined);
   } finally {
     clearTimeout(watchdog);
-    if (activeCapture && launched && !launched.page.isClosed()) {
-      try { await launched.page.evaluate(() => (globalThis as ResourceGlobal).__reelterminalPerfDriver.stop("error")); }
-      catch (error) { failure ??= error; reasons.push("capture_cleanup_failed"); }
-    }
+    await snapshotFailedCapture();
     try { await agent?.close(); } catch (error) { failure ??= error; reasons.push("connector_cleanup_failed"); }
     await cdp?.detach().catch(() => undefined);
     try { await launched?.close({ keepRunDir: true }); } catch (error) { failure ??= error; reasons.push("process_cleanup_failed"); }

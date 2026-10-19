@@ -86,6 +86,29 @@ test("failed calibration retains capture reason and timing without raw controls"
   assert.equal(JSON.stringify(record).includes("private/token"), false);
 });
 
+test("resource failure retains bounded span ancestry, times and trigger revisions without raw context", () => {
+  const secret = "private/path/token";
+  const result = resourceEvidence({ last_capture: { status: "incomplete", rendererOpenSpans: 2,
+    rendererSpanEvidence: { windowOperation: "edit-undo-redo-300", captureStartedUs: 1000, captureStoppedUs: 1500,
+      totalOpenSpans: 2, recordedOpenSpans: 2, unrecordedOpenSpans: 0, omittedDetails: 0, token: secret,
+      triggerActions: [{ action: "history.redo", revisionBefore: 41, revisionAfter: 42, args: secret }],
+      spans: [
+        { spanId: 1, parentSpanId: null, operationGroup: 1, phase: "unknown.new-work", startedUs: 1000, ageUs: 500, open: true, operationId: secret },
+        { spanId: 2, parentSpanId: 1, parentRecorded: true, operationGroup: 1, phase: secret, startedUs: 1200, ageUs: 300, open: true, revision: 42 },
+      ],
+    },
+  } });
+  const detail = result.capture.renderer_span_evidence;
+  assert.equal(result.capture.renderer_open_spans, 2);
+  assert.equal(detail.total_open_spans, 2);
+  assert.equal(detail.spans.length, 2);
+  assert.equal(detail.spans[0].phase, "unknown.new-work");
+  assert.deepEqual(detail.spans[1], { span_id: 2, parent_span_id: 1, parent_recorded: true, operation_group: 1,
+    phase: "redacted", phase_redacted: true, started_us: 1200, age_us: 300, open: true, revision: 42, frame_seq: null });
+  assert.deepEqual(detail.trigger_actions, [{ action: "history.redo", revision_before: 41, revision_after: 42 }]);
+  assert.equal(JSON.stringify(result).includes(secret), false);
+});
+
 test("calibration diagnostic projection retains CPU/export evidence without changing qualification", () => {
   const document = {
     status: "probe_overhead_exceeded",

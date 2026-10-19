@@ -62,7 +62,7 @@ export function stabilityCompletion(record, documents, report) {
     deterministic_report_passed: reportValid, unexpected_results: unused.size, scenarios };
 }
 
-// Strict numeric projection: never upload profiles, paths, endpoint data, or raw traces.
+// Bounded numeric/phase projection: never upload profiles, endpoints or raw traces.
 export function resourceEvidence(document) {
   const numeric = value => Number.isFinite(value) ? value : null;
   return {
@@ -104,6 +104,30 @@ export function calibrationEvidence(document) {
     "drag_raf_wait_ms", "drag_raf_browser_ms", "drag_raf_max_browser_ms", "drag_raf_count",
     "marker_ms", "save_key_ms", "save_wait_ms", "settle_ms",
   ].filter(key => numeric(phases?.[key]) !== null).map(key => [key, phases[key]]));
+  const spanEvidence = value => {
+    if (!value || typeof value !== "object") return null;
+    const safePhase = phase => typeof phase === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/.test(phase) &&
+      !/gh[pousr]_|github_pat_|AKIA[0-9A-Z]{16}/.test(phase) ? phase : "redacted";
+    return {
+      window_operation: typeof value.windowOperation === "string" && /^edit-undo-redo-\d{1,7}$/.test(value.windowOperation) ? value.windowOperation : "redacted",
+      clock: "renderer_monotonic_us",
+      capture_started_us: numeric(value.captureStartedUs), capture_stopped_us: numeric(value.captureStoppedUs),
+      total_open_spans: numeric(value.totalOpenSpans), recorded_open_spans: numeric(value.recordedOpenSpans),
+      unrecorded_open_spans: numeric(value.unrecordedOpenSpans), omitted_details: numeric(value.omittedDetails),
+      trigger_actions: (Array.isArray(value.triggerActions) ? value.triggerActions : []).slice(0, 3).map(action => ({
+        action: ["clip.move", "history.undo", "history.redo"].includes(action?.action) ? action.action : "redacted",
+        revision_before: numeric(action?.revisionBefore), revision_after: numeric(action?.revisionAfter),
+      })),
+      // Unknown phases remain entries and remain part of the authoritative count.
+      spans: (Array.isArray(value.spans) ? value.spans : []).slice(0, 16).map(span => ({
+        span_id: numeric(span?.spanId), parent_span_id: numeric(span?.parentSpanId),
+        parent_recorded: span?.parentRecorded === true, operation_group: numeric(span?.operationGroup),
+        phase: safePhase(span?.phase), phase_redacted: span?.phaseRedacted === true || safePhase(span?.phase) !== span?.phase,
+        started_us: numeric(span?.startedUs), age_us: numeric(span?.ageUs), open: span?.open === true,
+        revision: numeric(span?.revision), frame_seq: numeric(span?.frameSeq),
+      })),
+    };
+  };
   return {
     status: ["qualified", "probe_overhead_exceeded", "invalid"].includes(document.status) ? document.status : "unknown",
     completed_groups: Array.isArray(document.runs) ? document.runs.length : 0,
@@ -137,6 +161,7 @@ export function calibrationEvidence(document) {
       main_reason_codes: (capture.mainReasonCodes ?? []).filter(value => typeof value === "string" && /^[a-z_:]+$/.test(value)),
       main_open_spans: numeric(capture.mainOpenSpans),
       renderer_open_spans: numeric(capture.rendererOpenSpans),
+      renderer_span_evidence: spanEvidence(capture.rendererSpanEvidence),
       main_oldest_open_span_us: numeric(capture.mainOldestOpenSpanUs),
       main_open_phases: (capture.mainOpenPhases ?? []).filter(value => ["live.ipc.main.request", "other"].includes(value)).slice(0, 8),
     } : null,
