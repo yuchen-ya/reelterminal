@@ -569,10 +569,7 @@ registerMediaReferenceProvider(async (scope) => {
 
 registerMediaReferenceProvider(async (scope) => {
   const query = scope ?? {};
-  const [records, journal] = await Promise.all([
-    materialStorage.loadAllMaterials(),
-    materialStorage.loadJournal(),
-  ]);
+  const { materials: records, journal } = await materialStorage.loadSnapshot();
   const undoableRecords = journal.flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
     const changes = (entry as { changes?: unknown }).changes;

@@ -80,6 +80,7 @@ vi.spyOn(projectManager, "listStoredProjects").mockResolvedValue([]);
 vi.spyOn(autoSaveManager, "listRecoveryProjects").mockResolvedValue([]);
 vi.mock("../../services/material-library/storage", () => ({
   createIdbMaterialStorage: () => ({
+    loadSnapshot: async () => ({ materials: storedMaterials, journal: storedJournal }),
     loadAllMaterials: async () => storedMaterials,
     loadJournal: async () => storedJournal,
   }),

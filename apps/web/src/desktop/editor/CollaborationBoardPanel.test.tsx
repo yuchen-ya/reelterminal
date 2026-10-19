@@ -2,6 +2,7 @@ import { cloneElement, type ReactElement, type ReactNode } from "react";
 import { addLibraryInstruction } from "../../services/material-library/instructions";
 import { buildMaterialRecord } from "@reelterminal/core";
 import { MaterialLibraryService, setMaterialLibraryServiceForTests } from "../../services/material-library/library-service";
+import { planMaterialStorageCommit } from "../../services/material-library/storage";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectStore } from "../../stores/project-store";
@@ -28,9 +29,19 @@ const createStore = () => createProjectStore({ initialProject: createEmptyProjec
 beforeEach(() => {
   useUIStore.setState({ boardOpenRequest: 0, modalData: null });
   const records = new Map<string, unknown>();
+  const journal = new Map<string, unknown>();
+  const loadSnapshot = async () => ({ materials: [...records.values()], journal: [...journal.values()] });
   setMaterialLibraryServiceForTests(new MaterialLibraryService({
-    loadAllMaterials: async () => [...records.values()], loadJournal: async () => [], loadBlob: async () => null,
-    commit: async change => { for (const record of change.materialUpserts ?? []) records.set(record.id, record); for (const id of change.materialDeletes ?? []) records.delete(id); },
+    loadSnapshot,
+    loadAllMaterials: async () => [...records.values()], loadJournal: async () => [...journal.values()], loadBlob: async () => null,
+    commit: async request => {
+      const change = planMaterialStorageCommit(await loadSnapshot(), request).change;
+      for (const record of change.materialUpserts ?? []) records.set(record.id, record);
+      for (const id of change.materialDeletes ?? []) records.delete(id);
+      for (const entry of change.journalUpserts ?? []) journal.set(entry.id, entry);
+      for (const id of change.journalDeletes ?? []) journal.delete(id);
+      return loadSnapshot();
+    },
   }));
 });
 

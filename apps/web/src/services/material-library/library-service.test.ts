@@ -6,13 +6,17 @@ import type {
   Project,
 } from "@reelterminal/core";
 import { MaterialLibraryService } from "./library-service";
-import type { MaterialStorage, MaterialStorageCommit } from "./storage";
+import { planMaterialStorageCommit, type MaterialStorage, type MaterialStorageCommit, type MaterialStorageSnapshot } from "./storage";
 
 class MemoryMaterialStorage implements MaterialStorage {
   readonly materials = new Map<string, unknown>();
   readonly journal = new Map<string, unknown>();
   readonly blobs = new Map<string, Blob>();
   readonly commits: MaterialStorageCommit[] = [];
+
+  async loadSnapshot(): Promise<MaterialStorageSnapshot> {
+    return { materials: await this.loadAllMaterials(), journal: await this.loadJournal() };
+  }
 
   async loadAllMaterials(): Promise<unknown[]> {
     return [...this.materials.values()];
@@ -26,9 +30,11 @@ class MemoryMaterialStorage implements MaterialStorage {
     return this.blobs.get(materialId) ?? null;
   }
 
-  async commit(change: MaterialStorageCommit): Promise<void> {
+  async commit(change: MaterialStorageCommit): Promise<MaterialStorageSnapshot> {
+    const plan = planMaterialStorageCommit(await this.loadSnapshot(), change);
     this.commits.push(change);
-    this.apply(change);
+    this.apply(plan.change);
+    return this.loadSnapshot();
   }
 
   /** Applies a commit exactly like the service's single IDB transaction. */
@@ -57,6 +63,8 @@ class FailingCommitStorage implements MaterialStorage {
     private readonly shouldFail: (change: MaterialStorageCommit) => boolean,
   ) {}
 
+  async loadSnapshot(): Promise<MaterialStorageSnapshot> { return this.inner.loadSnapshot(); }
+
   async loadAllMaterials(): Promise<unknown[]> {
     return this.inner.loadAllMaterials();
   }
@@ -69,9 +77,9 @@ class FailingCommitStorage implements MaterialStorage {
     return this.inner.loadBlob(materialId);
   }
 
-  async commit(change: MaterialStorageCommit): Promise<void> {
+  async commit(change: MaterialStorageCommit): Promise<MaterialStorageSnapshot> {
     if (this.shouldFail(change)) throw new Error("idb write failed");
-    await this.inner.commit(change);
+    return this.inner.commit(change);
   }
 }
 
@@ -914,7 +922,7 @@ describe("MaterialLibraryService", () => {
     const commit = storage.commit.bind(storage);
     vi.spyOn(storage, "commit").mockImplementationOnce(async (change) => {
       await gate;
-      await commit(change);
+      return commit(change);
     });
 
     // The update enters the mutation lane first and blocks mid-commit;

@@ -206,6 +206,9 @@ export interface MaterialJournalEntry {
   readonly id: string;
   readonly schemaVersion: number;
   readonly at: string;
+  /** Storage commit order; legacyBefore is only an upper bound, never an
+   * invented relative order between historical entries. */
+  readonly order?: { readonly sequence: number } | { readonly legacyBefore: number };
   readonly actor: MaterialActor;
   /** One-line human-readable description of the batch. */
   readonly label: string;

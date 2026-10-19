@@ -27,6 +27,7 @@ import {
   History,
 } from "lucide-react";
 import type { MaterialJournalEntry, MaterialKind, MaterialRecord } from "@reelterminal/core";
+import { latestMaterialJournalEntry } from "@reelterminal/core";
 import { ToolcraftEmptyState, ToolcraftPopover as Popover, ToolcraftDropdownMenu as DropdownMenu } from "@reelterminal/ui";
 import { AssetSearch, AssetViewToggle, type AssetView } from "../asset-browser-controls";
 import {
@@ -306,7 +307,12 @@ export function MaterialLibraryPanel() {
   };
 
   const latestAgentEntry = useMemo(
-    () => store.journal.find((entry) => entry.actor === "agent" && !entry.undone) ?? null,
+    () => {
+      const latest = latestMaterialJournalEntry(store.journal.filter(entry => entry.actor === "agent"));
+      // Legacy rows remain selectable in the history menu. An automatic
+      // "latest agent batch" shortcut must never guess their true order.
+      return latest.entry?.order && "sequence" in latest.entry.order ? latest.entry : null;
+    },
     [store.journal],
   );
 

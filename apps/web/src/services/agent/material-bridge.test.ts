@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
-import type { MaterialStorage, MaterialStorageCommit } from "../material-library/storage";
+import { planMaterialStorageCommit, type MaterialStorage, type MaterialStorageCommit, type MaterialStorageSnapshot } from "../material-library/storage";
 import {
   MaterialLibraryService,
   setMaterialLibraryServiceForTests,
@@ -44,6 +44,10 @@ class MemoryStorage implements MaterialStorage {
   readonly journal = new Map<string, unknown>();
   readonly blobs = new Map<string, Blob>();
 
+  async loadSnapshot(): Promise<MaterialStorageSnapshot> {
+    return { materials: await this.loadAllMaterials(), journal: await this.loadJournal() };
+  }
+
   async loadAllMaterials(): Promise<unknown[]> {
     return [...this.materials.values()];
   }
@@ -53,7 +57,8 @@ class MemoryStorage implements MaterialStorage {
   async loadBlob(id: string): Promise<Blob | null> {
     return this.blobs.get(id) ?? null;
   }
-  async commit(change: MaterialStorageCommit): Promise<void> {
+  async commit(request: MaterialStorageCommit): Promise<MaterialStorageSnapshot> {
+    const change = planMaterialStorageCommit(await this.loadSnapshot(), request).change;
     for (const record of change.materialUpserts ?? []) {
       this.materials.set(record.id, JSON.parse(JSON.stringify(record)));
     }
@@ -64,6 +69,7 @@ class MemoryStorage implements MaterialStorage {
       this.journal.set(entry.id, JSON.parse(JSON.stringify(entry)));
     }
     for (const id of change.journalDeletes ?? []) this.journal.delete(id);
+    return this.loadSnapshot();
   }
 }
 

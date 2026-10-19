@@ -6,6 +6,7 @@ import { COLLABORATION_INSTRUCTION_LIMITS as instructionLimits } from "../types/
  * is unit-testable and shared by the renderer service and the agent facade.
  */
 import { v4 as uuidv4 } from "uuid";
+import { normalizeMaterialJournalOrder } from "./journal-order";
 import {
   MATERIAL_LIBRARY_SCHEMA_VERSION,
   MATERIAL_KINDS,
@@ -867,6 +868,7 @@ export function normalizeMaterialJournalEntry(
     id: typeof raw.id === "string" ? raw.id : "",
     schemaVersion: MATERIAL_LIBRARY_SCHEMA_VERSION,
     at: typeof raw.at === "string" ? raw.at : new Date(0).toISOString(),
+    ...(normalizeMaterialJournalOrder(raw.order) ? { order: normalizeMaterialJournalOrder(raw.order) } : {}),
     actor: raw.actor === "agent" ? ("agent" as const) : ("user" as const),
     label: typeof raw.label === "string" ? raw.label : "material library change",
     ...(typeof raw.verb === "string" ? { verb: raw.verb } : {}),

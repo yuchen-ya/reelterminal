@@ -31,6 +31,8 @@ import {
   MAX_MATERIAL_JOURNAL_ENTRIES,
   normalizeMaterialJournalEntry,
   normalizeMaterialRecord,
+  materialJournalWindow,
+  latestMaterialJournalEntry,
   sanitizeMaterialTags,
   validateMaterialBuildInput,
   isValidSegmentRange,
@@ -46,8 +48,8 @@ import {
   type MediaItem,
   type Project,
 } from "@reelterminal/core";
-import type { MaterialStorage } from "./storage";
-import { createIdbMaterialStorage } from "./storage";
+import type { MaterialStorage, MaterialStorageCommit, MaterialStorageSnapshot } from "./storage";
+import { createIdbMaterialStorage, MaterialStorageConflict } from "./storage";
 import { withMediaReferenceWrite } from "../media-storage";
 
 export type MaterialLibraryErrorCode =
@@ -66,6 +68,7 @@ export type MaterialServiceResult<T> =
     };
 
 type CasFailure = Extract<MaterialServiceResult<never>, { ok: false }>;
+const storageFailureCode = (error: unknown) => error instanceof MaterialStorageConflict ? "CONFLICT" : "INTERNAL";
 
 const fail = <T = never>(
   code: MaterialLibraryErrorCode,
@@ -120,6 +123,7 @@ export class MaterialLibraryService {
   private readonly storage: MaterialStorage;
   private records = new Map<string, MaterialRecord>();
   private journalEntries: MaterialJournalEntry[] = [];
+  private snapshot: MaterialStorageSnapshot = { materials: [], journal: [] };
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
   private chain: Promise<unknown> = Promise.resolve();
@@ -136,32 +140,22 @@ export class MaterialLibraryService {
   }
 
   /** Load + normalize persisted state once (idempotent, crash-tolerant). */
-  async ensureLoaded(): Promise<void> {
+  async ensureLoaded(refresh = false): Promise<void> {
+    if (refresh) { this.loaded = false; this.loadPromise = null; }
     if (this.loaded) return;
     if (!this.loadPromise) {
       this.loadPromise = (async () => {
-        const [rawMaterials, rawJournal] = await Promise.all([
-          this.storage.loadAllMaterials(),
-          this.storage.loadJournal(),
-        ]);
-        for (const raw of rawMaterials) {
+        this.snapshot = await this.storage.loadSnapshot();
+        this.records = new Map();
+        for (const raw of this.snapshot.materials) {
           const record = normalizeMaterialRecord(raw);
           if (record && record.id) this.records.set(record.id, record);
         }
-        const entries = rawJournal
-          .map((raw) => normalizeMaterialJournalEntry(raw))
-          .filter((entry): entry is MaterialJournalEntry => entry !== null && entry.id !== "")
-          .sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
-        const overflow =
-          entries.length > MAX_MATERIAL_JOURNAL_ENTRIES
-            ? entries.slice(0, entries.length - MAX_MATERIAL_JOURNAL_ENTRIES)
-            : [];
-        this.journalEntries = entries.slice(-MAX_MATERIAL_JOURNAL_ENTRIES);
         this.loaded = true;
         // Load-time GC for rows left behind by a historical failed eviction
         // commit (or pre-window data): same derivation, same atomic
         // journal+blob commit as the eviction GC.
-        this.gcEvictedEntries(overflow);
+        await this.retainJournal();
       })().catch((error) => {
         this.loadPromise = null;
         throw error;
@@ -173,9 +167,29 @@ export class MaterialLibraryService {
   private enqueue<T>(
     body: () => Promise<MaterialServiceResult<T>>,
   ): Promise<MaterialServiceResult<T>> {
-    const next = this.chain.then(body, body);
+    return this.inLane(body);
+  }
+
+  /** Refresh reads and writes in the same instance lane. Across instances,
+   * the native IDB transaction checks this exact input snapshot before writing. */
+  private inLane<T>(body: () => Promise<T>): Promise<T> {
+    const run = async () => {
+      try {
+        await this.ensureLoaded(true);
+        return await body();
+      } finally {
+        // The CAS input is an operation-local working copy, not a second
+        // long-lived cache of the entire library.
+        this.snapshot = { materials: [], journal: [] };
+      }
+    };
+    const next = this.chain.then(run, run);
     this.chain = next.catch(() => undefined);
     return next;
+  }
+
+  private async commit(change: MaterialStorageCommit): Promise<void> {
+    this.snapshot = await this.storage.commit({ ...change, expected: this.snapshot });
   }
 
   /* ------------------------------ reads ------------------------------ */
@@ -184,60 +198,58 @@ export class MaterialLibraryService {
     query: MaterialListQuery,
   ): Promise<MaterialServiceResult<MaterialListResult>> {
     try {
-      await this.chain;
-      await this.ensureLoaded();
-      const pageSize = Math.min(Math.max(1, query.pageSize), 200);
-      return {
-        ok: true,
-        value: buildMaterialListResult([...this.records.values()], {
-          ...query,
-          pageSize,
-        }),
-      };
+      return await this.inLane(async () => {
+        const pageSize = Math.min(Math.max(1, query.pageSize), 200);
+        return {
+          ok: true,
+          value: buildMaterialListResult([...this.records.values()], {
+            ...query,
+            pageSize,
+          }),
+        };
+      });
     } catch (error) {
       return fail("INTERNAL", `material library load failed: ${errorMessage(error)}`);
     }
   }
 
   async get(id: string): Promise<MaterialServiceResult<MaterialRecord>> {
-    await this.chain;
-    await this.ensureLoaded();
-    const record = this.records.get(id);
-    if (!record) return fail("NOT_FOUND", `material "${id}" was not found`, { id });
-    return { ok: true, value: record };
+    return this.inLane(async () => {
+      const record = this.records.get(id);
+      if (!record) return fail("NOT_FOUND", `material "${id}" was not found`, { id });
+      return { ok: true, value: record };
+    });
   }
 
   async journal(
     limit = 20,
   ): Promise<MaterialServiceResult<readonly MaterialJournalEntry[]>> {
-    await this.chain;
-    await this.ensureLoaded();
-    return {
-      ok: true,
-      value: [...this.journalEntries]
-        .reverse()
-        .slice(0, Math.min(Math.max(1, limit), 100)),
-    };
+    return this.inLane(async () => {
+      return {
+        ok: true,
+        value: [...this.journalEntries]
+          .reverse()
+          .slice(0, Math.min(Math.max(1, limit), 100)),
+      };
+    });
   }
 
   async counts(): Promise<MaterialServiceResult<{ total: number; inbox: number }>> {
-    await this.chain;
-    await this.ensureLoaded();
-    const all = [...this.records.values()];
-    return {
-      ok: true,
-      value: {
-        total: all.length,
-        inbox: all.filter((record) => record.organizeStatus === "inbox").length,
-      },
-    };
+    return this.inLane(async () => {
+      const all = [...this.records.values()];
+      return {
+        ok: true,
+        value: {
+          total: all.length,
+          inbox: all.filter((record) => record.organizeStatus === "inbox").length,
+        },
+      };
+    });
   }
 
   /** Read the library-owned blob copy for a media material (null if none). */
   async loadBlobFor(materialId: string): Promise<Blob | null> {
-    await this.chain;
-    await this.ensureLoaded();
-    return this.storage.loadBlob(materialId);
+    return this.inLane(() => this.storage.loadBlob(materialId));
   }
 
   /* ----------------------------- mutations ---------------------------- */
@@ -314,16 +326,16 @@ export class MaterialLibraryService {
         changes: [{ materialId: record.id, before: null, after: record }],
       });
       try {
-        await this.storage.commit({
+        await this.commit({
           materialUpserts: [record],
           ...(request.blob ? { blobPuts: [{ id: record.id, blob: request.blob }] } : {}),
           journalUpserts: [entry],
         });
       } catch (error) {
-        return fail("INTERNAL", `material library write failed: ${errorMessage(error)}`);
+        return fail(storageFailureCode(error), `material library write failed: ${errorMessage(error)}`);
       }
       this.records.set(record.id, record);
-      this.pushJournal(entry);
+      await this.retainJournal();
       return { ok: true, value: { material: record, journalEntryId: entry.id } };
     });
   }
@@ -356,15 +368,15 @@ export class MaterialLibraryService {
         changes: [{ materialId: id, before: record, after: next }],
       });
       try {
-        await this.storage.commit({
+        await this.commit({
           materialUpserts: [next],
           journalUpserts: [entry],
         });
       } catch (error) {
-        return fail("INTERNAL", `material library write failed: ${errorMessage(error)}`);
+        return fail(storageFailureCode(error), `material library write failed: ${errorMessage(error)}`);
       }
       this.records.set(id, next);
-      this.pushJournal(entry);
+      await this.retainJournal();
       return { ok: true, value: { material: next, journalEntryId: entry.id } };
     });
   }
@@ -450,15 +462,15 @@ export class MaterialLibraryService {
         changes,
       });
       try {
-        await this.storage.commit({
+        await this.commit({
           materialUpserts: updated,
           journalUpserts: [entry],
         });
       } catch (error) {
-        return fail("INTERNAL", `material library write failed: ${errorMessage(error)}`);
+        return fail(storageFailureCode(error), `material library write failed: ${errorMessage(error)}`);
       }
       for (const record of updated) this.records.set(record.id, record);
-      this.pushJournal(entry);
+      await this.retainJournal();
       return { ok: true, value: { materials: updated, journalEntryId: entry.id } };
     })();
   }
@@ -525,15 +537,15 @@ export class MaterialLibraryService {
       // so the library's own blob copies are kept for the undo window and
       // reclaimed by the journal-eviction GC once nothing references them.
       try {
-        await this.storage.commit({
+        await this.commit({
           materialDeletes: removedRecords.map((removed) => removed.id),
           journalUpserts: [entry],
         });
       } catch (error) {
-        return fail("INTERNAL", `material library write failed: ${errorMessage(error)}`);
+        return fail(storageFailureCode(error), `material library write failed: ${errorMessage(error)}`);
       }
       for (const removed of removedRecords) this.records.delete(removed.id);
-      this.pushJournal(entry);
+      await this.retainJournal();
       return {
         ok: true,
         value: {
@@ -564,9 +576,13 @@ export class MaterialLibraryService {
     return withMediaReferenceWrite(() => this.enqueue(async () => {
       await this.ensureLoaded();
       const undoable = [...this.journalEntries].reverse().filter((entry) => !entry.undone);
+      const latest = latestMaterialJournalEntry(this.journalEntries);
+      if (!entryId && latest.ambiguous) {
+        return fail("CONFLICT", "The latest material change cannot be determined from legacy history; choose a specific journal entry", { reason: "ambiguous_journal_order" });
+      }
       const target = entryId
         ? undoable.find((entry) => entry.id === entryId)
-        : undoable[0];
+        : latest.entry;
       if (!target) {
         return fail(
           "NOT_FOUND",
@@ -575,6 +591,18 @@ export class MaterialLibraryService {
             : "no undoable material library change",
           { entryId },
         );
+      }
+      const content = (record: MaterialRecord | null | undefined) => {
+        if (!record) return null;
+        const { usages: _usages, ...value } = record;
+        return JSON.stringify(value);
+      };
+      const incompatible = target.changes.filter(change =>
+        content(this.records.get(change.materialId)) !== content(change.after));
+      if (incompatible.length) {
+        return fail("CONFLICT", "Material content changed after this history entry; undo the intervening changes first", {
+          reason: "undo_target_changed", materialIds: incompatible.map(change => change.materialId),
+        });
       }
       const recordsBeforeUndo = [...this.records.values()];
       const outcome = applyMaterialJournalUndo(recordsBeforeUndo, target);
@@ -635,7 +663,7 @@ export class MaterialLibraryService {
             blobMissingIds.push(candidate.id);
           }
         }
-        await this.storage.commit({
+        await this.commit({
           materialUpserts: recordsWithUsages.filter((candidate) =>
             outcome.restored.includes(candidate.id),
           ),
@@ -643,12 +671,12 @@ export class MaterialLibraryService {
           journalUpserts: [undoneOriginal, undoEntry],
         });
       } catch (error) {
-        return fail("INTERNAL", `material library write failed: ${errorMessage(error)}`);
+        return fail(storageFailureCode(error), `material library write failed: ${errorMessage(error)}`);
       }
       this.records = new Map(recordsWithUsages.map((candidate) => [candidate.id, candidate]));
       const index = this.journalEntries.findIndex((entry) => entry.id === target.id);
       if (index >= 0) this.journalEntries[index] = undoneOriginal;
-      this.pushJournal(undoEntry);
+      await this.retainJournal();
       return {
         ok: true,
         value: {
@@ -685,9 +713,9 @@ export class MaterialLibraryService {
         usages: [...usages, { ...usage, status: usage.status ?? "current" }],
       };
       try {
-        await this.storage.commit({ materialUpserts: [next] });
+        await this.commit({ materialUpserts: [next] });
       } catch (error) {
-        return fail("INTERNAL", `material library write failed: ${errorMessage(error)}`);
+        return fail(storageFailureCode(error), `material library write failed: ${errorMessage(error)}`);
       }
       this.records.set(materialId, next);
       return { ok: true, value: next };
@@ -876,10 +904,10 @@ export class MaterialLibraryService {
         .filter((record): record is MaterialRecord => record !== undefined);
       if (updates.length > 0) {
         try {
-          await this.storage.commit({ materialUpserts: updates });
+          await this.commit({ materialUpserts: updates });
         } catch (error) {
           return fail(
-            "INTERNAL",
+            storageFailureCode(error),
             `material usage reconciliation failed: ${errorMessage(error)}`,
           );
         }
@@ -912,7 +940,6 @@ export class MaterialLibraryService {
     actor: MaterialActor,
     verb?: string,
   ): Promise<MaterialServiceResult<{ materials: readonly MaterialRecord[]; journalEntryId: string }>> {
-    await this.ensureLoaded();
     const additions = sanitizeMaterialTags(tags);
     if (additions.length === 0) {
       return fail("INVALID_PARAMS", "addTags requires at least one non-empty tag");
@@ -942,29 +969,34 @@ export class MaterialLibraryService {
   }
 
   /**
-   * Blob ids a record snapshot references (media records with a blob
-   * fileRef — the blob store is keyed by the material's own id).
+   * Blob references from raw snapshots. Unknown legacy record kinds must
+   * still pin their bytes; a display normalizer is not evidence of no reference.
    */
   private blobIdsOf(
-    records: ReadonlyArray<MaterialRecord | null>,
+    records: readonly unknown[],
   ): string[] {
-    return records
-      .filter(
-        (record): record is MaterialRecord =>
-          record !== null && record.kind === "media" && record.fileRef.type === "blob",
-      )
-      .map((record) => record.id);
+    return records.flatMap(record => {
+      if (!record || typeof record !== "object") return [];
+      const raw = record as { id?: unknown; fileRef?: unknown };
+      return typeof raw.id === "string" && raw.fileRef && typeof raw.fileRef === "object"
+        && (raw.fileRef as { type?: unknown }).type === "blob" ? [raw.id] : [];
+    });
   }
 
   /**
    * Blob ids a journal entry references, derived purely from its embedded
    * before/after record snapshots (no schema additions needed).
    */
-  private entryBlobIds(entries: readonly MaterialJournalEntry[]): string[] {
+  private entryBlobIds(entries: readonly unknown[]): string[] {
     return this.blobIdsOf(
-      entries.flatMap((entry) =>
-        entry.changes.flatMap((change) => [change.before, change.after]),
-      ),
+      entries.flatMap(entry => {
+        if (!entry || typeof entry !== "object" || !Array.isArray((entry as { changes?: unknown }).changes)) return [];
+        return ((entry as { changes: unknown[] }).changes).flatMap(change => {
+          if (!change || typeof change !== "object") return [];
+          const raw = change as { before?: unknown; after?: unknown };
+          return [raw.before, raw.after];
+        });
+      }),
     );
   }
 
@@ -974,50 +1006,45 @@ export class MaterialLibraryService {
    * An evicted entry's blob set minus the sets referenced by surviving
    * records and surviving journal entries is dead and can be dropped in
    * the SAME transaction that deletes the evicted rows (one IDB commit, so
-   * a failure rolls both back together). The commit is fire-and-forget: a
-   * failure just delays reclamation (never over-deletes), and the
+   * a failure rolls both back together). Await inside the instance lane;
+   * the native transaction also validates the raw snapshot across instances.
+   * A failure just delays reclamation (never over-deletes), and the
    * candidate set stays in `pendingGcBlobIds` for the next eviction to
    * retry. Undone entries count as live references on purpose — the
    * History menu can re-undo them, which would need the bytes again.
    */
-  private gcEvictedEntries(evicted: readonly MaterialJournalEntry[]): void {
-    if (evicted.length === 0) return;
+  private async gcEvictedEntries(evicted: readonly MaterialJournalEntry[]): Promise<void> {
+    if (evicted.length === 0 && this.pendingGcBlobIds.size === 0) return;
     const candidates = new Set<string>([
       ...this.pendingGcBlobIds,
       ...this.entryBlobIds(evicted),
     ]);
-    const liveRecordBlobs = new Set(this.blobIdsOf([...this.records.values()]));
-    const liveJournalBlobs = new Set(this.entryBlobIds(this.journalEntries));
+    const evictedIds = new Set(evicted.map(entry => entry.id));
+    const survivingRows = this.snapshot.journal.filter(row => !row || typeof row !== "object"
+      || !evictedIds.has((row as { id: string }).id));
+    const liveRecordBlobs = new Set(this.blobIdsOf(this.snapshot.materials));
+    const liveJournalBlobs = new Set(this.entryBlobIds(survivingRows));
     const gc = [...candidates].filter(
       (id) => !liveRecordBlobs.has(id) && !liveJournalBlobs.has(id),
     );
     // Remember everything not yet proven dead: if the commit fails, the
     // next eviction retries the whole candidate set within this session.
     this.pendingGcBlobIds = candidates;
-    void this.storage
-      .commit({
+    try {
+      await this.commit({
         journalDeletes: evicted.map((entry) => entry.id),
         ...(gc.length > 0 ? { blobDeletes: gc } : {}),
-      })
-      .then(() => {
-        for (const id of gc) this.pendingGcBlobIds.delete(id);
-      })
-      .catch(() => undefined);
+      });
+      for (const id of gc) this.pendingGcBlobIds.delete(id);
+    } catch { /* Retain candidates and rows/bytes; a fresh operation retries. */ }
   }
 
-  private pushJournal(entry: MaterialJournalEntry): void {
-    this.journalEntries.push(entry);
-    if (this.journalEntries.length <= MAX_MATERIAL_JOURNAL_ENTRIES) return;
-    const overflow = this.journalEntries.slice(
-      0,
-      this.journalEntries.length - MAX_MATERIAL_JOURNAL_ENTRIES,
-    );
-    // In-memory slicing stays first (existing behavior): evicted entries
-    // are no longer undoable in this session even if the persistence below
-    // fails — and since the eviction commit is atomic, a failed commit
-    // leaves the rows in IDB so a reload puts them back, bytes intact.
-    this.journalEntries = this.journalEntries.slice(-MAX_MATERIAL_JOURNAL_ENTRIES);
-    this.gcEvictedEntries(overflow);
+  private async retainJournal(): Promise<void> {
+    const entries = this.snapshot.journal.map(normalizeMaterialJournalEntry)
+      .filter((entry): entry is MaterialJournalEntry => entry !== null && entry.id !== "");
+    const window = materialJournalWindow(entries, MAX_MATERIAL_JOURNAL_ENTRIES);
+    this.journalEntries = window.kept;
+    await this.gcEvictedEntries(window.evicted);
   }
 }
 

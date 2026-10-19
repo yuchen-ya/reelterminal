@@ -9,7 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   MaterialStorage,
   MaterialStorageCommit,
+  MaterialStorageSnapshot,
 } from "../../../services/material-library/storage";
+import { planMaterialStorageCommit } from "../../../services/material-library/storage";
+import { buildMaterialJournalEntry } from "@reelterminal/core";
 import {
   MaterialLibraryService,
   setMaterialLibraryServiceForTests,
@@ -36,6 +39,10 @@ class MemoryStorage implements MaterialStorage {
   readonly journal = new Map<string, unknown>();
   readonly blobs = new Map<string, Blob>();
 
+  async loadSnapshot(): Promise<MaterialStorageSnapshot> {
+    return { materials: await this.loadAllMaterials(), journal: await this.loadJournal() };
+  }
+
   async loadAllMaterials(): Promise<unknown[]> {
     return [...this.materials.values()];
   }
@@ -45,7 +52,8 @@ class MemoryStorage implements MaterialStorage {
   async loadBlob(id: string): Promise<Blob | null> {
     return this.blobs.get(id) ?? null;
   }
-  async commit(change: MaterialStorageCommit): Promise<void> {
+  async commit(request: MaterialStorageCommit): Promise<MaterialStorageSnapshot> {
+    const change = planMaterialStorageCommit(await this.loadSnapshot(), request).change;
     for (const record of change.materialUpserts ?? []) {
       this.materials.set(record.id, JSON.parse(JSON.stringify(record)));
     }
@@ -56,10 +64,12 @@ class MemoryStorage implements MaterialStorage {
       this.journal.set(entry.id, JSON.parse(JSON.stringify(entry)));
     }
     for (const id of change.journalDeletes ?? []) this.journal.delete(id);
+    return this.loadSnapshot();
   }
 }
 
 class FailingStorage implements MaterialStorage {
+  async loadSnapshot(): Promise<MaterialStorageSnapshot> { throw new Error("idb unavailable"); }
   async loadAllMaterials(): Promise<unknown[]> {
     throw new Error("idb unavailable");
   }
@@ -69,7 +79,7 @@ class FailingStorage implements MaterialStorage {
   async loadBlob(): Promise<Blob | null> {
     return null;
   }
-  async commit(): Promise<void> {
+  async commit(): Promise<MaterialStorageSnapshot> {
     throw new Error("idb unavailable");
   }
 }
@@ -212,5 +222,16 @@ describe("MaterialLibraryPanel empty states", () => {
       .getState()
       .notifications.filter((notification) => notification.type === "success");
     expect(successes).toHaveLength(0);
+  });
+
+  it("does not choose an automatic latest agent batch from ambiguous legacy history", async () => {
+    const mem = new MemoryStorage();
+    for (const id of ["mjr_legacy_a", "mjr_legacy_z"]) {
+      mem.journal.set(id, buildMaterialJournalEntry({ id, actor: "agent", label: id, changes: [], nowIso: "2026-10-19T00:00:00.000Z" }));
+    }
+    setMaterialLibraryServiceForTests(new MaterialLibraryService(mem));
+    render(<MaterialLibraryPanel />);
+    await waitFor(() => expect(useMaterialLibraryStore.getState().journal).toHaveLength(2));
+    expect(screen.queryByRole("button", { name: "Undo agent batch" })).not.toBeInTheDocument();
   });
 });
