@@ -4,8 +4,9 @@
  * the external Agent channel only reads project and canonical history state.
  */
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
@@ -162,7 +163,15 @@ describe("editing recipe branches away from an undone timeline action", () => {
       interval: 100,
     });
     await observe("project-with-selected-video");
-    evidence.record("fixture", { sourcePath, videoFileName: VIDEO_FILE_NAME, mediaId });
+    // Temporary roots can contain a runner/user account name on Windows.
+    // Keep fixture provenance without publishing the machine-specific path.
+    const sourceBytes = readFileSync(sourcePath);
+    evidence.record("fixture", {
+      videoFileName: VIDEO_FILE_NAME,
+      mediaId,
+      bytes: sourceBytes.byteLength,
+      sha256: createHash("sha256").update(sourceBytes).digest("hex"),
+    });
   }, 300_000);
 
   afterAll(async () => {

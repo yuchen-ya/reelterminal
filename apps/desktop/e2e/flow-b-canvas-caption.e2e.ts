@@ -8,6 +8,7 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { createEvidence, type EvidenceRecord } from "./harness/evidence";
@@ -147,7 +148,9 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
 
     evidence.record("render_frame", {
       request: { timeSec: PLAYHEAD_T + 1 },
-      artifact: { path: artifact.path, sizeBytes: artifact.sizeBytes, sha256: artifact.sha256 },
+      // The uploaded PNG carries the same bytes; keep its relative name rather
+      // than the renderer's machine-specific temporary directory.
+      artifact: { path: path.basename(evidencePng), sizeBytes: artifact.sizeBytes, sha256: artifact.sha256 },
       evidencePng,
       pixelStats: stats,
       expectedPoint: contextWithPoint.canvasPoint,
