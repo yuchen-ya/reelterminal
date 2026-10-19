@@ -12,6 +12,12 @@ import { createAgentFacade, type AgentFacade } from "./index";
 import type { ProjectRenderAdapter } from "./render/adapter";
 import { EDIT_OP_TYPES, FACADE_VERBS } from "./types";
 import { makeTempDir, removeTempDir } from "./test-helpers";
+import { setAudioModelsProbeForTests } from "./media/audio-models-runner";
+
+// These provider/root/contract units use an explicitly unconfigured optional
+// model runtime; model probe behavior is covered by the audio worker suites.
+beforeEach(() => setAudioModelsProbeForTests(async () => ({ available: false, reason: "No optional audio models in the capability unit fixture" })));
+afterEach(() => setAudioModelsProbeForTests(null));
 
 describe("capabilities.get / session.describe", () => {
   let mediaRoot: string;

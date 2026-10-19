@@ -12,7 +12,13 @@ import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createAgentFacade } from "./index";
+import { setAudioModelsProbeForTests } from "./media/audio-models-runner";
 import type { RenderProvider, RenderHtmlPngRequest } from "./providers";
+
+// Optional Python/model startup is tested by the audio worker suites, not
+// this fake-provider HTML unit or its session.describe registration check.
+beforeEach(() => setAudioModelsProbeForTests(async () => ({ available: false, reason: "No optional audio models in the HTML unit fixture" })));
+afterEach(() => setAudioModelsProbeForTests(null));
 
 /** Minimal valid PNG with explicit dims (RGBA) — enough for IHDR checks. */
 function makePng(width: number, height: number): Buffer {
@@ -331,14 +337,17 @@ describe("media.render_html", () => {
   });
 
   it("reports capability availability honestly", async () => {
-    const withProvider = await facadeWith(fakeProvider().provider)["capabilities.get"]();
+    // This unit tests the HTML provider and root gates. Unrelated optional
+    // audio/OpenCV subprocess probes have separate capability/domain suites.
+    const params = { domain: "render" } as const;
+    const withProvider = await facadeWith(fakeProvider().provider)["capabilities.get"](params);
     expect(withProvider.ok).toBe(true);
     if (withProvider.ok) {
       expect(withProvider.value.mediaRenderHtml.available).toBe(true);
       expect(withProvider.value.mediaRenderHtml.details?.renderer).toContain("Chromium");
     }
 
-    const withoutProvider = await facadeWith(undefined)["capabilities.get"]();
+    const withoutProvider = await facadeWith(undefined)["capabilities.get"](params);
     expect(withoutProvider.ok).toBe(true);
     if (withoutProvider.ok) {
       expect(withoutProvider.value.mediaRenderHtml.available).toBe(false);
@@ -348,7 +357,7 @@ describe("media.render_html", () => {
     const plain = fakeProvider().provider;
     const withoutHtml = await facadeWith({ ...plain, renderHtmlPng: undefined })[
       "capabilities.get"
-    ]();
+    ](params);
     expect(withoutHtml.ok).toBe(true);
     if (withoutHtml.ok) {
       expect(withoutHtml.value.mediaRenderHtml.available).toBe(false);
@@ -356,7 +365,7 @@ describe("media.render_html", () => {
 
     const withoutRoots = await facadeWith(fakeProvider().provider, [])[
       "capabilities.get"
-    ]();
+    ](params);
     expect(withoutRoots.ok).toBe(true);
     if (withoutRoots.ok) {
       expect(withoutRoots.value.mediaRenderHtml.available).toBe(false);

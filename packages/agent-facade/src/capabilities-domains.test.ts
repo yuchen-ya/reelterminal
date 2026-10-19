@@ -11,6 +11,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentFacade, type AgentFacade } from "./index";
 import { makeTempDir, removeTempDir } from "./test-helpers";
+import { setAudioModelsProbeForTests } from "./media/audio-models-runner";
+
+// Match the mocked preflight fixtures below instead of importing a local
+// Python model environment when the audio domain is selected.
+beforeEach(() => setAudioModelsProbeForTests(async () => ({ available: false, reason: "No optional audio models in the domain-filter unit fixture" })));
+afterEach(() => setAudioModelsProbeForTests(null));
 
 const probes = vi.hoisted(() => ({
   audioAnalysisPreflight: vi.fn(),

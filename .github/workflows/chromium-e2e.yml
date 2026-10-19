@@ -68,15 +68,15 @@ jobs:
         run: pnpm --filter @reelterminal/agent-transport typecheck
 
       - name: Run facade tests
-        run: pnpm --filter @reelterminal/agent-facade test:run
+        run: pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2
       - name: Run Chromium runtime tests (probe, E2E, jobs, verify)
         run: |
           ulimit -c 0
-          pnpm --filter @reelterminal/runtime-chromium test:run
+          pnpm --filter @reelterminal/runtime-chromium test:run --maxWorkers=2
       - name: Run agent-transport tests (run/doctor over the real binary, e2e-gated)
         run: |
           ulimit -c 0
-          pnpm --filter @reelterminal/agent-transport test:run
+          pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2
       - name: Check evidence privacy and size before upload
         id: evidence-check
         if: always()
@@ -153,7 +153,9 @@ jobs:
           echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
 
       - name: Run facade suite (pure Node; platform-independent)
-        run: pnpm --filter @reelterminal/agent-facade test:run
+        # Match the main CI's worker budget; concurrent FFmpeg/Python probes
+        # otherwise compete with the short native-process regression cases.
+        run: pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2
 
       - name: Run transport suite over the real binary
-        run: pnpm --filter @reelterminal/agent-transport test:run
+        run: pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2
