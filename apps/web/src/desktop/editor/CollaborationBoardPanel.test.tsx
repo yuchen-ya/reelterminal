@@ -118,7 +118,11 @@ describe("collaboration board", () => {
     expect(store.getState().project.collaborationInstructions?.items[0].references?.[0]).toMatchObject({
       entityId: "reference-media", kind: "media", timing: { startSeconds: 94, endSeconds: 106 },
     });
+    // The store publishes before the async commit clears busy/closes its
+    // add form. Wait for that UI completion before opening the chip editor.
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Enable Explain visually" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Explain visually" }));
+    await screen.findByRole("button", { name: "Save changes" });
     await act(() => store.getState().undo());
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("has changed"));
