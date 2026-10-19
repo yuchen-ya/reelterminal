@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { channel } from "node:diagnostics_channel";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { produceNormalizedAudio, normalizeRangeWindow } from "./audio-normalize";
@@ -91,7 +92,20 @@ function request(artifactId: string, extra: Record<string, unknown> = {}) {
 
 describe("produceNormalizedAudio", () => {
   it.skipIf(skip)("normalizes a right-channel-only 44.1 kHz source range into an exact durable 48 kHz WAV", async () => {
+    const started = performance.now();
+    const startedCpu = process.cpuUsage();
+    const checkpoint = (stage: string) => {
+      if (process.env.REELTERMINAL_TEST_NATIVE_METRICS_FILE) {
+        const cpu = process.cpuUsage(startedCpu);
+        const data = { diagnostic: "normalize-right-channel", stage, ownerPid: process.pid,
+          utc: new Date().toISOString(), elapsedMs: performance.now() - started, nodeCpuMs: (cpu.user + cpu.system) / 1000 };
+        channel("reelterminal.test.native-normalize").publish(data);
+        console.info(JSON.stringify(data));
+      }
+    };
+    checkpoint("produce-start");
     const artifact = await produceNormalizedAudio(request("right-only"));
+    checkpoint("produce-done");
     const expectedSamples = Math.round((params.endSec - params.startSec) * 48_000);
 
     expect(artifact.path).toBe(join(root, "generated-assets", "audio-normalize", "right-only", "normalized.wav"));
@@ -120,6 +134,7 @@ describe("produceNormalizedAudio", () => {
     expect(sidecar.normalizationMode).toBe("dynamic");
     expect(Math.abs(artifact.after.integratedLufs - params.targetLufs)).toBeLessThanOrEqual(1);
     expect(artifact.after.truePeakDbtp).toBeLessThanOrEqual(params.truePeakDbtp + 0.2);
+    checkpoint("metadata-audit-done");
 
     const decoded = await runToolProcess(binaries!.ffmpeg, [
       "-hide_banner", "-loglevel", "error", "-i", artifact.path,
@@ -147,6 +162,7 @@ describe("produceNormalizedAudio", () => {
     expect(Math.abs(outputPeak - referencePeak)).toBeLessThanOrEqual(2);
     const expectedPulseSample = Math.round((6.5 - params.startSec) * 48_000);
     expect(Math.abs(referencePeak - expectedPulseSample)).toBeLessThanOrEqual(2);
+    checkpoint("independent-pcm-audit-done");
 
     const repeated = await produceNormalizedAudio(request("right-only"));
     expect(repeated.path).toBe(artifact.path);
@@ -157,6 +173,7 @@ describe("produceNormalizedAudio", () => {
       "provenance.json",
     ]);
     expect((await readdir(join(root, "generated-assets", "audio-normalize"))).some((name) => name.startsWith(".right-only.") && name.endsWith(".pending"))).toBe(false);
+    checkpoint("idempotency-audit-done");
   });
 
   it.skipIf(skip)("fails a short high-crest-factor range that misses the target and publishes no asset", async () => {

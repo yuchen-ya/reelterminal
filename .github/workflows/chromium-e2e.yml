@@ -152,10 +152,46 @@ jobs:
           brew install ffmpeg-full
           echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
 
-      - name: Run facade suite (pure Node; platform-independent)
+      - name: Verify native diagnostic reporter failure handling
+        run: node --test packages/agent-facade/test/report-native-process-metrics.node-test.mjs
+
+      - name: Run facade suite with native process timings
         # Match the main CI's worker budget; concurrent FFmpeg/Python probes
         # otherwise compete with the short native-process regression cases.
-        run: pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2
+        id: facade-suite
+        shell: bash
+        run: |
+          mkdir -p .cache/native-normalize
+          export NODE_OPTIONS="--require=$PWD/packages/agent-facade/test/native-process-metrics.cjs"
+          export REELTERMINAL_TEST_NATIVE_METRICS_FILE="$PWD/.cache/native-normalize/competing"
+          export REELTERMINAL_TEST_NATIVE_METRICS_LABEL="full-suite-two-workers"
+          pnpm --filter @reelterminal/agent-facade test:run --maxWorkers=2 --reporter=verbose --reporter=json --outputFile=../../.cache/native-normalize/competing-results.json
+
+      - name: Diagnose native normalization alone without replacing the original result
+        if: ${{ always() && (steps.facade-suite.outcome == 'success' || steps.facade-suite.outcome == 'failure') }}
+        shell: bash
+        run: |
+          export NODE_OPTIONS="--require=$PWD/packages/agent-facade/test/native-process-metrics.cjs"
+          export REELTERMINAL_TEST_NATIVE_METRICS_FILE="$PWD/.cache/native-normalize/isolated"
+          export REELTERMINAL_TEST_NATIVE_METRICS_LABEL="isolated-one-worker"
+          pnpm --filter @reelterminal/agent-facade exec vitest run src/audio-normalize.test.ts --maxWorkers=1 --reporter=verbose --reporter=json --outputFile=../../.cache/native-normalize/isolated-results.json
+
+      - name: Record native stages, process exits and diagnostic overhead
+        if: ${{ always() && (steps.facade-suite.outcome == 'success' || steps.facade-suite.outcome == 'failure') }}
+        run: node packages/agent-facade/test/report-native-process-metrics.mjs .cache/native-normalize packages/agent-facade/.artifacts/native-normalize/report.json
+      - name: Check native diagnostic evidence privacy and size
+        id: native-evidence-check
+        if: always()
+        run: node scripts/security/check-ci-artifacts.mjs packages/agent-facade/.artifacts/native-normalize
+      - name: Upload native diagnostic evidence
+        if: ${{ always() && steps.native-evidence-check.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-normalize-${{ matrix.os }}
+          path: packages/agent-facade/.artifacts/native-normalize/*.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 9
 
       - name: Run transport suite over the real binary
         run: pnpm --filter @reelterminal/agent-transport test:run --maxWorkers=2
