@@ -23,8 +23,10 @@ test("the installed braces patch rejects deeply nested patterns before AST walki
 });
 
 test("the installed sprintf patch bounds numeric precision without crashing an async caller", () => {
-  const transformersRequire = createRequire(webRequire.resolve("@huggingface/transformers"));
-  const onnxRequire = createRequire(transformersRequire.resolve("onnxruntime-node"));
+  // The desktop now owns ONNX directly; browser Transformers was removed with
+  // the Whisper implementation. Follow the installed dependency that ships.
+  const desktopRequire = createRequire(new URL("../../apps/desktop/package.json", import.meta.url));
+  const onnxRequire = createRequire(desktopRequire.resolve("onnxruntime-node"));
   const globalAgentRequire = createRequire(onnxRequire.resolve("global-agent"));
   const roarrRequire = createRequire(globalAgentRequire.resolve("roarr"));
   const sprintfPath = roarrRequire.resolve("sprintf-js");
