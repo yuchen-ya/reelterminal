@@ -6,6 +6,9 @@ artifactName: ${productName}-${version}-${arch}.${ext}
 asar: true
 asarUnpack:
   - dist/python/audio_models.py
+  # The external Python worker loads its caption helper with runpy; both files
+  # must exist on disk beside one another, outside Electron's ASAR archive.
+  - dist/python/caption_models.py
   - dist/aurora-host/**
   # Native ONNX runtime for the Silero VAD speech-activity analysis. The main
   # bundle keeps the require() external, so the packaged app loads the .node

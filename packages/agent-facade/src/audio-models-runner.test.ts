@@ -11,6 +11,9 @@ import { FacadeError } from "./errors";
 const PYTHON = process.env.REELTERMINAL_AUDIO_MODELS_PYTHON
   ?? (process.platform === "win32" ? "python" : "python3");
 const PYTHON_AVAILABLE = spawnSync(PYTHON, ["-c", "print(1)"], { windowsHide: true }).status === 0;
+if (process.env.EXPECT_AUDIO_MODELS_PYTHON === "1" && !PYTHON_AVAILABLE) {
+  throw new Error("The audio worker regressions require a working Python interpreter");
+}
 
 const STUBS: Record<string, string> = {
   progress: `
@@ -64,6 +67,11 @@ describe.skipIf(!PYTHON_AVAILABLE)("optional audio-model process isolation", () 
   it("verifies first-download weights before model loading for all three backends", () => {
     const testScript = fileURLToPath(new URL("../test/audio-model-weights.py", import.meta.url));
     const result = spawnSync(PYTHON, ["-I", testScript], { windowsHide: true, encoding: "utf8" });
+    expect(result.status, result.stderr).toBe(0);
+  });
+  it("preserves caption punctuation and rejects mismatched alignment in the Python helper", () => {
+    const testScript = fileURLToPath(new URL("../test/caption-text.py", import.meta.url));
+    const result = spawnSync(PYTHON, ["-I", "-B", testScript], { windowsHide: true, encoding: "utf8" });
     expect(result.status, result.stderr).toBe(0);
   });
   it.each(["crash", "hang", "duplicate"])("rejects %s after a done event", async (mode) => {

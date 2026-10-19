@@ -56,6 +56,8 @@ describe("electron-builder ONNX runtime packaging", () => {
 
   it("unpacks the native runtime and its JS dependency, and prunes per arch after pack", () => {
     expect(config.asarUnpack).toEqual(expect.arrayContaining([
+      "dist/python/audio_models.py",
+      "dist/python/caption_models.py",
       "node_modules/onnxruntime-node/**",
       "node_modules/onnxruntime-common/**",
     ]));
