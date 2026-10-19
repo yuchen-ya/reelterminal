@@ -2,10 +2,17 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { channel } from "node:diagnostics_channel";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { produceNormalizedAudio, normalizeRangeWindow } from "./audio-normalize";
 import { resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
+import { createNativeTestScope } from "../test/native-test-scope";
+
+vi.mock("node:child_process", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  const { scopeNativeSpawn } = await import("../test/native-test-scope");
+  return { ...actual, spawn: scopeNativeSpawn(actual.spawn) };
+});
 
 const binaries = await resolveToolFfmpeg();
 const skip = binaries === null;
@@ -91,7 +98,10 @@ function request(artifactId: string, extra: Record<string, unknown> = {}) {
 }
 
 describe("produceNormalizedAudio", () => {
-  it.skipIf(skip)("normalizes a right-channel-only 44.1 kHz source range into an exact durable 48 kHz WAV", async () => {
+  // Two real normalizations plus independent PCM/metadata audits. This total
+  // correctness budget is not a single-call speed target or a suite default.
+  it.skipIf(skip)("normalizes a right-channel-only 44.1 kHz source range into an exact durable 48 kHz WAV", async (context) => {
+    const run = createNativeTestScope(context);
     const started = performance.now();
     const startedCpu = process.cpuUsage();
     const checkpoint = (stage: string) => {
@@ -104,7 +114,7 @@ describe("produceNormalizedAudio", () => {
       }
     };
     checkpoint("produce-start");
-    const artifact = await produceNormalizedAudio(request("right-only"));
+    const artifact = await run(signal => produceNormalizedAudio(request("right-only", { signal })));
     checkpoint("produce-done");
     const expectedSamples = Math.round((params.endSec - params.startSec) * 48_000);
 
@@ -136,15 +146,15 @@ describe("produceNormalizedAudio", () => {
     expect(artifact.after.truePeakDbtp).toBeLessThanOrEqual(params.truePeakDbtp + 0.2);
     checkpoint("metadata-audit-done");
 
-    const decoded = await runToolProcess(binaries!.ffmpeg, [
+    const decoded = await run(signal => runToolProcess(binaries!.ffmpeg, [
       "-hide_banner", "-loglevel", "error", "-i", artifact.path,
       "-map", "0:a:0", "-f", "f32le", "pipe:1",
-    ]);
-    const reference = await runToolProcess(binaries!.ffmpeg, [
+    ], { signal }));
+    const reference = await run(signal => runToolProcess(binaries!.ffmpeg, [
       "-hide_banner", "-loglevel", "error", "-i", sourcePath,
       "-map", "0:1", "-af", `atrim=start=${params.startSec}:end=${params.endSec},asetpts=PTS-STARTPTS,aresample=48000:async=0:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,apad=whole_len=${expectedSamples},atrim=end_sample=${expectedSamples}`,
       "-ar", "48000", "-ac", "2", "-f", "f32le", "pipe:1",
-    ]);
+    ], { signal }));
     const peakFrame = (pcm: Buffer) => {
       let index = 0;
       let amplitude = 0;
@@ -164,7 +174,9 @@ describe("produceNormalizedAudio", () => {
     expect(Math.abs(referencePeak - expectedPulseSample)).toBeLessThanOrEqual(2);
     checkpoint("independent-pcm-audit-done");
 
-    const repeated = await produceNormalizedAudio(request("right-only"));
+    checkpoint("idempotency-start");
+    const repeated = await run(signal => produceNormalizedAudio(request("right-only", { signal })));
+    checkpoint("idempotency-produce-done");
     expect(repeated.path).toBe(artifact.path);
     expect(repeated.provenancePath).toBe(artifact.provenancePath);
     expect(repeated.sha256).toBe(artifact.sha256);
@@ -174,7 +186,7 @@ describe("produceNormalizedAudio", () => {
     ]);
     expect((await readdir(join(root, "generated-assets", "audio-normalize"))).some((name) => name.startsWith(".right-only.") && name.endsWith(".pending"))).toBe(false);
     checkpoint("idempotency-audit-done");
-  });
+  }, 15_000);
 
   it.skipIf(skip)("fails a short high-crest-factor range that misses the target and publishes no asset", async () => {
     const shortParams = { ...params, startSec: 5.5, endSec: 7.5, targetLufs: -10 };

@@ -155,6 +155,9 @@ jobs:
       - name: Verify native diagnostic reporter failure handling
         run: node --test packages/agent-facade/test/report-native-process-metrics.node-test.mjs
 
+      - name: Verify real native timeout and failure cleanup
+        run: node --test packages/agent-facade/test/native-test-scope.node-test.mjs
+
       - name: Run facade suite with native process timings
         # Match the main CI's worker budget; concurrent FFmpeg/Python probes
         # otherwise compete with the short native-process regression cases.
