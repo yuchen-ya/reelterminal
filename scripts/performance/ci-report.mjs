@@ -65,6 +65,9 @@ function markdownReport(report) {
     ...(report.purpose === "stability" ? ["Purpose: stability only. No performance qualification; timings are reference only. Correctness, operation completion, capture and structural hard failures remain enforced."] : []),
     `Policy: ${report.policy.effective} (requested ${report.policy.requested}); fixed runner: ${report.policy.fixed_runner}`,
     `Baseline: ${report.baseline.status}; calibrated inputs: ${report.calibration.input_count}`,
+    ...(report.purpose !== "stability" && report.baseline.status === "missing"
+      ? ["No accepted baseline: timings are report-only and do not qualify performance. Correctness and calibration failures remain enforced."]
+      : []),
     `Results: ${report.counts.results}; preflights: ${report.counts.preflights}; duration warnings: ${report.counts.warnings}; hard failures: ${report.counts.hard_failures}`,
     "",
     "| Run | Scenario | Cache | Status | Evidence |",

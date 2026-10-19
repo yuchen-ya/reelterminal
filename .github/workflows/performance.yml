@@ -102,7 +102,12 @@ jobs:
           if ($env:PERF_PROFILE.StartsWith('stability')) {
             $reportArgs += @('--purpose', 'stability')
           } else {
-            $reportArgs += @('--calibration', 'apps/desktop/e2e/.artifacts/performance', '--baseline', 'docs/performance/baselines/manifest.json')
+            $reportArgs += @('--calibration', 'apps/desktop/e2e/.artifacts/performance')
+            if (Test-Path -LiteralPath 'docs/performance/baselines/manifest.json') {
+              $reportArgs += @('--baseline', 'docs/performance/baselines/manifest.json')
+            } else {
+              Write-Warning 'No accepted baseline: timings are report-only; performance is not qualified. Correctness and calibration gates remain enforced.'
+            }
           }
           node scripts/performance/ci-report.mjs @reportArgs
       - name: Add bounded resource evidence and job summary

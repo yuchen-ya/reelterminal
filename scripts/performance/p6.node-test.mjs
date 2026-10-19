@@ -410,6 +410,32 @@ test("CI keeps duration report-only without calibration and hard-fails hidden or
   assert.ok(emptyReport.collection_errors.includes("artifact_directory_missing"));
 });
 
+test("a missing baseline is explicit and report-only without weakening correctness failures", (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "reelterminal-p6-missing-baseline-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runs = fixtureDirectory(root, "runs");
+  const calibrationFile = path.join(root, "probe-calibration.json");
+  const output = path.join(root, "report.json");
+  const markdown = path.join(root, "report.md");
+  writeFileSync(calibrationFile, JSON.stringify(calibration()));
+  const result = performanceResult({ runId: "no-baseline" });
+  writeResult(runs, result);
+  const args = ["--directory", runs, "--baseline", path.join(root, "missing.json"),
+    "--calibration", calibrationFile, "--policy", "report-only", "--fixed-runner", "false",
+    "--json", output, "--markdown", markdown];
+  assert.equal(runCli(reportCli, args).status, 0);
+  const report = JSON.parse(readFileSync(output, "utf8"));
+  assert.equal(report.baseline.status, "missing");
+  assert.equal(report.status, "report_only");
+  assert.equal(report.performance_qualified, false);
+  assert.deepEqual(report.runs[0].comparison.reason_codes, ["baseline_missing"]);
+  assert.match(readFileSync(markdown, "utf8"), /No accepted baseline: timings are report-only/);
+  result.correctness.target_frame_verified = false;
+  writeResult(runs, result);
+  assert.equal(runCli(reportCli, args).status, 1);
+  assert.equal(JSON.parse(readFileSync(output, "utf8")).status, "failed");
+});
+
 test("renderer calibration never applies to E01 and a fake-backend result remains report-only", (t) => {
   const root = mkdtempSync(path.join(os.tmpdir(), "reelterminal-p6-export-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
