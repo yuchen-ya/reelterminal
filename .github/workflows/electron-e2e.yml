@@ -18,14 +18,18 @@ jobs:
   electron-e2e:
     name: Live-collaboration E2E (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         os: [macos-latest, windows-latest]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -54,6 +58,16 @@ jobs:
         run: |
           ffmpeg -version | head -1
           ffprobe -version | head -1
+      - name: Fetch the pinned native export sidecars
+        run: pnpm --filter @reelterminal/desktop fetch:ffmpeg
+      - name: Verify native export and packaging regressions without skips
+        env:
+          EXPECT_FFMPEG: "1"
+        run: >-
+          pnpm --filter @reelterminal/desktop exec vitest run
+          test/export-file-protection.test.ts test/export-integration.test.ts
+          src/main/sidecar/export-job.test.ts src/main/ipc/export.test.ts
+          test/ipc-contract.test.ts test/packaging-config.test.ts --maxWorkers=2
       - name: Build desktop app
         run: pnpm --filter @reelterminal/desktop build
       - name: Disk usage report
@@ -75,3 +89,5 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           overwrite: true
+          retention-days: 3
+          compression-level: 9
