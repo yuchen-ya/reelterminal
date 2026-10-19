@@ -45,6 +45,14 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Setup Python for external packaged workers
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/desktop/scripts/packaging-smoke-requirements.txt
+      - name: Install CPU image smoke dependencies
+        run: python -m pip install --only-binary=:all: -r apps/desktop/scripts/packaging-smoke-requirements.txt
       - name: Install Chromium for Playwright
         run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium
       - name: Install ffmpeg
@@ -73,6 +81,26 @@ jobs:
           test/ipc-contract.test.ts test/packaging-config.test.ts --maxWorkers=2
       - name: Build desktop app
         run: pnpm --filter @reelterminal/desktop build
+      - name: Build unpacked app for physical resource verification
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pnpm --filter @reelterminal/desktop exec electron-builder --dir --win --x64 --publish never --config.win.signAndEditExecutable=false
+          else
+            pnpm --filter @reelterminal/desktop exec electron-builder --dir --mac --"$(node -p process.arch)" --publish never --config.mac.notarize=false
+          fi
+      - name: Verify physical workers, icon decode and four synthetic OpenCV algorithms
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            resources=apps/desktop/release/win-unpacked/resources
+          else
+            resources=$(find apps/desktop/release -path '*/ReelTerminal.app/Contents/Resources' -type d -print -quit)
+            test -n "$resources"
+          fi
+          python -I -B apps/desktop/scripts/verify-packaged-resources.py --resources "$resources" --source-root . --require-opencv --report apps/desktop/e2e/.artifacts/packaging/resources.json
       - name: Disk usage report
         shell: bash
         run: df -h /

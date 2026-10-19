@@ -19,10 +19,11 @@
  * same discipline as media/ffmpeg-bin.ts.
  */
 import { stat } from "node:fs/promises";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FacadeError } from "../errors";
 import { runToolProcess } from "./ffmpeg-bin";
+import { resolvePythonWorkerPath } from "./python-worker-path";
 
 export interface OpenCvRuntime {
   readonly python: string;
@@ -103,11 +104,6 @@ async function findInterpreter(): Promise<
   return null;
 }
 
-async function isFile(path: string): Promise<boolean> {
-  const info = await stat(path).catch(() => null);
-  return info?.isFile() ?? false;
-}
-
 /**
  * Worker-script location: explicit override first, then relative candidates
  * that cover every layout this code runs from — the package source tree
@@ -115,24 +111,11 @@ async function isFile(path: string): Promise<boolean> {
  * (dist/python), and the workspace sibling of a bundled CLI
  * (packages/agent-facade/python next to packages/agent-transport/dist).
  */
-export async function resolveOpenCvScript(name: string): Promise<string | null> {
-  const override = process.env.REELTERMINAL_OPENCV_SCRIPT_DIR;
-  if (override && override.length > 0) {
-    const candidate = join(override, name);
-    if (await isFile(candidate)) return candidate;
-  }
-  const moduleDir = fileURLToPath(new URL(".", import.meta.url));
-  for (const relative of [
-    "../../python",
-    "../../../python",
-    "../python",
-    "../../agent-facade/python",
-    "../../../agent-facade/python",
-  ]) {
-    const candidate = join(moduleDir, relative, name);
-    if (await isFile(candidate)) return candidate;
-  }
-  return null;
+export async function resolveOpenCvScript(
+  name: string,
+  moduleDir = fileURLToPath(new URL(".", import.meta.url)),
+): Promise<string | null> {
+  return resolvePythonWorkerPath(name, moduleDir, process.env.REELTERMINAL_OPENCV_SCRIPT_DIR);
 }
 
 let cachedRuntime: Promise<OpenCvRuntime | null> | null = null;
@@ -172,7 +155,7 @@ export async function opencvToolPreflight(requiredScripts: readonly string[] = [
         : "no interpreter on PATH (python3/python) can import cv2+numpy — install Python with opencv-python and numpy, or set REELTERMINAL_OPENCV_PYTHON to an interpreter that has them",
     };
   }
-  const scripts = await Promise.all(requiredScripts.map(resolveOpenCvScript));
+  const scripts = await Promise.all(requiredScripts.map((name) => resolveOpenCvScript(name)));
   const missing = requiredScripts.filter((_, index) => !scripts[index]);
   if (missing.length > 0 || scripts.length === 0) {
     return {

@@ -17,6 +17,7 @@
  * project or media roots.
  */
 import { readAudioEnvironment } from "./audio-environment-config";
+import { resolvePythonWorkerPath } from "./python-worker-path";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -135,16 +136,7 @@ async function candidateInterpreters(task?: unknown): Promise<InterpreterCandida
 }
 
 export async function resolveAudioModelsScript(moduleDir = fileURLToPath(new URL(".", import.meta.url))): Promise<string | null> {
-  const override = process.env.REELTERMINAL_AUDIO_MODELS_SCRIPT_DIR;
-  if (override && override.length > 0) {
-    const candidate = join(override, "audio_models.py");
-    if ((await stat(candidate).catch(() => null))?.isFile()) return candidate;
-  }
-  for (const relative of ["../python", "../../python", "../../../python", "../../agent-facade/python"]) {
-    const candidate = join(moduleDir, relative, "audio_models.py").replace(/([\\/])app\.asar([\\/])/, "$1app.asar.unpacked$2");
-    if ((await stat(candidate).catch(() => null))?.isFile()) return candidate;
-  }
-  return null;
+  return resolvePythonWorkerPath("audio_models.py", moduleDir, process.env.REELTERMINAL_AUDIO_MODELS_SCRIPT_DIR);
 }
 
 export interface AudioModelProbeResult {

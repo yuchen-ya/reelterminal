@@ -5,10 +5,9 @@ productName: ReelTerminal
 artifactName: ${productName}-${version}-${arch}.${ext}
 asar: true
 asarUnpack:
-  - dist/python/audio_models.py
-  # The external Python worker loads its caption helper with runpy; both files
-  # must exist on disk beside one another, outside Electron's ASAR archive.
-  - dist/python/caption_models.py
+  # All external Python workers and their sibling helpers/resources must be
+  # physical files. Ordinary Python cannot read Electron's virtual ASAR tree.
+  - dist/python/**
   - dist/aurora-host/**
   # Native ONNX runtime for the Silero VAD speech-activity analysis. The main
   # bundle keeps the require() external, so the packaged app loads the .node
@@ -42,6 +41,8 @@ files:
   # ONNX runtime binaries are pruned per target/arch in the platform sections
   # below: the packaged app only ever loads its own platform+arch binding.
 extraResources:
+  - from: build/icon.png
+    to: icon.png
   - from: ../web/dist
     to: renderer
     filter:

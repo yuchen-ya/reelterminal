@@ -5,6 +5,7 @@
 // install runs first, so the packaged (app.asar.unpacked) binary path is in
 // place before esbuild ever reads the environment.
 import "./esbuild-binary-path";
+import { runtimeIconPath } from "./runtime-resources";
 import { app, BrowserWindow, ipcMain, shell, type IpcMainEvent } from "electron";
 import path from "node:path";
 import { z } from "zod";
@@ -157,8 +158,8 @@ function rendererRoot(): string {
     : path.join(__dirname, "../../../web/dist");
 }
 
-function developmentIconPath(): string {
-  return path.join(__dirname, "../../build/icon.png");
+function applicationIconPath(): string {
+  return runtimeIconPath(app.isPackaged, process.resourcesPath, __dirname);
 }
 
 let performanceSessionManager: PerformanceSessionManager | null = null;
@@ -174,7 +175,7 @@ function createWindow(): void {
     titleBarStyle: isMac ? "hiddenInset" : "hidden",
     titleBarOverlay: false,
     trafficLightPosition: isMac ? { x: 16, y: 14 } : undefined,
-    icon: isMac ? undefined : developmentIconPath(),
+    icon: isMac ? undefined : applicationIconPath(),
     vibrancy: isMac ? "under-window" : undefined,
     visualEffectState: isMac ? "active" : undefined,
     webPreferences: {
@@ -257,7 +258,7 @@ app.whenReady().then(async () => {
   migrateGpuCacheOnUpgrade();
   if (dataRoot) reportMigrationProblem(dataRoot);
   if (process.platform === "darwin" && !app.isPackaged) {
-    app.dock?.setIcon(developmentIconPath());
+    app.dock?.setIcon(applicationIconPath());
   }
   handleAppScheme(rendererRoot());
   handle(CHANNELS.probeHardware, z.undefined(), () => collectHardwareInfo());

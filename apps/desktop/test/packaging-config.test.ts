@@ -18,6 +18,7 @@ interface ElectronBuilderConfig {
   readonly asarUnpack?: readonly string[];
   readonly afterPack?: string;
   readonly files?: readonly string[];
+  readonly extraResources?: readonly { readonly from?: string; readonly to?: string }[];
   readonly win?: { readonly files?: readonly string[]; readonly target?: readonly { readonly arch?: readonly string[] }[] };
   readonly mac?: { readonly files?: readonly string[] };
   readonly linux?: { readonly files?: readonly string[] };
@@ -56,11 +57,14 @@ describe("electron-builder ONNX runtime packaging", () => {
 
   it("unpacks the native runtime and its JS dependency, and prunes per arch after pack", () => {
     expect(config.asarUnpack).toEqual(expect.arrayContaining([
-      "dist/python/audio_models.py",
-      "dist/python/caption_models.py",
+      "dist/python/**",
       "node_modules/onnxruntime-node/**",
       "node_modules/onnxruntime-common/**",
     ]));
     expect(config.afterPack).toBe("scripts/prune-onnx-runtime.mjs");
+  });
+
+  it("copies a physical runtime icon independently of installer icons", () => {
+    expect(config.extraResources).toContainEqual({ from: "build/icon.png", to: "icon.png" });
   });
 });
