@@ -63,9 +63,10 @@ jobs:
         run: |
           brew install ffmpeg-full
           echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
-      - name: Install ffmpeg (Windows)
+      - name: Install pinned and verified ffmpeg and ffprobe (Windows)
         if: runner.os == 'Windows'
-        run: choco install ffmpeg --no-progress -y
+        shell: pwsh
+        run: ./scripts/ci/install-windows-ffmpeg.ps1
 
       - name: Show ffmpeg/ffprobe used for verification
         shell: bash
