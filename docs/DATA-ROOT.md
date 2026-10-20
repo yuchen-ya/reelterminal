@@ -92,13 +92,33 @@ store cannot be removed from the active root before the other store is ready.
 
 ## Uninstall
 
-The installer's uninstaller removes the program files as usual and then
-offers layered cleanup (see `apps/desktop/build/installer.nsh`): projects +
-app data, the Agent workspace, caches/logs — each with its own prompt, so
-"keep my data" is still the default answer. The uninstaller reads
-`<machineConfigDir>\uninstall-info.ini` (written by the app) to find the
-root. `~/.reelterminal/live-endpoint.json` is a cross-process contract with
-local CLI and compatibility connectors and is left alone.
+By default, the Windows uninstaller removes program files but preserves user-data
+layers and the shared data-location configuration. Interactive uninstall shows
+a preservation notice; silent uninstall and upgrades do not prompt for data
+cleanup. Optional automatic data deletion is intentionally unavailable: the
+cached NSIS recursive deletion follows nested directory junctions. No user-data
+paths are enumerated or deleted by the custom hook. Review retained data and
+clean it manually if needed. The live endpoint descriptor is left alone.
+
+The standard electron-builder `--delete-app-data` command-line option is an
+explicit exception: it separately removes the standard Windows AppData profile
+folders. It is not a supported way to clean the configured data root or bypass
+the legacy-upgrade guard. Do not interpret default preservation as a guarantee
+under every command-line option.
+
+Installers stop before invoking an existing uninstaller unless its registration
+contains DataCleanupPolicyVersion=1. Older compiled uninstallers remain unsafe;
+this guard is a conservative compatibility block, not an automatic migration.
+Do not run an old uninstaller to bypass it. A supported migration is still needed.
+
+Run the synthetic policy regressions with `pnpm --filter @reelterminal/desktop
+test:installer`. On Windows, set `REELTERMINAL_NSIS_MAKENSIS` to the cached
+makensis.exe to run native fixtures; missing or invalid paths fail on Windows.
+Non-Windows runs only check static wiring and skip Windows fixtures. The Windows
+Electron CI job uses `scripts/run-installer-policy-ci.mjs` to resolve the locked
+electron-builder NSIS toolchain (reusing its cache or verified download path),
+then runs the required native tests. Toolchain failures fail the job.
+These fixtures are not evidence of an actual application install or upgrade.
 
 ## Related data
 

@@ -45,6 +45,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Required Windows native installer policy regressions
+        if: runner.os == 'Windows'
+        run: node apps/desktop/scripts/run-installer-policy-ci.mjs
       - name: Setup Python for external packaged workers
         uses: actions/setup-python@v5
         with:
