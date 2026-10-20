@@ -52,6 +52,15 @@ print("not json at all")
 };
 
 describe.skipIf(!PYTHON_AVAILABLE)("optional audio-model process isolation", () => {
+  it("preserves UTF-8 request text through the real isolated worker", async () => {
+    const script = fileURLToPath(new URL("../python/audio_models.py", import.meta.url));
+    await expect(runAudioModelProcess(PYTHON, script, { task: "中文协议回归" }))
+      .rejects.toMatchObject({
+        code: "JOB_FAILED",
+        message: "Local audio-model task failed: unknown task: 中文协议回归",
+      });
+  });
+
   it("runs the unpacked script when the module lives inside app.asar", async () => {
     const directory = await mkdtemp(join(tmpdir(), "rt-model-package-"));
     try {

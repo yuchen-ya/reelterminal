@@ -71,8 +71,11 @@ def run_caption(request, progress):
                 raise ValueError("ASR output reached its token limit; refusing truncated captions")
             parsed = processor.decode(generated, return_format="parsed")[0]
             if parsed["transcription"].strip():
+                # An explicit language is in the input prefill, not the decoded
+                # continuation. Auto mode must still use the detected language.
+                language = parsed["language"] or LANGUAGES.get(request["language"])
                 segments.append({"startSec": start / rate, "endSec": end / rate,
-                                 "text": parsed["transcription"], "language": parsed["language"]})
+                                 "text": parsed["transcription"], "language": language})
             progress(0.65 * end / len(audio), "transcribe")
         del model, processor, inputs, output, generated
         gc.collect()

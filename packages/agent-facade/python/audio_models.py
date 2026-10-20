@@ -32,6 +32,8 @@ import traceback
 # owns stdout, so redirect Python-level prints to stderr and write protocol
 # lines to the real stdout descriptor captured here.
 PROTOCOL_STDOUT = sys.stdout
+# -I ignores PYTHONIOENCODING; the Node caller always sends UTF-8 JSON.
+sys.stdin.reconfigure(encoding="utf-8", errors="strict")
 try:
     PROTOCOL_STDOUT.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
