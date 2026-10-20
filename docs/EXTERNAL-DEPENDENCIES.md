@@ -10,6 +10,7 @@ downloads and user-configured provider requests are described below.
 | Capability | Default delivery |
 |---|---|
 | Import, edit, save, export, local templates | Local application and files; no cloud backend required. |
+| Local Qwen/SenseVoice captions | Optional user-configured Python interpreters and local Qwen ASR/ForcedAligner model directories; SenseVoice also needs its local runtime/model. The caption worker uses CPU float32 and local files only. No model weights are bundled and the app does not run pip. Settings reports missing components and provides setup guidance. Recognition and alignment stay local. See [user help](USER-GUIDE.md). |
 | Whisper captions | ONNX Community models downloaded directly from Hugging Face by Transformers.js; recognition runs locally. The existing model choices and browser cache remain. First-use download requires network access. |
 | Agent audio analysis and loudness normalization | Local native FFmpeg/ffprobe, resolved from `REELTERMINAL_FFMPEG_PATH` / `REELTERMINAL_FFPROBE_PATH` or PATH. Loudness work requires `loudnorm`. No model download or audio upload; derived WAV/provenance remain in persistent local media roots. See [Audio normalization](AUDIO-NORMALIZATION.md). |
 | Agent denoise and sync-offset analysis | Local native FFmpeg/ffprobe only (`afftdn`/`adeclick`/GCC-PHAT); no model download and no audio upload. See [Audio denoise](AUDIO-DENOISE.md) and [Material analysis](MATERIAL-ANALYSIS.md). |
@@ -26,7 +27,7 @@ downloads and user-configured provider requests are described below.
 | Studio marketplace | Unused submission/API clients removed. Studio editing and package export remain local. |
 | Studio samples | Catalog empty; import your own footage. No upstream footage or CDN is supplied. |
 | Product analytics | PostHog and tracking calls removed. |
-| Updates | Packaged app checks this project's GitHub Releases. Download requires user action; once downloaded, the update installs on the next normal quit after the unsaved-changes guard. Signed installer/update acceptance remains pending. |
+| Updates | Packaged app checks this project's GitHub Releases. Download requires user action; once downloaded, the update installs on the next normal quit after the unsaved-changes guard. Legacy unsafe Windows installations are blocked by the new installer; do not use in-place updates for them. Follow [Windows upgrade and backup](WINDOWS-UPGRADE.md#english). Signed installer/update acceptance remains pending. |
 
 Resource GET requests disclose ordinary request metadata (IP, user agent and
 possibly referrer). They do not upload the edited clip. Remote URLs contained
@@ -77,11 +78,7 @@ own platform binary and prune the non-target arch after pack instead of
 applying the Windows-only prune, but those installers still need the same load
 check on their own platforms before they are represented as VAD-capable.
 
-Planned SenseVoice, DeepFilterNet, speaker separation and other audio backends
-in [AUDIO-BACKLOG-COMPLETE.md](archive/AUDIO-BACKLOG-COMPLETE.md) are not installed or enabled. Their model
-delivery, platform support, rights and network behavior must be verified and
-documented if implemented; the existing Whisper workflow above remains
-distinct.
+SenseVoice transcription, anonymous speaker grouping and Demucs separation are implemented as optional local tools, not bundled environments. Their setup and model-download permissions are described above. Qwen/SenseVoice desktop captions are distinct from the existing Whisper workflow and from the sentence-level Agent speechTranscript API. DeepFilterNet and other unimplemented backends must not be presented as available.
 
 See [Asset rights review](archive/ASSET-LICENSE-REVIEW.md). Removed sample footage and
 retired private mirrors are not default release dependencies. FFmpeg core

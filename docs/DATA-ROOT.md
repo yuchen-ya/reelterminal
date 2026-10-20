@@ -92,6 +92,10 @@ store cannot be removed from the active root before the other store is ready.
 
 ## Uninstall
 
+For a plain-language Windows backup and upgrade walkthrough, see
+[Windows 1.2.5 upgrade](WINDOWS-UPGRADE.md#english). Copy the complete profile
+only while the app is closed; separately preserve external source media.
+
 By default, the Windows uninstaller removes program files but preserves user-data
 layers and the shared data-location configuration. Interactive uninstall shows
 a preservation notice; silent uninstall and upgrades do not prompt for data

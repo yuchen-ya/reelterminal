@@ -47,18 +47,15 @@ AI video models make it easier to create footage, but turning **a collection of 
 | 🌿 **Immutable version nodes & comparison** | 🔒 **Local-first media storage** |
 | Save the current workspace or retain a version node for read-only preview, comparison, and adoption. Each workspace has independent state; the creator decides whether to adopt an assistant’s trial edit. | Projects, media caches, decoding, and rendering are processed locally. Hash references and controlled storage manage media. Model/font downloads and optional online services use the network as configured; external AI assistants are chosen by the user. |
 
-### 🎧 Audio workflows
+### 1.2.5: local captions and audio cleanup
 
-Start with the problem you hear: Agent interfaces provide measurements and explicit processing commands; GUI tools let you edit, listen, and adjust.
+* **Create captions on your computer:** select a video or audio clip with sound and open local captions. Qwen is the default; SenseVoice is also available, followed by Qwen word alignment. Use automatic language detection or choose Chinese explicitly. Edit the text afterward, or undo the whole generated batch.
+* **See what is missing:** the environment panel in Settings checks Python, models and audio tools, and provides setup instructions you can copy to an assistant. Python environments and models are separate requirements: the installer does not bundle models or run pip. Local captions currently use the CPU and process long clips in chunks; reverse playback and speed curves are not supported.
+* **Balance levels and pauses:** an assistant can measure and normalize loudness, find speech and silence, cut pauses or lower music using analysis records, and snap cuts to beats. Listen to the result; analysis alone never changes the timeline.
+* **Optional audio tools:** assistant commands provide denoising, vocal/instrumental separation, anonymous speaker grouping and multitrack sync-offset estimates. Some require an additional Python/model environment. Speaker groups are not identities, and sync estimates are not guaranteed automatic alignment. See [material analysis](docs/MATERIAL-ANALYSIS.md).
+* **Explain tasks more easily:** edit and reuse collaboration instructions or choose them from the instruction library. Material-library history survives reopening; caption language handling, Chinese text encoding and packaged Python helpers have been improved.
 
-* **Uneven loudness between clips:** an Agent can measure LUFS, true peak, and loudness range (LRA), then use local FFmpeg two-pass loudness normalization to create and remeasure a new WAV. Each run covers at most 120 seconds and requires explicit import afterward; it never automatically replaces timeline clips. See [audio normalization](docs/AUDIO-NORMALIZATION.md) for parameters and limits.
-* **Long gaps in a voiceover:** an Agent can analyze silence using a level threshold and cut it from an analysis record with `clip.cutSilenceFromAnalysis` (kept pauses, edge padding and fades, one undo unit); the GUI can also trim silence by threshold. Listen and preserve natural pauses; quiet audio does not necessarily mean nobody is speaking.
-* **Speech regions:** an Agent can return local Silero VAD speech-activity regions (the pinned ~2.2 MiB weights download on first use; audio never leaves the machine). Regions are acoustic inferences, and non-speech intervals are not automatically deletable gaps.
-* **Music masking speech:** an Agent can use `clip.setDuckingFromAnalysis` to read a speech-activity record and lower music across its source regions after mapping them through the speech clip's placement, trim, speed curve, reverse playback, or freeze holds; GUI threshold-triggered ducking remains available for manual adjustment and listening.
-* **Cuts that need to follow music:** an Agent can return BPM, beat positions, and confidence, and can snap a cut point to a record beat with `clip.splitAtBeat` within an explicit tolerance; the GUI provides beat-sync tools. Use detections as editing references and review the visual rhythm.
-* **Steady background noise:** basic GUI spectral noise reduction can help with relatively steady fan noise or hiss. Listen afterward to check for damage to speech.
-
-Analysis alone does not modify the timeline; speech regions only drive ducking through an explicit edit (`clip.setDuckingFromAnalysis`), and silence regions only drive cuts through an explicit edit (`clip.cutSilenceFromAnalysis`); neither deletes gaps or rearranges clips automatically. See [material analysis](docs/MATERIAL-ANALYSIS.md) for interfaces and boundaries. Voice separation and multitrack sync-offset estimation are implemented; see material analysis above for interfaces and limits. Pronunciation, voice timbre, or delivery errors still need to be corrected at the generation source.
+Try a short clip first, check the captions and listen to the audio before processing a complete project. See [user help](docs/USER-GUIDE.md), [loudness processing](docs/AUDIO-NORMALIZATION.md) and [external dependencies](docs/EXTERNAL-DEPENDENCIES.md) for limits.
 
 ---
 
@@ -76,7 +73,9 @@ flowchart LR
 3. Click **“Copy startup prompt”** in the notification and send it to an AI assistant with local CLI access.
 4. The prompt includes this installation’s command paths and collaboration rules. Have the assistant confirm the intended project, workspace, and permissions before editing. Continue reviewing, adjusting, and making creative decisions in the same UI.
 
-Current downloads include a **Windows x64 installer/portable ZIP** and **macOS Apple Silicon (M-series, arm64) DMG/ZIP**. Check [Releases](https://github.com/yuchen-ya/reelterminal/releases) for exact assets, architectures, signing, and checksums. Extract the entire Windows ZIP before running `ReelTerminal.exe`.
+**This 1.2.5 release provides Windows x64 installer and portable ZIP downloads only.** Extract the entire ZIP before running `ReelTerminal.exe`. Mac users can find the previous Apple Silicon builds in [v1.2.1](https://github.com/yuchen-ya/reelterminal/releases/tag/v1.2.1); those are not 1.2.5 builds. No new Mac package is provided in this release.
+
+**Existing users: read [Windows upgrade and backup](docs/WINDOWS-UPGRADE.md#english) first.** Unsafe legacy installations cannot be upgraded in place; do not run their old uninstaller first. Back up, quit the old app, and prefer extracting the new ZIP into a fresh directory while retaining the old installation. Installer migration requires the guidance in that document. Windows builds are unsigned and may show an unknown-publisher or SmartScreen warning. Use the official downloads and verify SHA-256; do not disable system security.
 
 **Source and installed packages are maintained separately.** This page describes the current repository’s capabilities and usage. Check the corresponding Release for a download’s features, fixes, and limitations; updating source does not update an installed app.
 

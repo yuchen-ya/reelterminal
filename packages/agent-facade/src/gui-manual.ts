@@ -54,8 +54,8 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.7.3" as const;
-export const GUI_MANUAL_APP_VERSION = "1.2.4" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.7.4" as const;
+export const GUI_MANUAL_APP_VERSION = "1.2.5" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
 /** Agent-facing payload limits for the help verbs. */
@@ -354,8 +354,8 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     // @source apps/web/src/components/editor/EditorActionRail.tsx:195
     // @source apps/web/src/components/editor/settings/SettingsDialog.tsx:11,51-55
     summary: {
-      zh: "集中存放常规偏好与快捷键设置两个页签的设置对话框。",
-      en: "A settings dialog with a General tab and a Shortcuts tab.",
+      zh: "集中检查模型环境，设置常规偏好、保存、存储位置与快捷键。",
+      en: "Check model readiness and configure general preferences, saving, storage and shortcuts.",
     },
     entry: [
       {
@@ -364,6 +364,10 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       },
     ],
     steps: [
+      {
+        zh: "环境页签：检查本地字幕所需的 Python、模型和音频工具；可复制配置说明交给助手。应用不会自动安装 Python 包，模型也不随安装包提供。",
+        en: "Environment tab: check Python, models and audio tools for local captions, or copy setup instructions for an assistant. The app does not install Python packages and models are not bundled.",
+      },
       {
         zh: "常规页签：界面语言（中文/English）等偏好。",
         en: "General tab: interface language (中文/English) and related preferences.",
@@ -708,11 +712,19 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
         zh: "音频页签提供静音剪切、节拍同步、降噪、闪避等本地音频工具；AI 页签提供本地自动字幕等。",
         en: "The Audio tab hosts local audio tools (silence cut, beat sync, noise reduction, ducking); the AI tab hosts local auto-captions and more.",
       },
+      {
+        zh: "本地字幕默认使用 Qwen，也可选 SenseVoice，两者均由 Qwen 做词级对齐。语言可自动识别或手动选择；先检查环境，再生成、校对文字，一次撤销可移除整批字幕。",
+        en: "Local captions default to Qwen, with SenseVoice as an alternative; both use Qwen word alignment. Detect language automatically or choose it explicitly. Check the environment, generate and review the text; one undo removes the batch.",
+      },
     ],
     limitations: [
       {
         zh: "没有选中片段时检查器为空。",
         en: "With no clip selected the inspector is empty.",
+      },
+      {
+        zh: "本地字幕需要可用的 Python 和模型，当前在 CPU 上运行；长素材分段处理，暂不支持倒放或变速曲线。",
+        en: "Local captions need Python and models and currently run on CPU. Long clips are chunked; reverse playback and speed curves are not supported.",
       },
       {
         zh: "AI 页签中的云端功能（云转写、精彩片段）可在构建中关闭；关闭时按钮禁用并显示说明，本地自动字幕不受该开关影响。",
