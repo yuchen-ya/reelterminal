@@ -581,6 +581,18 @@ describe("review workbench visual baseline captures", () => {
     await page.waitForTimeout(200);
 
     // -------------------------------------------------------------
+    // State 12b: modal-mindmap (lineage mind map modal)
+    // -------------------------------------------------------------
+    const mindMapBtn = page.getByRole("button", { name: "全景血缘导图" });
+    if (await mindMapBtn.isVisible()) {
+      await mindMapBtn.click();
+      await page.getByText("横向血缘思维导图").waitFor({ state: "visible", timeout: 10_000 });
+      await captureScreenshot(page, "modal-mindmap");
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(200);
+    }
+
+    // -------------------------------------------------------------
     // State 13: editor-shell (switch to video editing mode to verify shell)
     // -------------------------------------------------------------
     const videoEditTab = page.getByRole("tab", { name: /Video edit|视频编辑/i });

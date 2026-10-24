@@ -6,17 +6,20 @@ import type { ReviewPackagePreview } from "@reelterminal/core/review/archive";
 import { inspectReviewPackage, restoreReviewPackage } from "../../../services/review-workspace/package";
 import { reviewService } from "../../../services/review-workspace/service";
 import { UUID } from "../../../services/review-workspace/guards";
+import { wbButton } from "../wb-button";
 
-const control = "rounded-md border border-border bg-bg-2 px-3 py-2 text-sm text-fg disabled:opacity-40";
 interface Attempt { requestId: string; revision: number }
+
 export function ReviewRestoreDialog({ target, onClose, onRestored }: { target: ReviewContext["target"]; onClose: () => void; onRestored: (node: ReviewNode) => void }) {
   const { t } = useTranslation();
   const [preview, setPreview] = useState<ReviewPackagePreview | null>(null);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const key = (digest: string) => `reelterminal.review.restore:${target.reviewWorkspaceId}:${digest}`;
   const fail = (problem: unknown) => setError(problem instanceof Error ? problem.message : String(problem));
+
   const choose = async (files: FileList | null) => {
     if (!files?.length) return;
     const manifest = [...files].find(file => file.name.toLowerCase() === "manifest.json" && file.webkitRelativePath.split("/").length === 2);
@@ -42,6 +45,7 @@ export function ReviewRestoreDialog({ target, onClose, onRestored }: { target: R
     } catch (problem) { fail(problem); }
     finally { setBusy(false); }
   };
+
   const restore = async () => {
     if (!preview || !attempt) return;
     setBusy(true); setError(null);
@@ -52,31 +56,69 @@ export function ReviewRestoreDialog({ target, onClose, onRestored }: { target: R
     } catch (problem) { fail(problem); }
     finally { setBusy(false); }
   };
+
   const close = async () => {
     if (busy) return;
     if (preview) await window.reelterminal!.reviewPackage!.release(preview.packageId);
     onClose();
   };
-  return <ToolcraftDialog isOpen width={600} purpose="review-restore" onOpenChange={open => { if (!open) void close().catch(fail); }}>
-    <ToolcraftDialogHeader title={t("review.restorePackage.title")} onOpenChange={open => { if (!open) void close().catch(fail); }} />
-    <div className="space-y-4 p-5" data-testid="review-restore-dialog" data-workbench-modal="true">
-      <p className="text-sm leading-relaxed text-fg-2">{t("review.restorePackage.description")}</p>
-      <label className="block space-y-2 text-sm text-fg-2">{t("review.restorePackage.choose")}
-        <input type="file" multiple {...{ webkitdirectory: "" }} disabled={busy} className="block w-full text-xs" data-testid="review-restore-folder-input" onChange={event => void choose(event.target.files).catch(fail)} />
-      </label>
-      {busy && <p role="status" className="text-xs">{t("review.restorePackage.busy")}</p>}
-      {error && <p role="alert" className="break-all text-sm text-status-error">{error}</p>}
-      {preview && <section className="space-y-2 rounded-lg border border-border p-3 text-sm" data-testid="review-restore-preview">
-        <h3 className="font-semibold">{preview.name}</h3><p>{t("review.restorePackage.counts", { items: preview.itemCount, versions: preview.versionCount, steps: preview.stepCount, files: preview.resourceCount })}</p>
-        <p>{preview.bytes.toLocaleString()} B · {t("review.restorePackage.handoffs", { count: preview.handoffCount })}</p>
-        {preview.missingResourceCount > 0 && <p className="text-status-warning">{t("review.restorePackage.missing", { count: preview.missingResourceCount })}</p>}
-        {preview.missingVersionCount > 0 && <p className="text-status-warning">{t("review.migration.missingBodies", { count: preview.missingVersionCount })}</p>}
-        <p className="text-xs text-fg-3">{t("review.restorePackage.history")}</p>
-        <div className="flex flex-wrap gap-2">
-          <button className={control} disabled={busy} onClick={() => void restore()} data-testid="review-restore-submit">{t("review.restorePackage.restore")}</button>
-          <button className={control} disabled={busy} onClick={() => void reviewService.directory.get(target).then(metadata => { setAttempt({ requestId: crypto.randomUUID(), revision: metadata.revision }); setError(null); }).catch(fail)}>{t("review.restorePackage.newAttempt")}</button>
+
+  return (
+    <ToolcraftDialog isOpen width={600} purpose="review-restore" onOpenChange={open => { if (!open) void close().catch(fail); }}>
+      <ToolcraftDialogHeader title={t("review.restorePackage.title")} onOpenChange={open => { if (!open) void close().catch(fail); }} />
+      <div className="space-y-4 p-5 text-xs" data-testid="review-restore-dialog" data-workbench-modal="true" data-workbench-scope="true">
+        <p className="leading-relaxed text-fg-2">{t("review.restorePackage.description")}</p>
+        <label className="block space-y-2 text-xs text-fg-2">
+          {t("review.restorePackage.choose")}
+          <input
+            type="file"
+            multiple
+            {...{ webkitdirectory: "" }}
+            disabled={busy}
+            className="block w-full text-xs"
+            data-testid="review-restore-folder-input"
+            onChange={event => void choose(event.target.files).catch(fail)}
+          />
+        </label>
+        {busy && <p role="status" className="text-xs text-fg-2">{t("review.restorePackage.busy")}</p>}
+        {error && <p role="alert" className="break-all text-xs text-status-error">{error}</p>}
+        {preview && (
+          <section className="space-y-2 rounded-[6px] border border-border bg-bg-2 p-3 text-xs tabular-nums" data-testid="review-restore-preview">
+            <h3 className="font-semibold text-fg">{preview.name}</h3>
+            <p className="text-fg-2">{t("review.restorePackage.counts", { items: preview.itemCount, versions: preview.versionCount, steps: preview.stepCount, files: preview.resourceCount })}</p>
+            <p className="text-fg-3">{preview.bytes.toLocaleString()} B · {t("review.restorePackage.handoffs", { count: preview.handoffCount })}</p>
+            {preview.missingResourceCount > 0 && <p className="text-status-warning">{t("review.restorePackage.missing", { count: preview.missingResourceCount })}</p>}
+            {preview.missingVersionCount > 0 && <p className="text-status-warning">{t("review.migration.missingBodies", { count: preview.missingVersionCount })}</p>}
+            <p className="text-fg-3">{t("review.restorePackage.history")}</p>
+          </section>
+        )}
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+          <button type="button" className={wbButton.secondary} disabled={busy} onClick={() => void close().catch(fail)}>
+            {t("common.close")}
+          </button>
+          {preview && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className={wbButton.secondary}
+                disabled={busy}
+                onClick={() => void reviewService.directory.get(target).then(metadata => { setAttempt({ requestId: crypto.randomUUID(), revision: metadata.revision }); setError(null); }).catch(fail)}
+              >
+                {t("review.restorePackage.newAttempt")}
+              </button>
+              <button
+                type="button"
+                className={wbButton.primary}
+                disabled={busy}
+                onClick={() => void restore()}
+                data-testid="review-restore-submit"
+              >
+                {t("review.restorePackage.restore")}
+              </button>
+            </div>
+          )}
         </div>
-      </section>}
-    </div>
-  </ToolcraftDialog>;
+      </div>
+    </ToolcraftDialog>
+  );
 }

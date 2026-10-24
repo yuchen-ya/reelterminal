@@ -32,6 +32,7 @@ import {
   type WorkbenchLineageGroup,
   type WorkbenchLineageNode,
 } from "./lineage-tree-utils";
+import { wbButton } from "../wb-button";
 
 /**
  * A nod callback may return void when the caller reports the outcome itself
@@ -93,7 +94,6 @@ function buildMindMapBranches(
   return branches;
 }
 
-
 export function VisualMindMapModal({
   isOpen,
   onClose,
@@ -107,8 +107,15 @@ export function VisualMindMapModal({
   const [nodRequest, setNodRequest] = useState<NodRequest | null>(null);
   const [nodBusy, setNodBusy] = useState(false);
   const [nodError, setNodError] = useState<string | null>(null);
+  const [filterMode, setFilterMode] = useState<"all" | "pending" | "guided">("all");
 
-  const branches = useMemo(() => buildMindMapBranches(items), [items]);
+  const displayedItems = useMemo(() => {
+    if (filterMode === "pending") return items.filter((i) => i.status === "pending");
+    if (filterMode === "guided") return items.filter((i) => i.status === "pending" && !!i.agentGuidance);
+    return items;
+  }, [items, filterMode]);
+
+  const branches = useMemo(() => buildMindMapBranches(displayedItems), [displayedItems]);
   const hasAnyLineage = items.some((item) => item.lineage);
 
   const requestClose = (): void => {
@@ -134,7 +141,6 @@ export function VisualMindMapModal({
       outcome = await onNodEntireGroup(nodRequest.items);
     }
     setNodBusy(false);
-    // void outcome: the caller owns error reporting (e.g. toast).
     if (outcome && !outcome.ok) {
       setNodError(outcome.message);
       return;
@@ -172,7 +178,7 @@ export function VisualMindMapModal({
     const canNod = item.status === "pending" && !!guidance;
 
     const pillTone = isCurrent
-      ? "border-accent bg-bg-2 text-fg shadow-md ring-1 ring-accent"
+      ? "border-accent bg-bg-2 text-fg shadow-sm ring-1 ring-accent"
       : isArchived
         ? "border-border bg-bg text-fg-3 opacity-80 hover:opacity-100"
         : failStreak >= 2
@@ -202,7 +208,7 @@ export function VisualMindMapModal({
           <Fragment key={step.version}>
             <div
               title={step.summary}
-              className={`shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] ${
+              className={`shrink-0 rounded-[4px] border px-1.5 py-0.5 font-mono tabular-nums text-[10px] ${
                 step.outcome === "rejected"
                   ? "border-rose-500/40 bg-rose-950/70 text-rose-300"
                   : "border-sky-500/30 bg-sky-950/60 text-sky-300"
@@ -221,14 +227,14 @@ export function VisualMindMapModal({
             onSelectAndFocusItem(item.id);
             requestClose();
           }}
-          className={`flex shrink-0 cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-1.5 transition-all ${pillTone}`}
+          className={`flex shrink-0 cursor-pointer items-center gap-2 rounded-[6px] border px-2.5 py-1.5 text-xs transition-all ${pillTone}`}
         >
           <div className="flex items-center gap-1.5">
             {getWorkbenchTypeIcon(item.type)}
-            <span className="whitespace-nowrap text-xs font-semibold">
+            <span className="whitespace-nowrap font-medium">
               {label}
             </span>
-            <span className="rounded bg-bg-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-2">
+            <span className="rounded-[4px] bg-bg-2 px-1.5 py-0.5 font-mono tabular-nums text-[10px] text-fg-2">
               v{item.version}
             </span>
           </div>
@@ -236,12 +242,13 @@ export function VisualMindMapModal({
           {item.status === "pending" ? (
             canNod ? (
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   openNod({ mode: "single", item });
                 }}
                 title={guidance?.nodButtonLabel}
-                className="flex items-center gap-1 rounded-md border border-accent-soft bg-accent-soft px-2 py-0.5 text-[10px] font-bold text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
+                className="flex items-center gap-1 rounded-[4px] border border-accent/30 bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 <ThumbsUp className="h-2.5 w-2.5" />
                 点头
@@ -249,13 +256,13 @@ export function VisualMindMapModal({
             ) : (
               <span
                 title="该条目没有 Agent 建议"
-                className="cursor-not-allowed rounded-md border border-border bg-bg-2 px-2 py-0.5 text-[10px] text-fg-3"
+                className="cursor-not-allowed rounded-[4px] border border-border bg-bg-2 px-1.5 py-0.5 text-[10px] text-fg-3"
               >
                 无建议
               </span>
             )
           ) : (
-            <span className={`font-mono text-[10px] ${statusView.className}`}>
+            <span className={`font-mono tabular-nums text-[10px] ${statusView.className}`}>
               {statusView.label}
             </span>
           )}
@@ -284,7 +291,7 @@ export function VisualMindMapModal({
       }}
       width={880}
     >
-      <div className="flex max-h-[84vh] flex-col" data-workbench-modal="true">
+      <div className="flex max-h-[84vh] flex-col text-xs" data-workbench-modal="true" data-workbench-scope="true">
         <ToolcraftDialogHeader
           title="横向血缘思维导图"
           subtitle="左→右空间层级即上下游衍生关系 · 节点前置版本链即返工次数"
@@ -293,6 +300,43 @@ export function VisualMindMapModal({
             if (!open) requestClose();
           }}
         />
+
+        {/* Top Control Bar: clean h-10 bar with wbButton controls and compact filter pills */}
+        <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-fg-3">分支统计:</span>
+            <span className="rounded-[4px] border border-border bg-bg-2 px-2 py-0.5 font-mono tabular-nums text-[11px] text-fg-2">
+              {branches.length} 个分支 · {displayedItems.length} 个条目
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className={wbButton.segmentedContainer}>
+              {(["all", "pending", "guided"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setFilterMode(filter)}
+                  className={wbButton.segmentedItem(filterMode === filter)}
+                >
+                  {filter === "all" ? "全部" : filter === "pending" ? "仅待审" : "有建议"}
+                </button>
+              ))}
+            </div>
+            {currentItemId && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectAndFocusItem(currentItemId);
+                  requestClose();
+                }}
+                className={wbButton.secondary}
+                title="定位到当前选中条目"
+              >
+                定位当前项
+              </button>
+            )}
+          </div>
+        </div>
 
         {/* 2D horizontal branching canvas */}
         <div className="min-h-0 flex-1 overflow-auto bg-stage-bg p-8">
@@ -319,7 +363,7 @@ export function VisualMindMapModal({
           ) : (
             <div className="flex min-w-max items-center">
               {/* Batch root on the far left */}
-              <div className="flex shrink-0 items-center gap-2 rounded-xl border-2 border-accent bg-bg-2 px-4 py-2.5 text-fg shadow-md">
+              <div className="flex shrink-0 items-center gap-2 rounded-[6px] border border-accent bg-bg-2 px-3.5 py-2 text-fg shadow-sm">
                 <FolderGit2 className="h-4 w-4 text-accent" />
                 <span className="whitespace-nowrap text-xs font-bold">
                   {batch?.name ?? "当前批次"}
@@ -362,10 +406,10 @@ export function VisualMindMapModal({
                             ? "没有谱系信息的条目"
                             : undefined
                         }
-                        className={`flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${
+                        className={`flex shrink-0 items-center gap-2 rounded-[6px] border px-2.5 py-1.5 text-xs font-semibold ${
                           branch.isUngrouped
                             ? "border-border bg-bg-1 text-fg-2"
-                            : "border-border-strong bg-bg-2 text-fg"
+                            : "border-border bg-bg-2 text-fg"
                         }`}
                       >
                         <Layers
@@ -379,13 +423,14 @@ export function VisualMindMapModal({
                         {!branch.isUngrouped &&
                           branch.nodablePendingItems.length > 0 && (
                             <button
+                              type="button"
                               onClick={() =>
                                 openNod({
                                   mode: "group",
                                   items: branch.nodablePendingItems,
                                 })
                               }
-                              className="ml-1 flex items-center gap-1 rounded border border-accent-soft bg-accent-soft px-2 py-0.5 text-[10px] text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
+                              className="ml-1 flex items-center gap-1 rounded-[4px] border border-accent/30 bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
                               title="整支一键点头"
                             >
                               <ThumbsUp className="h-2.5 w-2.5" />
@@ -414,8 +459,7 @@ export function VisualMindMapModal({
           )}
         </div>
 
-        {/* Nod confirmation: lists every entry, its suggested decision and
-            the modification that will execute before anything is committed. */}
+        {/* Nod confirmation */}
         {nodRequest && (
           <div className="shrink-0 border-t border-border bg-bg-1 px-5 py-4">
             <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -437,7 +481,7 @@ export function VisualMindMapModal({
                 return (
                   <div
                     key={item.id}
-                    className="flex items-start gap-2 rounded-lg border border-border bg-bg-2 px-2.5 py-1.5"
+                    className="flex items-start gap-2 rounded-[6px] border border-border bg-bg-2 px-2.5 py-1.5"
                   >
                     <span className="mt-0.5 shrink-0">
                       {getWorkbenchTypeIcon(item.type)}
@@ -447,18 +491,18 @@ export function VisualMindMapModal({
                         <span className="truncate text-xs font-medium text-fg">
                           {guidance.nodeSlotLabel}
                         </span>
-                        <span className="shrink-0 rounded border border-border bg-bg px-1 font-mono text-[10px] text-fg-3">
+                        <span className="shrink-0 rounded-[4px] border border-border bg-bg px-1 font-mono tabular-nums text-[10px] text-fg-3">
                           v{item.version}
                         </span>
                         <span className="shrink-0 text-[11px] text-accent">
-                          建议决定:{DECISION_LABELS[guidance.nodDecision]}
+                          建议决定: {DECISION_LABELS[guidance.nodDecision]}
                         </span>
                       </div>
                       <div className="mt-0.5 text-[11px] leading-4 text-fg-2">
-                        将执行:{guidance.whatToDoNext}
+                        将执行: {guidance.whatToDoNext}
                       </div>
                       <div className="text-[11px] leading-4 text-fg-3">
-                        背景:{guidance.whatHappened}
+                        背景: {guidance.whatHappened}
                       </div>
                     </div>
                   </div>
@@ -468,22 +512,24 @@ export function VisualMindMapModal({
 
             {nodError && (
               <div className="mb-2 text-[11px] text-status-error">
-                执行失败:{nodError}
+                执行失败: {nodError}
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-border">
               <button
+                type="button"
                 onClick={() => setNodRequest(null)}
                 disabled={nodBusy}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-fg-2 transition-colors hover:bg-bg-2 hover:text-fg disabled:opacity-50"
+                className={wbButton.secondary}
               >
                 取消
               </button>
               <button
+                type="button"
                 onClick={() => void confirmNod()}
                 disabled={nodBusy}
-                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-strong disabled:opacity-50"
+                className={wbButton.primary}
               >
                 {nodBusy
                   ? "执行中…"

@@ -4,11 +4,7 @@
  * Migrated from the prototype's HandoffModal onto the host ToolcraftDialog.
  * Kept: the KPI strip, the publish-preview table of decided entries, the
  * exclusion notice and the published-snapshot history with real delivery
- * states. Removed on purpose: `PROVENANCE_CATALOG` (tag names resolve from
- * the batch's real provenance tags), `simulateAgentAck` and
- * `simulateReworkReturn` (delivery state comes only from real handoffs —
- * `published_waiting` just renders as waiting, with no fake transition
- * buttons).
+ * states.
  *
  * Publish is a real controller mutation over a checked subset of decided
  * entries (default: all decided). Publishing an unchanged snapshot replays the
@@ -20,6 +16,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   CircleCheck,
   Clock,
+  Copy,
+  Download,
   Send,
   ShieldCheck,
 } from "lucide-react";
@@ -30,6 +28,7 @@ import type {
   WorkbenchItemView,
   WorkbenchMutationResult,
 } from "../types";
+import { wbButton } from "../wb-button";
 
 export interface HandoffDialogProps {
   readonly preparing?: boolean;
@@ -85,6 +84,7 @@ export function HandoffDialog({
   const [checkedOverride, setCheckedOverride] = useState<ReadonlySet<string> | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [jsonCopied, setJsonCopied] = useState(false);
 
   const decidedItems = batchItems.filter(
     (item): item is DecidedItem => isDecidedStatus(item.status),
@@ -103,6 +103,7 @@ export function HandoffDialog({
     if (isOpen) {
       setCheckedOverride(null);
       setPublishError(null);
+      setJsonCopied(false);
     }
   }, [isOpen]);
 
@@ -113,8 +114,7 @@ export function HandoffDialog({
     discarded: decidedItems.filter((i) => i.status === "discarded").length,
   };
 
-  // Tag display names resolve from the batch's own provenance tags (the
-  // prototype's PROVENANCE_CATALOG was mock data).
+  // Tag display names resolve from the batch's own provenance tags.
   const tagNameById = new Map<string, string>();
   for (const item of batchItems) {
     for (const tag of item.provenanceTags) tagNameById.set(tag.id, tag.shortName);
@@ -150,7 +150,40 @@ export function HandoffDialog({
     }
   }, [decidedItems, effectiveChecked, onPublishHandoff, preparing]);
 
-  const latestHandoff = handoffs.find(handoff => !handoff.historicalOnly) ?? null;
+  const latestHandoff = handoffs.find((handoff) => !handoff.historicalOnly) ?? null;
+
+  const handleCopyJson = () => {
+    const data = latestHandoff ?? {
+      batchId: batch.id,
+      batchName: batch.name,
+      decidedItemsCount: decidedItems.length,
+      items: decidedItems.map((item) => ({
+        id: item.id,
+        version: item.version,
+        status: item.status,
+        feedback: item.feedback?.text,
+      })),
+    };
+    void navigator.clipboard?.writeText(JSON.stringify(data, null, 2));
+    setJsonCopied(true);
+    setTimeout(() => setJsonCopied(false), 2000);
+  };
+
+  const handleExportJson = () => {
+    const data = latestHandoff ?? {
+      batchId: batch.id,
+      batchName: batch.name,
+      decidedItemsCount: decidedItems.length,
+      items: decidedItems,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `handoff-${batch.name || "snapshot"}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <ToolcraftDialog
@@ -170,12 +203,17 @@ export function HandoffDialog({
         onOpenChange={onOpenChange}
       />
 
-      <div className="max-h-[62vh] overflow-y-auto px-5 py-4 space-y-5" data-workbench-modal="true">
+      <div
+        className="max-h-[64vh] overflow-y-auto px-5 py-4 space-y-4 text-xs"
+        data-workbench-modal="true"
+        data-workbench-scope="true"
+        data-testid="workbench-handoff-dialog"
+      >
         {preparing && <p role="status" className="text-xs text-fg-2">正在读取完整发布预览…</p>}
         {publishError && (
-          <div className="px-4 py-2.5 rounded-xl border border-status-error/40 bg-bg-2 flex items-start justify-between gap-2">
+          <div className="px-3.5 py-2 rounded-[6px] border border-status-error/40 bg-bg-2 flex items-start justify-between gap-2">
             <span className="text-xs text-status-error break-all">
-              发布失败:{publishError}
+              发布失败: {publishError}
             </span>
             <button
               type="button"
@@ -188,48 +226,48 @@ export function HandoffDialog({
         )}
 
         {/* Summary KPI strip */}
-        <div className="grid grid-cols-5 gap-3">
-          <div className="p-3 rounded-xl bg-bg-2 border border-border">
+        <div className="grid grid-cols-5 gap-2.5">
+          <div className="p-3 rounded-[6px] bg-bg-2 border border-border">
             <div className="text-[11px] text-fg-2">本轮交回总数</div>
-            <div className="text-xl font-bold font-mono tabular-nums text-fg mt-1">
+            <div className="text-lg font-bold font-mono tabular-nums [font-family:var(--wb-font-num)] text-fg mt-0.5">
               {decidedItems.length}{" "}
               <span className="text-xs font-normal text-fg-3">/ {batchItems.length}</span>
             </div>
           </div>
-          <div className="p-3 rounded-xl bg-bg-2 border border-border">
+          <div className="p-3 rounded-[6px] bg-bg-2 border border-border">
             <div className="text-[11px] text-accent">已保留 (Kept)</div>
-            <div className="text-xl font-bold font-mono tabular-nums text-accent mt-1">
+            <div className="text-lg font-bold font-mono tabular-nums [font-family:var(--wb-font-num)] text-accent mt-0.5">
               {counts.kept}
             </div>
           </div>
-          <div className="p-3 rounded-xl bg-bg-2 border border-border">
+          <div className="p-3 rounded-[6px] bg-bg-2 border border-border">
             <div className="text-[11px] text-status-info">已修改 (Modified)</div>
-            <div className="text-xl font-bold font-mono tabular-nums text-status-info mt-1">
+            <div className="text-lg font-bold font-mono tabular-nums [font-family:var(--wb-font-num)] text-status-info mt-0.5">
               {counts.modified}
             </div>
           </div>
-          <div className="p-3 rounded-xl bg-bg-2 border border-border">
+          <div className="p-3 rounded-[6px] bg-bg-2 border border-border">
             <div className="text-[11px] text-status-warning">待返工 (Rework)</div>
-            <div className="text-xl font-bold font-mono tabular-nums text-status-warning mt-1">
+            <div className="text-lg font-bold font-mono tabular-nums [font-family:var(--wb-font-num)] text-status-warning mt-0.5">
               {counts.rework}
             </div>
           </div>
-          <div className="p-3 rounded-xl bg-bg-2 border border-border">
+          <div className="p-3 rounded-[6px] bg-bg-2 border border-border">
             <div className="text-[11px] text-status-error">已丢弃 (Discarded)</div>
-            <div className="text-xl font-bold font-mono tabular-nums text-status-error mt-1">
+            <div className="text-lg font-bold font-mono tabular-nums [font-family:var(--wb-font-num)] text-status-error mt-0.5">
               {counts.discarded}
             </div>
           </div>
         </div>
 
         {/* Pending & draft exclusion notice */}
-        <div className="px-4 py-2.5 rounded-xl bg-bg-2 border border-border flex items-center justify-between gap-3 text-xs text-fg-2">
+        <div className="px-3.5 py-2 rounded-[6px] bg-bg-2 border border-border flex items-center justify-between gap-3 text-xs text-fg-2">
           <span>
-            边界校验:当前仍有 <strong className="text-fg">{pendingItems.length}</strong>{" "}
+            边界校验: 当前仍有 <strong className="text-fg tabular-nums">{pendingItems.length}</strong>{" "}
             项处于待处理队列。允许先行交回已处理子集,
             {draftFeedbackCount > 0 && (
               <>
-                另有 <strong className="text-status-warning">{draftFeedbackCount}</strong>{" "}
+                另有 <strong className="text-status-warning tabular-nums">{draftFeedbackCount}</strong>{" "}
                 条草稿不会发布,
               </>
             )}
@@ -246,28 +284,50 @@ export function HandoffDialog({
             <div className="text-xs font-semibold text-fg">
               即将写入不可变 Handoff 快照的条目明细 ({checkedCount}/{decidedItems.length} 项)
             </div>
-            {decidedItems.length > 0 && (
-              <label className="flex items-center gap-1.5 text-[11px] text-fg-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={allChecked}
-                  onChange={toggleAll}
-                  className="accent-accent"
-                />
-                全选已决定
-              </label>
-            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopyJson}
+                className={wbButton.ghost}
+                data-testid="workbench-handoff-copy-json"
+                title="复制快照 JSON"
+              >
+                <Copy className="h-3 w-3" />
+                {jsonCopied ? "已复制" : "复制 JSON"}
+              </button>
+              <button
+                type="button"
+                onClick={handleExportJson}
+                className={wbButton.ghost}
+                data-testid="workbench-handoff-export-json"
+                title="导出快照 JSON 文件"
+              >
+                <Download className="h-3 w-3" />
+                导出 JSON
+              </button>
+              {decidedItems.length > 0 && (
+                <label className="flex items-center gap-1.5 text-[11px] text-fg-2 cursor-pointer select-none ml-1">
+                  <input
+                    type="checkbox"
+                    checked={allChecked}
+                    onChange={toggleAll}
+                    className="accent-accent"
+                  />
+                  全选已决定
+                </label>
+              )}
+            </div>
           </div>
           {decidedItems.length === 0 ? (
-            <div className="p-6 rounded-xl bg-bg-2 border border-border text-center text-xs text-fg-3">
+            <div className="p-5 rounded-[6px] bg-bg-2 border border-border text-center text-xs text-fg-3">
               当前批次尚无已处理条目。请先在工作台中保留、修改、标为待返工或丢弃至少 1
               项后再发布交接快照。
             </div>
           ) : (
-            <div className="rounded-xl border border-border bg-bg-2 overflow-hidden">
+            <div className="rounded-[6px] border border-border bg-bg-2 overflow-hidden">
               <table className="w-full text-left text-xs border-collapse select-text">
                 <thead>
-                  <tr className="bg-bg-1 border-b border-border text-fg-2">
+                  <tr className="bg-bg-1 border-b border-border text-fg-2 text-[11px]">
                     <th className="py-2 px-3 w-8 select-none">发布</th>
                     <th className="py-2 px-3">条目与版本</th>
                     <th className="py-2 px-3">主决定 (互斥)</th>
@@ -277,7 +337,7 @@ export function HandoffDialog({
                 </thead>
                 <tbody className="divide-y divide-border">
                   {decidedItems.map((item) => (
-                    <tr key={item.id}>
+                    <tr key={item.id} className="hover:bg-bg-3/50 transition-colors">
                       <td className="py-2 px-3 align-top">
                         <input
                           type="checkbox"
@@ -289,7 +349,7 @@ export function HandoffDialog({
                       </td>
                       <td className="py-2 px-3 font-medium text-fg">
                         <div>{item.title}</div>
-                        <div className="font-mono text-[10px] text-fg-3">
+                        <div className="font-mono tabular-nums text-[10px] text-fg-3">
                           ID: {item.id} · v{item.version}
                           {item.reworkOrigin && ` · 返工自 v${item.reworkOrigin.previousVersion}`}
                         </div>
@@ -329,16 +389,16 @@ export function HandoffDialog({
           )}
         </div>
 
-        {/* Published snapshots — real delivery states only, no simulated transitions */}
+        {/* Published snapshots — real delivery states only */}
         {handoffs.length > 0 && (
-          <div className="space-y-2.5 pt-2 border-t border-border">
+          <div className="space-y-2 pt-2 border-t border-border">
             <div className="text-xs font-semibold text-fg">
               已发布 Handoff 快照历史与 Agent 接收/返工回流状态
             </div>
             {handoffs.map((handoff) => (
               <div
                 key={handoff.handoffId}
-                className="p-3.5 rounded-xl bg-bg-2 border border-border space-y-1"
+                className="p-3 rounded-[6px] bg-bg-2 border border-border space-y-1"
               >
                 <div className="flex items-center gap-2 text-xs flex-wrap">
                   <span className="font-mono font-semibold text-fg">{handoff.handoffId}</span>
@@ -356,7 +416,7 @@ export function HandoffDialog({
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-xs flex-wrap select-none">
-                  <span className="text-fg-2">
+                  <span className="text-fg-2 tabular-nums">
                     发布时间 {formatPublishedAt(handoff.publishedAt)} · 含{" "}
                     {handoff.items.length} 项决定
                   </span>
@@ -365,19 +425,19 @@ export function HandoffDialog({
                   {!handoff.historicalOnly && handoff.deliveryState === "published_waiting" && (
                     <span className="text-status-warning flex items-center gap-1 font-medium">
                       <Clock className="w-3.5 h-3.5" />
-                      状态:已交回,等待 Agent 读取 (workbench.handoff.get)
+                      状态: 已交回, 等待 Agent 读取 (workbench.handoff.get)
                     </span>
                   )}
                   {!handoff.historicalOnly && handoff.deliveryState === "agent_acked" && (
                     <span className="text-status-info flex items-center gap-1 font-medium">
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      状态:Agent 已回报接收 (workbench.handoff.ack)
+                      状态: Agent 已回报接收 (workbench.handoff.ack)
                     </span>
                   )}
                   {!handoff.historicalOnly && handoff.deliveryState === "rework_returned" && (
                     <span className="text-accent flex items-center gap-1 font-medium">
                       <CircleCheck className="w-3.5 h-3.5" />
-                      状态:返工产物已关联原 item/handoff 回流至待处理队列
+                      状态: 返工产物已关联原 item/handoff 回流至待处理队列
                     </span>
                   )}
                 </div>
@@ -388,23 +448,23 @@ export function HandoffDialog({
       </div>
 
       {/* Footer */}
-      <div className="px-5 py-3.5 bg-bg-1 border-t border-border flex items-center justify-between gap-3">
+      <div className="px-5 py-3 bg-bg-1 border-t border-border flex items-center justify-between gap-3">
         <div className="text-xs text-fg-2 min-w-0 truncate select-none">
           {latestHandoff
-            ? `最新快照状态:${
+            ? `最新快照状态: ${
                 latestHandoff.deliveryState === "published_waiting"
                   ? "已交回,等待读取"
                   : latestHandoff.deliveryState === "agent_acked"
                     ? "Agent 已回报接收"
                     : "返工已回流"
               }`
-            : "当前状态:本地已保存(尚未对外发布快照)"}
+            : "当前状态: 本地已保存(尚未对外发布快照)"}
         </div>
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="px-4 py-1.5 rounded-lg bg-bg-2 border border-border text-xs text-fg-2 hover:text-fg"
+            className={wbButton.secondary}
           >
             关闭窗口
           </button>
@@ -412,7 +472,7 @@ export function HandoffDialog({
             type="button"
             onClick={() => void handlePublish()}
             disabled={preparing || decidedItems.length === 0 || checkedCount === 0 || publishing}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-accent text-accent-fg text-xs font-semibold hover:opacity-90 disabled:opacity-35 transition-opacity"
+            className={wbButton.primary}
           >
             <Send className="w-3.5 h-3.5" />
             {publishing
