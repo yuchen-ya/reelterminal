@@ -137,8 +137,8 @@ export function WorkbenchPanel({
     storageKey: LEGACY_LS_WORKBENCH_ISSUE_WIDTH,
   });
   const bottomH = useResizable({
-    initial: 138,
-    min: 115,
+    initial: 136,
+    min: 100,
     max: 340,
     axis: "y",
     direction: -1,

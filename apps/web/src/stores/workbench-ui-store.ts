@@ -97,7 +97,7 @@ export const useWorkbenchUiStore = create<WorkbenchUiState>((set) => ({
   searchQuery: "",
   autoAdvance: true,
   leftCollapsed: false,
-  bottomCollapsed: false,
+  bottomCollapsed: true,
   mindMapModalOpen: false,
   handoffDialogOpen: false,
   cursorByBatch: {},

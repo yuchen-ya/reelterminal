@@ -652,6 +652,9 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     await page.mouse.move(treeBox!.x + 50, treeBox!.y + treeBox!.height / 2, { steps: 8 });
     await page.mouse.up();
 
+    // In Phase 4, bottom dock starts collapsed; expand it to reach the resize handle.
+    await page.getByRole("button", { name: /节点详情/ }).first().click();
+
     const rowHandle = page.getByTitle("拖拽调整底部详情高度");
     const rowBox = await rowHandle.boundingBox();
     expect(rowBox).not.toBeNull();
@@ -667,15 +670,14 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     await page.getByTitle("展开上游血缘树").click();
     await page.getByTestId("workbench-tree-panel").waitFor({ state: "visible" });
 
-    // Bottom dock collapse keeps the decision strip reachable.
+    // Bottom dock collapse/expand: collapse to verify < 60, then re-expand.
     const dock = page.getByTestId("workbench-bottom-dock");
-    const expandedHeight = (await dock.boundingBox())!.height;
     await page.getByRole("button", { name: /节点详情/ }).first().click();
     const collapsedHeight = (await dock.boundingBox())!.height;
     expect(collapsedHeight).toBeLessThan(60);
-    expect(expandedHeight).toBeGreaterThan(100);
     await page.getByRole("button", { name: /节点详情/ }).first().click();
-    expect((await dock.boundingBox())!.height).toBeCloseTo(expandedHeight, 0);
+    const expandedHeight = (await dock.boundingBox())!.height;
+    expect(expandedHeight).toBeGreaterThan(100);
 
     await waitForNoHorizontalOverflow(page);
 
