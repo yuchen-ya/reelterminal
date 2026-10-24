@@ -162,7 +162,7 @@ export function WorkbenchIssuePanel({
     prevCountRef.current = issues.length;
   }, [issues.length]);
 
-  const isCollapsed = collapsed ?? (userCollapsed ?? (issues.length === 0));
+  const isCollapsed = collapsed ?? (userCollapsed ?? false);
 
   const selectedIssue = useMemo(
     () => issues.find((issue) => issue.id === selectedIssueId) ?? null,

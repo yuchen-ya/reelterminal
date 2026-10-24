@@ -144,6 +144,32 @@ export function ReviewNodeSidebar({
         </button>
         <div className="h-px w-6 bg-border" />
         <span className="text-[11px] font-bold text-fg-3">{nodes.length}</span>
+
+        <div
+          className="flex flex-col items-center gap-1.5 overflow-y-auto w-full px-1 pt-0.5"
+          data-testid="review-node-list"
+        >
+          {nodes.map((node) => {
+            const isCurrent = selectedId === node.id;
+            return (
+              <button
+                key={node.id}
+                type="button"
+                className={`flex h-7 w-7 items-center justify-center rounded-[6px] border text-[11px] font-semibold transition-colors ${
+                  isCurrent
+                    ? "border-accent/60 bg-accent/15 text-accent"
+                    : "border-border bg-bg-2 text-fg-3 hover:border-border-strong hover:text-fg"
+                }`}
+                onClick={() => onSelectNode(node.id)}
+                title={node.name}
+                aria-label={node.name}
+              >
+                <span aria-hidden="true">{node.name.slice(0, 1)}</span>
+                <span className="sr-only">{node.name}</span>
+              </button>
+            );
+          })}
+        </div>
       </aside>
     );
   }
@@ -210,44 +236,42 @@ export function ReviewNodeSidebar({
       </div>
 
       {/* 2. Inline node creation form */}
-      {(creatingNode || !nodes.length) && (
-        <form
-          className="flex items-center gap-1 px-1"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!newNodeName.trim()) return;
-            void onCreateNode(newNodeName).then(() => {
-              setNewNodeName("");
+      <form
+        className="flex items-center gap-1 px-1"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!newNodeName.trim()) return;
+          void onCreateNode(newNodeName).then(() => {
+            setNewNodeName("");
+            setCreatingNode(false);
+          });
+        }}
+      >
+        <input
+          ref={nodeInputRef}
+          autoFocus={creatingNode}
+          className="flex-1 min-w-0 rounded-[6px] border border-border bg-bg-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
+          aria-label={t("review.newNodeName")}
+          placeholder={t("review.newNodeName")}
+          maxLength={200}
+          value={newNodeName}
+          onChange={(event) => setNewNodeName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && nodes.length > 0) {
               setCreatingNode(false);
-            });
+              setNewNodeName("");
+            }
           }}
+        />
+        <button
+          type="submit"
+          className={`${wbButton.primary} shrink-0`}
+          disabled={busy || !newNodeName.trim()}
+          data-testid="review-create-node"
         >
-          <input
-            ref={nodeInputRef}
-            autoFocus={creatingNode}
-            className="flex-1 min-w-0 rounded-[6px] border border-border bg-bg-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
-            aria-label={t("review.newNodeName")}
-            placeholder={t("review.newNodeName")}
-            maxLength={200}
-            value={newNodeName}
-            onChange={(event) => setNewNodeName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && nodes.length > 0) {
-                setCreatingNode(false);
-                setNewNodeName("");
-              }
-            }}
-          />
-          <button
-            type="submit"
-            className={`${wbButton.primary} shrink-0`}
-            disabled={busy || !newNodeName.trim()}
-            data-testid="review-create-node"
-          >
-            {t("review.create")}
-          </button>
-        </form>
-      )}
+          {t("review.create")}
+        </button>
+      </form>
 
       {/* 3. Search box */}
       <div className="relative px-1">

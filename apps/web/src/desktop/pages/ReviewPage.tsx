@@ -56,7 +56,7 @@ export function ReviewPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarUserToggled, setSidebarUserToggled] = useState(false);
 
   const handleToggleSidebar = (open: boolean) => {
@@ -110,9 +110,6 @@ export function ReviewPage() {
       setCursor(page.cursor);
       const nextSelected = selectedId ?? page.nodes[0]?.id ?? null;
       setSelectedId(nextSelected);
-      if (!sidebarUserToggled) {
-        setSidebarOpen(!nextSelected);
-      }
     };
     void load().catch((problem) => {
       if (!cancelled) setError(problem instanceof Error ? problem.message : String(problem));

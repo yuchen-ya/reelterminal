@@ -19,6 +19,7 @@ import {
   Check,
   Edit3,
   Eye,
+  Info,
   MessageSquarePlus,
   Save,
   X,
@@ -233,11 +234,18 @@ export function TextCorpusWorkspace({
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* Top Sub-bar */}
-      <div className="flex h-10 shrink-0 items-center justify-between gap-4 border-b border-border bg-bg-1 px-4">
-        <div className="flex items-center gap-3 text-xs text-fg-2">
-          <span className="font-medium text-fg">语料多行联审视图 ({batchTextItems.length} 条)</span>
-          <span>·</span>
-          <span>点击左侧行号槽选整条（蓝色/翠绿边框），直接拖选正文锁定 UTF-16 字符区间（琥珀色高亮）</span>
+      <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-border bg-bg-1 px-3">
+        <div className="flex items-center gap-2 text-xs text-fg-2">
+          <span className="font-semibold text-fg">语料多行联审视图 ({batchTextItems.length} 条)</span>
+          <span
+            className="inline-flex cursor-help items-center text-fg-3 hover:text-fg"
+            title="点击左侧行号槽选整条（蓝色/翠绿指示条），直接拖选正文锁定 UTF-16 字符区间（琥珀色高亮）"
+          >
+            <Info className="h-3.5 w-3.5" />
+            <span className="sr-only">
+              点击左侧行号槽选整条（蓝色/翠绿边框），直接拖选正文锁定 UTF-16 字符区间（琥珀色高亮）
+            </span>
+          </span>
         </div>
         <div className="flex items-center gap-2 font-mono text-xs tabular-nums text-fg-3">
           <span>整条已选: {batchTextItems.filter((item) => selectedIds.includes(item.id)).length}</span>
@@ -378,12 +386,12 @@ export function TextCorpusWorkspace({
                   onSelectItem(item.id);
                 }
               }}
-              className={`flex overflow-hidden rounded-xl border bg-bg-1 transition-colors ${
+              className={`flex overflow-hidden rounded-lg border bg-bg-1 transition-colors ${
                 isRowSelected
-                  ? "border-accent ring-1 ring-accent/35"
+                  ? "border-border border-l-[3px] border-l-accent"
                   : isCurrentFocused
-                    ? "border-border-strong"
-                    : "border-border hover:border-border-strong"
+                    ? "border-border border-l-[3px] border-l-border-strong"
+                    : "border-border border-l-[3px] border-l-transparent hover:border-border-strong"
               }`}
             >
               {/* Left Gutter: Click to select ENTIRE entry (distinct from text drag selection) */}
@@ -392,10 +400,10 @@ export function TextCorpusWorkspace({
                   e.stopPropagation();
                   onSelectItem(item.id, { ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey });
                 }}
-                className={`flex w-12 shrink-0 cursor-pointer select-none flex-col items-center justify-between border-r px-1 py-3 transition-colors ${
+                className={`flex w-11 shrink-0 cursor-pointer select-none flex-col items-center justify-between border-r px-1 py-3 transition-colors ${
                   isRowSelected
-                    ? "border-accent/40 bg-accent/15 text-accent"
-                    : "border-border bg-bg text-fg-3 hover:bg-bg-2 hover:text-fg"
+                    ? "border-border bg-accent/10 text-accent"
+                    : "border-border bg-bg-2/40 text-fg-3 hover:bg-bg-2 hover:text-fg"
                 }`}
                 title="点击行边选择整条语料（支持 Ctrl 多选 / Shift 连选）"
               >
@@ -413,10 +421,10 @@ export function TextCorpusWorkspace({
               </div>
 
               {/* Right Content Column */}
-              <div className="min-w-0 flex-1 p-3.5">
+              <div className="min-w-0 flex-1 p-3">
                 {/* Duplicate Corpus Proposal Alert (Human Confirmation Required) */}
                 {dup && !dup.dismissed && item.status !== "discarded" && (
-                  <div className="mb-2.5 flex items-center justify-between gap-3 rounded-lg border border-status-warning/30 bg-status-warning/10 px-3 py-2">
+                  <div className="mb-2.5 flex items-center justify-between gap-3 rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-1.5">
                     <div className="flex min-w-0 items-center gap-2 text-xs text-status-warning">
                       <AlertTriangle className="h-4 w-4 shrink-0" />
                       <span className="truncate">{dup.reason}</span>
@@ -428,7 +436,7 @@ export function TextCorpusWorkspace({
                           e.stopPropagation();
                           confirmDuplicate(item.id, "discard");
                         }}
-                        className="whitespace-nowrap rounded border border-status-error/40 bg-status-error/15 px-2.5 py-1 text-xs font-medium text-status-error transition-colors hover:bg-status-error/25"
+                        className="inline-flex h-6 items-center whitespace-nowrap rounded-[4px] border border-status-error/40 bg-status-error/15 px-2 text-xs font-medium text-status-error transition-colors hover:bg-status-error/25"
                       >
                         确认丢弃重复项
                       </button>
@@ -438,7 +446,7 @@ export function TextCorpusWorkspace({
                           e.stopPropagation();
                           confirmDuplicate(item.id, "dismiss_proposal");
                         }}
-                        className="whitespace-nowrap rounded border border-border-strong bg-bg-2 px-2.5 py-1 text-xs text-fg-2 transition-colors hover:text-fg"
+                        className="inline-flex h-6 items-center whitespace-nowrap rounded-[4px] border border-border-strong bg-bg-2 px-2 text-xs text-fg-2 transition-colors hover:text-fg"
                       >
                         忽略提议·保留
                       </button>
@@ -475,7 +483,7 @@ export function TextCorpusWorkspace({
                           e.stopPropagation();
                           setShowDiffMap((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
                         }}
-                        className={`flex items-center gap-1 whitespace-nowrap rounded border px-2 py-1 text-[11px] transition-colors ${
+                        className={`inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-[4px] border px-2 text-[11px] transition-colors ${
                           showDiff
                             ? "border-status-info/40 bg-status-info/15 text-status-info"
                             : "border-border bg-bg-2 text-fg-3 hover:text-fg"
@@ -493,7 +501,7 @@ export function TextCorpusWorkspace({
                           e.stopPropagation();
                           startEditing(item, payload);
                         }}
-                        className="flex items-center gap-1 whitespace-nowrap rounded border border-border bg-bg-2 px-2 py-1 text-[11px] text-fg-2 transition-colors hover:text-fg"
+                        className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-[4px] border border-border bg-bg-2 px-2 text-[11px] text-fg-2 transition-colors hover:text-fg"
                       >
                         <Edit3 className="h-3 w-3" />
                         直接改文
@@ -508,7 +516,7 @@ export function TextCorpusWorkspace({
                             e.stopPropagation();
                             quickDecision("kept", item.id);
                           }}
-                          className="whitespace-nowrap rounded bg-accent/15 px-2 py-1 text-[11px] font-medium text-accent transition-colors hover:bg-accent/25"
+                          className="inline-flex h-6 items-center whitespace-nowrap rounded-[4px] border border-accent/40 bg-accent/10 px-2 text-[11px] font-medium text-accent transition-colors hover:bg-accent/20"
                         >
                           保留
                         </button>
@@ -518,7 +526,7 @@ export function TextCorpusWorkspace({
                             e.stopPropagation();
                             quickDecision("discarded", item.id);
                           }}
-                          className="whitespace-nowrap rounded bg-status-error/15 px-2 py-1 text-[11px] font-medium text-status-error transition-colors hover:bg-status-error/25"
+                          className="inline-flex h-6 items-center whitespace-nowrap rounded-[4px] border border-border bg-bg-2 px-2 text-[11px] text-fg-2 transition-colors hover:text-status-error"
                         >
                           丢弃
                         </button>

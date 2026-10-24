@@ -12,12 +12,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import type React from "react";
 import {
-  ArrowDownUp,
   CheckCircle2,
-  Edit2,
   Filter,
   Flag,
-  Sparkles,
   X,
   XCircle,
 } from "lucide-react";
@@ -28,6 +25,7 @@ import type {
   WorkbenchItemView,
   WorkbenchMutationResult,
 } from "../types";
+import { DataCleaningTable } from "./data/DataCleaningTable";
 
 export interface DataCleaningWorkspaceProps {
   readonly currentItem: WorkbenchItemView;
@@ -380,12 +378,15 @@ export function DataCleaningWorkspace({
   };
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-bg">
       {/* Top Ergonomic Table Control Bar */}
-      <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-border bg-bg-1 px-4">
-        <div className="flex items-center gap-2">
-          <span className="whitespace-nowrap text-xs font-semibold text-fg">
-            数据集：{payload.datasetId}
+      <div className="flex h-9 shrink-0 items-center justify-between gap-2 overflow-x-auto border-b border-border bg-bg-1 px-2.5">
+        <div className="flex shrink-0 items-center gap-1 whitespace-nowrap">
+          <span
+            className="max-w-[140px] truncate font-mono text-xs font-semibold text-fg"
+            title={payload.datasetId}
+          >
+            {payload.datasetId}
           </span>
           <span className="text-fg-3">·</span>
           <button
@@ -394,14 +395,15 @@ export function DataCleaningWorkspace({
               setOnlyProposalsFilter(!onlyProposalsFilter);
               setPageIndex(0);
             }}
-            className={`flex items-center gap-1 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs transition-colors ${
+            className={`inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-[5px] border px-2 text-[11px] transition-colors ${
               onlyProposalsFilter
                 ? "border-status-warning/40 bg-status-warning/15 text-status-warning"
                 : "border-border bg-bg-2 text-fg-2 hover:text-fg"
             }`}
           >
             <Filter className="h-3 w-3" />
-            仅看含待确认建议行 ({pendingProposals.length})
+            <span>待确认 ({pendingProposals.length})</span>
+            <span className="sr-only">仅看含待确认建议行</span>
           </button>
           <button
             type="button"
@@ -409,14 +411,15 @@ export function DataCleaningWorkspace({
               setOnlyReworkFilter(!onlyReworkFilter);
               setPageIndex(0);
             }}
-            className={`flex items-center gap-1 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs transition-colors ${
+            className={`inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-[5px] border px-2 text-[11px] transition-colors ${
               onlyReworkFilter
                 ? "border-status-warning/40 bg-status-warning/15 text-status-warning"
                 : "border-border bg-bg-2 text-fg-2 hover:text-fg"
             }`}
           >
             <Flag className="h-3 w-3" />
-            仅看返工标记行 ({activeReworkKeys.size})
+            <span>返工行 ({activeReworkKeys.size})</span>
+            <span className="sr-only">仅看返工标记行</span>
           </button>
           <button
             type="button"
@@ -425,53 +428,59 @@ export function DataCleaningWorkspace({
                 pendingProposals.map((p) => cellKeyOf(p.rowId, p.columnId)),
               )
             }
-            className="whitespace-nowrap rounded-md border border-border bg-bg-2 px-2.5 py-1 text-xs text-fg-2 transition-colors hover:text-fg"
+            className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-[5px] border border-border bg-bg-2 px-2 text-[11px] text-fg-2 transition-colors hover:text-fg"
           >
-            全选待清洗建议项 ({pendingProposals.length})
+            <span>全选建议 ({pendingProposals.length})</span>
+            <span className="sr-only">全选待清洗建议项</span>
           </button>
         </div>
 
         {/* Explicit Batch Scope Action Buttons (always shows scope count; disabled if 0) */}
-        <div className="flex items-center gap-1.5">
-          <span className="mr-1 font-mono text-xs tabular-nums text-fg-3">
-            作用范围: 已选 {selectedCellKeys.length} 格 ({selectedPendingProposals.length} 项待确认提议 · {selectedReworkCells.length} 格返工)
+        <div className="flex shrink-0 items-center gap-1 whitespace-nowrap">
+          <span className="mr-1 font-mono text-[11px] tabular-nums text-fg-3 whitespace-nowrap">
+            已选 {selectedCellKeys.length} 格
+            <span className="sr-only">
+              {" "}
+              ({selectedPendingProposals.length} 项待确认提议 ·{" "}
+              {selectedReworkCells.length} 格返工)
+            </span>
           </span>
           <button
             type="button"
             onClick={handleMarkRework}
             disabled={selectedDraftCells.length === 0}
-            className="flex items-center gap-1 whitespace-nowrap rounded-md border border-status-warning/50 bg-status-warning/15 px-2.5 py-1 text-xs font-semibold text-status-warning transition-colors hover:bg-status-warning/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-[5px] border border-status-warning/50 bg-status-warning/15 px-2 text-[11px] font-semibold text-status-warning transition-colors hover:bg-status-warning/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="workbench-data-mark-rework"
           >
-            <Flag className="h-3.5 w-3.5" />
+            <Flag className="h-3 w-3" />
             标记返工 ({selectedDraftCells.length} 格)
           </button>
           <button
             type="button"
             onClick={handleClearRework}
             disabled={selectedReworkCells.length === 0}
-            className="flex items-center gap-1 whitespace-nowrap rounded-md border border-border-strong bg-bg-2 px-2.5 py-1 text-xs font-medium text-fg-2 transition-colors hover:text-fg disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-[5px] border border-border-strong bg-bg-2 px-2 text-[11px] font-medium text-fg-2 transition-colors hover:text-fg disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="workbench-data-clear-rework"
           >
-            <XCircle className="h-3.5 w-3.5" />
+            <XCircle className="h-3 w-3" />
             取消返工 ({selectedReworkCells.length} 格)
           </button>
           <button
             type="button"
             onClick={handleBatchAcceptProposals}
             disabled={selectedPendingProposals.length === 0}
-            className="flex items-center gap-1 whitespace-nowrap rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-strong disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-[5px] bg-accent px-2 text-[11px] font-semibold text-accent-fg transition-colors hover:brightness-110 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <CheckCircle2 className="h-3.5 w-3.5" />
+            <CheckCircle2 className="h-3 w-3" />
             确认建议 ({selectedPendingProposals.length} 项)
           </button>
           <button
             type="button"
             onClick={handleBatchRejectProposals}
             disabled={selectedPendingProposals.length === 0}
-            className="flex items-center gap-1 whitespace-nowrap rounded-md border border-border-strong bg-bg-2 px-2.5 py-1 text-xs font-medium text-fg-2 transition-colors hover:text-fg disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-[5px] border border-border-strong bg-bg-2 px-2 text-[11px] font-medium text-fg-2 transition-colors hover:text-fg disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <XCircle className="h-3.5 w-3.5" />
+            <XCircle className="h-3 w-3" />
             拒绝建议 ({selectedPendingProposals.length} 项)
           </button>
         </div>
@@ -480,7 +489,7 @@ export function DataCleaningWorkspace({
       {/* Mutation error strip (controller failures are never silent) */}
       {scopeNotice && (
         <div
-          className="flex shrink-0 items-center justify-between gap-3 border-b border-status-warning/40 bg-status-warning/10 px-4 py-2 text-xs text-status-warning"
+          className="flex shrink-0 items-center justify-between gap-3 border-b border-status-warning/40 bg-status-warning/10 px-3 py-1.5 text-xs text-status-warning"
           data-testid="workbench-data-scope-notice"
         >
           <span className="truncate">{scopeNotice}</span>
@@ -495,7 +504,7 @@ export function DataCleaningWorkspace({
         </div>
       )}
       {mutationError && (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-status-error/40 bg-status-error/10 px-4 py-2 text-xs text-status-error">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-status-error/40 bg-status-error/10 px-3 py-1.5 text-xs text-status-error">
           <span className="truncate">{mutationError}</span>
           <button
             type="button"
@@ -508,220 +517,62 @@ export function DataCleaningWorkspace({
         </div>
       )}
 
-      {/* Main High-Density Data Grid */}
-      <div className="flex-1 overflow-auto bg-bg p-4">
-        <div className="overflow-hidden rounded-xl border border-border bg-bg-1 shadow-xl">
-          <table className="w-full border-collapse text-left text-xs">
-            <thead>
-              <tr className="border-b border-border bg-bg-2 text-fg-2">
-                <th className="w-28 border-r border-border px-3 py-2.5 font-mono text-[11px]">
-                  稳定 rowId
-                </th>
-                {payload.columns.map((col) => (
-                  <th
-                    key={col.columnId}
-                    className="border-r border-border px-3 py-2.5 font-semibold last:border-r-0"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => selectColumn(col.columnId)}
-                        className="text-left transition-colors hover:text-fg"
-                        title="点击选中整列"
-                      >
-                        {col.title}
-                        <span className="ml-1.5 font-mono text-[10px] text-fg-3">
-                          ({col.columnId})
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPageIndex(0);
-                          if (sortCol === col.columnId) {
-                            setSortAsc(!sortAsc);
-                          } else {
-                            setSortCol(col.columnId);
-                            setSortAsc(true);
-                          }
-                        }}
-                        className={`rounded p-1 hover:bg-bg-3 ${
-                          sortCol === col.columnId ? "text-accent" : "text-fg-3"
-                        }`}
-                        title="按此列排序（不改变稳定 rowId/columnId 定位）"
-                      >
-                        <ArrowDownUp className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {pageRows.map((row) => (
-                <tr key={row.rowId} className="transition-colors hover:bg-bg-2">
-                  {/* Stable rowId gutter */}
-                  <td
-                    onClick={(e) => selectRow(row.rowId, e)}
-                    className="cursor-pointer border-r border-border bg-bg px-3 py-2.5 font-mono text-[11px] text-fg-3 hover:text-fg"
-                    title="点击选中整行（支持 Ctrl 多选）"
-                  >
-                    {row.rowId}
-                  </td>
-
-                  {payload.columns.map((col) => {
-                    const cellKey = cellKeyOf(row.rowId, col.columnId);
-                    const val = row.cells[col.columnId];
-                    const prop = proposalsMap.get(cellKey);
-                    const isSelected = selectedCellSet.has(cellKey);
-                    const isEditing = editingCellKey === cellKey;
-                    const hasRework = activeReworkKeys.has(cellKey);
-
-                    return (
-                      <td
-                        key={col.columnId}
-                        onClick={(e) => toggleCell(cellKey, e)}
-                        onDoubleClick={() =>
-                          startManualCellEdit(row.rowId, col.columnId, val)
-                        }
-                        className={`group relative cursor-pointer border-r border-border px-3 py-2 align-top transition-colors last:border-r-0 ${
-                          col.monospace ? "font-mono tabular-nums" : ""
-                        } ${
-                          isSelected
-                            ? "bg-accent/10 ring-1 ring-inset ring-accent"
-                            : hasRework
-                              ? "bg-status-warning/10"
-                              : prop?.status === "proposed"
-                                ? "bg-status-warning/10"
-                                : prop?.status === "accepted"
-                                  ? "bg-accent/5"
-                                  : ""
-                        }`}
-                      >
-                        {isEditing ? (
-                          <div
-                            className="flex items-center gap-1"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <input
-                              type="text"
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                // Backspace/Delete must only edit the cell text.
-                                e.stopPropagation();
-                                if (e.key === "Enter") {
-                                  commitManualCellEdit(row.rowId, col.columnId, val);
-                                }
-                                if (e.key === "Escape") setEditingCellKey(null);
-                              }}
-                              autoFocus
-                              className="w-full rounded border border-status-info bg-bg px-1.5 py-0.5 text-xs text-fg focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                commitManualCellEdit(row.rowId, col.columnId, val)
-                              }
-                              className="rounded bg-status-info px-1.5 py-0.5 text-[10px] font-semibold text-bg transition-opacity hover:opacity-90"
-                            >
-                              保存
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                commitManualCellEdit(row.rowId, col.columnId, val, true)
-                              }
-                              className="rounded bg-bg-3 px-1.5 py-0.5 text-[10px] text-fg-2"
-                              title="设为显式 NULL (缺失值)"
-                            >
-                              NULL
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            {/* Current Value vs Semantic NULL / Empty String */}
-                            <div className="flex items-center justify-between gap-2">
-                              {val === null ? (
-                                <span className="font-mono text-[11px] italic text-status-error/80">
-                                  NULL (未记录/缺失)
-                                </span>
-                              ) : val === "" ? (
-                                <span className="font-mono text-[11px] italic text-fg-3">
-                                  "" (空字符串)
-                                </span>
-                              ) : (
-                                <span className="text-fg">{val}</span>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  startManualCellEdit(row.rowId, col.columnId, val);
-                                }}
-                                className="p-0.5 text-fg-3 opacity-0 transition-opacity hover:text-fg focus:opacity-100 group-hover:opacity-100"
-                                title="直接修改单元格值"
-                              >
-                                <Edit2 className="h-3 w-3" />
-                              </button>
-                            </div>
-
-                            {hasRework && (
-                              <div
-                                className="flex items-center gap-1 text-[10px] font-semibold text-status-warning"
-                                data-testid="workbench-data-rework-badge"
-                              >
-                                <Flag className="h-3 w-3" />
-                                返工待处理（人工标记）
-                              </div>
-                            )}
-
-                            {/* Agent Cleaning Proposal Inline Comparison (Original -> Proposed) */}
-                            {prop && (
-                              <div className="flex items-center justify-between gap-1.5 border-t border-border pt-1 text-[11px]">
-                                {prop.status === "proposed" ? (
-                                  <>
-                                    <div className="flex min-w-0 items-center gap-1 text-status-warning">
-                                      <Sparkles className="h-3 w-3 shrink-0" />
-                                      <span className="line-through text-fg-3">
-                                        {prop.originalValue ?? "NULL"}
-                                      </span>
-                                      <span>→</span>
-                                      <span className="font-semibold text-status-warning">
-                                        {prop.proposedValue ?? "NULL"}
-                                      </span>
-                                    </div>
-                                    <span className="text-[10px] text-fg-3">待确认</span>
-                                  </>
-                                ) : prop.status === "accepted" ? (
-                                  <span className="text-[10px] text-accent">
-                                    ✓ 已确认清洗 (原值: {prop.originalValue})
-                                  </span>
-                                ) : prop.status === "rejected" ? (
-                                  <span className="text-[10px] text-fg-3">
-                                    ✕ 已拒绝建议 ({prop.proposedValue})
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] text-status-info">
-                                    ✎ 人工改值 (原值: {prop.originalValue})
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Main Table Area */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-auto">
+          <DataCleaningTable
+            columns={payload.columns}
+            pageRows={pageRows}
+            proposalsMap={proposalsMap}
+            selectedCellSet={selectedCellSet}
+            activeReworkKeys={activeReworkKeys}
+            sortCol={sortCol}
+            sortAsc={sortAsc}
+            setSortCol={setSortCol}
+            setSortAsc={setSortAsc}
+            setPageIndex={setPageIndex}
+            selectRow={selectRow}
+            selectColumn={selectColumn}
+            toggleCell={toggleCell}
+            startManualCellEdit={startManualCellEdit}
+            commitManualCellEdit={commitManualCellEdit}
+            editingCellKey={editingCellKey}
+            setEditingCellKey={setEditingCellKey}
+            editValue={editValue}
+            setEditValue={setEditValue}
+            cellKeyOf={cellKeyOf}
+          />
         </div>
 
+        {/* Selected Proposal Inspection Strip */}
+        {selectedPendingProposals.length > 0 && (
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-status-warning/35 bg-bg-1 px-3 py-1.5 text-xs">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 font-medium text-status-warning">
+                选中包含 {selectedPendingProposals.length} 项清洗提议：
+              </span>
+              <span className="truncate font-mono text-[11px] text-fg-2">
+                {selectedPendingProposals
+                  .map(
+                    (p) =>
+                      `[${cellKeyOf(p.rowId, p.columnId)}] "${p.originalValue}" → "${p.proposedValue}" (${p.reason})`,
+                  )
+                  .join(" · ")}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleBatchAcceptProposals}
+              className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-[4px] bg-accent px-2.5 text-[11px] font-semibold text-accent-fg transition-colors hover:brightness-110"
+            >
+              立即确认这 {selectedPendingProposals.length} 项清洗
+            </button>
+          </div>
+        )}
+
+        {/* Bottom-Pinned Pagination Bar */}
         <div
-          className="mt-2 flex items-center justify-between rounded-lg border border-border bg-bg-1 px-3 py-2 text-xs text-fg-2"
+          className="flex h-9 shrink-0 items-center justify-between border-t border-border bg-bg-1 px-3 text-xs text-fg-2"
           data-testid="workbench-data-pagination"
         >
           <span>
@@ -729,12 +580,12 @@ export function DataCleaningWorkspace({
               ? "无匹配行"
               : `显示第 ${firstVisibleRow + 1}–${Math.min(firstVisibleRow + pageRows.length, visibleRows.length)} 行，共 ${visibleRows.length} 行`}
           </span>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => setPageIndex(0)}
               disabled={currentPageIndex === 0}
-              className="rounded border border-border px-2 py-1 hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
+              className="inline-flex h-6 items-center rounded-[4px] border border-border px-2 text-xs hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
             >
               首页
             </button>
@@ -742,7 +593,7 @@ export function DataCleaningWorkspace({
               type="button"
               onClick={() => setPageIndex(currentPageIndex - 1)}
               disabled={currentPageIndex === 0}
-              className="rounded border border-border px-2 py-1 hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
+              className="inline-flex h-6 items-center rounded-[4px] border border-border px-2 text-xs hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
             >
               上一页
             </button>
@@ -753,7 +604,7 @@ export function DataCleaningWorkspace({
               type="button"
               onClick={() => setPageIndex(currentPageIndex + 1)}
               disabled={currentPageIndex >= pageCount - 1}
-              className="rounded border border-border px-2 py-1 hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
+              className="inline-flex h-6 items-center rounded-[4px] border border-border px-2 text-xs hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
             >
               下一页
             </button>
@@ -761,37 +612,12 @@ export function DataCleaningWorkspace({
               type="button"
               onClick={() => setPageIndex(pageCount - 1)}
               disabled={currentPageIndex >= pageCount - 1}
-              className="rounded border border-border px-2 py-1 hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
+              className="inline-flex h-6 items-center rounded-[4px] border border-border px-2 text-xs hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
             >
               末页
             </button>
           </div>
         </div>
-
-        {/* Selected Proposal Inspection Strip */}
-        {selectedPendingProposals.length > 0 && (
-          <div className="mt-3 flex items-center justify-between gap-4 rounded-xl border border-status-warning/35 bg-bg-1 p-3">
-            <div className="space-y-0.5 text-xs">
-              <div className="font-medium text-status-warning">
-                当前选中包含 {selectedPendingProposals.length} 项 Agent 清洗提议：
-              </div>
-              <div className="text-fg-2">
-                {selectedPendingProposals.map((p) => (
-                  <span key={p.proposalId} className="mr-4 font-mono">
-                    [{cellKeyOf(p.rowId, p.columnId)}] "{p.originalValue}" → "{p.proposedValue}" ({p.reason})
-                  </span>
-                ))}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleBatchAcceptProposals}
-              className="shrink-0 whitespace-nowrap rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-strong"
-            >
-              立即确认这 {selectedPendingProposals.length} 项清洗
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
