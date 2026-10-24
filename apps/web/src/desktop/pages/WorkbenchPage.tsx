@@ -1,4 +1,5 @@
 import { ModelViewerWorkspace } from "../workbench/components/ModelViewerWorkspace";
+import "../workbench/workbench.css";
 import type { JSX, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -484,7 +485,7 @@ export function WorkbenchPanel({ controller, independent = false, onImport, empt
     hasBatch && batchItems.length > 0 && visibleItems.length === 0;
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-bg text-fg" data-testid="workbench-page" data-review-content-scope={independent ? "true" : undefined} tabIndex={-1}>
+    <div className="relative flex h-full min-h-0 flex-col bg-bg text-fg" data-testid="workbench-page" data-workbench-scope="true" data-review-content-scope={independent ? "true" : undefined} tabIndex={-1}>
       {/* Agent access / live status (shared with the editor shell) */}
       {!independent && <div className="h-9 shrink-0 border-b border-border bg-bg-1">
         <CollabStatusBar />

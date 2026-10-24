@@ -23,7 +23,8 @@ import { MigratedWorkbenchBackup } from "../workbench/components/MigratedWorkben
 import { useWorkbenchUiStore } from "../../stores/workbench-ui-store";
 
 type DirectoryView = "recent" | "pinned" | "archived" | "trash";
-const button = "rounded-md border border-border bg-bg-2 px-2.5 py-1.5 text-xs text-fg-2 hover:text-fg disabled:opacity-40";
+import { wbButton } from "../workbench/wb-button";
+import "../workbench/workbench.css";
 const input = "min-w-0 rounded-md border border-border bg-bg-2 px-2.5 py-1.5 text-xs text-fg";
 const report = (error: unknown) => toast.error(error instanceof Error ? error.message : String(error));
 const textEntry = (element: Element | null) => element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || (element instanceof HTMLElement && element.isContentEditable);
@@ -139,13 +140,13 @@ export function ReviewPage() {
     setNodes(previous => [...previous, ...page.nodes]); setCursor(page.cursor);
   };
 
-  return <div className="flex h-full min-h-0 flex-col bg-bg text-fg" data-testid="review-page">
+  return <div className="flex h-full min-h-0 flex-col bg-bg text-fg" data-testid="review-page" data-workbench-scope="true">
     <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-1.5">
-      {!legacy && <button type="button" className={button} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(value => !value)}>{t("review.nodes")}</button>}
+      {!legacy && <button type="button" className={wbButton.ghost} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(value => !value)}>{t("review.nodes")}</button>}
       <strong className="mr-auto text-xs">{t("review.title")}</strong>
-      <button type="button" className={button} disabled={!context} onClick={() => setMigrationOpen(true)} data-testid="review-migration-open">{t("review.migration.title")}</button>
-      {!legacy && <><button type="button" className={button} disabled={!context} onClick={() => setBackupOpen(true)} data-testid="review-backup-open">{t("review.backup.title")}</button>
-      <button type="button" className={button} disabled={!context} onClick={() => setRestoreOpen(true)} data-testid="review-restore-open">{t("review.restorePackage.title")}</button>
+      <button type="button" className={wbButton.ghost} disabled={!context} onClick={() => setMigrationOpen(true)} data-testid="review-migration-open">{t("review.migration.title")}</button>
+      {!legacy && <><button type="button" className={wbButton.ghost} disabled={!context} onClick={() => setBackupOpen(true)} data-testid="review-backup-open">{t("review.backup.title")}</button>
+      <button type="button" className={wbButton.ghost} disabled={!context} onClick={() => setRestoreOpen(true)} data-testid="review-restore-open">{t("review.restorePackage.title")}</button>
       <label className="flex items-center gap-2 text-xs" data-testid="review-access-status">
         <input type="checkbox" disabled={!context || busy} checked={context?.access === "write"} data-testid="review-access-toggle" onChange={event => {
           if (!context) return;
@@ -154,10 +155,10 @@ export function ReviewPage() {
             .then(setContext).catch(report).finally(() => setBusy(false));
         }} />{t(context?.access === "write" ? "review.agentWrite" : "review.agentRead")}
       </label>
-      <button type="button" className={button} disabled={!context} onClick={() => void copyInstructions().catch(report)}>{t(copied ? "review.copied" : "review.copyStartup")}</button></>}
-      {hasProject && <button type="button" className={button} data-testid="review-legacy-project" onClick={() => setLegacy(value => !value)}>{legacy ? t("review.backToNodes") : t("review.legacyProject", { name: projectName })}</button>}
+      <button type="button" className={wbButton.ghost} disabled={!context} onClick={() => void copyInstructions().catch(report)}>{t(copied ? "review.copied" : "review.copyStartup")}</button></>}
+      {hasProject && <button type="button" className={wbButton.ghost} data-testid="review-legacy-project" onClick={() => setLegacy(value => !value)}>{legacy ? t("review.backToNodes") : t("review.legacyProject", { name: projectName })}</button>}
     </div>
-    {error && <div role="alert" className="flex items-center gap-3 border-b border-border p-3 text-xs text-status-error">{error}<button type="button" className={button} onClick={refresh}>{t("review.retry")}</button></div>}
+    {error && <div role="alert" className="flex items-center gap-3 border-b border-border p-3 text-xs text-status-error">{error}<button type="button" className={wbButton.ghost} onClick={refresh}>{t("review.retry")}</button></div>}
     {legacy && hasProject ? <div className="min-h-0 flex-1" data-review-legacy="true"><EditorBootstrapGate>{migrated ? <MigratedWorkbenchBackup onOpenNode={nodeId => { setLegacy(false); chooseNode(nodeId); }} /> : <WorkbenchPage />}</EditorBootstrapGate></div> :
       <div className="flex min-h-0 flex-1">
         {sidebarOpen && <aside className="flex w-56 shrink-0 flex-col gap-3 overflow-auto border-r border-border bg-bg-1 p-3" data-review-directory="true" onKeyDownCapture={event => {
@@ -171,33 +172,33 @@ export function ReviewPage() {
             event.preventDefault();
             void mutate([{ kind: "node.create", name: newName }]).then(result => { setNewName(""); setView("recent"); setGroupId(""); chooseNode(result.nodes[0].id); }).catch(report);
           }}>
-            <input className={`${input} w-full`} aria-label={t("review.newNodeName")} placeholder={t("review.newNodeName")} maxLength={200} value={newName} onChange={event => setNewName(event.target.value)} />
-            <button className={button} disabled={!context || busy || !newName.trim()} data-testid="review-create-node">{t("review.create")}</button>
+            <input className={`${input} flex-1 min-w-0`} aria-label={t("review.newNodeName")} placeholder={t("review.newNodeName")} maxLength={200} value={newName} onChange={event => setNewName(event.target.value)} />
+            <button className={`${wbButton.primary} shrink-0`} disabled={!context || busy || !newName.trim()} data-testid="review-create-node">{t("review.create")}</button>
           </form>
           <input type="search" className={input} value={query} maxLength={500} onChange={event => setQuery(event.target.value)} aria-label={t("review.searchNodes")} placeholder={t("review.searchNodes")} />
           <nav className="grid grid-cols-2 gap-1" aria-label={t("review.nodeViews")}>
-            {(["recent", "pinned", "archived", "trash"] as const).map(value => <button key={value} type="button" className={`${button} ${view === value ? "text-accent" : ""}`} aria-pressed={view === value} onClick={() => { setView(value); setGroupId(""); }}>{t(`review.${value}`)}</button>)}
+            {(["recent", "pinned", "archived", "trash"] as const).map(value => <button key={value} type="button" className={`${wbButton.ghost} ${view === value ? "border border-accent/40 bg-accent/10 font-semibold text-accent" : ""}`} aria-pressed={view === value} onClick={() => { setView(value); setGroupId(""); }}>{t(`review.${value}`)}</button>)}
           </nav>
           <select className={input} value={groupId} aria-label={t("review.groups")} onChange={event => { setGroupId(event.target.value); setView("recent"); }}>
             <option value="">{t("review.allGroups")}</option>{directory.groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
           </select>
           <form className="flex gap-1" onSubmit={event => { event.preventDefault(); void mutate([{ kind: "group.create", name: groupName }]).then(() => setGroupName("")).catch(report); }}>
-            <input className={`${input} w-full`} value={groupName} maxLength={200} aria-label={t("review.newGroupName")} placeholder={t("review.newGroupName")} onChange={event => setGroupName(event.target.value)} />
-            <button className={button} disabled={busy || !context || !groupName.trim()}>{t("review.create")}</button>
+            <input className={`${input} flex-1 min-w-0`} value={groupName} maxLength={200} aria-label={t("review.newGroupName")} placeholder={t("review.newGroupName")} onChange={event => setGroupName(event.target.value)} />
+            <button className={`${wbButton.secondary} shrink-0`} disabled={busy || !context || !groupName.trim()}>{t("review.create")}</button>
           </form>
           {groupId && context && <div className="flex flex-wrap gap-1">
-            <button type="button" className={button} onClick={() => setRename({ kind: "group", id: groupId, name: directory.groups.find(group => group.id === groupId)!.name, revision: context.revision })}>{t("review.renameGroup")}</button>
-            <button type="button" className={button} disabled={busy} onClick={() => void mutate([{ kind: "group.remove", groupId }]).then(() => setGroupId("")).catch(report)}>{t("review.removeEmptyGroup")}</button>
+            <button type="button" className={wbButton.ghost} onClick={() => setRename({ kind: "group", id: groupId, name: directory.groups.find(group => group.id === groupId)!.name, revision: context.revision })}>{t("review.renameGroup")}</button>
+            <button type="button" className={wbButton.danger} disabled={busy} onClick={() => void mutate([{ kind: "group.remove", groupId }]).then(() => setGroupId("")).catch(report)}>{t("review.removeEmptyGroup")}</button>
           </div>}
-          <div className="flex gap-1"><button type="button" className={button} disabled={busy || !directory.canUndo} onClick={() => void directoryHistory("undo").catch(report)}>{t("review.undoDirectory")}</button>
-            <button type="button" className={button} disabled={busy || !directory.canRedo} onClick={() => void directoryHistory("redo").catch(report)}>{t("review.redo")}</button></div>
+          <div className="flex gap-1"><button type="button" className={wbButton.ghost} disabled={busy || !directory.canUndo} onClick={() => void directoryHistory("undo").catch(report)}>{t("review.undoDirectory")}</button>
+            <button type="button" className={wbButton.ghost} disabled={busy || !directory.canRedo} onClick={() => void directoryHistory("redo").catch(report)}>{t("review.redo")}</button></div>
           <ul className="space-y-1" data-testid="review-node-list">{nodes.map(node => <li key={node.id}>
             <button type="button" className={`w-full rounded-lg border px-3 py-2 text-left text-xs ${selectedId === node.id ? "border-accent bg-accent/10" : "border-border bg-bg-2"}`} onClick={() => chooseNode(node.id)} aria-current={selectedId === node.id ? "true" : undefined}>
               <span className="block break-words font-medium">{node.pinned ? "★ " : ""}{node.name}</span><span className="text-fg-3">{new Date(node.updatedAt).toLocaleDateString()}</span>
             </button>
           </li>)}</ul>
           {!nodes.length && <p className="text-xs text-fg-3">{t("review.noNodesInView")}</p>}
-          {cursor && <button type="button" className={button} onClick={() => void loadMore().catch(report)}>{t("review.loadMore")}</button>}
+          {cursor && <button type="button" className={wbButton.ghost} onClick={() => void loadMore().catch(report)}>{t("review.loadMore")}</button>}
         </aside>}
         <main className="flex min-w-0 flex-1 flex-col">
           {selected && target ? <>
@@ -206,11 +207,11 @@ export function ReviewPage() {
               <select className={input} value={selected.groupId ?? ""} disabled={busy} aria-label={t("review.moveToGroup")} onChange={event => update({ groupId: event.target.value || null })}>
                 <option value="">{t("review.ungrouped")}</option>{directory.groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
               </select>
-              <button type="button" className={button} disabled={busy} onClick={() => setRename({ kind: "node", id: selected.id, name: selected.name, revision: context!.revision })}>{t("review.rename")}</button>
-              <button type="button" className={button} disabled={busy} onClick={() => update({ pinned: !selected.pinned })}>{t(selected.pinned ? "review.unpin" : "review.pin")}</button>
-              <button type="button" className={button} disabled={busy} onClick={() => update({ archived: !selected.archivedAt })}>{t(selected.archivedAt ? "review.unarchive" : "review.archive")}</button>
-              <button type="button" className={button} disabled={busy} onClick={() => update({ trashed: !selected.trashedAt })}>{t(selected.trashedAt ? "review.restore" : "review.moveToTrash")}</button>
-              {selected.trashedAt && <button type="button" className={`${button} text-status-error`} disabled={busy} onClick={() => setPurgeOpen(true)} data-testid="review-purge-open">{t("review.purge.title")}</button>}
+              <button type="button" className={wbButton.ghost} disabled={busy} onClick={() => setRename({ kind: "node", id: selected.id, name: selected.name, revision: context!.revision })}>{t("review.rename")}</button>
+              <button type="button" className={wbButton.ghost} disabled={busy} onClick={() => update({ pinned: !selected.pinned })}>{t(selected.pinned ? "review.unpin" : "review.pin")}</button>
+              <button type="button" className={wbButton.ghost} disabled={busy} onClick={() => update({ archived: !selected.archivedAt })}>{t(selected.archivedAt ? "review.unarchive" : "review.archive")}</button>
+              <button type="button" className={wbButton.ghost} disabled={busy} onClick={() => update({ trashed: !selected.trashedAt })}>{t(selected.trashedAt ? "review.restore" : "review.moveToTrash")}</button>
+              {selected.trashedAt && <button type="button" className={wbButton.danger} disabled={busy} onClick={() => setPurgeOpen(true)} data-testid="review-purge-open">{t("review.purge.title")}</button>}
             </div>
             {selected.trashedAt ? <div className="grid flex-1 place-items-center p-8 text-sm text-fg-2">{t("review.restoreBeforeEditing")}</div> : <ReviewNodeEditor key={selected.id} target={target} />}
           </> : <div className="grid flex-1 place-items-center p-8 text-center"><div><h1 className="text-lg font-semibold">{t("review.title")}</h1><p className="mt-2 max-w-md text-sm leading-relaxed text-fg-2">{t("review.emptyWorkspace")}</p></div></div>}
@@ -232,7 +233,7 @@ export function ReviewPage() {
         const command: DirectoryCommand = rename.kind === "node" ? { kind: "node.update", nodeId: rename.id, patch: { name: rename.name } } : { kind: "group.update", groupId: rename.id, name: rename.name };
         void mutate([command], rename.revision).then(() => setRename(null)).catch(report);
       }}><input autoFocus className={`${input} w-full`} aria-label={t("review.name")} value={rename.name} maxLength={200} onChange={event => setRename({ ...rename, name: event.target.value })} />
-        <button className={button} disabled={busy || !rename.name.trim()}>{t("review.save")}</button></form>
+        <button className={wbButton.primary} disabled={busy || !rename.name.trim()}>{t("review.save")}</button></form>
     </ToolcraftDialog>}
   </div>;
 }
@@ -256,12 +257,12 @@ function ReviewNodeEditor({ target }: { target: ReviewContext["target"] }) {
   }, [state.controller, state.loading]);
   return <div className="relative flex min-h-0 flex-1 flex-col" data-testid="review-node-editor">
     <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1">
-      <button type="button" className={button} aria-pressed={view === "content"} onClick={() => chooseView("content")} data-testid="review-content-tab">{t("review.process.content")}</button>
-      <button type="button" className={button} aria-pressed={view === "process"} onClick={() => chooseView("process")} data-testid="review-process-tab">{t("review.process.title")} ({state.overview?.stepCount ?? 0})</button>
-      <button type="button" className={button} title={state.controller.currentItem?.type === "model3d" ? "视频项目不支持模型；请另行提交渲染视频" : undefined} disabled={state.loading || !state.controller.currentItem || !["image", "video"].includes(state.controller.currentItem.type)} onClick={() => setAttachItem(state.controller.currentItem!.id)} data-testid="review-attach-open">{t("review.attach.title")}</button>
-      <button type="button" className={`${button} ml-auto`} disabled={!state.overview || state.loading} onClick={() => setExportOpen(true)} data-testid="review-export-open">{t("review.export.title")}</button>
+      <div className={wbButton.segmentedContainer} role="group" aria-label={t("review.process.title")}><button type="button" className={wbButton.segmentedItem(view === "content")} aria-pressed={view === "content"} onClick={() => chooseView("content")} data-testid="review-content-tab">{t("review.process.content")}</button>
+      <button type="button" className={wbButton.segmentedItem(view === "process")} aria-pressed={view === "process"} onClick={() => chooseView("process")} data-testid="review-process-tab">{t("review.process.title")} ({state.overview?.stepCount ?? 0})</button></div>
+      <button type="button" className={wbButton.ghost} title={state.controller.currentItem?.type === "model3d" ? "视频项目不支持模型；请另行提交渲染视频" : undefined} disabled={state.loading || !state.controller.currentItem || !["image", "video"].includes(state.controller.currentItem.type)} onClick={() => setAttachItem(state.controller.currentItem!.id)} data-testid="review-attach-open">{t("review.attach.title")}</button>
+      <button type="button" className={`${wbButton.secondary} ml-auto`} disabled={!state.overview || state.loading} onClick={() => setExportOpen(true)} data-testid="review-export-open">{t("review.export.title")}</button>
     </div>
-    {state.error && <div role="alert" className="flex items-center gap-2 p-2 text-xs text-status-error">{state.error}<button type="button" className={button} onClick={state.refresh}>{t("review.retry")}</button></div>}
+    {state.error && <div role="alert" className="flex items-center gap-2 p-2 text-xs text-status-error">{state.error}<button type="button" className={wbButton.ghost} onClick={state.refresh}>{t("review.retry")}</button></div>}
     {exportOpen && state.overview && <ReviewExportDialog target={target} revision={state.overview.node.revision}
       selectedIds={state.controller.selectedIds.filter(id => state.controller.visibleItemIds.includes(id))}
       filter={{ batchId: state.controller.activeBatch?.id, type: state.controller.typeFilter, query: state.controller.searchQuery }} onClose={() => setExportOpen(false)} />}
@@ -273,14 +274,14 @@ function ReviewNodeEditor({ target }: { target: ReviewContext["target"] }) {
     }} /> : <div className="min-h-0 flex-1" inert={state.loading}>
       <WorkbenchPanel controller={state.controller} independent loading={state.loading} onImport={() => setImportOpen(true)} emptyContent={
         <div className="grid h-full place-items-center p-8 text-center"><div className="space-y-3"><h2 className="font-semibold">{t("review.emptyNode")}</h2><p className="max-w-md text-xs leading-relaxed text-fg-2">{t("review.emptyNodeDescription")}</p>
-          <button type="button" className={button} disabled={!state.overview} onClick={() => setImportOpen(true)}>{t("review.importTitle")}</button></div></div>
+          <button type="button" className={wbButton.primary} disabled={!state.overview} onClick={() => setImportOpen(true)}>{t("review.importTitle")}</button></div></div>
       } />
     </div>}
     {view === "content" && <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-1.5 text-xs" data-testid="review-item-pagination">
       {state.loading && <span role="status" className="mr-auto">{t("review.loading")}</span>}
       <span className="mr-auto text-fg-3">{t("review.pageScope")}</span>
-      <button type="button" className={button} disabled={state.loading || !state.hasPrevious} onClick={state.previousPage}>{t("review.previous")}</button><span>{state.pageNumber}</span>
-      <button type="button" className={button} disabled={state.loading || !state.hasNext} onClick={state.nextPage}>{t("review.next")}</button>
+      <button type="button" className={wbButton.ghost} disabled={state.loading || !state.hasPrevious} onClick={state.previousPage}>{t("review.previous")}</button><span>{state.pageNumber}</span>
+      <button type="button" className={wbButton.ghost} disabled={state.loading || !state.hasNext} onClick={state.nextPage}>{t("review.next")}</button>
     </div>}
     {importOpen && state.overview && <ReviewImportDialog isOpen target={target} expectedNodeRevision={state.overview.node.revision} onOpenChange={setImportOpen} />}
   </div>;

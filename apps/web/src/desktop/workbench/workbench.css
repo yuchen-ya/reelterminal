@@ -1,0 +1,18 @@
+/**
+ * Workbench design tokens and scoped typography.
+ * Strictly scoped to [data-workbench-scope] so video editor styles remain untouched.
+ */
+
+[data-workbench-scope] {
+  --wb-font-num: "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --wb-border: var(--border);
+}
+
+[data-workbench-scope] .font-mono {
+  font-family: var(--wb-font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-workbench-scope] .tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

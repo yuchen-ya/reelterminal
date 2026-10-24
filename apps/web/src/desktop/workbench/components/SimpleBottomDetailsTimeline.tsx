@@ -214,8 +214,8 @@ export function SimpleBottomDetailsTimeline({
           )}
           <span>节点详情</span>
           {currentItem && (
-            <span className="font-mono text-fg-3 ml-2">
-              {currentItem.title} · {TYPE_LABELS[currentItem.type]} · v{currentItem.version} ·{" "}
+            <span className="text-fg-3 ml-2 font-normal">
+              {currentItem.title} · {TYPE_LABELS[currentItem.type]} · <span className="font-mono">v{currentItem.version}</span> ·{" "}
               <span className={STATUS_CLASS[currentItem.status]}>
                 {STATUS_LABELS[currentItem.status]}
               </span>
