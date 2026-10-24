@@ -1,4 +1,75 @@
 {
+  "review": {
+    "migration": {
+      "title": "迁移旧项目工作台", "description": "选择已有项目工作区，先检查旧工作台和文件可用性。可读媒体会复制为独立审阅文件，原项目内容保留为只读备份。",
+      "source": "源项目 / 工作区", "choose": "请选择来源…", "inspect": "预览源数据与文件状态",
+      "counts": "{{batches}} 个批次 · {{items}} 个条目 · {{handoffs}} 个历史交接 · {{files}} 个文件引用", "missingBodies": "旧项目未保存 {{count}} 个历史版本的完整正文；会保留引用和明确的不可用标记，不用当前内容冒充旧版本。",
+      "already": "此源快照已有持久迁移记录；重复执行只补完项目保存，不重复创建节点或条目。", "changed": "检测到源备份已变化。确认后将全部源条目作为新的独立批次加入原迁移节点，已有审阅保持完整。",
+      "boundary": "旧交接仅作历史，不能继续执行；不会推测补齐处理步骤。迁移成功会移除包含旧工作台操作的整个撤销分组，其他项目撤销历史保留；重做分支按正常的新编辑边界清除。",
+      "confirm": "复制可读原件，保留不可用标记，并按上述历史边界将旧工作台设为只读。",
+      "finish": "完成／检查本次迁移", "append": "确认源更新并导入为新批次", "migrate": "迁移到新节点", "progress": "正在复制 {{done}} / {{total}} 个文件，随后保存审阅记录和项目指针…",
+      "reviewCommitted": "节点导入已提交，源项目保存待完成；可打开节点或重试补完。", "done": "迁移与源项目保存已完成。", "openNode": "打开独立节点",
+      "readonly": "此项目工作台已迁移；下方旧内容仅供只读检查，审阅与返工请在独立节点完成。", "oldVersion": "旧版应用仍可能改写源备份，且不能读取独立节点。重新预览可检测源变化，再明确选择作为新批次导入；不会自动覆盖或反向同步。"
+    },
+    "purge": {
+      "title": "永久清空节点", "description": "永久删除此节点及全部保留版本、反馈、交接快照、处理步骤与撤销历史，无法撤销。需要保留记录时，请先备份节点。",
+      "references": "当前文件引用：内容版本 {{versions}} · 处理步骤 {{steps}} · 交接快照 {{handoffs}} · 日志 {{journal}}。只有同时删除下方确认的历史，才会解除本节点引用。",
+      "shared": "保留：其他节点仍引用", "external": "保留外部原件", "release": "删除历史后解除引用",
+      "cleanup": "最多 {{bytes}} B 的受管文件将满足回收条件。实际回收在之后启动时、24 小时孤儿宽限期后进行，不会立即释放磁盘空间；项目独立副本保持完整。",
+      "confirm": "永久删除此节点及其全部保留版本、快照、处理与撤销历史。", "refresh": "刷新引用检查"
+    },
+    "backup": {
+      "title": "备份全部节点", "description": "为全部节点准备完整节点包，包含归档、回收站、保留版本和处理历史，同时保存目录与分组索引。",
+      "restore": "可用“恢复节点包”逐个恢复 nodes 文件夹中的节点包。backup.json 保留原目录元数据，目前不提供整个目录的自动恢复。",
+      "prepare": "准备全部节点包", "copy": "保存完整备份…", "copying": "正在核对并保存备份…", "progress": "已准备 {{done}} / {{total}} 个节点包"
+    },
+    "attach": {
+      "title": "添加采用版本到项目", "description": "将人工采用的图片或视频版本复制到项目媒体。项目独立保存副本，不会自动添加到时间线。",
+      "destination": "目标项目 / 工作区", "choose": "请选择目标…", "noProjects": "请先创建视频项目，再在这里选择目标工作区。",
+      "importing": "正在复制并导入…", "done": "版本 {{version}} 已独立保存到项目媒体。", "removed": "这次导入曾经完成，之后已从该工作区移除。", "retry": "再次检查本次导入"
+    },
+    "restorePackage": {
+      "missing": "{{count}} 个文件引用只有不可用标记，没有文件字节。恢复会保留标记，此包不是完整媒体备份。",
+      "missingManifest": "请选择直接包含 manifest.json 的节点包文件夹。",
+      "title": "恢复节点包", "description": "选择完整节点包文件夹，先校验文件与引用，再恢复；已有节点会保留。",
+      "choose": "选择节点包文件夹…", "busy": "正在校验文件／恢复…", "counts": "{{items}} 个条目 · {{versions}} 个保留版本 · {{steps}} 个步骤 · {{files}} 个文件",
+      "handoffs": "{{count}} 个历史交接", "history": "恢复会生成新节点与新身份。旧交接不可继续执行，旧撤销日志仅保留为历史证据。同一次恢复重试会读回原结果。",
+      "restore": "执行本次恢复", "newAttempt": "另建一次独立恢复"
+    },
+    "process": {
+      "focusRegion": "放大记录区域",
+      "title": "处理过程", "content": "内容", "description": "按真实记录查看输入 → 方法 → 输出，每页最多 100 个步骤。缺失记录不会从文件名或时间推测补齐。",
+      "steps": "处理步骤", "comparison": "版本对比", "choosePair": "将输入或输出固定到左右两侧，或直接比较一个已记录步骤。", "notRecorded": "来源步骤未记录；最终内容仍可在“内容”中审阅。",
+      "loading": "正在读取精确版本…", "unselected": "尚未选择版本", "pinMissing": "固定的步骤引用已缺失", "inputOutput": "{{inputs}} 个输入 → {{outputs}} 个输出",
+      "input": "输入", "output": "输出", "left": "左侧／输入", "right": "右侧／输出", "pinLeft": "固定左侧", "pinRight": "固定右侧", "openItem": "审阅此项当前版本", "compareStep": "比较此步骤", "parameters": "已记录参数", "retries": "重新尝试步骤 {{id}}",
+      "declared": "Agent 声明", "measured": "程序实测", "mappingPresent": "此步骤已记录这组输入输出的明确映射。", "noMapping": "未记录对应映射，两侧独立查看；尺寸相同不代表内容已对齐。",
+      "sideBySide": "并排查看", "slider": "滑杆显示输出", "zoom": "缩放", "pixels": "最近邻像素与网格", "background": "透明背景", "checker": "棋盘", "white": "白色", "black": "黑色", "holdInput": "按住看输入", "playMapped": "按映射同步播放",
+      "tablePreview": "预览前 100 行；下方差异单独分页。", "diffTooLarge": "差异超过本次计算范围；上方仍显示两份真实正文。", "changedCells": "{{count}} 个变化单元格 · ∅ 为缺失，null 为空值，\"\" 为空文本", "added": "新增", "removed": "删除", "changed": "修改",
+      "state": { "planned": "已计划", "running": "运行中", "completed": "已完成", "failed": "失败", "cancelled": "已取消" }
+    },
+    "export": {
+      "package": "完整节点包（含历史）",
+      "version": "导出此精确版本", "exactReference": "导出记录的完整文件或正文；对比中的区域和时间范围不会裁剪或截取导出内容。",
+      "title": "导出文件", "description": "冻结所选版本后准备副本。原件导出包含已丢弃条目；移动或删除导出副本不会改变工作台原件。",
+      "mode": "导出内容", "original": "初始原件", "adopted": "人工采用的明确版本", "scope": "导出范围", "node": "整个节点，所有批次", "filtered": "当前批次与筛选，包含全部分页", "selected": "当前可见选中项（{{count}}）",
+      "serialization": "有原文件时保持原始字节。无原文件的文字生成 UTF-8 TXT，表格生成保留稳定行列 ID 的 JSON；这些序列化文件不冒充原始文件。",
+      "prepare": "准备导出", "newPlan": "准备另一份导出", "copy": "复制到文件夹…", "dragFolder": "拖出文件夹", "dragFiles": "拖出文件", "handed": "已交给系统，尚未验证目标应用是否接收。", "copied": "已复制并校验：{{directory}}",
+      "state": { "queued": "等待准备", "preparing": "正在准备", "ready": "可以复制或拖出", "failed": "导出失败", "cancelled": "已取消" }
+    },
+    "title": "审阅工作台", "nodes": "数据节点", "newNodeName": "新节点名称", "create": "创建", "searchNodes": "搜索节点", "nodeViews": "节点视图",
+    "recent": "最近", "pinned": "置顶", "archived": "归档", "trash": "回收站", "groups": "分组", "allGroups": "所有分组", "newGroupName": "新分组名称",
+    "renameGroup": "重命名分组", "removeEmptyGroup": "删除空分组", "undoDirectory": "撤销目录操作", "redo": "重做", "noNodesInView": "此范围内还没有节点", "loadMore": "加载更多",
+    "moveToGroup": "移到分组", "ungrouped": "未分组", "rename": "重命名", "name": "名称", "save": "保存", "pin": "置顶", "unpin": "取消置顶", "archive": "归档", "unarchive": "取消归档", "restore": "还原", "moveToTrash": "移到回收站",
+    "restoreBeforeEditing": "此节点在回收站中，还原后即可继续审阅。", "emptyWorkspace": "创建一个数据节点，导入图片、视频、文字或数据表。审阅内容独立保存，无需打开视频项目。",
+    "emptyNode": "把待审内容放到这个节点", "emptyNodeDescription": "导入本地文件或粘贴文字，也可以复制接入说明，让 Agent 将结果提交到这个节点。原件和审阅记录都会保留。",
+    "agentWrite": "Agent 可写审阅", "agentRead": "Agent 只读审阅", "copyStartup": "复制接入说明", "copied": "已复制", "retry": "重试", "loading": "正在读取…",
+    "legacyProject": "旧项目审阅：{{name}}", "backToNodes": "返回独立节点", "legacyTools": "旧数据入口", "legacyMotion": "动态图形（旧）", "openProjectFirst": "请先打开对应的视频项目",
+    "importTitle": "导入审阅内容", "importDescription": "在此节点中新建一个输入批次；已有内容会保留。", "files": "文件或文件夹", "pasteText": "粘贴文本", "batchName": "批次名称", "localFiles": "本地文件",
+    "chooseFiles": "选择文件", "chooseFolder": "选择文件夹", "fileLimits": "每次 1–64 个文件。表格最多 5000 行、64 列；CSV 首行为列名，JSON 为平铺对象数组。文本支持 UTF-8 或带 BOM 的 UTF-16。原文件字节会同时保留。",
+    "textBody": "文本正文（最多 200000 字符）", "readingFiles": "正在读取并检查文件…", "importing": "正在保存原件并提交内容…", "cancel": "取消", "import": "导入", "previous": "上一页", "next": "下一页", "pageScope": "列表每页最多 100 项；选择和批量操作仅作用于当前可见范围。",
+    "kind": { "model3d": "3D 模型", "image": "图片", "video": "视频", "text": "文字", "data": "数据表" },
+    "startupPrompt": "当前任务使用 ReelTerminal 独立审阅工作台。CLI 前缀：{{cli}}\n当前显式目标：{{target}}\n\n1. 运行 {{cli}} review context，重新读取本次运行的 workspace/instance 身份与权限。\n2. 运行 {{cli}} review describe 和 {{cli}} review capabilities，读取审阅命令及实际允许的媒体根目录。\n3. 通过 {{cli}} schema review.ingest 或 schema review.apply 查看精确参数。创建节点使用 review.nodes.create；所有写入带显式 review target、预期 revision 和 UUID requestId。文件在允许根内准备，媒体字节不放入 JSON。\n4. 使用 {{cli}} review call review.ingest --file <请求文件> 提交，使用 review.get / review.changes / review.versions.get 读回。review.apply 沿用 schema 中的 workbench 操作词汇，目标仍是独立 review 节点。\n\n审阅写权限由本工作台的开关单独授权；应用重启后重新发现目标。发布审阅结果须用户在界面确认。冻结文件副本使用 review.export.*，真实处理记录使用 review.steps.*，节点包恢复使用 review.package.inspect/restore；提交前读取对应 verb 的 schema。"
+  },
   "projectMediaFilters": {
     "scope": "查看范围",
     "current": "当前项目素材",
@@ -218,8 +289,10 @@
       "ariaLabel": "桌面工作区",
       "videoEditor": "视频编辑",
       "motionDesign": "动态图形",
+      "workbench": "审阅工作台",
       "videoEditing": "视频编辑",
       "motionCreation": "动态创作",
+      "workbenchReview": "审阅工作台",
       "loading": "加载中…"
     },
     "help": {
@@ -248,11 +321,7 @@
       "newProject": "新建项目",
       "backToProject": "返回当前项目",
       "actionFailed": "无法切换项目",
-      "chooseWorkspace": "先选“视频编辑器”，再点击画面比例。需要操作说明时，打开顶栏“帮助”。",
-      "videoEditor": "视频编辑器",
-      "videoEditorDescription": "快速剪辑、裁剪、添加字幕、调色并导出。",
-      "motionCreator": "动态图形创作",
-      "motionCreatorDescription": "设计动画广告、字幕条、应用演示和场景图形。",
+      "chooseWorkspace": "选择画面比例创建项目。需要操作说明时，打开顶栏“帮助”。",
       "recent": "最近项目",
       "loadingRecent": "正在加载最近项目…",
       "noRecent": "还没有最近项目。请从上方新建一个项目。",
@@ -261,7 +330,6 @@
       "yesterday": "昨天",
       "daysAgo": "{{count}} 天前",
       "modeVideo": "视频编辑器",
-      "modeMotion": "动态图形创作",
       "formatVertical": "竖屏",
       "formatHorizontal": "横屏",
       "formatSquare": "方形"
@@ -332,6 +400,7 @@
       "appData": "应用数据（项目库、媒体、素材库、设置）",
       "projects": "项目默认位置",
       "agentWorkspace": "Agent 工作区",
+      "review": "审阅原件与导出副本",
       "logs": "日志",
       "machineConfig": "本机配置（数据目录指针）",
       "sourceEnv": "位置由 REELTERMINAL_DATA_ROOT 环境变量指定",

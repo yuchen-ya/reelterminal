@@ -4,6 +4,7 @@ import { MATERIAL_VERBS } from "./material-library";
 import { FONT_VERBS } from "./font-library";
 import { PRESET_VERBS } from "./preset-verbs";
 import { HELP_VERBS } from "./gui-manual";
+import { REVIEW_VERBS } from "./review";
 /**
  * Public contract of the in-process agent facade.
  *
@@ -57,6 +58,8 @@ export const FACADE_RUNTIME = "node-headless" as const;
 
 export const FACADE_VERBS = [
   "session.describe",
+  "review.context",
+  ...REVIEW_VERBS,
   "capabilities.get",
   "project.create",
   "project.open",
@@ -93,6 +96,10 @@ export const FACADE_VERBS = [
   "job.status",
   "job.cancel",
   "verify.artifact",
+  "workbench.ingest",
+  "workbench.get",
+  "workbench.changes",
+  "workbench.handoff.get",
   ...MATERIAL_VERBS,
   ...FONT_VERBS,
   ...PRESET_VERBS,
@@ -156,6 +163,18 @@ import type {
  */
 export const READ_ONLY_VERBS = [
   "session.describe",
+  "review.context",
+  "review.nodes.list",
+  "review.export.status",
+  "review.steps.list",
+  "review.package.inspect",
+  "review.media.inspect",
+  "review.frames.extract",
+  "review.directory.get",
+  "review.handoff.get",
+  "review.versions.get",
+  "review.changes",
+  "review.get",
   "capabilities.get",
   "project.list",
   "project.get_state",
@@ -193,6 +212,9 @@ export const READ_ONLY_VERBS = [
   "preview.render_comparison",
   "job.status",
   "verify.artifact",
+  "workbench.get",
+  "workbench.changes",
+  "workbench.handoff.get",
   ...PLUGIN_TOOLS.filter((tool) => tool.effect === "read").map((tool) => tool.name),
 ] as const satisfies readonly FacadeVerb[];
 
@@ -226,6 +248,7 @@ export interface StepLetters {
 }
 
 export interface SessionDescription {
+  readonly kind?: "video" | "review";
   readonly facadeVersion: string;
   readonly contractVersion: string;
   /** "node-headless" for AgentFacadeSession; "live" for createLiveFacade sessions. */
@@ -291,11 +314,15 @@ export type CapabilityDomain = (typeof CAPABILITY_DOMAINS)[number];
 
 /** Input of `capabilities.get`. */
 export interface CapabilitiesGetParams {
+  readonly kind?: "video" | "review";
   /** Restrict probing to one domain's probes; omit to probe everything. */
   readonly domain?: CapabilityDomain;
 }
 
 export interface Capabilities {
+  readonly kind?: "video" | "review";
+  readonly verbs?: readonly FacadeVerb[];
+  readonly access?: AgentAccessMode;
   readonly pluginTools: Readonly<Record<string, CapabilityStatus>>;
   /** "node-headless" for AgentFacadeSession; "live" for createLiveFacade sessions. */
   readonly runtime: typeof FACADE_RUNTIME | "live";
@@ -1196,6 +1223,15 @@ export interface EditorGetContextResult {
   readonly canvasPoint: { readonly x: number; readonly y: number } | null;
   /** Ephemeral editor-session references keyed by their stable number. */
   readonly references: LiveEditorReferences;
+  /**
+   * AI material workbench GUI state (active batch / current item / selection);
+   * null when the workbench page is not active or in headless sessions.
+   */
+  readonly workbench: {
+    readonly activeBatchId: string | null;
+    readonly currentItemId: string | null;
+    readonly selectedItemIds: readonly string[];
+  } | null;
   readonly collaborationInstructions: ReturnType<typeof import("./collaboration-instructions").collaborationInstructionsSummary>;
   /** Compact project requirement signal; fetch details with reelctl requirements. */
   readonly requirements: {
@@ -1326,6 +1362,11 @@ export const EDIT_OP_TYPES = [
   "svg.update",
   "svg.remove",
   "clip.addVideoEffect",
+  "workbench.decide",
+  "workbench.feedback.save",
+  "workbench.handoff.ack",
+  "workbench.rework",
+  "workbench.content.update",
   "workAsset.capture",
   "workAsset.rename",
   "workAsset.delete",
@@ -2257,6 +2298,11 @@ export type EditOp =
   | ClipSplitAtBeatOp
   | ClipSetBackgroundRemovalOp
   | ClipAddVideoEffectOp
+  | WorkbenchDecideOp
+  | WorkbenchFeedbackSaveOp
+  | WorkbenchHandoffAckOp
+  | WorkbenchReworkOp
+  | WorkbenchContentUpdateOp
   | WorkAssetCaptureOp
   | WorkAssetRenameOp
   | WorkAssetDeleteOp
@@ -2742,6 +2788,461 @@ export interface VerifyArtifactParams {
 }
 
 export type VerifyArtifactResult = VerifyReport;
+
+/* ------------------------------------------------------------------ */
+/* workbench.* — AI material workbench (Agent-produced content review)  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Facade-side content input for workbench.ingest / workbench.rework. Text
+ * carries the COMPLETE current text (ingest stores it as version 1); data
+ * carries the full table; image/video reference already-imported project
+ * media by `mediaId` and never carry media bytes.
+ */
+export type WorkbenchContentInput =
+  | { readonly type: "model3d"; readonly resourceId: string }
+  | {
+      readonly type: "text";
+      readonly entryId: string;
+      readonly title: string;
+      readonly speakerOrContext: string;
+      readonly text: string;
+    }
+  | {
+      readonly type: "data";
+      readonly datasetId: string;
+      readonly columns: readonly {
+        readonly columnId: string;
+        readonly title: string;
+        readonly width?: string;
+        readonly monospace?: boolean;
+      }[];
+      readonly rows: readonly {
+        readonly rowId: string;
+        readonly cells: Readonly<Record<string, string | null>>;
+      }[];
+      readonly proposals: readonly {
+        readonly proposalId: string;
+        readonly rowId: string;
+        readonly columnId: string;
+        readonly originalValue: string | null;
+        readonly proposedValue: string | null;
+        readonly reason: string;
+        readonly provenanceTagId: string;
+        readonly status: "proposed" | "accepted" | "rejected" | "modified";
+      }[];
+    }
+  | {
+      readonly type: "image";
+      readonly mediaId: string;
+      readonly naturalWidth?: number;
+      readonly naturalHeight?: number;
+    }
+  | {
+      readonly type: "video";
+      readonly mediaId: string;
+      readonly durationSec?: number;
+      readonly resolution?: string;
+    };
+
+/** workbench.ingest item input (provenance/guidance/lineage mirror core). */
+export interface WorkbenchIngestItem {
+  readonly id: string;
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly type: import("@reelterminal/core/types/workbench").WorkbenchContentType;
+  readonly content: WorkbenchContentInput;
+  readonly provenanceTags?: readonly import("@reelterminal/core/types/workbench").WorkbenchProvenanceTag[];
+  readonly agentGuidance?: import("@reelterminal/core/types/workbench").WorkbenchAgentGuidance;
+  readonly lineage?: import("@reelterminal/core/types/workbench").WorkbenchLineage;
+}
+
+/**
+ * workbench.ingest — create or append a review batch of Agent-produced
+ * items through the shared core builder (idempotent re-ingest of the same
+ * item identity is a no-op; a reused id with different content fails).
+ * The write is one CAS-guarded applyActions batch labeled
+ * "agent: workbench.ingest"; retries carrying the same idempotencyKey and
+ * payload replay the committed result.
+ */
+export interface WorkbenchIngestParams {
+  readonly batchId: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly items: readonly WorkbenchIngestItem[];
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
+export interface WorkbenchIngestResult {
+  readonly revision: number;
+  readonly batchId: string;
+  /** The batch's revision after this ingest (create = 1, append = previous + 1). */
+  readonly batchRevision: number;
+  /** Items this call created. */
+  readonly acceptedItemIds: readonly string[];
+  /** Items skipped because the identical identity already existed. */
+  readonly skippedItemIds: readonly string[];
+  /** Always true: the request was received and processed (empty ingests are honest no-ops). */
+  readonly received: true;
+  readonly replayed: boolean;
+}
+
+/** Execution-level feedback readback (workbench.get includeFeedback). */
+export interface WorkbenchFeedbackView {
+  readonly id: string;
+  readonly issueId: string;
+  readonly itemVersion: number;
+  readonly intent: "note" | "rework";
+  readonly state: "draft" | "confirmed";
+  readonly text: string;
+  readonly target: import("@reelterminal/core/types/workbench").WorkbenchFeedbackTarget;
+  readonly referencedTags: readonly {
+    readonly id: string;
+    readonly name?: string;
+    readonly version?: string;
+    readonly referenceState: "resolved" | "unresolved";
+    readonly raw?: string;
+  }[];
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly clearedBy?: "accepted" | "cancelled";
+  readonly clearedAt?: number;
+  /** True when this record belongs to an older item version. */
+  readonly historical: boolean;
+}
+
+/** Video marker readback (workbench.get includeMarkers). */
+export interface WorkbenchMarkerView {
+  readonly id: string;
+  readonly type: "frame" | "interval";
+  readonly timeBasis: "browser-current-time";
+  readonly startPtsSec: number;
+  readonly endPtsSec?: number;
+  readonly startFrameIndex?: number;
+  readonly endFrameIndex?: number;
+  readonly hasFrameMapping: boolean;
+  readonly note: string;
+  readonly itemVersion: number;
+  readonly annotations: readonly {
+    readonly id: string;
+    readonly label?: string;
+    readonly x: number;
+    readonly y: number;
+    readonly w?: number;
+    readonly h?: number;
+    readonly endX?: number;
+    readonly endY?: number;
+    readonly ptsSec?: number;
+  }[];
+}
+
+/** Content revision readback (workbench.get includeRevisions). */
+export interface WorkbenchRevisionView {
+  readonly id: string;
+  readonly kind: "text" | "data" | "image-repair" | "agent-rework";
+  readonly parentVersion: number;
+  readonly producedVersion: number;
+  readonly createdAt: number;
+  readonly mediaId?: string;
+  readonly base?: import("@reelterminal/core/types/workbench").WorkbenchRepairBase;
+}
+
+/** Bounded item view returned by workbench.get. */
+export type WorkbenchItemContentView =
+  | { readonly type: "model3d"; readonly resourceId: string }
+  | {
+      readonly type: "text";
+      readonly entryId: string;
+      readonly title: string;
+      readonly speakerOrContext: string;
+      /** The current text (last version); older bodies are never echoed in full. */
+      readonly currentText: string;
+      /** Number of retained versions (read them via the GUI channel). */
+      readonly versionCount: number;
+      readonly duplicateProposal?: import("@reelterminal/core/types/workbench").WorkbenchDuplicateProposal;
+    }
+  | {
+      readonly type: "data";
+      readonly datasetId: string;
+      readonly columns: readonly {
+        readonly columnId: string;
+        readonly title: string;
+        readonly width?: string;
+        readonly monospace?: boolean;
+      }[];
+      readonly rowCount: number;
+      readonly proposalCount: number;
+      /** Present only when the read passed includeData: true. */
+      readonly rows?: readonly {
+        readonly rowId: string;
+        readonly cells: Readonly<Record<string, string | null>>;
+      }[];
+    }
+  | {
+      readonly type: "image";
+      readonly mediaId: string;
+      readonly naturalWidth?: number;
+      readonly naturalHeight?: number;
+      readonly annotationCount: number;
+      readonly strokeCount: number;
+    }
+  | {
+      readonly type: "video";
+      readonly mediaId: string;
+      readonly durationSec?: number;
+      readonly resolution?: string;
+      readonly markerCount: number;
+      /** Present only with includeMarkers: true. */
+      readonly markers?: readonly WorkbenchMarkerView[];
+    };
+
+export interface WorkbenchItemView {
+  readonly id: string;
+  readonly batchId: string;
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly type: import("@reelterminal/core/types/workbench").WorkbenchContentType;
+  /** Current content version. */
+  readonly version: number;
+  readonly status: import("@reelterminal/core/types/workbench").WorkbenchDecisionStatus;
+  readonly orderIndex: number;
+  readonly createdAt: number;
+  readonly decisionCount: number;
+  readonly lastDecision:
+    | {
+        readonly decision: import("@reelterminal/core/types/workbench").WorkbenchDecision;
+        readonly decisionRevision: number;
+        readonly baseVersion: number;
+        readonly decidedAt: number;
+        readonly operator: "human" | "agent";
+        readonly contentRevisionId?: string;
+      }
+    | null;
+  readonly feedbackCount: number;
+  readonly confirmedFeedbackCount: number;
+  /** Present when this version came back from a published handoff's rework. */
+  readonly reworkOrigin?: {
+    readonly fromHandoffId: string;
+    readonly previousVersion: number;
+    readonly summary?: string;
+  };
+  /** Present only with includeFeedback: true. */
+  readonly feedback?: readonly WorkbenchFeedbackView[];
+  /** Present only with includeRevisions: true. */
+  readonly revisions?: readonly WorkbenchRevisionView[];
+  readonly content: WorkbenchItemContentView;
+}
+
+export interface WorkbenchBatchSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly createdAt: number;
+  readonly revision: number;
+  readonly itemCount: number;
+  readonly statusCounts: Readonly<
+    Record<import("@reelterminal/core/types/workbench").WorkbenchDecisionStatus, number>
+  >;
+  /** Latest handoff delivery state for this batch; "none" before any publish. */
+  readonly handoffState:
+    | "none"
+    | "published_waiting"
+    | "agent_acked"
+    | "rework_returned";
+}
+
+export interface WorkbenchGetParams {
+  readonly batchId?: string;
+  readonly itemId?: string;
+  readonly status?: import("@reelterminal/core/types/workbench").WorkbenchDecisionStatus;
+  readonly offset?: number;
+  readonly limit?: number;
+  /** Data items return full rows only with includeData: true (default rowCount + columns). */
+  readonly includeData?: boolean;
+  /** Per-item feedback records (intent/target/cleared/version), default off. */
+  readonly includeFeedback?: boolean;
+  /** Video markers with PTS ranges and frame-mapping facts, default off. */
+  readonly includeMarkers?: boolean;
+  /** Content revisions, default off. */
+  readonly includeRevisions?: boolean;
+}
+
+export interface WorkbenchGetReadInfo {
+  /** Renderer/host clock when the single store snapshot was read. */
+  readonly capturedAt: number;
+  /** Canonical project revision of that snapshot. */
+  readonly stateRevision: number;
+}
+
+export interface WorkbenchGetResult {
+  readonly revision: number;
+  /** One snapshot marker for every item/batch in this response. */
+  readonly read?: WorkbenchGetReadInfo;
+  /** Single-item lookup form. */
+  readonly item?: WorkbenchItemView;
+  /** Listing form: batch summaries (batchId-filtered when given). */
+  readonly batches?: readonly WorkbenchBatchSummary[];
+  /** Listing form: the requested page of item views. */
+  readonly items?: readonly WorkbenchItemView[];
+  /** Listing form: total matched items before paging. */
+  readonly total?: number;
+}
+
+export interface WorkbenchChangesParams {
+  readonly batchId: string;
+  readonly cursor?: number;
+}
+
+export interface WorkbenchDecisionChange {
+  readonly itemId: string;
+  readonly batchId: string;
+  readonly decision: import("@reelterminal/core/types/workbench").WorkbenchDecision;
+  readonly decisionRevision: number;
+  readonly baseVersion: number;
+  readonly decidedAt: number;
+  readonly operator: "human" | "agent";
+  readonly contentRevisionId?: string;
+}
+
+export interface WorkbenchHandoffEvent {
+  readonly handoffId: string;
+  readonly batchId: string;
+  readonly deliveryState: import("@reelterminal/core/types/workbench").WorkbenchHandoff["deliveryState"];
+  readonly publishedAt: number;
+  readonly supersedesHandoffId?: string;
+  readonly itemCount: number;
+}
+
+/**
+ * workbench.changes — decision log + handoff events of one batch. Decision
+ * entries do not record project revisions, so the cursor is the read
+ * snapshot's projectRevision and the result says `stale: true` whenever the
+ * cursor predates it: the lists then carry the FULL current state and the
+ * caller must re-read snapshots instead of applying a delta.
+ */
+export interface WorkbenchChangesResult {
+  /** The revision to pass back as the next cursor. */
+  readonly projectRevision: number;
+  readonly cursor: number | null;
+  readonly stale: boolean;
+  readonly decided: readonly WorkbenchDecisionChange[];
+  readonly handoffEvents: readonly WorkbenchHandoffEvent[];
+  readonly note: string;
+}
+
+export interface WorkbenchHandoffGetParams {
+  /** Legacy handoff id; same identity as snapshotId. */
+  readonly handoffId?: string;
+  /** Published snapshot id. Omit both ids to read only the latest header. */
+  readonly snapshotId?: string;
+}
+
+export interface WorkbenchHandoffHeader {
+  readonly snapshotId: string;
+  readonly handoffId: string;
+  readonly batchId: string;
+  readonly batchName: string;
+  readonly publishedAt: number;
+  readonly deliveryState: import("@reelterminal/core/types/workbench").WorkbenchHandoff["deliveryState"];
+  readonly snapshotSchemaVersion?: number;
+  readonly itemCount: number;
+}
+
+export interface WorkbenchHandoffGetResult {
+  readonly revision: number;
+  /** The complete immutable handoff snapshot (content, feedback, decisions). */
+  readonly handoff?: import("@reelterminal/core/types/workbench").WorkbenchHandoff;
+  /** Present when no id was given: the latest published snapshot header only. */
+  readonly latest?: WorkbenchHandoffHeader | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* edit.apply — workbench ops (operator is always the agent channel)    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * workbench.decide — record agent decisions for one batch's items through
+ * the shared core builder. The operator is pinned to "agent" (agents can
+ * never author human decisions); baseVersion/decisionRevision are derived
+ * from the live state, and an optional expectedItemVersion CAS guard fails
+ * CONFLICT when the item moved since the decision was derived.
+ */
+export interface WorkbenchDecideOp {
+  readonly op: "workbench.decide";
+  readonly batchId: string;
+  readonly decisions: readonly {
+    readonly itemId: string;
+    readonly decision: import("@reelterminal/core/types/workbench").WorkbenchDecision;
+    readonly expectedItemVersion?: number;
+    /** Required when decision is "modified": a real content revision id. */
+    readonly contentRevisionId?: string;
+  }[];
+}
+
+/**
+ * workbench.feedback.save — persist one complete feedback record through the
+ * same core action the GUI uses; draft feedback never enters a handoff.
+ */
+export interface WorkbenchFeedbackSaveOp {
+  readonly op: "workbench.feedback.save";
+  readonly feedback: {
+    readonly id: string;
+    readonly itemId: string;
+    readonly itemVersion: number;
+    readonly text: string;
+    readonly referencedTagIds: readonly string[];
+    readonly target?: import("@reelterminal/core/types/workbench").WorkbenchFeedbackTarget;
+    readonly state: "draft" | "confirmed";
+  };
+}
+
+/** workbench.handoff.ack — acknowledge a published_waiting handoff. */
+export interface WorkbenchHandoffAckOp {
+  readonly op: "workbench.handoff.ack";
+  readonly handoffId: string;
+}
+
+/**
+ * workbench.rework — return reworked content for the rework items of a
+ * published handoff. producedVersion = previousVersion + 1 is derived by the
+ * facade; a result whose previousVersion no longer matches the live item
+ * fails CONFLICT (a human revision wins; nothing is overwritten).
+ */
+export interface WorkbenchReworkOp {
+  readonly op: "workbench.rework";
+  readonly handoffId: string;
+  readonly results: readonly {
+    readonly sourceItemId: string;
+    readonly previousVersion: number;
+    readonly content: WorkbenchContentInput;
+    readonly agentGuidance?: import("@reelterminal/core/types/workbench").WorkbenchAgentGuidance;
+    readonly lineage?: import("@reelterminal/core/types/workbench").WorkbenchLineage;
+    readonly reworkSummary?: string;
+  }[];
+}
+
+/**
+ * workbench.content.update — revise ONE text or data item through the same
+ * core builders the GUI uses: kind "text" replaces the complete text (a
+ * no-change revision is rejected); kind "data" applies explicit cell patches
+ * (whole-table overwrite is not supported; a no-op patch set is rejected).
+ */
+export interface WorkbenchContentUpdateOp {
+  readonly op: "workbench.content.update";
+  readonly itemId: string;
+  /** Required CAS guard: the item version the revision was derived from. */
+  readonly expectedItemVersion: number;
+  readonly kind: "text" | "data";
+  readonly text?: string;
+  readonly patches?: readonly {
+    readonly rowId: string;
+    readonly columnId: string;
+    readonly value?: string | null;
+    readonly proposalId?: string;
+    readonly proposalOutcome?: "accepted" | "modified" | "rejected";
+  }[];
+}
 
 /* ------------------------------------------------------------------ */
 /* material.* (user-level material library)                            */

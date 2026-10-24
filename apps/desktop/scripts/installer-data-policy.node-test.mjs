@@ -56,7 +56,7 @@ function cleanupFixture({ mode = "interactive", custom = false, invalid, junctio
   const data = path.join(dir, custom ? "custom-data" : "Videos/ReelTerminal");
   const config = path.join(dir, "machine-config");
   mkdirSync(config);
-  const layers = ["app-data", "projects", "agent-workspace", "logs"];
+  const layers = ["app-data", "projects", "agent-workspace", "review", "logs"];
   for (const layer of layers) {
     mkdirSync(path.join(data, layer), { recursive: true });
     writeFileSync(path.join(data, layer, "owned.txt"), layer);

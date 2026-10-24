@@ -20,11 +20,12 @@ describe("WorkspaceModeTabs", () => {
       "true",
     );
     expect(
-      screen.getByRole("tab", { name: "Motion Design" }),
+      screen.getByRole("tab", { name: "Review Workspace" }),
     ).toHaveAttribute("aria-selected", "false");
 
-    fireEvent.click(screen.getByRole("tab", { name: "Motion Design" }));
+    expect(screen.queryByRole("tab", { name: "Motion Design" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Review Workspace" }));
 
-    expect(onSelectMode).toHaveBeenCalledWith("motion");
+    expect(onSelectMode).toHaveBeenCalledWith("workbench");
   });
 });

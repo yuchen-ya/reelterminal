@@ -90,7 +90,13 @@ export function usePreviewScrubBar(params: {
 
   const handleScrubKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      const step = e.shiftKey ? 1 : 1 / 30;
+      if (!e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        e.stopPropagation();
+        void getPlaybackBridge().stepFrame(e.key === "ArrowLeft" ? -1 : 1);
+        return;
+      }
+      const step = 1;
       let target: number | null = null;
       switch (e.key) {
         case "ArrowLeft":

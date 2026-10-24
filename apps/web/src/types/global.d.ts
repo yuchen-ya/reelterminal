@@ -11,6 +11,7 @@ import type {
 
 import type { AudioEnvironmentReport } from "@reelterminal/agent-facade/media/audio-environment";
 import type { AlignedCaption, CaptionEngine } from "@reelterminal/agent-facade/media/qwen-captions";
+type ReviewNativeReply<T> = { ok: true; value: T } | { ok: false; error: { code: string; message: string; reason: string } };
 export {};
 
 export interface OpenReelHardwareInfo {
@@ -329,6 +330,7 @@ interface ReelTerminalDesktopBridge {
           lastModifiedMs: number | null;
         }>;
         tempFilePath(ext: string): Promise<string>;
+        discardTempFile(path: string): Promise<void>;
         writeFile(path: string, data: string): Promise<void>;
         openWrite(path: string): Promise<string>;
         writeChunk(handleId: string, data: ArrayBuffer | Uint8Array, position: number): Promise<void>;
@@ -344,10 +346,11 @@ interface ReelTerminalDesktopBridge {
           appData: string;
           projects: string;
           agentWorkspace: string;
+          review: string;
           logs: string;
           machineConfigDir: string;
           migrationItems: Array<{
-            kind: "appData" | "workspace";
+            kind: "appData" | "workspace" | "review";
             from: string;
             to: string;
             status:
@@ -434,6 +437,29 @@ interface ReelTerminalDesktopBridge {
           error?: string;
         }>;
       };
+      reviewPackage?: {
+        inspect(input: { directory: string; source: "user" | "agent" }): Promise<ReviewNativeReply<import("@reelterminal/core/review/archive").ReviewPackagePreview>>;
+        prepare(input: { packageId: string; restoreId: string; digest: string; source: "user" | "agent" }): Promise<ReviewNativeReply<{ archive: import("@reelterminal/core/review/archive").ReviewNodeArchive; resources: readonly import("@reelterminal/core/review/types").FileResource[] }>>;
+        release(packageId: string): Promise<void>;
+      };
+      reviewExport?: {
+        backup(input: { plan: import("@reelterminal/core/review/export").ReviewBackupPlan; directory: string; source: "user" | "agent" }): Promise<ReviewNativeReply<{ directory: string; nodeCount: number }>>;
+        prepare(plan: import("@reelterminal/core/review/export").ReviewExportPlan): Promise<ReviewNativeReply<import("@reelterminal/core/review/export").ReviewExportStatus>>;
+        status(input: { exportId: string; nodeId: string }): Promise<ReviewNativeReply<import("@reelterminal/core/review/export").ReviewExportStatus>>;
+        cancel(input: { exportId: string; nodeId: string }): Promise<ReviewNativeReply<import("@reelterminal/core/review/export").ReviewExportStatus>>;
+        copy(input: { exportId: string; nodeId: string; directory: string; source: "user" | "agent" }): Promise<ReviewNativeReply<{ directory: string; files: readonly { relativePath: string; size: number; sha256: string }[] }>>;
+        startDrag(exportId: string, folder: boolean): Promise<{ state: "handed-to-system" }>;
+      };
+      reviewFiles?: {
+        collectUnregistered(registeredIds: readonly string[]): Promise<ReviewNativeReply<{ removed: number; bytes: number }>>;
+        prepare(args: { operationId: string; resourceId: string; sourcePath: string; mime: string; originalFileName?: string; expectedHash?: string; mode?: "managed" | "external"; source?: "user" | "agent" | "migration" }): Promise<{
+          ok: true; value: import("@reelterminal/core/review/types").FileResource;
+        } | { ok: false; error: { code: string; message: string; reason: string } }>;
+        resolve(resourceId: string, freeze?: boolean): Promise<{
+          ok: true; value: { resource: import("@reelterminal/core/review/types").FileResource; path: string };
+        } | { ok: false; error: { code: string; message: string; reason: string } }>;
+      };
+      inputHistory?: (direction: "undo" | "redo") => Promise<void>;
       mediaStore?: {
         beginWrite(args: { projectId: string; mediaId: string; expectedHash: string; extension: string }): Promise<string>;
         writeChunk(sessionId: string, data: ArrayBuffer | Uint8Array): Promise<void>;

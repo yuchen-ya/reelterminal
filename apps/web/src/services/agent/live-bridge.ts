@@ -1,4 +1,7 @@
 import { currentProjectEpoch, projectGuardError, projectLedgerScope } from "./project-guard";
+import { getReviewContext } from "../review-workspace/context";
+import { recoverReviewMigration } from "../review-workspace/migration-records";
+import { handleReviewCommand } from "./review-bridge";
 import {
   requirementsListView, requirementsGetView,
   REQUIREMENTS_LIST_SCHEMA, REQUIREMENTS_GET_SCHEMA,
@@ -100,6 +103,7 @@ async function targetRuntime(req: LiveBridgeRequest, checkExpectedInstance = tru
     }
     const target: WorkspaceTarget = { projectId, workspaceId };
     const context = await workspaceManager.getWorkspaceContext(target);
+    await recoverReviewMigration(context.store);
     const snapshot = workspaceManager.getSnapshot();
     const state = context.store.getState();
     if (checkExpectedInstance && req.expectedWorkspaceInstanceId !== undefined &&
@@ -121,6 +125,7 @@ async function targetRuntime(req: LiveBridgeRequest, checkExpectedInstance = tru
     };
   }
   const store = getActiveProjectRuntimeStore();
+  await recoverReviewMigration(store);
   const state = store.getState();
   return state.hasOpenProject
     ? { store, state, projectId: state.project.id, workspaceId: state.workspaceId, instanceId: currentProjectEpoch(), revision: state.workspaceRevision, foreground: true }
@@ -1151,6 +1156,10 @@ export async function handleLiveBridgeRequest(
           req.workspaceParams,
         ) as Omit<LiveBridgeReply, "callId">;
       }
+      case "reviewContext":
+        return { ok: true, result: await getReviewContext() };
+      case "reviewCommand":
+        return { ok: true, result: await handleReviewCommand(req.reviewVerb!, req.reviewParams!) };
       case "requestSave": {
         const store = useProjectStore.getState();
         if (!store.hasOpenProject) return noProject();
@@ -1177,6 +1186,7 @@ export async function handleLiveBridgeRequest(
       error: {
         code,
         message: error instanceof Error ? error.message : String(error),
+        ...((error as { details?: Record<string, unknown> } | null)?.details ? { details: (error as { details: Record<string, unknown> }).details } : {}),
       },
     };
   }

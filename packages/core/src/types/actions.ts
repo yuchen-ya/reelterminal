@@ -1,6 +1,13 @@
 import type { MediaItem, ProjectMarker, ProjectSettings, ProjectRenderFont } from "./project";
 import type { WorkAsset } from "./work-asset";
 import type {
+  WorkbenchBatch,
+  WorkbenchContentRevision,
+  WorkbenchFeedback,
+  WorkbenchHandoff,
+  WorkbenchItem,
+} from "./workbench";
+import type {
   Transform,
   EasingType,
   SubtitleStyle,
@@ -556,6 +563,59 @@ export type WorkAssetAction =
   | { type: "workAsset/restore"; params: { asset: WorkAsset } }
   | { type: "workAsset/rename"; params: { workAssetId: string; name: string } };
 
+// Workbench actions (AI material workbench). Builders in
+// actions/workbench-actions.ts mint the complete entities; the executor only
+// inserts/validates them, and every action carries a workbench/restore
+// inverse with the exact previous entities (see that module for semantics).
+export type WorkbenchAction =
+  | {
+      type: "workbench/ingest";
+      params: {
+        batch: WorkbenchBatch;
+        items: WorkbenchItem[];
+      };
+    }
+  | {
+      type: "workbench/decide";
+      params: {
+        batchId: string;
+        decisions: Array<{
+          itemId: string;
+          baseVersion: number;
+          decision: import("./workbench").WorkbenchDecision;
+          decisionRevision: number;
+          decidedAt: number;
+          operator: "human" | "agent";
+          contentRevisionId?: string;
+        }>;
+      };
+    }
+  | { type: "workbench/content.update"; params: { revision: WorkbenchContentRevision } }
+  | {
+      type: "workbench/annotations.set";
+      params: {
+        itemId: string;
+        itemVersion: number;
+        annotations?: import("./workbench").WorkbenchSpatialAnnotation[];
+        strokes?: import("./workbench").WorkbenchPixelStroke[];
+        markers?: import("./workbench").WorkbenchVideoMarker[];
+      };
+    }
+  | { type: "workbench/feedback.save"; params: { feedback: WorkbenchFeedback } }
+  | { type: "workbench/revert"; params: { itemIds: string[] } }
+  | { type: "workbench/tags.set"; params: { itemId: string; tags: string[] } }
+  | { type: "workbench/duplicateProposal.dismiss"; params: { itemId: string } }
+  | { type: "workbench/handoff.publish"; params: { handoff: WorkbenchHandoff } }
+  | { type: "workbench/handoff.ack"; params: { handoffId: string; ackedAt: number } }
+  | {
+      type: "workbench/rework.ingest";
+      params: import("../actions/workbench-actions").WorkbenchReworkIngestParams;
+    }
+  | {
+      type: "workbench/restore";
+      params: import("../actions/workbench-actions").WorkbenchRestoreParams;
+    };
+
 // Overlay actions (text / shape / svg / sticker clips, authoritative on the project)
 export type OverlayAction =
   | { type: "text/create"; params: { clip: TextClip } }
@@ -627,6 +687,7 @@ export type TimelineAction =
   | ProjectMarkerAction
   | ProjectRequirementAction
   | WorkAssetAction
+  | WorkbenchAction
   | ReferenceComparisonAction;
 
 // Reference comparison actions — the ONE shared comparison configuration on

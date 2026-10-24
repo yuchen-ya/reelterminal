@@ -6,6 +6,7 @@ import {
   normalizeGeneratedShaders,
   normalizeProjectMotionFields,
   normalizeProjectWorkAssetFields,
+  normalizeProjectWorkbenchFields,
   normalizeProjectSpeedDurations,
   registerProjectGeneratedShaders,
 } from "@reelterminal/core";
@@ -97,8 +98,10 @@ export function createProjectLifecycleSlice(
       // Projects coming from IndexedDB (loadProjectFromDb) bypass
       // normalizeProjectStoredFields, so stored-field repair for fields
       // without engine loaders (work assets) runs at this store boundary.
-      const motionNormalized = normalizeProjectWorkAssetFields(
-        normalizeProjectMotionFields(normalizeProjectSpeedDurations(incomingProject)),
+      const motionNormalized = normalizeProjectWorkbenchFields(
+        normalizeProjectWorkAssetFields(
+          normalizeProjectMotionFields(normalizeProjectSpeedDurations(incomingProject)),
+        ),
       );
       const project: Project = {
         ...motionNormalized,

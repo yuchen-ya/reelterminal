@@ -65,7 +65,6 @@ vi.mock("../../utils/media-recovery", () => ({
 import {
   DESKTOP_FORMATS,
   startNewProject,
-  startNewMotionProject,
   listRecentProjects,
   openProject,
   openRecentProject,
@@ -128,17 +127,6 @@ describe("startNewProject", () => {
     }) }));
     expect(stubs.workspace.switchView).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "default-workspace" }));
     expect(stubs.workspace.createProject.mock.invocationCallOrder[0]).toBeLessThan(stubs.workspace.switchView.mock.invocationCallOrder[0]);
-  });
-});
-
-describe("startNewMotionProject", () => {
-  it("creates a Motion Creator project with the selected format dimensions", async () => {
-    await startNewMotionProject(DESKTOP_FORMATS[0]);
-    expect(stubs.workspace.createProject).toHaveBeenCalledWith(expect.objectContaining({ name: "Vertical Motion Creator", settings: expect.objectContaining({
-      width: 1080,
-      height: 1920,
-      frameRate: 30,
-    }) }));
   });
 });
 

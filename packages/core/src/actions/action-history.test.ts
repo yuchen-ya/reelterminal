@@ -12,6 +12,30 @@ const act = (type: string, params: Record<string, unknown> = {}): Action => ({
 const inv = (type: string, params: Record<string, unknown> = {}): Action =>
   act(type, params);
 
+it("removes complete migrated workbench undo groups while retaining unrelated sequence and snapshot positions", () => {
+  const history = new ActionHistory();
+  const evicted: HistoryEntry[] = [];
+  history.setEvictionListener(entries => evicted.push(...entries));
+  const keep = act("track/add");
+  history.push(keep, inv("track/remove"));
+  history.breakGroup();
+  const group = history.beginGroup("old workbench compound edit");
+  history.push(act("workbench/decide"), inv("workbench/restore"));
+  history.push(act("clip/update"), inv("clip/update"));
+  history.endGroup(group);
+  const snapshot = history.createSnapshot("after old review");
+  const last = act("track/rename");
+  history.push(last, inv("track/rename"));
+  const sequences = history.getHistoryEntries().filter(entry => entry.action === keep || entry.action === last).map(entry => entry.sequence);
+  expect(history.discardUndoGroupsContaining(action => action.type.startsWith("workbench/"))).toBe(2);
+  expect(history.getHistoryEntries().map(entry => entry.action)).toEqual([keep, last]);
+  expect(history.getHistoryEntries().map(entry => entry.sequence)).toEqual(sequences);
+  expect(history.getSnapshots().find(entry => entry.id === snapshot.id)?.stackIndex).toBe(1);
+  expect(evicted).toHaveLength(2);
+  expect(history.undoGroup()).toHaveLength(1);
+  expect(history.undoGroup()).toHaveLength(1);
+});
+
 describe("ActionHistory group ownership", () => {
   it("keeps proximity grouping unchanged when no owner is used", () => {
     const history = new ActionHistory();

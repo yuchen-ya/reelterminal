@@ -137,6 +137,7 @@ import {
   resolveReferenceMediaUrl,
 } from "./ReferenceComparisonPanel";
 import { workspaceManager } from "../../../services/workspace-manager";
+import { notifyPreviewFrame } from "./frame-notifications";
 
 function resetHistoryModuleState() {
   closeHistoryComparison();
@@ -183,6 +184,25 @@ describe("in-player reference comparison", () => {
     expect(screen.queryByTestId("reference-comparison-viewport")).toBeNull();
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.getByRole("button", { name: "Reference comparison" })).toHaveTextContent("Compare");
+  });
+
+  it("copies paused canvas commits on demand and runs the mirror loop only while playing", async () => {
+    const drawImage = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage, clearRect: vi.fn() } as never);
+    const source = document.createElement("canvas");
+    const timelineCanvasRef = { current: source };
+    const { rerender, unmount } = render(<ReferenceComparisonPanel timelineCanvasRef={timelineCanvasRef} />);
+    await waitFor(() => expect(drawImage).toHaveBeenCalledTimes(1));
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+    act(() => notifyPreviewFrame());
+    expect(drawImage).toHaveBeenCalledTimes(2);
+    fixture.timeline.playbackState = "playing";
+    rerender(<ReferenceComparisonPanel timelineCanvasRef={timelineCanvasRef} />);
+    expect(window.requestAnimationFrame).toHaveBeenCalled();
+    unmount();
+    drawImage.mockClear();
+    notifyPreviewFrame();
+    expect(drawImage).not.toHaveBeenCalled();
   });
 
   it("keeps an opacity gesture visible while its project command is pending", async () => {

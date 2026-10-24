@@ -1,4 +1,5 @@
 import { PLUGIN_TOOLS } from "./plugins";
+import { REVIEW_SCHEMAS } from "./review";
 import { REQUIREMENTS_GET_SCHEMA, REQUIREMENTS_LIST_SCHEMA } from "./requirements";
 /**
  * The SINGLE hand-maintained schema declaration per facade verb
@@ -106,6 +107,17 @@ import {
   WORK_ASSET_INSTANTIATE_SCHEMA,
 } from "./ops";
 import {
+  WORKBENCH_CHANGES_SCHEMA,
+  WORKBENCH_CONTENT_UPDATE_OP_SCHEMA,
+  WORKBENCH_DECIDE_OP_SCHEMA,
+  WORKBENCH_FEEDBACK_SAVE_OP_SCHEMA,
+  WORKBENCH_GET_SCHEMA,
+  WORKBENCH_HANDOFF_ACK_OP_SCHEMA,
+  WORKBENCH_HANDOFF_GET_SCHEMA,
+  WORKBENCH_INGEST_SCHEMA,
+  WORKBENCH_REWORK_OP_SCHEMA,
+} from "./workbench";
+import {
   isBoolean,
   isFiniteNumber,
   isNonEmptyString,
@@ -126,6 +138,9 @@ import { WORKSPACE_VERB_SCHEMAS } from "./workspace-schemas";
 
 /** Param-less verbs validate against a closed empty schema. */
 export const EMPTY_PARAMS_SCHEMA: ObjectSchema = {};
+export const WORKSPACE_KIND_SCHEMA: ObjectSchema = {
+  kind: { check: oneOf(["video", "review"]), describe: '"video" or "review"', emits: { kind: "leaf", schema: { enum: ["video", "review"] } } },
+};
 
 /**
  * capabilities.get accepts an optional probe-domain filter (AUD-04). The
@@ -134,6 +149,7 @@ export const EMPTY_PARAMS_SCHEMA: ObjectSchema = {};
  * verbs keep their real pre-execution checks.
  */
 export const CAPABILITIES_GET_SCHEMA: ObjectSchema = {
+  ...WORKSPACE_KIND_SCHEMA,
   domain: {
     check: oneOf(CAPABILITY_DOMAINS),
     describe: `"audio", "video", "frames", "motion", "render" or "export"`,
@@ -924,6 +940,11 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "clip.splitAtBeat": CLIP_SPLIT_AT_BEAT_SCHEMA,
   "clip.setBackgroundRemoval": CLIP_SET_BACKGROUND_REMOVAL_SCHEMA,
   "clip.addVideoEffect": CLIP_ADD_VIDEO_EFFECT_SCHEMA,
+  "workbench.decide": WORKBENCH_DECIDE_OP_SCHEMA,
+  "workbench.feedback.save": WORKBENCH_FEEDBACK_SAVE_OP_SCHEMA,
+  "workbench.handoff.ack": WORKBENCH_HANDOFF_ACK_OP_SCHEMA,
+  "workbench.rework": WORKBENCH_REWORK_OP_SCHEMA,
+  "workbench.content.update": WORKBENCH_CONTENT_UPDATE_OP_SCHEMA,
   "workAsset.capture": WORK_ASSET_CAPTURE_SCHEMA,
   "workAsset.rename": WORK_ASSET_RENAME_SCHEMA,
   "workAsset.delete": WORK_ASSET_DELETE_SCHEMA,
@@ -2255,7 +2276,8 @@ export const MEDIA_RENDER_HTML_SCHEMA: ObjectSchema = {
 export const VERB_PARAM_SCHEMAS: {
   readonly [verb: string]: ObjectSchema;
 } = {
-  "session.describe": EMPTY_PARAMS_SCHEMA,
+  "session.describe": WORKSPACE_KIND_SCHEMA,
+  ...REVIEW_SCHEMAS,
   "capabilities.get": CAPABILITIES_GET_SCHEMA,
   "project.create": PROJECT_CREATE_SCHEMA,
   "project.open": PROJECT_OPEN_SCHEMA,
@@ -2277,6 +2299,7 @@ export const VERB_PARAM_SCHEMAS: {
   "timeline.query": TIMELINE_QUERY_SCHEMA,
   "timeline.mapSourceTimes": TIMELINE_MAP_SOURCE_TIMES_SCHEMA,
   "editor.get_context": EMPTY_PARAMS_SCHEMA,
+  "review.context": EMPTY_PARAMS_SCHEMA,
   "editor.control": EDITOR_CONTROL_SCHEMA,
   "edit.validate": EDIT_VALIDATE_SCHEMA,
   "edit.apply": EDIT_APPLY_SCHEMA,
@@ -2292,6 +2315,10 @@ export const VERB_PARAM_SCHEMAS: {
   "job.status": JOB_PARAMS_SCHEMA,
   "job.cancel": JOB_PARAMS_SCHEMA,
   "verify.artifact": VERIFY_ARTIFACT_SCHEMA,
+  "workbench.ingest": WORKBENCH_INGEST_SCHEMA,
+  "workbench.get": WORKBENCH_GET_SCHEMA,
+  "workbench.changes": WORKBENCH_CHANGES_SCHEMA,
+  "workbench.handoff.get": WORKBENCH_HANDOFF_GET_SCHEMA,
   "material.list": MATERIAL_LIST_SCHEMA,
   "material.get": MATERIAL_GET_SCHEMA,
   "material.create": MATERIAL_CREATE_SCHEMA,

@@ -735,6 +735,15 @@ export const AssetsPanel: React.FC = () => {
     return () => window.removeEventListener("reelterminal:open-instruction-library", openLibrary);
   }, []);
 
+  // Workbench "open host media panel" request: switch to the media tab on the
+  // next editor mount, then clear the one-shot flag.
+  useEffect(() => {
+    if (sessionStorage.getItem("reelterminal.assets.openMedia") === "1") {
+      sessionStorage.removeItem("reelterminal.assets.openMedia");
+      setActiveTabRaw("media");
+    }
+  }, []);
+
   // Live editor control keeps panel ownership local while allowing the
   // renderer bridge to ask the media tab to reveal a selected library item.
   useEffect(() => {

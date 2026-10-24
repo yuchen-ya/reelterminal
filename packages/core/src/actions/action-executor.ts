@@ -58,6 +58,7 @@ import { ActionHistory } from "./action-history";
 import { InverseActionGenerator } from "./inverse-action-generator";
 import { getActionHandler } from "./registry";
 import "./handlers";
+import { applyWorkbenchAction } from "./workbench-actions";
 import { calculateProjectDuration } from "../timeline/project-duration";
 import { beginPerfOperation, endPerfOperation, failPerfOperation, runMeasured, withPerfSpan, type PerfOperation } from "../performance";
 
@@ -515,6 +516,8 @@ export class ActionExecutor {
       this.applyProjectRequirementAction(action as ProjectRequirementAction, project);
     } else if (type.startsWith("workAsset/")) {
       this.applyWorkAssetAction(action as WorkAssetAction, project);
+    } else if (type.startsWith("workbench/")) {
+      applyWorkbenchAction(action as Action, project);
     } else if (type.startsWith("media/")) {
       this.applyMediaAction(action as MediaAction & Pick<Action, "id">, project);
     } else if (type.startsWith("track/")) {

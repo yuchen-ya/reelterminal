@@ -24,7 +24,7 @@ export type SelectionType =
   | "transition"
   | "motion-instance";
 
-export type DesktopPage = "edit" | "motion" | "color" | "deliver";
+export type DesktopPage = "edit" | "motion" | "workbench" | "color" | "deliver";
 
 /**
  * openModal with this id does not open a floating modal: it pins the desktop

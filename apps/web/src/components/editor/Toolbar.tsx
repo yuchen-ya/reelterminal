@@ -9,7 +9,6 @@ import {
 } from "@/icons/lucide-compat";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
-import { useRouter } from "../../hooks/use-router";
 import {
   getExportEngine,
   getDeviceProfile,
@@ -28,10 +27,6 @@ import { RecordingDialogHost } from "./RecordingDialogHost";
 import { HistoryPanel } from "./inspector/HistoryPanel";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { SettingsDialog } from "./settings/SettingsDialog";
-import {
-  WorkspaceModeTabs,
-  type WorkspaceMode,
-} from "../WorkspaceModeTabs";
 import { Icon } from "@/icons/Icon";
 import { toast } from "../../stores/notification-store";
 import {
@@ -61,11 +56,9 @@ export const Toolbar: React.FC = () => {
   const { project, renameProject } = useProjectStore();
   const {
     setExportState: setGlobalExportState,
-    setDesktopPage,
     activeModal,
     closeModal,
   } = useUIStore();
-  const { navigate } = useRouter();
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isCompressOpen, setIsCompressOpen] = useState(false);
@@ -94,19 +87,6 @@ export const Toolbar: React.FC = () => {
       setProjectNameDraft(project.name);
     }
   }, [projectNameDraft, project.name, renameProject, t]);
-
-  const handleWorkspaceModeSelect = useCallback(
-    (mode: WorkspaceMode) => {
-      if (mode === "motion") {
-        setDesktopPage("motion");
-        navigate("motion");
-        return;
-      }
-      setDesktopPage("edit");
-      navigate("editor");
-    },
-    [navigate, setDesktopPage],
-  );
 
   const {
     state: exportState,
@@ -334,12 +314,7 @@ export const Toolbar: React.FC = () => {
 
   return (
     <header className="h-[60px] flex items-center gap-[18px] px-[18px] bg-bg-1 border-b border-border shrink-0 z-30 relative">
-      {/* ─── Left: mode switch ────────────────────────────────── */}
-      <WorkspaceModeTabs
-        activeMode="video"
-        onSelectMode={handleWorkspaceModeSelect}
-        className="shrink-0"
-      />
+      <span className="shrink-0 text-sm font-semibold">{t("desktop.workspace.videoEditor")}</span>
 
       {/* ─── Center: project name ─────────────────────────────── */}
       <div className="flex flex-1 min-w-0 items-center justify-center gap-1.5">

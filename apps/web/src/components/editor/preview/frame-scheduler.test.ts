@@ -12,6 +12,68 @@ import {
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("FrameRenderScheduler", () => {
+  it("commits progress during continuous input and then lands on the latest pending target", async () => {
+    const painted: number[] = [];
+    const releases: Array<() => void> = [];
+    const scheduler = new FrameRenderScheduler(async token => {
+      await new Promise<void>(resolve => releases.push(resolve));
+      if (scheduler.markCommitted(token)) painted.push(token.time);
+    });
+    const request = (time: number) => scheduler.request(time, 10, undefined, { continuous: true });
+    request(1);
+    request(2);
+    request(3);
+    releases.shift()!();
+    await tick();
+    expect(painted).toEqual([1]);
+    request(4);
+    releases.shift()!();
+    await tick();
+    expect(painted).toEqual([1, 3]);
+    releases.shift()!();
+    await tick();
+    expect(painted).toEqual([1, 3, 4]);
+  });
+
+  it("deduplicates move/release at the same target while preserving explicit redraws", async () => {
+    const started: number[] = [];
+    let release!: () => void;
+    const scheduler = new FrameRenderScheduler(async token => {
+      started.push(token.time);
+      await new Promise<void>(resolve => { release = resolve; });
+      scheduler.markCommitted(token);
+    });
+    scheduler.request(1, 10);
+    scheduler.request(1, 10);
+    release();
+    await tick();
+    scheduler.request(1, 10);
+    expect(started).toEqual([1]);
+    scheduler.request(1, 10, undefined, { force: true });
+    expect(started).toEqual([1, 1]);
+    release();
+    await tick();
+  });
+
+  it("hard-invalidates continuous progress on a jump, revision or workspace switch", async () => {
+    const tokens: FrameRequestToken[] = [];
+    let context = "workspace-a";
+    const scheduler = new FrameRenderScheduler(async token => { tokens.push(token); }, undefined, () => context);
+    scheduler.request(1, 10, undefined, { continuous: true });
+    await tick();
+    scheduler.request(2, 10);
+    expect(scheduler.markCommitted(tokens[0])).toBe(false);
+    await tick();
+    scheduler.request(3, 10, undefined, { continuous: true });
+    await tick();
+    context = "workspace-b";
+    expect(scheduler.markCommitted(tokens[2])).toBe(false);
+    scheduler.request(4, 11, undefined, { continuous: true });
+    await tick();
+    expect(scheduler.markCommitted(tokens[2])).toBe(false);
+    expect(scheduler.markCommitted(tokens[3])).toBe(true);
+  });
+
   it("runs at most one render at a time and keeps only the latest pending target", async () => {
     const started: number[] = [];
     const gates: Array<() => void> = [];

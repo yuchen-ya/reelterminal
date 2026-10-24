@@ -4,6 +4,7 @@ import {
   ActionHistory,
   normalizeGeneratedShaders,
   normalizeProjectWorkAssetFields,
+  normalizeProjectWorkbenchFields,
   registerProjectGeneratedShaders,
 } from "@reelterminal/core";
 import type { StoreApi } from "zustand";
@@ -104,8 +105,8 @@ export function createProjectPersistenceSlice(
         // Auto-save recovery parses raw JSON and never passes through
         // normalizeProjectStoredFields, so stored-field repair for fields
         // without engine loaders (work assets) must run here explicitly.
-        const normalizedProject = normalizeProjectWorkAssetFields(
-          recoveredProject,
+        const normalizedProject = normalizeProjectWorkbenchFields(
+          normalizeProjectWorkAssetFields(recoveredProject),
         );
         const storedMedia = await loadProjectMedia(
           normalizedProject.id,

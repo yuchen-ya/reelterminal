@@ -86,6 +86,7 @@ import {
 } from "./access";
 
 export interface CapabilityContext {
+  readonly review?: { readonly available: boolean; readonly access: AgentAccessMode };
   readonly mediaRoots: readonly string[];
   /**
    * Roots under which export.start destinationPath may deliver a verified
@@ -206,7 +207,7 @@ export async function buildCapabilities(
   // roots, bridges) still apply, verbs keep their real pre-execution
   // checks, and an unprobed status is never reported available.
   const requestedDomain = request.domain;
-  const wants = (domain: CapabilityDomain): boolean => requestedDomain === undefined || requestedDomain === domain;
+  const wants = (domain: CapabilityDomain): boolean => request.kind !== "review" && (requestedDomain === undefined || requestedDomain === domain);
   const wantsFfmpegTools = wants("video") || wants("frames") || wants("motion");
   const audioReady: CapabilityStatus = wants("audio") ? await audioAnalysisPreflight() : notProbed("audio");
   const speechVadReady: CapabilityStatus = wants("audio") ? await speechVadPreflight() : notProbed("audio");
@@ -388,7 +389,8 @@ export async function buildCapabilities(
       };
   return {
     runtime: ctx.live ? "live" : FACADE_RUNTIME,
-    ...(ctx.live ? { unavailableVerbs: ctx.live.unavailableVerbs } : {}),
+    ...(request.kind ? { kind: request.kind, verbs: verbsForWorkspace(request.kind), access: request.kind === "review" ? ctx.review?.access ?? "read-only" : ctx.live?.access ?? "write" } : {}),
+    ...(ctx.live ? { unavailableVerbs: ctx.live.unavailableVerbs.filter(verb => !request.kind || verbsForWorkspace(request.kind).includes(verb)) } : {}),
     stateModel: {
       canonicalProject: true,
       atomicBatch: true,
@@ -397,7 +399,7 @@ export async function buildCapabilities(
       serializedExecution: true,
     },
     mediaImport: {
-      available: mediaImportAvailable,
+      available: request.kind === "review" ? ctx.review?.available === true && ctx.mediaRoots.length > 0 : mediaImportAvailable,
       ...(mediaImportAvailable
         ? {}
         : {
@@ -407,7 +409,8 @@ export async function buildCapabilities(
                 : "Live mode: the host did not provide the live-store media import bridge; media.import is unavailable in this session."
               : "No media roots are configured for this session; every media.import would fail until roots are provided.",
           }),
-      limits: { maxFileBytes: ctx.live ? 256 * 1024 * 1024 : null, formatPolicy: "Container/track probing by mediabunny; GUI codec decode support must also succeed. No URL import.", buffering: ctx.live ? "GUI bridge currently reads the complete file into an ArrayBuffer/File" : "streamed metadata probing", overLimitAdvice: "Use explicit source segments under the byte limit while retaining originals and recording each segment source offset. No automatic proxy binding; do not silently change frame rate or treat a proxy as final-quality source." },
+      limits: request.kind === "review" ? { maxFileBytes: null, buffering: "Native 1 MiB streaming copy, managed original inspection, then atomic review.ingest/review.apply registration; no media bytes in CLI JSON", formatPolicy: "Registered FileResource UUIDs: image/text/data/video/model3d. model3d uses resourceId and model/gltf-binary GLB 2.0 originals; read-only preview, no video attach. GLB preflight: self-contained PNG/JPEG, basic PBR/unlit, skin/morph animation; no external URI, Draco/Meshopt/KTX2/CDN. Preview budget 48 MiB file, 96 MiB expanded geometry, 16M texture pixels, 4096 texture side, 500000 instanced triangles, 10000 nodes. Unsupported previews retain/export original bytes. Node package schema 2 required for model3d; schema 1 remains readable. No URL import." }
+        : { maxFileBytes: ctx.live ? 256 * 1024 * 1024 : null, formatPolicy: "Container/track probing by mediabunny; GUI codec decode support must also succeed. No URL import.", buffering: ctx.live ? "GUI bridge currently reads the complete file into an ArrayBuffer/File" : "streamed metadata probing", overLimitAdvice: "Use explicit source segments under the byte limit while retaining originals and recording each segment source offset. No automatic proxy binding; do not silently change frame rate or treat a proxy as final-quality source." },
       sources: ["file"],
       mediaRoots: ctx.mediaRoots,
       recommendedRoot: ctx.mediaRoots[0] ?? null,
@@ -552,6 +555,7 @@ export async function buildCapabilities(
           requires: "a live desktop session with the canonical GUI/Core history",
         },
     pluginTools: Object.fromEntries(PLUGIN_TOOLS.map((tool) => {
+      if (request.kind === "review") return [tool.name, { available: false, reason: "This legacy processor requires a video/project target; it is excluded from the review verb scope." }];
       const requires = tool.requires ?? [];
       const renderUnprobed = requires.includes("render") && previewRaw.probed === false;
       const missing = requires.filter((requirement) => requirement === "render" ? !previewRaw.available : requirement === "artifactRoot" ? noArtifactRoot : ctx.mediaRoots.length === 0);
@@ -1160,7 +1164,7 @@ export async function buildCapabilities(
         requires: "a bounded project/media/codec preflight result shared with export.start",
       },
     },
-    editOps: EDIT_OP_TYPES,
+    editOps: request.kind === "review" ? [] : EDIT_OP_TYPES,
     textOverlay: {
       modelState: true,
       pixelRendering: preview.available,
@@ -1258,15 +1262,17 @@ export async function buildCapabilities(
 
 export async function buildSessionDescription(
   ctx: CapabilityContext,
+  request: { kind?: "video" | "review" } = {},
 ): Promise<SessionDescription> {
-  const caps = await buildCapabilities(ctx);
+  const caps = await buildCapabilities(ctx, request);
 
   return {
     facadeVersion: FACADE_VERSION,
     contractVersion: FACADE_CONTRACT_VERSION,
     runtime: ctx.live ? "live" : FACADE_RUNTIME,
-    verbs: FACADE_VERBS,
-    editOps: EDIT_OP_TYPES,
+    ...(request.kind ? { kind: request.kind } : {}),
+    verbs: request.kind ? verbsForWorkspace(request.kind) : FACADE_VERBS,
+    editOps: request.kind === "review" ? [] : EDIT_OP_TYPES,
     errorCodes: FACADE_ERROR_CODES,
 
     stepLetters: {
@@ -1285,14 +1291,25 @@ export async function buildSessionDescription(
     },
     ...(ctx.live
       ? {
-          access: ctx.live.access,
-          writer: ctx.live.writer,
+          access: request.kind === "review" ? ctx.review?.access ?? "read-only" : ctx.live.access,
+          writer: request.kind === "review" ? ctx.review?.access === "write" : ctx.live.writer,
           leaseHolder: ctx.live.leaseHolder,
           sessionId: ctx.live.sessionId,
         }
       : {}),
-    notes: ctx.live ? liveNotes(ctx, caps) : headlessNotes(ctx, caps),
+    notes: request.kind === "review" ? [
+      "Independent user-level review storage. No video project is created or selected; legacy workbench.* remains project-scoped.",
+      "Writes require an explicit review target, current runtime identity, expected node/directory revision and a durable UUID requestId. Media paths must be inside the returned allowed roots.",
+      "Review write access is separately granted for this workspace/runtime. Video write access and writer leases do not authorize review writes. Publishing a human handoff is not an agent operation.",
+        "review.media.inspect and review.frames.extract read an exact node-owned reference without a video project. Frame candidates stay under review/jobs and retain their source target/revision; adding content, feedback or processing records requires an explicit review write command.",
+      "The remaining legacy capability status fields describe global providers; use this scoped verb list for review command discovery.",
+    ] : ctx.live ? liveNotes(ctx, caps) : headlessNotes(ctx, caps),
   };
+}
+
+function verbsForWorkspace(kind: "video" | "review"): readonly FacadeVerb[] {
+  return FACADE_VERBS.filter(verb => kind === "video" ? !verb.startsWith("review.") :
+    verb.startsWith("review.") || verb.startsWith("help.") || verb === "session.describe" || verb === "capabilities.get");
 }
 
 function headlessNotes(

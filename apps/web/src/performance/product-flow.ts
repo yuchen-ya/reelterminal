@@ -16,10 +16,11 @@ interface TimelineGesture {
   revision?: number;
   failed: boolean;
   project?: object;
-  markedFrames: WeakMap<object, Set<number>>;
+  targetTime?: number;
+  markedFrames: WeakMap<object, Set<string>>;
 }
 let inputGesture: TimelineGesture | undefined;
-let pendingFrame: { project: object; revision: number; operation: PerfOperation } | undefined;
+let pendingFrame: { project: object; revision: number; targetTime?: number; operation: PerfOperation } | undefined;
 let projectOperations = new WeakMap<object, PerfOperation>();
 
 /** Only the foreground timeline gesture owns input correlation. */
@@ -83,41 +84,42 @@ function settleGesture(gesture: TimelineGesture): void {
   if (!gesture.failed && gesture.project && gesture.revision !== undefined) {
     if (!hasMarkedFrame(gesture, gesture.project, gesture.revision)) {
       const operation = { ...gesture.operation, context: { ...gesture.operation.context, revision: gesture.revision } };
-      pendingFrame = { project: gesture.project, revision: gesture.revision, operation };
+      pendingFrame = { project: gesture.project, revision: gesture.revision, targetTime: gesture.targetTime, operation };
     }
   }
   if (!gesture.failed) {
     gesture.operation.sink.mark("gesture.final-commit", {
       ...gesture.operation.context,
       ...(gesture.revision !== undefined ? { revision: gesture.revision } : {}),
-    });
+    }, gesture.targetTime === undefined ? undefined : { timelineTimeSeconds: gesture.targetTime });
   }
   endPerfOperation(gesture.operation, gesture.failed ? "error" : "ok");
   gesture.closed = true;
 }
 
 function hasMarkedFrame(gesture: TimelineGesture, project: object, revision: number): boolean {
-  return gesture.markedFrames.get(project)?.has(revision) ?? false;
+  return gesture.markedFrames.get(project)?.has(`${revision}:${gesture.targetTime ?? ""}`) ?? false;
 }
 
 function markGestureFrame(
   gesture: TimelineGesture,
   project: object,
   revision: number,
-  frame?: { seq: number; epoch: number },
+  frame?: { seq: number; epoch: number; time?: number },
 ): void {
   let revisions = gesture.markedFrames.get(project);
   if (!revisions) {
     revisions = new Set();
     gesture.markedFrames.set(project, revisions);
   }
-  if (revisions.has(revision)) return;
-  revisions.add(revision);
+  const key = `${revision}:${gesture.targetTime ?? ""}`;
+  if (revisions.has(key)) return;
+  revisions.add(key);
   gesture.operation.sink.mark("gesture.first-valid-frame", {
     ...gesture.operation.context,
     revision,
     ...(frame ? { frameSeq: frame.seq, frameEpoch: frame.epoch } : {}),
-  });
+  }, frame?.time === undefined ? undefined : { timelineTimeSeconds: frame.time });
 }
 
 /** Retain the gesture while its existing workspace queue applies the final move. */
@@ -152,7 +154,7 @@ export function resetProductPerfFlow(): void {
 }
 registerCaptureCleanup(resetProductPerfFlow);
 
-export function recordGestureFrame(project: object, revision: number, frame?: { seq: number; epoch: number }): void {
+export function recordGestureFrame(project: object, revision: number, frame?: { seq: number; epoch: number; time?: number }): void {
   const sink = getPerfSink();
   if (!sink.enabled) return;
   const gesture = inputGesture;
@@ -163,18 +165,29 @@ export function recordGestureFrame(project: object, revision: number, frame?: { 
     gesture.project === project &&
     gesture.revision === revision
   ) {
+    if (gesture.targetTime !== undefined && gesture.targetTime !== frame?.time) return;
     markGestureFrame(gesture, project, revision, frame);
     return;
   }
 
   const pending = pendingFrame;
   if (!pending || pending.operation.sink !== sink) return;
-  if (project !== pending.project || revision !== pending.revision) return;
+  if (project !== pending.project || revision !== pending.revision ||
+    (pending.targetTime !== undefined && pending.targetTime !== frame?.time)) return;
   pending.operation.sink.mark("gesture.first-valid-frame", {
     ...pending.operation.context,
     ...(frame ? { frameSeq: frame.seq, frameEpoch: frame.epoch } : {}),
-  });
+  }, frame?.time === undefined ? undefined : { timelineTimeSeconds: frame.time });
   pendingFrame = undefined;
+}
+
+/** Seek changes transient timeline state, so it has no project mutation to
+ * establish the gesture's project/revision/frame target. Bind it explicitly. */
+export function bindTimelineSeekTarget(project: object, revision: number, time: number): void {
+  if (!getTimelinePerfOperation()) return;
+  inputGesture!.project = project;
+  inputGesture!.revision = revision;
+  inputGesture!.targetTime = time;
 }
 
 /** Weak keys preserve correlation without retaining project snapshots. */

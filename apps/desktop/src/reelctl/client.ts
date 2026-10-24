@@ -362,7 +362,7 @@ export class LiveCommandClient {
         : {}),
       ...(options.expectedProjectEpoch !== undefined
         ? { expectedProjectEpoch: options.expectedProjectEpoch }
-        : typeof status.projectEpoch === "string" ? { expectedProjectEpoch: status.projectEpoch } : {}),
+        : !command.startsWith("review.") && !((command === "capabilities.get" || command === "session.describe") && input.kind === "review") && typeof status.projectEpoch === "string" ? { expectedProjectEpoch: status.projectEpoch } : {}),
     };
     const hasStableIdempotencyKey = typeof input.idempotencyKey === "string" && input.idempotencyKey.length > 0;
     const attempts = retry === "safe" || retry === "idempotent" && hasStableIdempotencyKey ? 2 : 1;

@@ -21,6 +21,7 @@ import type { Project, MediaItem } from "../types/project";
 import type { WorkAsset } from "../types/work-asset";
 import type { Track, Clip, Transition } from "../types/timeline";
 import { getActionHandler } from "./registry";
+import { invertWorkbenchAction } from "./workbench-actions";
 
 export class InverseActionGenerator {
   generate(action: Action, projectBefore: Project): Action | null {
@@ -101,6 +102,8 @@ export class InverseActionGenerator {
         action as WorkAssetAction & Action,
         projectBefore,
       );
+    } else if (type.startsWith("workbench/")) {
+      return invertWorkbenchAction(action, projectBefore);
     }
 
     return null;

@@ -1,4 +1,5 @@
 import type { CollaborationInstructionsResult } from "./collaboration-instructions";
+import { REVIEW_VERBS, type ReviewFacadeBindings } from "./review";
 import { bindBundledTools, type BundledToolBindings } from "./plugin-runtime";
 import { withValidatedFacadeCalls } from "./request-validation";
 import type { RequirementsListParams, RequirementsListResult, RequirementsGetParams, RequirementsGetResult } from "./requirements";
@@ -78,11 +79,20 @@ import type {
   HistoryControlResult,
   VerifyArtifactParams,
   VerifyArtifactResult,
+  WorkbenchChangesParams,
+  WorkbenchChangesResult,
+  WorkbenchGetParams,
+  WorkbenchGetResult,
+  WorkbenchHandoffGetParams,
+  WorkbenchHandoffGetResult,
+  WorkbenchIngestParams,
+  WorkbenchIngestResult,
 } from "./types";
 import { WORKSPACE_VERBS, type WorkspaceVerb } from "./workspace-library";
 
-export interface AgentFacade extends BundledToolBindings {
-  readonly "session.describe": () => Promise<FacadeResult<SessionDescription>>;
+export interface AgentFacade extends BundledToolBindings, ReviewFacadeBindings {
+  readonly "review.context": (params?: Record<string, never>) => Promise<FacadeResult<import("@reelterminal/core/review/types").ReviewContext>>;
+  readonly "session.describe": (params?: Pick<CapabilitiesGetParams, "kind">) => Promise<FacadeResult<SessionDescription>>;
   readonly "capabilities.get": (
     params?: CapabilitiesGetParams,
   ) => Promise<FacadeResult<Capabilities>>;
@@ -178,6 +188,18 @@ export interface AgentFacade extends BundledToolBindings {
   readonly "verify.artifact": (
     params: VerifyArtifactParams,
   ) => Promise<FacadeResult<VerifyArtifactResult>>;
+  readonly "workbench.ingest": (
+    params: WorkbenchIngestParams,
+  ) => Promise<FacadeResult<WorkbenchIngestResult>>;
+  readonly "workbench.get": (
+    params?: WorkbenchGetParams,
+  ) => Promise<FacadeResult<WorkbenchGetResult>>;
+  readonly "workbench.changes": (
+    params: WorkbenchChangesParams,
+  ) => Promise<FacadeResult<WorkbenchChangesResult>>;
+  readonly "workbench.handoff.get": (
+    params: WorkbenchHandoffGetParams,
+  ) => Promise<FacadeResult<WorkbenchHandoffGetResult>>;
   readonly "project.list": (params?: Record<string, never>) => Promise<FacadeResult<unknown>>;
   readonly "workspace.list": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
   readonly "workspace.create": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
@@ -263,7 +285,8 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
   const session = new AgentFacadeSession(config);
   return withValidatedFacadeCalls({
     ...bindBundledTools(session, config, "headless"),
-    "session.describe": () => session.sessionDescribe(),
+    ...Object.fromEntries(REVIEW_VERBS.map(verb => [verb, async (_params: Record<string, unknown>): Promise<FacadeResult<unknown>> => ({ ok: false, error: { code: "UNSUPPORTED", message: "Independent review requires the desktop live host" } })])) as ReviewFacadeBindings,
+    "session.describe": (params) => session.sessionDescribe(params),
     "capabilities.get": (params) => session.capabilitiesGet(params),
     "project.create": (params) => session.projectCreate(params),
     "project.open": (params) => session.projectOpen(params),
@@ -286,6 +309,7 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "timeline.query": (params) => session.timelineQuery(params),
     "timeline.mapSourceTimes": (params) => session.timelineMapSourceTimes(params),
     "editor.get_context": (params) => session.editorGetContext(params),
+    "review.context": async () => ({ ok: false, error: { code: "UNSUPPORTED", message: "Independent review requires the desktop live host" } }),
     "editor.control": (params) => session.editorControl(params),
     "edit.apply": (params) => session.editApply(params),
     "edit.validate": (params) => session.editValidate(params),
@@ -300,6 +324,10 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "job.status": (params) => session.jobStatus(params),
     "job.cancel": (params) => session.jobCancel(params),
     "verify.artifact": (params) => session.verifyArtifact(params),
+    "workbench.ingest": (params) => session.workbenchIngest(params),
+    "workbench.get": (params) => session.workbenchGet(params),
+    "workbench.changes": (params) => session.workbenchChanges(params),
+    "workbench.handoff.get": (params) => session.workbenchHandoffGet(params),
     "material.list": (params) => session.materialList(params),
     "material.get": (params) => session.materialGet(params),
     "material.create": (params) => session.materialCreate(params),

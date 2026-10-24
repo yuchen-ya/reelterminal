@@ -6,6 +6,8 @@ import { ok, toFailure, type FacadeResult } from "./errors";
 
 /** Trusted, bundled plugins. This is an authoring API, not a sandbox. */
 export interface ToolContext {
+  /** Frozen revision for resource-only tools that have no video project. */
+  readonly sourceRevision?: number;
   readonly analysisJobs?: {
     current: (jobId: string) => import("./types").JobStatusView | null;
     observe: (jobId: string, persist: (job: import("./types").JobStatusView) => void) => void;

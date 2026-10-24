@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DesktopTitleBar } from "./shell/DesktopTitleBar";
 import { Workspace } from "./shell/Workspace";
 import { DesktopProjectNameControl } from "./shell/DesktopProjectNameControl";
@@ -14,6 +14,7 @@ import { workspaceManager } from "../services/workspace-manager";
 import { UpdateBanner } from "./UpdateBanner";
 import { installRendererCrashHandlers, reportRendererCrash } from "./crash-reporting";
 import { installLiveBridge } from "../services/agent/live-bridge";
+import { initializeReviewWorkspace } from "../services/review-workspace/bootstrap";
 import { useUIStore } from "../stores/ui-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { SettingsDialog } from "../components/editor/settings/SettingsDialog";
@@ -31,6 +32,8 @@ import { useTranslation } from "react-i18next";
 import { toast } from "../stores/notification-store";
 import { ToastContainer } from "../components/Toast";
 import "./theme/desktop-theme.css";
+import { WorkspaceModeTabs } from "../components/WorkspaceModeTabs";
+const ReviewPage = lazy(() => import("./pages/ReviewPage").then(module => ({ default: module.ReviewPage })));
 
 function detectPlatform(): string {
   if (typeof navigator !== "undefined" && /Mac/i.test(navigator.platform)) return "darwin";
@@ -38,12 +41,24 @@ function detectPlatform(): string {
   return "linux";
 }
 
+function dispatchDesktopHistory(direction: "undo" | "redo"): void {
+  const active = document.activeElement;
+  if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || (active instanceof HTMLElement && active.isContentEditable)) {
+    void window.reelterminal?.inputHistory?.(direction);
+  } else if (useUIStore.getState().desktopPage === "workbench") {
+    window.dispatchEvent(new CustomEvent("reelterminal:review-history", { detail: direction }));
+  } else void useProjectStore.getState()[direction]();
+}
+
 export function DesktopApp(): JSX.Element {
   const { t } = useTranslation();
   const platform = detectPlatform();
   const hasProject = useProjectStore((state) => state.hasOpenProject);
   const desktopPage = useUIStore((state) => state.desktopPage);
-  const isVideoEditing = desktopPage !== "motion";
+  const isReview = desktopPage === "workbench";
+  // Video editing is the edit page only: workbench/motion must not show the
+  // export control or the editor tour.
+  const isVideoEditing = desktopPage !== "motion" && desktopPage !== "workbench";
   const [helpOpen, setHelpOpen] = useState(false);
   const [choosingProject, setChoosingProject] = useState(false);
   const openingProject = useRef(false);
@@ -58,6 +73,7 @@ export function DesktopApp(): JSX.Element {
 
   const handleNewProject = useCallback(() => {
     stopTour();
+    useUIStore.getState().setDesktopPage("edit");
     setChoosingProject(true);
   }, []);
 
@@ -87,10 +103,10 @@ export function DesktopApp(): JSX.Element {
           setHelpOpen(true);
           break;
         case "undo":
-          void useProjectStore.getState().undo();
+          dispatchDesktopHistory("undo");
           break;
         case "redo":
-          void useProjectStore.getState().redo();
+          dispatchDesktopHistory("redo");
           break;
         case "newProject":
           handleNewProject();
@@ -135,6 +151,7 @@ export function DesktopApp(): JSX.Element {
         (key === "z" && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) ||
         (key === "y" && e.ctrlKey && !e.shiftKey && !e.altKey);
       if (!isUndo && !isRedo) return;
+      if (useUIStore.getState().desktopPage === "workbench") return;
       e.preventDefault();
       e.stopPropagation();
       if (isUndo) {
@@ -155,6 +172,9 @@ export function DesktopApp(): JSX.Element {
   // requests (getState/getContext/applyActions/requestSave) against the
   // canonical renderer store. No-op off desktop.
   useEffect(() => installLiveBridge(), []);
+  useEffect(() => {
+    void initializeReviewWorkspace().catch(error => toast.error(error instanceof Error ? error.message : String(error)));
+  }, []);
 
   // Saving errors must be visible even when the Settings dialog is closed.
   // The dirty revision remains set, so this notification reflects recoverable
@@ -275,7 +295,7 @@ export function DesktopApp(): JSX.Element {
         // The desktop chrome carries the rename entry, not just the
         // browser-only Toolbar. Both editor workspaces rename the same project;
         // the chooser hides this control until the user returns or chooses.
-        projectControl={showEditor ? <DesktopProjectNameControl onNewProject={handleNewProject} /> : null}
+        projectControl={showEditor && !isReview ? <DesktopProjectNameControl onNewProject={handleNewProject} /> : null}
       >
         {showEditor && isVideoEditing ? <span data-tour="desktop-export"><DesktopExportButton /></span> : null}
         <ToolcraftTooltip content={t("common.githubRepository")} placement="below">
@@ -306,6 +326,17 @@ export function DesktopApp(): JSX.Element {
           className="mr-2"
         />
       </DesktopTitleBar>
+      <div className="flex h-11 shrink-0 items-center justify-center gap-3 border-b border-border bg-bg-1 px-3">
+        <WorkspaceModeTabs activeMode={isReview ? "workbench" : "video"} ariaLabel={t("desktop.workspace.ariaLabel")}
+          accessibleLabels={{ video: t("desktop.workspace.videoEditing"), workbench: t("desktop.workspace.workbenchReview") }}
+          onSelectMode={mode => { stopTour(); useUIStore.getState().setDesktopPage(mode === "workbench" ? "workbench" : "edit"); setChoosingProject(false); }} />
+        <details className="relative text-xs text-fg-3"><summary className="cursor-pointer">{t("review.legacyTools")}</summary>
+          <div className="absolute right-0 z-50 mt-1 w-52 rounded-lg border border-border bg-bg-1 p-2 shadow-lg">
+            <button type="button" disabled={!hasProject} className="w-full rounded-md px-2 py-1.5 text-left disabled:opacity-40" title={t("review.openProjectFirst")}
+              onClick={() => useUIStore.getState().setDesktopPage("motion")}>{t("review.legacyMotion")}</button>
+          </div>
+        </details>
+      </div>
       <div className="min-h-0 flex-1">
         <ErrorBoundary
           onError={(error, info) =>
@@ -317,7 +348,8 @@ export function DesktopApp(): JSX.Element {
             })
           }
         >
-          {hasProject ? (
+          {isReview && !choosingProject ? <Suspense fallback={<div className="grid h-full place-items-center text-sm text-fg-2">{t("review.loading")}</div>}><ReviewPage /></Suspense> : null}
+          {hasProject && !isReview ? (
             // Keep the current editor and its engines mounted while choosing.
             <div className="h-full" hidden={choosingProject}>
               <EditorBootstrapGate>
@@ -325,7 +357,7 @@ export function DesktopApp(): JSX.Element {
               </EditorBootstrapGate>
             </div>
           ) : null}
-          {!hasProject || choosingProject ? (
+          {!isReview && (!hasProject || choosingProject) ? (
             <DesktopStartScreen
               onProjectOpened={() => setChoosingProject(false)}
               onCancel={hasProject ? () => setChoosingProject(false) : undefined}

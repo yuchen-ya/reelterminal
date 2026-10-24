@@ -4,17 +4,15 @@ import { useTranslation } from "react-i18next";
 import { ToolcraftBadge } from "@reelterminal/ui";
 import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
 import { ToolcraftHeading as Heading } from "@reelterminal/ui";
-import { ToolcraftSelectableCard as SelectableCard } from "@reelterminal/ui";
 import { ToolcraftText as Text } from "@reelterminal/ui";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
-import { Box, Smartphone, Monitor, Square, Film } from "@/icons/lucide-compat";
+import { Smartphone, Monitor, Square, Film } from "@/icons/lucide-compat";
 
 import { ReelTerminalMark } from "@/components/brand/ReelTerminalMark";
 import { Icon } from "@/icons/Icon";
 import {
   DESKTOP_FORMATS,
   startNewProject,
-  startNewMotionProject,
   openRecentProject,
   openProject,
   saveCurrentProject,
@@ -40,8 +38,6 @@ function formatDimensions(format: NewProjectFormat): string {
   return `${format.width} × ${format.height} · ${format.frameRate}fps`;
 }
 
-type ProjectMode = "edit" | "motion";
-
 export function DesktopStartScreen({
   onProjectOpened,
   onCancel,
@@ -52,7 +48,6 @@ export function DesktopStartScreen({
   const { t } = useTranslation();
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
-  const [projectMode, setProjectMode] = useState<ProjectMode>("edit");
   const setDesktopPage = useUIStore((state) => state.setDesktopPage);
   const busy = starting || openingId !== null;
 
@@ -88,23 +83,17 @@ export function DesktopStartScreen({
     setStarting(true);
     try {
       await saveCurrentProject();
-      if (projectMode === "motion") {
-        await startNewMotionProject(format);
-      } else {
-        await startNewProject(format);
-      }
-      setDesktopPage(projectMode);
+      await startNewProject(format);
+      setDesktopPage("edit");
       onProjectOpened?.();
     } catch (error) {
       toast.error(t("desktop.start.actionFailed"), error instanceof Error ? error.message : String(error));
     } finally {
       setStarting(false);
     }
-  }, [projectMode, setDesktopPage, onProjectOpened, t]);
+  }, [setDesktopPage, onProjectOpened, t]);
 
-  const formatModeLabel = projectMode === "motion"
-    ? t("desktop.start.modeMotion")
-    : t("desktop.start.modeVideo");
+  const formatModeLabel = t("desktop.start.modeVideo");
 
   return (
     <div className="h-full overflow-y-auto bg-bg text-fg">
@@ -131,48 +120,6 @@ export function DesktopStartScreen({
           <Text type="supporting" display="block" className="mt-1">
             {t("desktop.start.chooseWorkspace")}
           </Text>
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <SelectableCard
-              label={t("desktop.start.videoEditor")}
-              isSelected={projectMode === "edit"}
-              onChange={() => setProjectMode("edit")}
-              padding={5}
-            >
-              <div className="flex items-start gap-4">
-                <span className="flex h-11 w-11 items-center justify-center rounded-md bg-accent-soft text-accent">
-                  <Film size={22} aria-hidden />
-                </span>
-                <span>
-                  <Text type="large" weight="bold" display="block">
-                    {t("desktop.start.videoEditor")}
-                  </Text>
-                  <Text type="supporting" display="block" className="mt-1">
-                    {t("desktop.start.videoEditorDescription")}
-                  </Text>
-                </span>
-              </div>
-            </SelectableCard>
-            <SelectableCard
-              label={t("desktop.start.motionCreator")}
-              isSelected={projectMode === "motion"}
-              onChange={() => setProjectMode("motion")}
-              padding={5}
-            >
-              <div className="flex items-start gap-4">
-                <span className="flex h-11 w-11 items-center justify-center rounded-md bg-accent text-accent-fg">
-                  <Box size={22} aria-hidden />
-                </span>
-                <span>
-                  <Text type="large" weight="bold" display="block">
-                    {t("desktop.start.motionCreator")}
-                  </Text>
-                  <Text type="supporting" display="block" className="mt-1">
-                    {t("desktop.start.motionCreatorDescription")}
-                  </Text>
-                </span>
-              </div>
-            </SelectableCard>
-          </div>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {DESKTOP_FORMATS.map((format) => {
               const FormatIcon = FORMAT_ICONS[format.id] ?? Film;

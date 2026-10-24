@@ -1,3 +1,4 @@
+import { expect } from "vitest";
 /** External-agent tests invoke the shipped CLI in a fresh process per request. */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { REELCTL_PATH } from "./paths";
@@ -78,4 +79,9 @@ export async function connectExternalAgent(endpointFile: string): Promise<Extern
       await Promise.all(pending);
     },
   };
+}
+
+export function value<T>(reply: FacadeCallResult<T>): T {
+  expect(reply.ok, JSON.stringify(reply.error)).toBe(true);
+  return reply.value!;
 }

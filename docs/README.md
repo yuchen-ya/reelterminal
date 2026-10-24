@@ -43,6 +43,31 @@
 - [`MULTI-PROJECT-VERSIONING.md`](MULTI-PROJECT-VERSIONING.md) — multi-project workspaces, immutable version nodes, media retention, and real-use acceptance checklist; interaction defers to VERSION-NODES-UX.
 - [`MULTI-PROJECT-USAGE.md`](MULTI-PROJECT-USAGE.md) — desktop version-track operations, save-versus-retain semantics, explicit CLI targets (`node.save`/`node.rename`/`node.restore`), and the external-evidence acceptance workflow.
 
+## AI material workbench
+
+- [`REVIEW-WORKSPACE-FOUNDATION-DESIGN.md`](REVIEW-WORKSPACE-FOUNDATION-DESIGN.md) — independent Review Workspace design: storage/resources, dual CLI scopes, native export, processing-step comparisons and migration are implemented; optional assistant remains outside this delivery.
+- [`REVIEW-WORKSPACE-FOUNDATION-TASKS.md`](REVIEW-WORKSPACE-FOUNDATION-TASKS.md) — P0–P7 execution packages and acceptance gates for that foundation design.
+- [`AI-MATERIAL-WORKBENCH-DESIGN.md`](AI-MATERIAL-WORKBENCH-DESIGN.md) — batch decision processor for images, text, structured data and video; provenance references, reversible decisions and explicit Agent handoff.
+- [`AI-MATERIAL-WORKBENCH-INTERACTION.md`](AI-MATERIAL-WORKBENCH-INTERACTION.md) — confirmed interaction direction: existing ReelTerminal shell, pending/processed queues, lightweight edits, source-tag references and batch handoff; includes Figma prototype links and simulation limits.
+- [`AI-MATERIAL-WORKBENCH-INTEGRATION.md`](AI-MATERIAL-WORKBENCH-INTEGRATION.md) — source-based integration audit of the user's React prototype: reusable components, host container changes, dependency adaptation, mock-to-production gaps and staged acceptance.
+- [`AI-MATERIAL-WORKBENCH-ROUND2.md`](AI-MATERIAL-WORKBENCH-ROUND2.md) — second-round frontend restoration plan: prototype layout, empty states, editable issue panels and visual/behavioral acceptance.
+- [`AI-MATERIAL-WORKBENCH-ROUND2-DELIVERY.md`](AI-MATERIAL-WORKBENCH-ROUND2-DELIVERY.md) — second-round delivery record: prototype→previous→fixed diff, paired real screenshots, measurements, real-media closure, test commands/results and open limits.
+- [`AI-MATERIAL-WORKBENCH-ROUND3-DESIGN.md`](AI-MATERIAL-WORKBENCH-ROUND3-DESIGN.md) — design for the remaining work: GUI batch creation, feedback/undo consistency, data rework, handoff readback, repaired-image display and the R5 verification closure.
+- [`AI-MATERIAL-WORKBENCH-ROUND3-C-DELIVERY.md`](AI-MATERIAL-WORKBENCH-ROUND3-C-DELIVERY.md) — round-3 batch C delivery: atomic issue save, versioned feedback identity, per-issue readback, tag-reference preservation and text-range verification, with unit/GUI evidence and remaining limits.
+- [`AI-MATERIAL-WORKBENCH-ROUND3-BF-DELIVERY.md`](AI-MATERIAL-WORKBENCH-ROUND3-BF-DELIVERY.md) — round-3 batch B+F delivery: local media batch creation, pending/processed usage, repaired/original/draft separation, explicit repair base, window/zoom/drop-point/reopen evidence and limits.
+- [`AI-MATERIAL-WORKBENCH-NEXT-BATCH.md`](AI-MATERIAL-WORKBENCH-NEXT-BATCH.md) — N1–N4 execution plan: visible-scope/rework correctness, data per-cell rework, execution-level handoff/readback and verification closure.
+- [`AI-MATERIAL-WORKBENCH-ROUND3-D1E-DELIVERY.md`](AI-MATERIAL-WORKBENCH-ROUND3-D1E-DELIVERY.md) — round-3 N1 fix + D1/E delivery: visible-scope cursor, version-safe data drafts, appended text rework, handoff-bound rework, multi-cell rework badges, immutable execution snapshots, partial returns, member-scoped supersede, real GUI evidence and remaining A7/DPI limits.
+- [`AI-MATERIAL-WORKBENCH-ROUND2-PROMPT.md`](AI-MATERIAL-WORKBENCH-ROUND2-PROMPT.md) — execution handoff prompt for the second round.
+- [`AI-MATERIAL-WORKBENCH-TASKS.md`](AI-MATERIAL-WORKBENCH-TASKS.md) — implementation checklist with per-task acceptance evidence; first version implemented 2026-10-21 (real-device items remain open).
+- [`AI-MATERIAL-WORKBENCH-RESEARCH.md`](AI-MATERIAL-WORKBENCH-RESEARCH.md) — official documentation and pinned-source research on Krita AI Diffusion, ComfyUI, Label Studio, CVAT and pressure-sensitive drawing; reuse decisions and limits.
+
+- [`REVIEW-WORKSPACE-FOUNDATION-DELIVERY.md`](REVIEW-WORKSPACE-FOUNDATION-DELIVERY.md) — foundation implementation and isolated acceptance evidence.
+- [`AI-MATERIAL-WORKBENCH-ACCEPTANCE-HOTFIX.md`](AI-MATERIAL-WORKBENCH-ACCEPTANCE-HOTFIX.md) — acceptance fixes and historical verification limits.
+- [`REVIEW-3D-PREVIEW-DESIGN.md`](REVIEW-3D-PREVIEW-DESIGN.md) and [`REVIEW-3D-PREVIEW-DELIVERY.md`](REVIEW-3D-PREVIEW-DELIVERY.md) — GLB observation, snapshots, rework and delivery evidence.
+- [`REVIEW-AUDIT-FIX-ROUND1.md`](REVIEW-AUDIT-FIX-ROUND1.md), [`REVIEW-AUDIT-REMAINING.md`](REVIEW-AUDIT-REMAINING.md) and [`REVIEW-AUDIT-VERIFICATION.md`](REVIEW-AUDIT-VERIFICATION.md) — audit fixes, independent verification and remaining manual acceptance boundaries.
+
+Delivery and round records remain at their active linked paths as historical evidence; current behavior is described by the implementation and current contract.
+
 ## Distribution and attribution
 
 - [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) — third-party code,

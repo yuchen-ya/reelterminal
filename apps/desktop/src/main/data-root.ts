@@ -161,8 +161,11 @@ function migrationSources(target: DataRootLayout, pointer: DataRootPointer | nul
   if (pointer?.previousRoot) {
     const previous = dataRootLayout(pointer.previousRoot);
     sources.push({ kind: "workspace", from: previous.agentWorkspace, to: target.agentWorkspace });
+    sources.push({ kind: "review", from: previous.review, to: target.review });
+    sources.push({ kind: "review", from: path.join(previous.appData, "review"), to: target.review });
   }
   sources.push({ kind: "workspace", from: legacyWorkspaceRoot(), to: target.agentWorkspace });
+  sources.push({ kind: "review", from: path.join(legacyUserDataDir(), "review"), to: target.review });
   return sources;
 }
 
@@ -224,6 +227,7 @@ export async function prepareDataRootSession(
       activeLayout.appData,
       activeLayout.projects,
       activeLayout.agentWorkspace,
+      activeLayout.review,
       activeLayout.logs,
     ]) {
       mkdirSync(dir, { recursive: true });
@@ -268,6 +272,7 @@ export interface DataRootInfo {
   appData: string;
   projects: string;
   agentWorkspace: string;
+  review: string;
   logs: string;
   machineConfigDir: string;
   migrationItems: readonly MigrationItemResult[];
@@ -283,6 +288,7 @@ export function getDataRootInfo(): DataRootInfo {
     appData: layout?.appData ?? legacyUserDataDir(),
     projects: layout?.projects ?? "",
     agentWorkspace: layout?.agentWorkspace ?? legacyWorkspaceRoot(),
+    review: layout?.review ?? path.join(legacyUserDataDir(), "review"),
     logs: layout?.logs ?? "",
     machineConfigDir: configDir(),
     migrationItems: current?.migration.items ?? [],

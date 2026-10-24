@@ -110,6 +110,28 @@ const ACTION_DESCRIPTIONS: Record<
   "workAsset/delete": () => "Delete work asset",
   "workAsset/restore": () => "Restore work asset",
   "workAsset/rename": () => "Rename work asset",
+  "workbench/ingest": (params) => {
+    const batch = params.batch as { name?: string } | undefined;
+    return batch?.name ? `Ingest workbench batch "${batch.name}"` : "Ingest workbench batch";
+  },
+  "workbench/decide": (params) => {
+    const decisions = params.decisions as unknown[] | undefined;
+    return `Workbench decision (${decisions?.length ?? 0} items)`;
+  },
+  "workbench/content.update": () => "Workbench content revision",
+  "workbench/annotations.set": () => "Workbench annotations",
+  "workbench/feedback.save": () => "Workbench feedback",
+  "workbench/revert": (params) => {
+    const itemIds = params.itemIds as unknown[] | undefined;
+    return `Workbench retrieve to pending (${itemIds?.length ?? 0} items)`;
+  },
+  "workbench/tags.set": () => "Workbench tags",
+  "workbench/duplicateProposal.dismiss": () => "Dismiss duplicate proposal",
+  "workbench/handoff.publish": () => "Publish workbench handoff",
+  "workbench/handoff.ack": () => "Acknowledge workbench handoff",
+  "workbench/rework.ingest": () => "Workbench rework return",
+  "workbench/rework.clear": () => "Clear workbench rework markers",
+  "workbench/restore": () => "Restore workbench state",
   "clip/closeGapBefore": () => "Close gap",
   "track/consolidate": () => "Remove gaps",
   "track/restorePositions": () => "Restore positions",
@@ -622,6 +644,21 @@ export class ActionHistory {
 
   getHistoryEntries(): HistoryEntry[] {
     return [...this.undoStack];
+  }
+
+  /** A migrated subsystem leaves its old undo groups behind; other undo stays usable. */
+  discardUndoGroupsContaining(matches: (action: Action) => boolean): number {
+    const selected = this.undoStack.filter(entry => matches(entry.action));
+    if (!selected.length) return 0;
+    const groups = new Set(selected.flatMap(entry => entry.groupId ? [entry.groupId] : []));
+    const removed = new Set(this.undoStack.filter(entry => selected.includes(entry) || (entry.groupId && groups.has(entry.groupId))));
+    const previous = this.undoStack;
+    this.undoStack = previous.filter(entry => !removed.has(entry));
+    this.snapshots = this.snapshots.map(snapshot => ({ ...snapshot, stackIndex: previous.slice(0, snapshot.stackIndex).filter(entry => !removed.has(entry)).length }));
+    this.breakGroup();
+    this.emitEviction([...removed]);
+    this.notify();
+    return removed.size;
   }
 
   getRedoEntries(): HistoryEntry[] {

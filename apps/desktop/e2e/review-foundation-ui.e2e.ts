@@ -1,0 +1,208 @@
+import { value } from "./harness/cli-client";
+import { afterAll, describe, expect, test, vi } from "vitest";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import type { ReviewContext, ReviewNode } from "@reelterminal/core/review/types";
+import type { WorkbenchItem } from "@reelterminal/core/types/workbench";
+import type { ReviewExportStatus } from "@reelterminal/core/review/export";
+import type { ReviewPackagePreview } from "@reelterminal/core/review/archive";
+import { launchApp, type LaunchedApp } from "./harness/launch";
+import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
+import { ARTIFACTS_DIR, DESKTOP_DIR } from "./harness/paths";
+import { createVideoFixture } from "./harness/workbench-fixtures";
+
+
+describe("independent review GUI without a video project", () => {
+  let launched: LaunchedApp;
+  let agent: ExternalAgent;
+  afterAll(async () => {
+    if (launched && !launched.page.isClosed()) {
+      await mkdir(ARTIFACTS_DIR, { recursive: true });
+      await launched.page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-foundation-ui-terminal.png") });
+      await writeFile(path.join(ARTIFACTS_DIR, "review-foundation-ui-diagnostic.json"), JSON.stringify({ rendererConsole: launched.output.rendererConsole,
+        context: agent ? await agent.callCommand("review.context") : null,
+        alerts: await launched.page.getByRole("alert").allTextContents(),
+      }, null, 2));
+    }
+    await agent?.close(); await launched?.close();
+  });
+
+  test("creates a node, imports text and original files, reviews and recovers through the real UI", async () => {
+    launched = await launchApp();
+    await launched.waitForEndpointFile();
+    agent = await connectExternalAgent(launched.endpointFile);
+    const page = launched.page;
+    await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await page.getByTestId("review-page").waitFor({ state: "visible" });
+    expect((await agent.callCommand("editor.get_context")).error?.message).toBe("No project is open");
+    await page.getByLabel(/New node name|新节点名称/).fill("Independent GUI node");
+    await page.getByTestId("review-create-node").click();
+    await vi.waitFor(async () => expect(await page.getByTestId("review-node-title").textContent()).toBe("Independent GUI node"), { timeout: 20_000 });
+    expect(await page.getByTestId("review-access-toggle").isChecked()).toBe(false);
+    await page.getByTestId("review-access-toggle").click();
+    let context: ReviewContext;
+    await vi.waitFor(async () => { context = value(await agent.callCommand<ReviewContext>("review.context")); expect(context.access).toBe("write"); }, { timeout: 10_000 });
+    const nodes = value(await agent.callCommand<{ nodes: ReviewNode[] }>("review.nodes.list", { target: context!.target }));
+    const node = nodes.nodes.find(node => node.name === "Independent GUI node")!;
+    const target = { ...context!.target, nodeId: node.id };
+    await page.getByTestId("workbench-new-batch").click();
+    let dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: /Paste text|粘贴文本/ }).click();
+    await dialog.getByLabel(/Batch name|批次名称/).fill("Pasted originals");
+    await dialog.getByTestId("review-paste-text").fill("Alpha 👀\nBeta original");
+    await dialog.getByTestId("review-import-submit").click();
+    await dialog.waitFor({ state: "hidden" });
+    await page.getByTestId("text-body").waitFor({ state: "visible", timeout: 20_000 });
+    expect(await page.getByTestId("text-body").textContent()).toContain("Alpha 👀");
+    const first = value(await agent.callCommand<{ node: ReviewNode; items: Array<{ id: string }> }>("review.get", { target }));
+    expect(first.items).toHaveLength(1);
+    const text = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target, itemId: first.items[0].id }));
+    expect(text.item.content).toMatchObject({ versions: [{ text: "Alpha 👀\nBeta original" }] });
+
+    const files = path.join(launched.runDir, "review-input-folder");
+    await mkdir(files, { recursive: true });
+    await copyFile(path.join(DESKTOP_DIR, "build", "icon.png"), path.join(files, "original.png"));
+    await writeFile(path.join(files, "quoted.csv"), '\ufeffname,note\r\n"A, B","line 1\nline 2"\r\n', "utf8");
+    await writeFile(path.join(files, "exact.txt"), "File original\r\nSecond line\r\n", "utf8");
+    await writeFile(path.join(files, "records.json"), '[{"name":"first","value":null},{"name":"second","value":"001"}]', "utf8");
+    createVideoFixture(files, "original.mp4");
+    await page.getByTestId("workbench-new-batch").click();
+    dialog = page.getByRole("dialog");
+    await dialog.getByTestId("review-folder-input").setInputFiles(files);
+    await dialog.getByTestId("review-import-preview").waitFor({ state: "visible" });
+    await dialog.getByLabel(/Batch name|批次名称/).fill("Folder originals");
+    await dialog.getByTestId("review-import-submit").click();
+    await dialog.waitFor({ state: "hidden" });
+    let all: { node: ReviewNode; items: Array<{ id: string; title: string; batchId: string }> };
+    await vi.waitFor(async () => { all = value(await agent.callCommand<typeof all>("review.get", { target })); expect(all.items).toHaveLength(6); }, { timeout: 20_000 });
+    const imported = await Promise.all(all!.items.filter(item => item.title.includes(".")).map(item => agent.callCommand<{ item: WorkbenchItem }>("review.get", { target, itemId: item.id }).then(value)));
+    expect(imported.every(entry => !!entry.item.originalResourceId)).toBe(true);
+    const csv = imported.find(entry => entry.item.title.endsWith("quoted.csv"))!.item;
+    expect(csv.content).toMatchObject({ type: "data", rows: [{ cells: expect.any(Object) }] });
+    if (csv.content.type !== "data") throw new Error("Expected actual CSV table");
+    expect(csv.content.columns.map(column => csv.content.type === "data" ? csv.content.rows[0].cells[column.columnId] : null)).toEqual(["A, B", "line 1\nline 2"]);
+    const resources = await page.evaluate(async ids => Promise.all(ids.map(id => window.reelterminal!.reviewFiles!.resolve(id!, true))), imported.map(entry => entry.item.originalResourceId));
+    expect(resources.every(result => result.ok)).toBe(true);
+    for (const result of resources) {
+      if (!result.ok) throw new Error(result.error.message);
+      expect((await readFile(result.value.path)).equals(await readFile(path.join(files, result.value.resource.originalFileName)))).toBe(true);
+    }
+    const folderBatch = all!.items.find(item => item.title.includes("original.png"))!.batchId;
+    await vi.waitFor(async () => expect(await page.getByLabel(/Batch name|批次名称/).inputValue()).toBe(folderBatch), { timeout: 15_000 });
+    await page.getByTestId("workbench-tree-panel").getByText(/original.png/).click();
+    await page.getByTestId("workbench-content").locator("img").first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByTestId("image-mode-repair").click();
+    const stage = await page.getByTestId("image-stage").boundingBox();
+    expect(stage).not.toBeNull();
+    await page.mouse.move(stage!.x + stage!.width * 0.4, stage!.y + stage!.height * 0.4);
+    await page.mouse.down();
+    await page.mouse.move(stage!.x + stage!.width * 0.55, stage!.y + stage!.height * 0.55, { steps: 8 });
+    await page.mouse.up();
+    await page.getByRole("button", { name: /提交修补/ }).click();
+    const imageId = imported.find(entry => entry.item.title.endsWith("original.png"))!.item.id;
+    let repaired: WorkbenchItem;
+    await vi.waitFor(async () => { repaired = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target, itemId: imageId })).item; expect(repaired.version).toBe(2); }, { timeout: 15_000 });
+    expect(repaired!.revisions[0].kind).toBe("image-repair");
+    await page.getByTestId("image-mode-navigate").click();
+    await page.locator('img[data-display-mode="repaired"]').waitFor({ state: "visible", timeout: 15_000 });
+
+    await page.getByTestId("review-export-open").click();
+    await page.getByTestId("review-export-prepare").click();
+    const exportStatus = page.getByTestId("review-export-status");
+    await vi.waitFor(async () => expect(await exportStatus.getAttribute("data-state")).toBe("ready"), { timeout: 20_000 });
+    const exportId = await exportStatus.getAttribute("data-export-id");
+    const originalExport = value(await agent.callCommand<ReviewExportStatus>("review.export.status", { target, exportId }));
+    expect(originalExport.manifest!.entries).toHaveLength(6);
+    expect(originalExport.manifest!.entries.every(entry => entry.itemVersion === 1)).toBe(true);
+    const destination = path.join(launched.runDir, "copied-review-exports");
+    await mkdir(destination);
+    const copied = value(await agent.callCommand<{ directory: string }>("review.export.copy", { target, exportId, directory: destination }));
+    for (const entry of originalExport.manifest!.entries) {
+      let expected = Buffer.from("Alpha 👀\nBeta original", "utf8");
+      if (entry.resourceId) {
+        const source = resources.find(result => result.ok && result.value.resource.id === entry.resourceId);
+        if (!source?.ok) throw new Error("Original export resource was not imported from this fixture");
+        expected = await readFile(path.join(files, source.value.resource.originalFileName));
+      }
+      expect((await readFile(path.join(copied.directory, entry.relativePath))).equals(expected)).toBe(true);
+    }
+    await page.keyboard.press("Escape");
+    const current = value(await agent.callCommand<{ node: ReviewNode }>("review.get", { target }));
+    const adoptedId = crypto.randomUUID();
+    value(await agent.callCommand("review.export.prepare", { target, expectedNodeRevision: current.node.revision, exportId: adoptedId, scope: "node", mode: "adopted" }));
+    let adopted: ReviewExportStatus;
+    await vi.waitFor(async () => { adopted = value(await agent.callCommand<ReviewExportStatus>("review.export.status", { target, exportId: adoptedId })); expect(adopted.state).toBe("ready"); }, { timeout: 20_000 });
+    expect(adopted!.manifest!.entries).toMatchObject([{ itemId: imageId, itemVersion: 2, resourceId: repaired!.revisions[0].mediaId }]);
+    const adoptedCopy = value(await agent.callCommand<{ directory: string }>("review.export.copy", { target, exportId: adoptedId, directory: destination }));
+    const repairFile = await page.evaluate(async id => window.reelterminal!.reviewFiles!.resolve(id!, true), repaired!.revisions[0].mediaId);
+    if (!repairFile.ok) throw new Error(repairFile.error.message);
+    const repairBytes = await readFile(repairFile.value.path);
+    expect((await readFile(path.join(adoptedCopy.directory, adopted!.manifest!.entries[0].relativePath))).equals(repairBytes)).toBe(true);
+    expect(repairBytes.equals(await readFile(path.join(files, "original.png")))).toBe(false);
+    const packageExportId = crypto.randomUUID();
+    value(await agent.callCommand("review.export.prepare", { target, expectedNodeRevision: current.node.revision, exportId: packageExportId, scope: "node", mode: "node-package" }));
+    let packageExport: ReviewExportStatus;
+    await vi.waitFor(async () => { packageExport = value(await agent.callCommand<ReviewExportStatus>("review.export.status", { target, exportId: packageExportId })); expect(packageExport.state).toBe("ready"); }, { timeout: 20_000 });
+    const packageCopy = value(await agent.callCommand<{ directory: string }>("review.export.copy", { target, exportId: packageExportId, directory: destination }));
+    expect(packageExport!.manifest!.archive!.relativePath).toBe("node.json");
+    await page.getByTestId("review-restore-open").click();
+    await page.getByTestId("review-restore-folder-input").setInputFiles(packageCopy.directory);
+    await page.getByTestId("review-restore-preview").waitFor({ timeout: 20_000 });
+    await page.getByTestId("review-restore-submit").click();
+    await page.getByTestId("review-restore-dialog").waitFor({ state: "hidden", timeout: 20_000 });
+    let restoredNodeId: string | null;
+    await vi.waitFor(async () => { restoredNodeId = await page.getByTestId("review-node-title").getAttribute("data-node-id"); expect(restoredNodeId).not.toBe(node.id); expect(restoredNodeId).toBeTruthy(); });
+    const restoredItems = value(await agent.callCommand<{ items: Array<{ id: string; title: string }> }>("review.get", { target: { ...target, nodeId: restoredNodeId! } }));
+    expect(restoredItems.items).toHaveLength(6);
+    const restoredImage = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target: { ...target, nodeId: restoredNodeId! }, itemId: restoredItems.items.find(item => item.title.endsWith("original.png"))!.id })).item;
+    expect(restoredImage.revisions[0].mediaId).not.toBe(repaired!.revisions[0].mediaId);
+    // Reopen the same attempt: its persisted request receipt returns the same node.
+    await page.getByTestId("review-restore-open").click();
+    await page.getByTestId("review-restore-folder-input").setInputFiles(packageCopy.directory);
+    await page.getByTestId("review-restore-preview").waitFor();
+    await page.getByTestId("review-restore-submit").click();
+    await page.getByTestId("review-restore-dialog").waitFor({ state: "hidden" });
+    expect(value(await agent.callCommand<{ nodes: ReviewNode[] }>("review.nodes.list", { target: context!.target })).nodes).toHaveLength(2);
+    const packagePreview = value(await agent.callCommand<ReviewPackagePreview>("review.package.inspect", { target: context!.target, directory: packageCopy.directory }));
+    const directoryNow = value(await agent.callCommand<{ revision: number }>("review.directory.get", { target: context!.target }));
+    const restoreRequest = { target: context!.target, expectedWorkspaceRevision: directoryNow.revision, requestId: crypto.randomUUID(), packageId: packagePreview.packageId, digest: packagePreview.digest };
+    const cliRestored = value(await agent.callCommand<{ node: ReviewNode; replayed: boolean }>("review.package.restore", restoreRequest));
+    expect(cliRestored.replayed).toBe(false);
+    const relativePackage = path.relative(launched.runDir, packageCopy.directory);
+    expect(relativePackage.startsWith("..") || path.isAbsolute(relativePackage)).toBe(false);
+    await rm(packageCopy.directory, { recursive: true });
+    expect(value(await agent.callCommand<{ replayed: boolean }>("review.package.restore", restoreRequest)).replayed).toBe(true);
+    const restoredRepair = await page.evaluate(async id => window.reelterminal!.reviewFiles!.resolve(id!, true), restoredImage.revisions[0].mediaId);
+    if (!restoredRepair.ok) throw new Error(restoredRepair.error.message);
+    expect((await readFile(restoredRepair.value.path)).equals(repairBytes)).toBe(true);
+    await page.getByTestId("review-backup-open").click();
+    await page.getByTestId("review-backup-prepare").click();
+    await vi.waitFor(async () => expect(await page.getByTestId("review-backup-progress").getAttribute("data-ready")).toBe("true"), { timeout: 30_000 });
+    expect(await page.getByTestId("review-backup-progress").textContent()).toContain("3 / 3");
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Move to recycle bin", exact: true }).click();
+    await page.getByTestId("review-purge-open").click();
+    await page.getByTestId("review-purge-confirm").waitFor();
+    expect(await page.getByTestId("review-purge-submit").isDisabled()).toBe(true);
+    await page.getByTestId("review-purge-confirm").check();
+    await page.getByTestId("review-purge-submit").click();
+    await page.getByTestId("review-purge-dialog").waitFor({ state: "hidden" });
+    expect((await agent.callCommand("review.get", { target: { ...target, nodeId: restoredNodeId! } })).error?.code).toBe("NOT_FOUND");
+    expect(value(await agent.callCommand<{ nodes: ReviewNode[] }>("review.nodes.list", { target: context!.target })).nodes).toHaveLength(2);
+    await mkdir(ARTIFACTS_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-foundation-ui.png") });
+
+    await agent.close();
+    launched = await launched.relaunch();
+    agent = await connectExternalAgent(launched.endpointFile);
+    await launched.page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await launched.page.getByTestId("review-node-title").waitFor({ state: "visible", timeout: 20_000 });
+    let reopened: ReviewContext;
+    await vi.waitFor(async () => { reopened = value(await agent.callCommand<ReviewContext>("review.context")); }, { timeout: 10_000 });
+    expect(reopened!.access).toBe("read-only");
+    const readback = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target: { ...reopened!.target, nodeId: node.id }, itemId: csv.id }));
+    expect(readback.item.content).toEqual(csv.content);
+    expect((await agent.callCommand("editor.get_context")).error?.message).toBe("No project is open");
+    await writeFile(path.join(ARTIFACTS_DIR, "review-foundation-ui.json"), JSON.stringify({ measuredAt: new Date().toISOString(), node, context: context!, first, text, imported, resources, repaired: repaired!, originalExport, copied, adopted: adopted!, adoptedCopy, packageExport: packageExport!, restoredNodeId: restoredNodeId!, restoredItems, cliRestored, reopened: reopened!, readback }, null, 2));
+  });
+});

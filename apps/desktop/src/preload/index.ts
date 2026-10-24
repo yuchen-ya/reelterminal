@@ -17,6 +17,36 @@ import { installPerformanceBridge } from "./performance-bridge";
 // The desktop bridge is exposed as window.reelterminal.
 const api = {
   platform: "desktop",
+  inputHistory: (direction: "undo" | "redo") => ipcRenderer.invoke(CHANNELS.inputHistory, { direction }),
+  reviewPackage: {
+    inspect: (input: { directory: string; source: "user" | "agent" }) => ipcRenderer.invoke(CHANNELS.reviewPackageInspect, input),
+    prepare: (input: { packageId: string; restoreId: string; digest: string; source: "user" | "agent" }) => ipcRenderer.invoke(CHANNELS.reviewPackagePrepare, input),
+    release: (packageId: string) => ipcRenderer.invoke(CHANNELS.reviewPackageRelease, { packageId }),
+  },
+  reviewExport: {
+    backup: (input: { plan: import("@reelterminal/core/review/export").ReviewBackupPlan; directory: string; source: "user" | "agent" }) => ipcRenderer.invoke(CHANNELS.reviewExportBackup, input),
+    prepare: (plan: unknown) => ipcRenderer.invoke(CHANNELS.reviewExportPrepare, plan),
+    status: (input: { exportId: string; nodeId: string }) => ipcRenderer.invoke(CHANNELS.reviewExportStatus, input),
+    cancel: (input: { exportId: string; nodeId: string }) => ipcRenderer.invoke(CHANNELS.reviewExportCancel, input),
+    copy: (input: { exportId: string; nodeId: string; directory: string; source: "user" | "agent" }) => ipcRenderer.invoke(CHANNELS.reviewExportCopy, input),
+    startDrag: (exportId: string, folder: boolean) => new Promise<{ state: "handed-to-system" }>((resolve, reject) => {
+      const requestId = crypto.randomUUID();
+      const receive = (_event: IpcRendererEvent, reply: { requestId: string; error?: string; state: "handed-to-system" }) => {
+        if (reply.requestId !== requestId) return;
+        ipcRenderer.removeListener(CHANNELS.reviewExportDragResult, receive);
+        if (reply.error) reject(new Error(reply.error));
+        else resolve({ state: reply.state });
+      };
+      ipcRenderer.on(CHANNELS.reviewExportDragResult, receive);
+      // Native dragging follows Electron's dragstart -> send -> ipcMain.on path.
+      ipcRenderer.send(CHANNELS.reviewExportDrag, { requestId, exportId, folder });
+    }),
+  },
+  reviewFiles: {
+    collectUnregistered: (registeredIds: readonly string[]) => ipcRenderer.invoke(CHANNELS.reviewFilesCollect, { registeredIds }),
+    prepare: (args: { operationId: string; resourceId: string; sourcePath: string; mime: string; originalFileName?: string; expectedHash?: string; mode?: "managed" | "external"; source?: "user" | "agent" | "migration" }) => ipcRenderer.invoke(CHANNELS.reviewFilesPrepare, args),
+    resolve: (resourceId: string, freeze = false) => ipcRenderer.invoke(CHANNELS.reviewFilesResolve, { resourceId, freeze }),
+  },
   // Desktop has no hosted editor configured. URL builders reject this empty
   // value instead of producing unusable fragment-only sharing links.
   publicOrigin: "",
@@ -49,6 +79,7 @@ const api = {
         lastModifiedMs: number | null;
       }>,
     tempFilePath: (ext: string) => ipcRenderer.invoke(CHANNELS.fsTempFilePath, { ext }),
+    discardTempFile: (p: string) => ipcRenderer.invoke(CHANNELS.fsDiscardTempFile, { path: p }),
     writeFile: (p: string, data: string) => ipcRenderer.invoke(CHANNELS.fsWriteFile, { path: p, data }),
     openWrite: (p: string) => ipcRenderer.invoke(CHANNELS.fsOpenWrite, { path: p }),
     writeChunk: (handleId: string, data: ArrayBuffer | Uint8Array, position: number) =>
@@ -216,7 +247,9 @@ const api = {
     },
   },
   collabControl: {
+    setReviewAccess: (input: { access: AgentAccessMode; reviewWorkspaceId: string; instanceId: string }) => ipcRenderer.invoke(CHANNELS.collabSetReviewAccess, input),
     getStartupInfo: () => ipcRenderer.invoke(CHANNELS.collabGetStartupInfo, undefined),
+    getReviewAccess: (input: { reviewWorkspaceId: string; instanceId: string }) => ipcRenderer.invoke(CHANNELS.collabGetReviewAccess, input),
     enable: (): Promise<LiveCollabStatus> =>
       ipcRenderer.invoke(CHANNELS.collabEnable, undefined),
     disable: (): Promise<LiveCollabStatus> =>

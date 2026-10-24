@@ -1,6 +1,12 @@
+import { sha256 } from "@noble/hashes/sha2.js";
+
 /** SHA-256 identity for persisted media bytes. */
 export async function hashMediaBlob(blob: Blob): Promise<string> {
-  return hashMediaBytes(await blob.arrayBuffer());
+  const hash = sha256.create();
+  for (let offset = 0; offset < blob.size; offset += 1024 * 1024) {
+    hash.update(new Uint8Array(await blob.slice(offset, offset + 1024 * 1024).arrayBuffer()));
+  }
+  return Array.from(hash.digest(), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /** SHA-256 identity for bytes returned directly by a file or IPC reader. */

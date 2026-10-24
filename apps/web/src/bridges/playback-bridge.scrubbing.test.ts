@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PlaybackBridge } from "./playback-bridge";
 import { useTimelineStore } from "../stores/timeline-store";
+import { useProjectStore } from "../stores/project-store";
 
 const makeController = () => ({
   startScrubbing: vi.fn(),
@@ -45,6 +46,28 @@ describe("PlaybackBridge scrubbing", () => {
       scrubPosition: null,
       playbackState: "paused",
     });
+  });
+
+  it.each([24, 30, 60])( "steps on the %i fps project grid and clamps at timeline boundaries", async frameRate => {
+    const state = useProjectStore.getState();
+    useProjectStore.setState({ project: {
+      ...state.project,
+      settings: { ...state.project.settings, frameRate },
+      timeline: { ...state.project.timeline, duration: 10 },
+    } });
+    const bridge = new PlaybackBridge();
+    const controller = makeController();
+    Object.assign(bridge, { playbackController: controller });
+    await bridge.stepFrame(1);
+    expect(useTimelineStore.getState().playheadPosition).toBe((frameRate + 1) / frameRate);
+    await bridge.stepFrame(-1);
+    expect(useTimelineStore.getState().playheadPosition).toBe(1);
+    useTimelineStore.setState({ playheadPosition: 0 });
+    await bridge.stepFrame(-1);
+    expect(useTimelineStore.getState().playheadPosition).toBe(0);
+    useTimelineStore.setState({ playheadPosition: 10 });
+    await bridge.stepFrame(1);
+    expect(useTimelineStore.getState().playheadPosition).toBe(10);
   });
 
   it("moves the UI immediately and commits the final position once on release", async () => {

@@ -5,7 +5,7 @@ import { ToolcraftText as Text } from "@reelterminal/ui";
 import { toast } from "../../../stores/notification-store";
 
 interface DataRootMigrationItem {
-  kind: "appData" | "workspace";
+  kind: "appData" | "workspace" | "review";
   from: string;
   to: string;
   status:
@@ -24,6 +24,7 @@ interface DataRootInfo {
   appData: string;
   projects: string;
   agentWorkspace: string;
+  review: string;
   logs: string;
   machineConfigDir: string;
   migrationItems: DataRootMigrationItem[];
@@ -151,6 +152,7 @@ export const StoragePanel: React.FC = () => {
             value={info.agentWorkspace}
           />
           <PathRow label={t("settings.storage.logs")} value={info.logs || "—"} />
+          <PathRow label={t("settings.storage.review")} value={info.review} />
           <PathRow
             label={t("settings.storage.machineConfig")}
             value={info.machineConfigDir}

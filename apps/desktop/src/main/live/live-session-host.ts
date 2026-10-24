@@ -79,6 +79,7 @@ export interface LiveSessionHostDeps {
   readonly artifactRoot: string;
   /** Absolute local roots from which the external Agent may import media. */
   readonly mediaRoots?: readonly string[];
+  readonly workspaceRoots?: { readonly video: string; readonly review: string };
   /**
    * Absolute roots under which export.start's destinationPath may deliver a
    * verified artifact copy (`<deliveryRoot>/jobs/<slug>/output/`). The
@@ -117,6 +118,8 @@ export interface LiveSessionHost {
   getTaskStates(jobIds: readonly string[]): Record<string, JobStatusView["state"] | null>;
   /** Explicit authorization change. */
   setAccess(access: AgentAccessMode): Promise<LiveCollabStatus>;
+  setReviewAccess(input: { access: AgentAccessMode; reviewWorkspaceId: string; instanceId: string }): Promise<import("@reelterminal/core/review/types").ReviewContext>;
+  getReviewAccess(input: { reviewWorkspaceId: string; instanceId: string }): Promise<AgentAccessMode>;
   /** External endpoint → facade (lazy-creates the external session). */
   callExternal(verb: FacadeVerb, params: unknown, guard?: CommandProjectGuard): Promise<FacadeResult<unknown>>;
   readonly isEnabled: boolean;
@@ -160,6 +163,7 @@ export function createLiveSessionHost(
   let endpoint: RunningLiveEndpoint | null = null;
   let taskLedger: DurableTaskLedger | null = null;
   let externalSession: LiveAgentFacade | null = null;
+  let reviewGrant: { access: AgentAccessMode; reviewWorkspaceId: string; instanceId: string } | null = null;
   let externalConnected = false;
   const shownReviews = new Set<string>();
   let stagingSwept = false;
@@ -333,6 +337,9 @@ export function createLiveSessionHost(
     };
     const config: LiveFacadeConfig = {
       store: bridge.store,
+      ...(bridge.reviewContext ? { reviewContext: bridge.reviewContext } : {}),
+      ...(bridge.reviewCommand ? { reviewCommand: bridge.reviewCommand } : {}),
+      reviewAccess: target => reviewGrant && (!target || (target.reviewWorkspaceId === reviewGrant.reviewWorkspaceId && target.instanceId === reviewGrant.instanceId)) ? reviewGrant.access : "read-only",
       ...(bridge.materialLibrary
         ? { materialLibrary: bridge.materialLibrary }
         : {}),
@@ -346,6 +353,7 @@ export function createLiveSessionHost(
         ? { workspaceLibrary: bridge.workspaceLibrary }
         : {}),
       ...(deps.mediaRoots ? { mediaRoots: deps.mediaRoots } : {}),
+      ...(deps.workspaceRoots ? { workspaceRoots: deps.workspaceRoots } : {}),
       ...(deps.deliveryRoots ? { deliveryRoots: deps.deliveryRoots } : {}),
       ...(providers.renderProvider
         ? { renderProvider: providers.renderProvider }
@@ -623,6 +631,18 @@ export function createLiveSessionHost(
       return status();
     },
 
+    async getReviewAccess(input) {
+      return reviewGrant?.reviewWorkspaceId === input.reviewWorkspaceId && reviewGrant?.instanceId === input.instanceId ? reviewGrant.access : "read-only";
+    },
+
+    async setReviewAccess(input) {
+      if (!bridge?.reviewContext) throw new Error("Review renderer is unavailable");
+      const context = await bridge.reviewContext();
+      if (context.target.reviewWorkspaceId !== input.reviewWorkspaceId || context.target.instanceId !== input.instanceId) throw Object.assign(new Error("Review runtime changed; read review context again"), { code: "CONFLICT" });
+      reviewGrant = { ...input };
+      return { ...context, access: input.access };
+    },
+
     callExternal: async (verb, params, guard) => {
       const record = typeof params === "object" && params !== null && !Array.isArray(params)
         ? params as Record<string, unknown>
@@ -636,6 +656,10 @@ export function createLiveSessionHost(
         return { ok: false, error: { code: "INVALID_PARAMS", message: `${verb} requires ${missing}` } };
       }
       const current = guard ? await getCommandStatus() : null;
+      const isReviewCommand = verb.startsWith("review.") || ((verb === "session.describe" || verb === "capabilities.get") && record?.kind === "review");
+      if (isReviewCommand && (guard?.expectedProjectId !== undefined || guard?.expectedProjectEpoch !== undefined || record?.projectId !== undefined || record?.workspaceId !== undefined)) {
+        return { ok: false, error: { code: "INVALID_PARAMS", message: "Review commands require a review target and cannot use video project guards" } };
+      }
       if (guard && ((guard.expectedProjectId !== undefined && guard.expectedProjectId !== current?.projectId) ||
           (guard.expectedProjectEpoch !== undefined && guard.expectedProjectEpoch !== current?.projectEpoch))) {
         return { ok: false, error: { code: "CONFLICT", message: "The open project changed; read context and rebuild the request." } };

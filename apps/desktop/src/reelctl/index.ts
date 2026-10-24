@@ -56,6 +56,8 @@ function withInput(invocation: ParsedInvocation): ParsedInvocation {
 
 function commandNameFromText(text: string): string {
   const known: Readonly<Record<string, string>> = {
+    "review context": "review.context",
+    "video context": "editor.get_context",
     context: "editor.get_context",
     query: "timeline.query",
     "edit validate": "edit.validate",
@@ -305,6 +307,15 @@ export function cliErrorEnvelope(error: unknown): FacadeResult<never> {
 
 export async function runReelctl(argv: readonly string[], options: RunOptions = {}): Promise<number> {
   const output = options.stdout ?? printLine;
+  if ((argv[0] === "review" || argv[0] === "video") && (argv[1] === "capabilities" || argv[1] === "describe")) {
+    return runReelctl(["call", argv[1] === "capabilities" ? "capabilities.get" : "session.describe", "--kind", argv[0], ...argv.slice(2)], options);
+  }
+  if ((argv[0] === "review" || argv[0] === "video") && argv[1] === "call") {
+    const verb = argv[2];
+    if (verb === "capabilities.get" || verb === "session.describe") return runReelctl(["call", verb, "--kind", argv[0], ...argv.slice(3)], options);
+    if (!verb || (argv[0] === "review" ? !verb.startsWith("review.") : verb.startsWith("review."))) throw new LiveCliError("The call verb must belong to the explicit workspace kind", "args", 2);
+    return runReelctl(["call", verb, ...argv.slice(3)], options);
+  }
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h" || argv[0] === "help" && argv.length === 1) {
     output(REELCTL_HELP);
     return 0;

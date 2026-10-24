@@ -76,6 +76,22 @@ const nullable = (schema: OutputSchemaNode): OutputSchemaNode => ({
 });
 
 const openObject = (): OutputSchemaNode => objectSchema({}, undefined, true);
+const reviewNode = (): OutputSchemaNode => objectSchema({
+  id: stringSchema(), workspaceId: stringSchema(), name: stringSchema(), groupId: stringSchema(), pinned: booleanSchema(),
+  archivedAt: numberSchema(0), trashedAt: numberSchema(0), revision: integerSchema(0), createdAt: numberSchema(0), updatedAt: numberSchema(0),
+  history: objectSchema({ undoActor: enumSchema(["human", "agent"]), redoActor: enumSchema(["human", "agent"]) }),
+}, ["id", "workspaceId", "name", "pinned", "revision", "createdAt", "updatedAt"]);
+const reviewCommit = (): OutputSchemaNode => objectSchema({ nodeId: stringSchema(), revision: integerSchema(0), sequence: integerSchema(0), replayed: booleanSchema() }, ["nodeId", "revision", "sequence", "replayed"]);
+const reviewExportStatus = (): OutputSchemaNode => objectSchema({ exportId: stringSchema(), nodeId: stringSchema(), nodeRevision: integerSchema(0),
+  state: enumSchema(["queued", "preparing", "ready", "failed", "cancelled"]), completedFiles: integerSchema(0), totalFiles: integerSchema(1),
+  manifest: objectSchema({ schemaVersion: enumSchema([1]), exportId: stringSchema(), nodeId: stringSchema(), nodeRevision: integerSchema(0), mode: enumSchema(["original", "adopted", "node-package", "version"]), scope: enumSchema(["node", "filtered", "selected"]), createdAt: numberSchema(0),
+    entries: arraySchema(objectSchema({ itemId: stringSchema(), itemVersion: integerSchema(1), resourceId: stringSchema(), relativePath: stringSchema(), size: integerSchema(0), sha256: stringSchema(), serialization: enumSchema(["utf8-text", "lossless-json"]) }, ["relativePath", "size", "sha256"])),
+    archive: objectSchema({ relativePath: stringSchema(), size: integerSchema(0), sha256: stringSchema() }, ["relativePath", "size", "sha256"]),
+  }, ["schemaVersion", "exportId", "nodeId", "nodeRevision", "mode", "scope", "createdAt", "entries"]),
+  error: objectSchema({ reason: stringSchema(), message: stringSchema() }, ["reason", "message"]),
+}, ["exportId", "nodeId", "nodeRevision", "state", "completedFiles", "totalFiles"]);
+const reviewGroup = (): OutputSchemaNode => objectSchema({ id: stringSchema(), workspaceId: stringSchema(), name: stringSchema(), order: integerSchema(0) }, ["id", "workspaceId", "name", "order"]);
+const reviewDirectoryCommit = (): OutputSchemaNode => objectSchema({ revision: integerSchema(0), sequence: integerSchema(0), replayed: booleanSchema(), nodes: arraySchema(reviewNode()), groups: arraySchema(reviewGroup()) }, ["revision", "sequence", "replayed", "nodes", "groups"]);
 
 /** zh/en bilingual text pair used throughout the manual's help.* results. */
 const localizedText = (): OutputSchemaNode =>
@@ -212,6 +228,7 @@ const successEnvelope = (value: OutputSchemaNode): OutputSchemaObject =>
 const sessionDescription = (): OutputSchemaNode =>
   objectSchema(
     {
+      kind: enumSchema(["video", "review"]),
       facadeVersion: stringSchema(),
       contractVersion: stringSchema(),
       runtime: enumSchema(["node-headless", "live"]),
@@ -221,7 +238,7 @@ const sessionDescription = (): OutputSchemaNode =>
       stepLetters: objectSchema(
         {
           facadeToRuntime: constSchema("P"),
-          createProject: enumSchema(["P", "X"]),
+          createProject: enumSchema(["P", "D", "X"]),
           importLocalMedia: enumSchema(["A", "X"]),
           trimClip: constSchema("P"),
           addTextOverlayModel: constSchema("P"),
@@ -266,6 +283,7 @@ const capabilityStatus = (): OutputSchemaNode =>
 const capabilities = (): OutputSchemaNode =>
   objectSchema(
     {
+      kind: enumSchema(["video", "review"]), verbs: arraySchema(stringSchema()), access: enumSchema(["read-only", "write"]),
       runtime: enumSchema(["node-headless", "live"]),
       unavailableVerbs: arraySchema(stringSchema()),
       stateModel: objectSchema(
@@ -793,6 +811,137 @@ const historyControlResult = (): OutputSchemaNode =>
     ["action", "revision", "canUndo", "canRedo", "replayed"],
   );
 
+/** Bounded workbench item projection (workbench.get); text keeps only the CURRENT text + version count. */
+const workbenchItemView = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      id: stringSchema(),
+      batchId: stringSchema(),
+      title: stringSchema(),
+      subtitle: stringSchema(),
+      type: enumSchema(["image", "text", "data", "video", "model3d"]),
+      version: integerSchema(0),
+      status: enumSchema(["pending", "kept", "discarded", "modified", "rework"]),
+      orderIndex: integerSchema(0),
+      createdAt: numberSchema(0),
+      decisionCount: integerSchema(0),
+      lastDecision: nullable(
+        objectSchema(
+          {
+            decision: enumSchema(["kept", "discarded", "modified", "rework"]),
+            decisionRevision: integerSchema(0),
+            baseVersion: integerSchema(0),
+            decidedAt: numberSchema(0),
+            operator: enumSchema(["human", "agent"]),
+            contentRevisionId: stringSchema(),
+          },
+          ["decision", "decisionRevision", "baseVersion", "decidedAt", "operator"],
+        ),
+      ),
+      feedbackCount: integerSchema(0),
+      confirmedFeedbackCount: integerSchema(0),
+      reworkOrigin: objectSchema(
+        {
+          fromHandoffId: stringSchema(),
+          previousVersion: integerSchema(0),
+          summary: stringSchema(),
+        },
+        ["fromHandoffId", "previousVersion"],
+      ),
+      feedback: arraySchema(openObject()),
+      revisions: arraySchema(openObject()),
+      content: {
+        anyOf: [
+          objectSchema({ type: constSchema("model3d"), resourceId: stringSchema() }, ["type", "resourceId"]),
+          objectSchema(
+            {
+              type: constSchema("text"),
+              entryId: stringSchema(),
+              title: stringSchema(),
+              speakerOrContext: stringSchema(),
+              currentText: stringSchema(),
+              versionCount: integerSchema(0),
+              duplicateProposal: openObject(),
+            },
+            ["type", "entryId", "title", "speakerOrContext", "currentText", "versionCount"],
+          ),
+          objectSchema(
+            {
+              type: constSchema("data"),
+              datasetId: stringSchema(),
+              columns: arraySchema(objectSchema({ columnId: stringSchema(), title: stringSchema() }, ["columnId", "title"])),
+              rowCount: integerSchema(0),
+              proposalCount: integerSchema(0),
+              rows: arraySchema(openObject()),
+            },
+            ["type", "datasetId", "columns", "rowCount", "proposalCount"],
+          ),
+          objectSchema(
+            {
+              type: constSchema("image"),
+              mediaId: stringSchema(),
+              naturalWidth: integerSchema(0),
+              naturalHeight: integerSchema(0),
+              annotationCount: integerSchema(0),
+              strokeCount: integerSchema(0),
+            },
+            ["type", "mediaId", "annotationCount", "strokeCount"],
+          ),
+          objectSchema(
+            {
+              type: constSchema("video"),
+              mediaId: stringSchema(),
+              durationSec: numberSchema(0),
+              resolution: stringSchema(),
+              markerCount: integerSchema(0),
+              markers: arraySchema(openObject()),
+            },
+            ["type", "mediaId", "markerCount"],
+          ),
+        ],
+      },
+    },
+    [
+      "id",
+      "batchId",
+      "title",
+      "type",
+      "version",
+      "status",
+      "orderIndex",
+      "createdAt",
+      "decisionCount",
+      "lastDecision",
+      "feedbackCount",
+      "confirmedFeedbackCount",
+      "content",
+    ],
+  );
+
+const workbenchBatchSummary = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      id: stringSchema(),
+      name: stringSchema(),
+      description: stringSchema(),
+      createdAt: numberSchema(0),
+      revision: integerSchema(0),
+      itemCount: integerSchema(0),
+      statusCounts: objectSchema(
+        {
+          pending: integerSchema(0),
+          kept: integerSchema(0),
+          discarded: integerSchema(0),
+          modified: integerSchema(0),
+          rework: integerSchema(0),
+        },
+        ["pending", "kept", "discarded", "modified", "rework"],
+      ),
+      handoffState: enumSchema(["none", "published_waiting", "agent_acked", "rework_returned"]),
+    },
+    ["id", "name", "createdAt", "revision", "itemCount", "statusCounts", "handoffState"],
+  );
+
 const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "session.describe": sessionDescription(),
   "capabilities.get": capabilities(),
@@ -875,6 +1024,50 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "timeline.query": timelineQueryResult(),
   "timeline.mapSourceTimes": timelineMapSourceTimesResult(),
   "editor.get_context": editorContext(),
+  "review.context": objectSchema({
+    target: objectSchema({ kind: constSchema("review"), reviewWorkspaceId: stringSchema(), instanceId: stringSchema() }, ["kind", "reviewWorkspaceId", "instanceId"]),
+    revision: integerSchema(0), access: enumSchema(["read-only", "write"]), ready: constSchema(true),
+  }, ["target", "revision", "access", "ready"]),
+  "review.nodes.list": objectSchema({ nodes: arraySchema(reviewNode(), { maxItems: 500 }), cursor: stringSchema() }, ["nodes"]),
+  "review.nodes.create": reviewNode(),
+  "review.directory.get": objectSchema({ revision: integerSchema(0), groups: arraySchema(reviewGroup()), canUndo: booleanSchema(), canRedo: booleanSchema() }, ["revision", "groups", "canUndo", "canRedo"]),
+  "review.directory.apply": reviewDirectoryCommit(),
+  "review.directory.history.control": reviewDirectoryCommit(),
+  "review.get": objectSchema({ node: reviewNode(), item: openObject(), feedback: arraySchema(openObject()), items: arraySchema(objectSchema({
+    id: stringSchema(), batchId: stringSchema(), title: stringSchema(), subtitle: stringSchema(), type: enumSchema(["image", "text", "data", "video", "model3d"]),
+    version: integerSchema(1), status: enumSchema(["pending", "kept", "discarded", "modified", "rework"]), orderIndex: integerSchema(0),
+    provenanceTags: arraySchema(openObject()), userTags: arraySchema(stringSchema()), agentGuidance: openObject(), lineage: openObject(), reworkOrigin: openObject(), hasManualRevision: booleanSchema(),
+  }, ["id", "batchId", "title", "type", "version", "status", "orderIndex"]), { maxItems: 500 }), cursor: stringSchema() }, ["node"]),
+  "review.ingest": reviewCommit(),
+  "review.export.prepare": reviewExportStatus(),
+  "review.media.inspect": objectSchema({ target: objectSchema({ kind: constSchema("review"), reviewWorkspaceId: stringSchema(), nodeId: stringSchema(), instanceId: stringSchema() }, ["kind", "reviewWorkspaceId", "nodeId", "instanceId"]),
+    nodeRevision: integerSchema(0), resource: objectSchema({ id: stringSchema(), originalFileName: stringSchema(), mime: stringSchema(), size: integerSchema(0), sha256: stringSchema(), createdAt: numberSchema(0), source: enumSchema(["user", "agent", "migration"]),
+      metadata: objectSchema({ type: enumSchema(["image", "video", "audio"]), width: numberSchema(0), height: numberSchema(0), durationSec: numberSchema(0), frameRate: numberSchema(0), codec: stringSchema() }, ["type", "width", "height", "durationSec", "frameRate", "codec"]),
+    }, ["id", "originalFileName", "mime", "size", "createdAt", "source"]),
+  }, ["target", "nodeRevision", "resource"]),
+  "review.frames.extract": objectSchema({ target: objectSchema({ kind: constSchema("review"), reviewWorkspaceId: stringSchema(), nodeId: stringSchema(), instanceId: stringSchema() }, ["kind", "reviewWorkspaceId", "nodeId", "instanceId"]),
+    nodeRevision: integerSchema(0), resourceId: stringSchema(), facts: objectSchema({ width: integerSchema(1), height: integerSchema(1), durationSec: numberSchema(0), timing: enumSchema(["cfr", "vfr", "unknown"]) }, ["width", "height", "durationSec", "timing"]),
+    frames: arraySchema(objectSchema({ frame: integerSchema(0), ptsTimeSec: numberSchema(0), artifact: artifactRef() }, ["frame", "ptsTimeSec", "artifact"]), { minItems: 1, maxItems: 600 }), limitations: arraySchema(stringSchema()),
+  }, ["target", "nodeRevision", "resourceId", "facts", "frames", "limitations"]),
+  "review.attach": objectSchema({ projectId: stringSchema(), workspaceId: stringSchema(), mediaId: stringSchema(), itemId: stringSchema(),
+    version: integerSchema(1), resourceId: stringSchema(), revision: integerSchema(0), replayed: booleanSchema(), present: booleanSchema() },
+    ["projectId", "workspaceId", "mediaId", "itemId", "version", "resourceId", "revision", "replayed", "present"]),
+  "review.package.inspect": objectSchema({ packageId: stringSchema(), digest: stringSchema(), name: stringSchema(), sourceNodeId: stringSchema(),
+    itemCount: integerSchema(0), versionCount: integerSchema(0), stepCount: integerSchema(0), resourceCount: integerSchema(0), bytes: integerSchema(0), handoffCount: integerSchema(0), missingResourceCount: integerSchema(0), missingVersionCount: integerSchema(0),
+  }, ["packageId", "digest", "name", "sourceNodeId", "itemCount", "versionCount", "stepCount", "resourceCount", "bytes", "handoffCount", "missingResourceCount", "missingVersionCount"]),
+  "review.package.restore": objectSchema({ node: reviewNode(), workspaceRevision: integerSchema(0), replayed: booleanSchema() }, ["node", "workspaceRevision", "replayed"]),
+  "review.steps.start": reviewCommit(),
+  "review.steps.complete": reviewCommit(),
+  "review.steps.fail": reviewCommit(),
+  "review.steps.list": objectSchema({ node: reviewNode(), steps: arraySchema(openObject(), { maxItems: 500 }), cursor: stringSchema() }, ["node", "steps"]),
+  "review.export.status": reviewExportStatus(),
+  "review.export.cancel": reviewExportStatus(),
+  "review.export.copy": objectSchema({ directory: stringSchema(), files: arraySchema(objectSchema({ relativePath: stringSchema(), size: integerSchema(0), sha256: stringSchema() }, ["relativePath", "size", "sha256"])) }, ["directory", "files"]),
+  "review.apply": reviewCommit(),
+  "review.handoff.get": objectSchema({ node: reviewNode(), handoff: openObject() }, ["node", "handoff"]),
+  "review.versions.get": objectSchema({ node: reviewNode(), itemId: stringSchema(), version: integerSchema(1), content: openObject(), revision: openObject() }, ["node", "itemId", "version", "content"]),
+  "review.changes": objectSchema({ node: reviewNode(), entries: arraySchema(objectSchema({ sequence: integerSchema(1), actor: enumSchema(["human", "agent"]), label: stringSchema(), kind: enumSchema(["commit", "undo", "redo", "event"]), relatedSequence: integerSchema(1), handoffIds: arraySchema(stringSchema()) }, ["sequence", "actor", "label", "kind"]), { maxItems: 500 }), nextSequence: integerSchema(0), hasMore: booleanSchema() }, ["node", "entries", "nextSequence", "hasMore"]),
+  "review.history.control": reviewCommit(),
   "editor.control": editorControlResult(),
   "edit.validate": editValidateResult(),
   "edit.apply": editApplyResult(),
@@ -993,6 +1186,81 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "job.status": jobStatus(),
   "job.cancel": jobStatus(),
   "verify.artifact": verifyResult(),
+  "workbench.ingest": objectSchema(
+    {
+      revision: integerSchema(0),
+      batchId: stringSchema(),
+      batchRevision: integerSchema(0),
+      acceptedItemIds: arraySchema(stringSchema()),
+      skippedItemIds: arraySchema(stringSchema()),
+      received: constSchema(true),
+      replayed: booleanSchema(),
+    },
+    ["revision", "batchId", "batchRevision", "acceptedItemIds", "skippedItemIds", "received", "replayed"],
+  ),
+  "workbench.get": objectSchema(
+    {
+      revision: integerSchema(0),
+      read: objectSchema(
+        { capturedAt: numberSchema(0), stateRevision: integerSchema(0) },
+        ["capturedAt", "stateRevision"],
+      ),
+      // Single-item lookup form (absent on listing reads).
+      item: nullable(workbenchItemView()),
+      // Listing form (absent on single-item reads).
+      batches: arraySchema(workbenchBatchSummary()),
+      items: arraySchema(workbenchItemView(), { maxItems: 200 }),
+      total: integerSchema(0),
+    },
+    ["revision"],
+  ),
+  "workbench.changes": objectSchema(
+    {
+      projectRevision: integerSchema(0),
+      cursor: nullable(integerSchema(0)),
+      stale: booleanSchema(),
+      decided: arraySchema(
+        objectSchema(
+          {
+            itemId: stringSchema(),
+            batchId: stringSchema(),
+            decision: enumSchema(["kept", "discarded", "modified", "rework"]),
+            decisionRevision: integerSchema(0),
+            baseVersion: integerSchema(0),
+            decidedAt: numberSchema(0),
+            operator: enumSchema(["human", "agent"]),
+            contentRevisionId: stringSchema(),
+          },
+          ["itemId", "batchId", "decision", "decisionRevision", "baseVersion", "decidedAt", "operator"],
+        ),
+      ),
+      handoffEvents: arraySchema(
+        objectSchema(
+          {
+            handoffId: stringSchema(),
+            batchId: stringSchema(),
+            deliveryState: enumSchema(["published_waiting", "agent_acked", "rework_returned"]),
+            publishedAt: numberSchema(0),
+            supersedesHandoffId: stringSchema(),
+            itemCount: integerSchema(0),
+          },
+          ["handoffId", "batchId", "deliveryState", "publishedAt", "itemCount"],
+        ),
+      ),
+      note: stringSchema(),
+    },
+    ["projectRevision", "cursor", "stale", "decided", "handoffEvents", "note"],
+  ),
+  "workbench.handoff.get": objectSchema(
+    {
+      revision: integerSchema(0),
+      // The complete immutable handoff snapshot; absent on a header-only read.
+      handoff: openObject(),
+      // Header-only read when no snapshot id was supplied (null when none).
+      latest: nullable(openObject()),
+    },
+    ["revision"],
+  ),
   "material.list": objectSchema(
     {
       items: arraySchema(openObject()),

@@ -18,6 +18,7 @@ import type { CreationProjectState } from "../creation";
 import type { ReferenceComparisonConfig } from "./reference-comparison";
 import type { WorkAsset } from "./work-asset";
 import type { ProjectRequirementsState } from "./requirement";
+import type { WorkbenchProjectState } from "./workbench";
 
 export interface ProjectSettings {
   readonly width: number;
@@ -37,6 +38,7 @@ export interface ProjectRenderFont {
 }
 
 export interface Project {
+  readonly reviewMigration?: import("../review/migration").ReviewMigrationPointer;
   readonly id: string;
   readonly name: string;
   readonly createdAt: number;
@@ -73,6 +75,12 @@ export interface Project {
    * projects never gain the field unless they are edited.
    */
   readonly workAssets?: WorkAsset[];
+  /**
+   * AI material workbench state (batches of Agent-produced items, human
+   * decisions, revisions, feedback and published handoffs). Optional for
+   * backward compatibility — absent means the project has no workbench data.
+   */
+  readonly workbench?: WorkbenchProjectState;
   /**
    * Frozen render-time font faces captured for the referenced families.
    * This is a cache of immutable bytes, not editable project content.
@@ -119,6 +127,15 @@ export interface ProjectMarkersState {
 }
 
 export interface MediaItem {
+  /** Informational lineage; the project owns its own immutable media bytes. */
+  readonly reviewSource?: {
+    readonly reviewWorkspaceId: string;
+    readonly nodeId: string;
+    readonly itemId: string;
+    readonly version: number;
+    readonly resourceId: string;
+    readonly requestId: string;
+  };
   readonly production?: MediaProduction;
   readonly id: string;
   readonly name: string;

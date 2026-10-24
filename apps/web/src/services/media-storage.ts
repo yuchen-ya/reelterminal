@@ -17,6 +17,8 @@ const storage = new StorageEngine();
 export interface SavedMediaVersion {
   readonly contentHash: string;
   readonly contentUrl?: string;
+  /** Independent IndexedDB copy, requested before deleting a temporary source. */
+  readonly persistedBlob?: Blob;
   /** True only when no identical version existed in either durable store. */
   readonly created: boolean;
 }
@@ -158,8 +160,10 @@ export async function saveMediaBlob(
   blob: Blob,
   metadata: MediaMetadata,
   nameHint?: string,
+  options: { detachSource?: boolean; expectedHash?: string } = {},
 ): Promise<SavedMediaVersion> {
   const contentHash = await hashMediaBlob(blob);
+  if (options.expectedHash !== undefined && contentHash !== options.expectedHash) throw new Error("Media source bytes changed before import");
   return withMediaReferenceWrite(async () => {
     const existing = await storage.loadMedia(mediaId);
     if (existing) {
@@ -189,8 +193,11 @@ export async function saveMediaBlob(
       ...(controlled ? { contentUrl: controlled.path } : {}),
     };
     await storage.saveMedia(record);
+    const persisted = options.detachSource ? await storage.loadMedia(mediaId) : undefined;
+    if (options.detachSource && !persisted?.blob) throw new Error("The independent media copy was not persisted");
     return {
       contentHash,
+      ...(persisted ? { persistedBlob: persisted.blob } : {}),
       ...(controlled ? { contentUrl: controlled.path } : {}),
       created: existing === null && (controlled?.created ?? true),
     };

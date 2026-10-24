@@ -3,7 +3,8 @@
  *
  * A rendered frame may reach the visible canvas and replace the remembered
  * "last good" picture only when it is a complete, valid bitmap AND its render
- * request is still the newest one. Everything else — a failed decode, a
+ * request is still admitted by the scheduler (latest-only for jumps; ordered
+ * progress for continuous stepping/scrubbing). Everything else — a failed decode, a
  * zero-size bitmap, a superseded request, a throw — must leave both the
  * canvas and the remembered frame exactly as they were.
  *

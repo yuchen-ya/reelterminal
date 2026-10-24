@@ -21,6 +21,14 @@ const setAccessArgsSchema = z.object({
 });
 
 export function registerLiveIpc(host: LiveSessionHost): void {
+  ipcMain.handle(CHANNELS.collabGetReviewAccess, (event, raw) => {
+    assertEditorIpcSender(event);
+    return host.getReviewAccess(z.object({ reviewWorkspaceId: z.string().uuid(), instanceId: z.string().uuid() }).strict().parse(raw));
+  });
+  ipcMain.handle(CHANNELS.collabSetReviewAccess, (event, raw) => {
+    assertEditorIpcSender(event);
+    return host.setReviewAccess(z.object({ access: z.enum(["read-only", "write"]), reviewWorkspaceId: z.string().uuid(), instanceId: z.string().uuid() }).strict().parse(raw));
+  });
   ipcMain.handle(CHANNELS.projectTaskStates, (event, raw) => {
     assertEditorIpcSender(event);
     const { jobIds } = z.object({ jobIds: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).max(1000) }).strict().parse(raw);

@@ -53,7 +53,7 @@ export const pathStatusResultSchema = z.object({
 export type PathStatusResult = z.infer<typeof pathStatusResultSchema>;
 
 export const dataRootMigrationItemSchema = z.object({
-  kind: z.enum(["appData", "workspace"]),
+  kind: z.enum(["appData", "workspace", "review"]),
   from: z.string(),
   to: z.string(),
   status: z.enum([
@@ -73,6 +73,7 @@ export const dataRootInfoSchema = z.object({
   appData: z.string(),
   projects: z.string(),
   agentWorkspace: z.string(),
+  review: z.string(),
   logs: z.string(),
   machineConfigDir: z.string(),
   migrationItems: z.array(dataRootMigrationItemSchema),

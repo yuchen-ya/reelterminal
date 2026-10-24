@@ -26,7 +26,6 @@ import {
 } from "@/icons/lucide-compat";
 import type { MotionComposition } from "@reelterminal/core";
 import { ToolcraftClickableCard, ToolcraftText } from "@reelterminal/ui";
-import { WorkspaceModeTabs } from "../components/WorkspaceModeTabs";
 import { Icon } from "@/icons/Icon";
 import { useRouter } from "../hooks/use-router";
 import { useProjectStore } from "../stores/project-store";
@@ -776,15 +775,13 @@ export function MotionCreatorShell({
       <header className="flex h-[60px] shrink-0 items-center gap-[18px] border-b border-border bg-bg-1 px-[18px]">
         <div className="flex min-w-0 shrink-0 items-center gap-[18px]">
           {!embedded ? (
-            <WorkspaceModeTabs
-              activeMode="motion"
-              ariaLabel={t("Workspaces")}
-              onSelectMode={(mode) => {
-                if (mode === "video") {
-                  navigate("editor");
-                }
-              }}
-            />
+            <button
+              type="button"
+              className="rounded-md px-3 py-2 text-sm hover:bg-bg-3"
+              onClick={() => navigate("editor")}
+            >
+              {t("desktop.workspace.videoEditor")}
+            </button>
           ) : null}
         </div>
 

@@ -279,6 +279,12 @@ importers:
 
   apps/web:
     dependencies:
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
+      csv-parse:
+        specifier: ^7.0.3
+        version: 7.0.3
       '@astryxdesign/core':
         specifier: ^0.1.1
         version: 0.1.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -448,6 +454,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@noble/hashes':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@ffmpeg/ffmpeg':
         specifier: ^0.12.15
         version: 0.12.15
@@ -668,6 +677,13 @@ importers:
         version: 5.9.3
 
 packages:
+
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
+    engines: {node: '>=0.3.1'}
+
+  csv-parse@7.0.3:
+    resolution: {integrity: sha512-YFd3QM/yo17vH91L1IOZuvl09zM0zEEtdfTcOCKWcMdM++MNaQSyp09slXyFCLaPXvHstQFx/xC8myiFHSMUvw==}
 
   '@adobe/css-tools@4.4.4':
     resolution: {integrity: sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg==}
@@ -4997,6 +5013,10 @@ packages:
         optional: true
 
 snapshots:
+
+  diff@9.0.0: {}
+
+  csv-parse@7.0.3: {}
 
   '@adobe/css-tools@4.4.4': {}
 

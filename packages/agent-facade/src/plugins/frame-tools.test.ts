@@ -110,6 +110,11 @@ describe("frames.extract (plugin)", () => {
 
   it("reports missing ffmpeg honestly (fresh module, bogus binary path)", async () => {
     vi.resetModules();
+    const previousFfmpeg = process.env.REELTERMINAL_FFMPEG_PATH;
+    const previousConfig = process.env.REELTERMINAL_AUDIO_CONFIG;
+    // A user's saved audio configuration takes priority over the environment.
+    // Keep this missing-dependency case independent of the host's settings.
+    process.env.REELTERMINAL_AUDIO_CONFIG = path.join(root, "absent-audio-environment.json");
     process.env.REELTERMINAL_FFMPEG_PATH = "C:/definitely/no/ffmpeg.exe";
     try {
       const freshFacade = (await import("../index")).createAgentFacade({ mediaRoots: [root], artifactRoot: path.join(root, "artifacts") });
@@ -123,7 +128,10 @@ describe("frames.extract (plugin)", () => {
       expect(result.error.code).toBe("UNSUPPORTED");
       expect(result.error.message).toMatch(/REELTERMINAL_FFMPEG_PATH|ffmpeg/);
     } finally {
-      delete process.env.REELTERMINAL_FFMPEG_PATH;
+      if (previousFfmpeg === undefined) delete process.env.REELTERMINAL_FFMPEG_PATH;
+      else process.env.REELTERMINAL_FFMPEG_PATH = previousFfmpeg;
+      if (previousConfig === undefined) delete process.env.REELTERMINAL_AUDIO_CONFIG;
+      else process.env.REELTERMINAL_AUDIO_CONFIG = previousConfig;
       vi.resetModules();
     }
   });

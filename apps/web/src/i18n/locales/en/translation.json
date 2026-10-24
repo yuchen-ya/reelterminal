@@ -1,4 +1,75 @@
 {
+  "review": {
+    "migration": {
+      "title": "Migrate project workbench", "description": "Choose an existing project workspace and inspect its old workbench before copying. Available media becomes independent review files; original project content remains a read-only backup.",
+      "source": "Source project / workspace", "choose": "Choose a source…", "inspect": "Preview source and file availability",
+      "counts": "{{batches}} batches · {{items}} items · {{handoffs}} historical handoffs · {{files}} file references", "missingBodies": "{{count}} historical version bodies were never persisted by the old project. Their references and explicit unavailable markers will be kept; current content will not impersonate them.",
+      "already": "This source snapshot already has a durable migration receipt. Repeating finishes project saving without creating duplicate nodes or items.", "changed": "The source backup changed. Confirming imports all source items as new independent batches in the previously migrated node; existing reviews stay intact.",
+      "boundary": "Old handoffs remain historical and cannot resume tasks. No processing steps are inferred. A successful migration removes whole undo groups containing old workbench actions; other project undo remains. The redo branch is cleared at the normal new-edit boundary.",
+      "confirm": "Copy the readable originals, preserve unavailable markers, and make the old workbench read-only with the history boundary described above.",
+      "finish": "Finish / check this migration", "append": "Import source update as new batches", "migrate": "Migrate to a new node", "progress": "Copying {{done}} / {{total}} files, then saving review and project records…",
+      "reviewCommitted": "The review import committed; source project saving remains pending. Open the node or retry to finish.", "done": "Review migration and source project save completed.", "openNode": "Open independent node",
+      "readonly": "This project workbench was migrated. The old content below is a read-only backup; continue review and rework in the independent node.", "oldVersion": "Older apps may still change the source backup and cannot read independent nodes. Preview again to detect source changes and explicitly import them as new batches. No automatic overwrite or reverse synchronization occurs."
+    },
+    "purge": {
+      "title": "Permanently clear node", "description": "Permanently removes this node, all retained versions, feedback, handoffs, steps and undo history. This cannot be undone. Back up the node first if you need these records.",
+      "references": "Current file holds: versions {{versions}} · steps {{steps}} · handoffs {{handoffs}} · journal {{journal}}. These node-owned holds are removed only with the history below.",
+      "shared": "Keep: another node holds it", "external": "Keep external original", "release": "Release after history deletion",
+      "cleanup": "Up to {{bytes}} B of managed files become eligible for cleanup. Physical cleanup runs on a later startup after the 24-hour orphan grace period; it does not free disk space immediately. Independent project copies remain intact.",
+      "confirm": "Permanently delete this node and ALL its retained versions, snapshots, processing and undo history.", "refresh": "Refresh reference check"
+    },
+    "backup": {
+      "title": "Back up all nodes", "description": "Prepares a complete package for every node, including archived and trashed nodes, retained versions and processing history. The backup also includes the directory and group index.",
+      "restore": "Restore individual packages from the nodes folder with Restore node package. backup.json preserves the original directory metadata; whole-directory automatic restore is not available.",
+      "prepare": "Prepare all packages", "copy": "Save complete backup…", "copying": "Verifying and saving backup…", "progress": "Prepared {{done}} / {{total}} node packages"
+    },
+    "attach": {
+      "title": "Add adopted media to project", "description": "Copies the exact human-adopted image or video into project media. The project keeps an independent copy. No clip is added to the timeline.",
+      "destination": "Destination project / workspace", "choose": "Choose a destination…", "noProjects": "Create a video project first, then choose its workspace here.",
+      "importing": "Copying and importing…", "done": "Version {{version}} is saved in project media.", "removed": "This import was completed earlier and has since been removed from this workspace.", "retry": "Check this import again"
+    },
+    "restorePackage": {
+      "missing": "{{count}} file references have unavailable markers rather than bytes. Restoring preserves those markers; this package is not a complete media backup.",
+      "missingManifest": "Choose the node package folder that directly contains manifest.json.",
+      "title": "Restore node package", "description": "Choose a complete node package folder. Files and references are checked before anything is restored. Existing nodes remain intact.",
+      "choose": "Choose package folder…", "busy": "Checking files / restoring…", "counts": "{{items}} items · {{versions}} retained versions · {{steps}} steps · {{files}} files",
+      "handoffs": "{{count}} historical handoffs", "history": "Restore creates a new node with new identities. Old handoffs cannot resume tasks; old undo journals remain read-only evidence. Retrying this attempt reuses its durable receipt.",
+      "restore": "Restore this attempt", "newAttempt": "Start a separate new restore"
+    },
+    "process": {
+      "focusRegion": "Focus recorded region",
+      "title": "Processing", "content": "Content", "description": "Real recorded inputs → method → outputs. Each page contains at most 100 steps. Missing records are not inferred from filenames or dates.",
+      "steps": "Processing steps", "comparison": "Version comparison", "choosePair": "Pin an input or output on each side, or compare a recorded step.", "notRecorded": "No processing steps were recorded. Final content remains available in Content.",
+      "loading": "Reading exact version…", "unselected": "No version selected", "pinMissing": "The pinned processing reference is missing", "inputOutput": "{{inputs}} inputs → {{outputs}} outputs",
+      "input": "Input", "output": "Output", "left": "Left / input", "right": "Right / output", "pinLeft": "Pin left", "pinRight": "Pin right", "openItem": "Review current item", "compareStep": "Compare this step", "parameters": "Recorded parameters", "retries": "Retries step {{id}}",
+      "declared": "Agent declared", "measured": "App measured", "mappingPresent": "This step records explicit correspondence for this pair.", "noMapping": "No correspondence was recorded. The two sides remain independent; equal dimensions do not imply alignment.",
+      "sideBySide": "Side by side", "slider": "Reveal output", "zoom": "Scale", "pixels": "Nearest-neighbor pixels and grid", "background": "Transparency background", "checker": "Checkerboard", "white": "White", "black": "Black", "holdInput": "Hold to view input", "playMapped": "Play mapped pair",
+      "tablePreview": "Preview: first 100 rows. Differences below are paged separately.", "diffTooLarge": "The bounded diff could not finish. Both exact texts remain available above.", "changedCells": "{{count}} changed cells · ∅ = missing, null = null, \"\" = empty text", "added": "Added", "removed": "Removed", "changed": "Changed",
+      "state": { "planned": "Planned", "running": "Running", "completed": "Completed", "failed": "Failed", "cancelled": "Cancelled" }
+    },
+    "export": {
+      "package": "Complete node package with history",
+      "version": "Export this exact version", "exactReference": "Exports the complete recorded file/content. Comparison regions and time ranges do not crop or trim it.",
+      "title": "Export files", "description": "Freeze the chosen versions and prepare copies. Original export includes discarded items. Renaming or moving these copies cannot change the review originals.",
+      "mode": "Content", "original": "Original inputs", "adopted": "Human-adopted versions", "scope": "Scope", "node": "Entire node, all batches", "filtered": "Current batch and filters, all pages", "selected": "Selected visible items ({{count}})",
+      "serialization": "Original files retain their bytes. Text without an original file becomes UTF-8 TXT; tables become JSON with stable row/column IDs. These serialized files are not original source bytes.",
+      "prepare": "Prepare export", "newPlan": "Prepare another export", "copy": "Copy to folder…", "dragFolder": "Drag out folder", "dragFiles": "Drag out files", "handed": "Handed to the system. Receipt by the destination application has not been verified.", "copied": "Copied and verified: {{directory}}",
+      "state": { "queued": "Queued", "preparing": "Preparing", "ready": "Ready to copy or drag", "failed": "Export failed", "cancelled": "Cancelled" }
+    },
+    "title": "Review Workspace", "nodes": "Data nodes", "newNodeName": "New node name", "create": "Create", "searchNodes": "Search nodes", "nodeViews": "Node views",
+    "recent": "Recent", "pinned": "Pinned", "archived": "Archived", "trash": "Recycle bin", "groups": "Groups", "allGroups": "All groups", "newGroupName": "New group name",
+    "renameGroup": "Rename group", "removeEmptyGroup": "Delete empty group", "undoDirectory": "Undo directory change", "redo": "Redo", "noNodesInView": "No nodes in this view", "loadMore": "Load more",
+    "moveToGroup": "Move to group", "ungrouped": "Ungrouped", "rename": "Rename", "name": "Name", "save": "Save", "pin": "Pin", "unpin": "Unpin", "archive": "Archive", "unarchive": "Unarchive", "restore": "Restore", "moveToTrash": "Move to recycle bin",
+    "restoreBeforeEditing": "Restore this node from the recycle bin to continue reviewing.", "emptyWorkspace": "Create a data node and import images, videos, text or tables. Review content is saved independently and works without a video project.",
+    "emptyNode": "Add content to review", "emptyNodeDescription": "Import local files, paste text, or copy the connection instructions for an Agent. Originals and review records are retained in this node.",
+    "agentWrite": "Agent can edit review", "agentRead": "Agent can read review", "copyStartup": "Copy connection instructions", "copied": "Copied", "retry": "Retry", "loading": "Loading…",
+    "legacyProject": "Legacy project review: {{name}}", "backToNodes": "Back to independent nodes", "legacyTools": "Legacy tools", "legacyMotion": "Motion design (legacy)", "openProjectFirst": "Open the corresponding video project first",
+    "importTitle": "Import review content", "importDescription": "Create an input batch in this node. Existing content is retained.", "files": "Files or folder", "pasteText": "Paste text", "batchName": "Batch name", "localFiles": "Local files",
+    "chooseFiles": "Choose files", "chooseFolder": "Choose folder", "fileLimits": "Select 1–64 files. Tables support up to 5,000 rows and 64 columns. CSV uses the first row as headers; JSON uses an array of flat records. Text supports UTF-8 or UTF-16 with a BOM. Exact source bytes are retained.",
+    "textBody": "Text body (up to 200,000 characters)", "readingFiles": "Reading and checking files…", "importing": "Saving originals and committing content…", "cancel": "Cancel", "import": "Import", "previous": "Previous", "next": "Next", "pageScope": "Up to 100 items per page. Selection and bulk actions apply to the currently visible scope.",
+    "kind": { "model3d": "3D model", "image": "Image", "video": "Video", "text": "Text", "data": "Table" },
+    "startupPrompt": "This task uses the independent ReelTerminal Review Workspace. CLI prefix: {{cli}}\nExplicit current target: {{target}}\n\n1. Run {{cli}} review context to discover this run's workspace/instance identity and access.\n2. Run {{cli}} review describe and {{cli}} review capabilities for review commands and the actual allowed media roots.\n3. Use {{cli}} schema review.ingest or schema review.apply for exact parameters. Create nodes with review.nodes.create. Writes require an explicit review target, expected revision, and UUID requestId. Prepare files inside the allowed roots; do not put media bytes in JSON.\n4. Submit with {{cli}} review call review.ingest --file <request-file>, then read back with review.get / review.changes / review.versions.get. review.apply reuses the workbench operation vocabulary shown in its schema and remains bound to the independent review node.\n\nReview write access is granted separately by this workspace's control. Discover the target again after restarting. The user confirms publication in the UI. Use review.export.* for frozen file copies, review.steps.* for actual processing records, and review.package.inspect/restore for portable recovery. Read each verb schema before submitting."
+  },
   "projectMediaFilters": {
     "scope": "View scope",
     "current": "Current assets",
@@ -218,8 +289,10 @@
       "ariaLabel": "Desktop workspaces",
       "videoEditor": "Video Editor",
       "motionDesign": "Motion Design",
+      "workbench": "Review Workspace",
       "videoEditing": "Video Editing",
       "motionCreation": "Motion Creation",
+      "workbenchReview": "Review Workspace",
       "loading": "Loading…"
     },
     "help": {
@@ -248,11 +321,7 @@
       "newProject": "New Project",
       "backToProject": "Back to current project",
       "actionFailed": "Could not switch projects",
-      "chooseWorkspace": "Choose Video Editor, then a frame format. Use Help in the title bar for step-by-step instructions.",
-      "videoEditor": "Video Editor",
-      "videoEditorDescription": "Cut, trim, caption, color, and export quickly.",
-      "motionCreator": "Motion Creator",
-      "motionCreatorDescription": "Design animated ads, lower thirds, app demos, and scene graphics.",
+      "chooseWorkspace": "Choose a frame format to create a project. Use Help in the title bar for step-by-step instructions.",
       "recent": "Recent",
       "loadingRecent": "Loading recent projects…",
       "noRecent": "No recent projects yet. Start a new project above.",
@@ -261,7 +330,6 @@
       "yesterday": "Yesterday",
       "daysAgo": "{{count}} days ago",
       "modeVideo": "Video Editor",
-      "modeMotion": "Motion Creator",
       "formatVertical": "Vertical",
       "formatHorizontal": "Horizontal",
       "formatSquare": "Square"
@@ -332,6 +400,7 @@
       "appData": "App data (projects, media, material library, settings)",
       "projects": "Default projects folder",
       "agentWorkspace": "Agent workspace",
+      "review": "Review originals and export copies",
       "logs": "Logs",
       "machineConfig": "Machine config (data-root pointer)",
       "sourceEnv": "Location set by the REELTERMINAL_DATA_ROOT environment variable",

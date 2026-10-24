@@ -481,6 +481,7 @@ describe("live-bridge", () => {
       expect.any(File),
       expect.objectContaining({ fileSize: 4 }),
       "Agent shot",
+      { detachSource: undefined, expectedHash: undefined },
     );
 
     const lastEntry = useProjectStore

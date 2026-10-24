@@ -78,7 +78,7 @@ describe("emitted verb JSON Schemas — global client constraints", () => {
     });
   }
 
-  it("only the custom-preset payload uses the open-object leaf; everything else stays closed", () => {
+  it("only documented open maps use the open-object leaf; everything else stays closed", () => {
     const openObjects: string[] = [];
     for (const [verb, typedSchema] of Object.entries(EMITTED_VERB_JSON_SCHEMAS)) {
       walk(typedSchema as unknown as Schema, (node) => {
@@ -87,7 +87,27 @@ describe("emitted verb JSON Schemas — global client constraints", () => {
         }
       });
     }
-    expect(openObjects).toEqual(["preset.create", "preset.update"]);
+    expect(openObjects).toEqual([
+        // Ingest includes bounded processing parameters and stable-column cell maps.
+        "review.ingest",
+      "review.ingest",
+      "review.apply",
+        "review.steps.start",
+        // Completion can ingest a table or patch one through the shared operation vocabulary.
+        "review.steps.complete",
+        "review.steps.complete",
+      // The workbench data content carries its cells as a dynamic
+      // Record<columnId, string|null> map, deep-validated by the runtime
+      // boundary (workbench.ts isCellsRecord); edit.validate/edit.apply embed the
+      // same declaration through the workbench.rework op union.
+      "edit.validate",
+      "edit.apply",
+      "workbench.ingest",
+      // The custom-preset payload whitelist lives in
+      // @reelterminal/core/presets/validate.
+      "preset.create",
+      "preset.update",
+    ]);
   });
 
   it("emission is a pure derivation: editing a declaration changes both consumers (single source smoke)", () => {
@@ -406,7 +426,6 @@ describe("emitted schema per-verb structure", () => {
 
   it("param-less verbs emit a closed empty object", () => {
     for (const verb of [
-      "session.describe",
       "project.get_state",
       "timeline.get",
       "editor.get_context",
@@ -424,6 +443,7 @@ describe("emitted schema per-verb structure", () => {
       type: "object",
       additionalProperties: false,
       properties: {
+        kind: { enum: ["video", "review"] },
         domain: { enum: CAPABILITY_DOMAINS },
       },
     });

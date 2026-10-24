@@ -136,6 +136,15 @@ export const LEGACY_LS_DESKTOP_INSPECTOR_WIDTH = "openreel-desktop-inspector-w";
 /** Desktop layout: timeline height (`apps/web/src/desktop/pages/EditPage.tsx`). */
 export const LEGACY_LS_DESKTOP_TIMELINE_HEIGHT = "openreel-desktop-timeline-h";
 
+/** Workbench layout: lineage tree width (`apps/web/src/desktop/pages/WorkbenchPage.tsx`). */
+export const LEGACY_LS_WORKBENCH_TREE_WIDTH = "reelterminal-workbench-tree-w";
+
+/** Workbench layout: in-canvas issue panel width (image/video). */
+export const LEGACY_LS_WORKBENCH_ISSUE_WIDTH = "reelterminal-workbench-issue-w";
+
+/** Workbench layout: bottom details height (`apps/web/src/desktop/pages/WorkbenchPage.tsx`). */
+export const LEGACY_LS_WORKBENCH_BOTTOM_HEIGHT = "reelterminal-workbench-bottom-h";
+
 /** Settings store (zustand persist name, `apps/web/src/stores/settings-store.ts`). */
 export const LEGACY_LS_SETTINGS = "openreel-settings";
 

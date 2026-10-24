@@ -1,6 +1,7 @@
 export * from "./project";
 export * from "./work-asset";
 export * from "./requirement";
+export * from "./workbench";
 export * from "./collaboration-instruction";
 export * from "./timeline";
 export * from "./actions";

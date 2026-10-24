@@ -70,6 +70,7 @@ describe("Toolbar project name", () => {
       "My Project",
     );
     expect(screen.getByTestId("project-switcher")).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "Review Workspace" })).not.toBeInTheDocument();
   });
 
   it("Escape cancels the draft without renaming", () => {

@@ -9,6 +9,8 @@
  * Electron-free and unit-testable.
  */
 import { app } from "electron";
+import { getReviewFileStore } from "../ipc/review-files";
+import { createReviewMediaBridge } from "./review-media-bridge";
 import { getPerfSink } from "@reelterminal/core";
 import { mkdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -47,6 +49,16 @@ export function agentWorkspaceRoot(): string {
   return agentWorkspaceDefault();
 }
 
+export function agentWorkspaceScopes(): { video: string; review: string } {
+  const workspace = agentWorkspaceRoot();
+  const roots = { video: path.join(workspace, "video"), review: path.join(workspace, "review") };
+  for (const root of Object.values(roots)) {
+    mkdirSync(path.join(root, "jobs"), { recursive: true });
+    mkdirSync(path.join(root, "shared"), { recursive: true });
+  }
+  return roots;
+}
+
 /**
  * Local roots exposed by `capabilities_get.mediaImport.mediaRoots`.
  *
@@ -58,6 +70,7 @@ export function agentWorkspaceRoot(): string {
  * Command API contract.
  */
 export function liveMediaRoots(): readonly string[] {
+  const scopes = Object.values(agentWorkspaceScopes());
   const controlledRoot = controlledMediaRoot();
   mkdirSync(controlledRoot, { recursive: true });
   const configured = process.env.REELTERMINAL_LIVE_MEDIA_ROOTS;
@@ -66,7 +79,7 @@ export function liveMediaRoots(): readonly string[] {
       .split(path.delimiter)
       .map((entry) => entry.trim())
       .filter((entry) => path.isAbsolute(entry) && isDirectory(entry));
-    return [...new Set([...roots, controlledRoot])];
+    return [...new Set([...roots, ...scopes, controlledRoot])];
   }
 
   const workspace = agentWorkspaceRoot();
@@ -91,7 +104,7 @@ export function liveMediaRoots(): readonly string[] {
     app.getPath("pictures"),
     app.getPath("videos"),
   ];
-  return [...new Set([...candidates.filter(isDirectory), controlledRoot])];
+  return [...new Set([...candidates.filter(isDirectory), ...scopes, controlledRoot])];
 }
 
 function isDirectory(candidate: string): boolean {
@@ -147,6 +160,7 @@ export function getLiveSessionHost(): LiveSessionHost {
     host = createLiveSessionHost({
       artifactRoot: path.join(app.getPath("userData"), "live-artifacts"),
       mediaRoots: liveMediaRoots(),
+      workspaceRoots: agentWorkspaceScopes(),
       deliveryRoots: liveDeliveryRoots(),
       installStoreBridge: installLiveStoreBridge,
       createProviders: (): LiveProviders => {
@@ -171,7 +185,9 @@ export function getLiveSessionHost(): LiveSessionHost {
           close: () => chromium.close(),
         };
       },
-      createFacade: createLiveFacade,
+      createFacade: config => createLiveFacade({ ...config, ...(config.reviewCommand ? {
+        reviewCommand: createReviewMediaBridge(config.reviewCommand, getReviewFileStore, agentWorkspaceScopes().review),
+      } : {}) }),
       emitEvent: (event) => {
         const contents = liveTargetWebContents();
         if (contents && !contents.isDestroyed()) {

@@ -1,6 +1,7 @@
 import { protocol, net } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { reviewFileResponse } from "./review-file-response";
 
 const SCHEME = "app";
 
@@ -19,10 +20,23 @@ export function registerAppSchemePrivileges(): void {
   ]);
 }
 
-export function handleAppScheme(rendererRoot: string): void {
+export function handleAppScheme(rendererRoot: string, resolveReviewResource?: (id: string) => Promise<{ path: string; mime: string }>): void {
   protocol.handle(SCHEME, async (request) => {
     const url = new URL(request.url);
     let pathname = decodeURIComponent(url.pathname);
+    if (pathname.startsWith("/review-media/")) {
+      const id = pathname.slice("/review-media/".length);
+      if (url.host !== "reelterminal" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) || !resolveReviewResource) return new Response("Not found", { status: 404 });
+      try {
+        const resource = await resolveReviewResource(id);
+        return await reviewFileResponse(request, resource);
+      } catch (error) {
+        const problem = error as { code?: string; reason?: string };
+        if (problem.code === "ENOENT" || problem.reason === "MISSING_FILE") return new Response("Review original is missing", { status: 404 });
+        if (problem.reason === "SOURCE_CHANGED") return new Response("Review original changed", { status: 409 });
+        throw error;
+      }
+    }
     if (pathname === "/" || pathname === "") pathname = "/index.html";
     if (pathname === "/motion") pathname = "/index.html";
 

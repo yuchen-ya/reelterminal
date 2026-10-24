@@ -32,6 +32,7 @@ import type {
 import { WORK_ASSET_MAX_MEMBERS } from "../types/work-asset";
 import { REQUIREMENT_PRIORITIES, REQUIREMENT_STATUSES } from "../types/requirement";
 import { getActionHandler } from "./registry";
+import { validateWorkbenchAction } from "./workbench-actions";
 
 export class ActionValidator {
   validate(action: Action, project: Project): ValidationResult {
@@ -89,6 +90,11 @@ export class ActionValidator {
       );
     } else if (type.startsWith("workAsset/")) {
       return this.validateWorkAssetAction(action as WorkAssetAction, project);
+    } else if (type.startsWith("workbench/")) {
+      const result = validateWorkbenchAction(action as Action, project);
+      return result.valid
+        ? []
+        : result.errors as ValidationError[];
     } else if (type.startsWith("media/")) {
       return this.validateMediaAction(action as MediaAction, project);
     } else if (type.startsWith("track/")) {

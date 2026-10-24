@@ -373,6 +373,109 @@ function isWorkAssetShape(value: unknown): value is WorkAsset {
 }
 
 /**
+ * Defensive repair for stored workbench state: absent leaves the project
+ * untouched; a structurally invalid top-level shape is replaced with the
+ * empty state; duplicate item/batch/handoff ids keep the first occurrence;
+ * items whose content shape does not match their declared type are dropped
+ * (never silently repaired into different facts).
+ */
+export function normalizeProjectWorkbenchFields(project: Project): Project {
+  const raw = project.workbench;
+  if (raw === undefined) return project;
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    !Array.isArray(raw.batches) ||
+    !Array.isArray(raw.items) ||
+    !Array.isArray(raw.feedback) ||
+    !Array.isArray(raw.handoffs)
+  ) {
+    return {
+      ...project,
+      workbench: {
+        schemaVersion: 1,
+        batches: [],
+        items: [],
+        feedback: [],
+        handoffs: [],
+      },
+    };
+  }
+  const seenBatches = new Set<string>();
+  const batches = raw.batches.filter((batch) => {
+    if (
+      typeof batch?.id !== "string" ||
+      typeof batch?.name !== "string" ||
+      !Array.isArray(batch?.itemIds) ||
+      seenBatches.has(batch.id)
+    ) {
+      return false;
+    }
+    seenBatches.add(batch.id);
+    return true;
+  });
+  const seenItems = new Set<string>();
+  const items = raw.items.filter((item) => {
+    const ok =
+      typeof item?.id === "string" &&
+      typeof item?.batchId === "string" &&
+      typeof item?.type === "string" &&
+      !!item?.content &&
+      typeof item?.content === "object" &&
+      (item.content as { type?: unknown }).type === item.type &&
+      typeof item?.version === "number" &&
+      Array.isArray(item?.decisionLog) &&
+      Array.isArray(item?.revisions) &&
+      !seenItems.has(item.id);
+    if (ok) seenItems.add(item.id);
+    return ok;
+  });
+  const itemIds = new Set(items.map((item) => item.id));
+  let feedbackRepaired = false;
+  const feedback = raw.feedback.flatMap((record) => {
+    if (
+      typeof record?.id !== "string" ||
+      typeof record?.itemId !== "string" ||
+      !itemIds.has(record.itemId) ||
+      typeof record?.state !== "string"
+    ) {
+      return [];
+    }
+    const referencedTagIds = Array.isArray(record.referencedTagIds)
+      ? record.referencedTagIds.filter(
+          (tagId: unknown): tagId is string =>
+            typeof tagId === "string" && tagId.length > 0,
+        )
+      : [];
+    if (
+      !Array.isArray(record.referencedTagIds) ||
+      referencedTagIds.length !== record.referencedTagIds.length
+    ) {
+      feedbackRepaired = true;
+    }
+    return [{ ...record, referencedTagIds }];
+  });
+  const seenHandoffs = new Set<string>();
+  const handoffs = raw.handoffs.filter((handoff) => {
+    const ok =
+      typeof handoff?.handoffId === "string" &&
+      typeof handoff?.idempotencyKey === "string" &&
+      Array.isArray(handoff?.items) &&
+      !seenHandoffs.has(handoff.handoffId);
+    if (ok) seenHandoffs.add(handoff.handoffId);
+    return ok;
+  });
+  const normalized = { schemaVersion: 1 as const, batches, items, feedback, handoffs };
+  const unchanged =
+    batches.length === raw.batches.length &&
+    items.length === raw.items.length &&
+    feedback.length === raw.feedback.length &&
+    handoffs.length === raw.handoffs.length &&
+    !feedbackRepaired;
+  return unchanged ? project : { ...project, workbench: normalized };
+}
+
+/**
  * Defensive repair for stored work assets: an absent `workAssets` leaves the
  * project untouched (old projects keep working with no field at all), a
  * non-array value is replaced with the empty list, structurally invalid
@@ -495,9 +598,11 @@ export function normalizeProjectStoredFields(project: Project): Project {
     normalizeProjectMarkerFields(
       normalizeProjectGeneratedShaderFields(
         normalizeProjectCreationFields(
-          normalizeProjectWorkAssetFields(
-            normalizeProjectMotionFields(
-              normalizeProjectChromaFields(normalizeProjectSpeedDurations(project)),
+          normalizeProjectWorkbenchFields(
+            normalizeProjectWorkAssetFields(
+              normalizeProjectMotionFields(
+                normalizeProjectChromaFields(normalizeProjectSpeedDurations(project)),
+              ),
             ),
           ),
         ),

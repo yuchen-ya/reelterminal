@@ -25,8 +25,14 @@ restart; text already sent to an Agent does not update itself. An absolute
 workspace, and `REELTERMINAL_DATA_ROOT` takes precedence over the Settings
 pointer. `capabilities.get` remains authoritative for the active media roots.
 
-Start ReelTerminal and open a project. The command service becomes available
-automatically with read-only access. For edits, click the **Agent · Read-only** button in the status strip. It switches
+Start ReelTerminal. The command service is available read-only even without a
+video project. For independent data review, choose **Review Workspace** and copy
+its connection instructions. Run `reelctl review context`, `reelctl review
+capabilities` and `reelctl review describe`; bind all work to the returned review
+workspace/runtime plus the explicit node ID. Review's own Agent-write checkbox
+is separate from the video grant. See the [review command contract](COMMAND-API.md#independent-review-workspace).
+
+For video edits, open a project and click the **Agent · Read-only** button in the status strip. It switches
 to **Agent · Editable**; click again to revoke write access. Run:
 
 ```powershell
@@ -39,7 +45,16 @@ reelctl help media inspect
 
 Use [SKILL.md](../SKILL.md) for the editing workflow and
 [AGENT-WORKSPACE.md](AGENT-WORKSPACE.md) before generating media.
-See [COMMAND-API.md](COMMAND-API.md) for the live service and CLI contract.
+See [COMMAND-API.md](COMMAND-API.md) for the live service and CLI contract,
+including the legacy project workbench verbs (`workbench.ingest`, `workbench.get`
+with optional `includeFeedback`/`includeMarkers`/`includeRevisions`,
+`workbench.changes`, `workbench.handoff.get` by `snapshotId` or latest header)
+and `edit.apply` ops (`workbench.decide`, `workbench.content.update` with a
+required `expectedItemVersion`, `workbench.feedback.save`,
+`workbench.handoff.ack`, `workbench.rework`) used to submit review batches and
+consume published human handoffs. Rework is bound to the handoff's item
+version and decision revision; stale, retrieved or superseded tasks are
+rejected instead of overwriting human content.
 
 Desktop review keeps original media references. If browser video decoding is
 unavailable, the Chromium worker can decode source frames with local FFmpeg and

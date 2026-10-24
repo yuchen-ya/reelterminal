@@ -1,3 +1,4 @@
+import { subscribePreviewFrames } from "./frame-notifications";
 import React, {
   useCallback,
   useEffect,
@@ -515,11 +516,15 @@ export const ReferenceComparisonPanel: React.FC<{
         context?.clearRect(0, 0, mirror.width, mirror.height);
         context?.drawImage(source, 0, 0);
       }
-      frame = requestAnimationFrame(draw);
+      if (playbackState === "playing") frame = requestAnimationFrame(draw);
     };
     draw();
-    return () => cancelAnimationFrame(frame);
-  }, [config, historyMode, timelineCanvasRef]);
+    const unsubscribe = playbackState === "playing" ? undefined : subscribePreviewFrames(draw);
+    return () => {
+      cancelAnimationFrame(frame);
+      unsubscribe?.();
+    };
+  }, [config, config?.layout, historyMode, history?.layout, referenceUrl, timelineCanvasRef, playbackState]);
 
   // History side: map the shared playhead onto the snapshot and render at
   // most one frame at a time (throttled to the project frame rate; a paused

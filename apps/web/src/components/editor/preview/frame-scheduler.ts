@@ -11,10 +11,11 @@
  * task from painting over a newer picture.
  */
 
+import { finishPreviewSeek, type PreviewSeek } from "../../../performance/seek-flow";
 import { beginPerfOperation, endPerfOperation, getPerfSink, markPerfOperation, type PerfOperation } from "@reelterminal/core";
 
 export interface FrameRequestToken {
-  /** Monotonic id of the request; later requests supersede earlier ones. */
+  /** Monotonic request id; continuous inputs may commit progress in order. */
   readonly seq: number;
   /** Invalidated (bumped) on media switches, preview invalidations, unmount. */
   readonly epoch: number;
@@ -26,6 +27,9 @@ export interface FrameRequestToken {
   readonly viewGeneration?: number;
   /** Measurement-only correlation; absent when capture is off. */
   readonly performance?: PerfOperation;
+  readonly continuous?: boolean;
+  readonly seek?: PreviewSeek;
+  readonly contextKey?: string;
 }
 
 export type FrameRenderRunner = (token: FrameRequestToken) => Promise<void>;
@@ -36,39 +40,52 @@ export class FrameRenderScheduler {
   private committedSeq = 0;
   private latestRevision = 0;
   private running = false;
-  private pending: { time: number; revision: number; viewGeneration?: number; performance?: PerfOperation } | null = null;
+  private pending: FrameRequestToken | null = null;
+  private active: FrameRequestToken | null = null;
+  private lastCommitted: FrameRequestToken | null = null;
+  private strictSeq = 0;
+  private latestContinuous = false;
 
   constructor(
     private readonly runner: FrameRenderRunner,
     private readonly getViewGeneration?: () => number,
+    private readonly getContextKey?: () => string,
   ) {}
 
   /**
    * Ask for a frame at `time`. While a render is in flight the previous
    * pending target is replaced (latest wins) and this returns immediately.
    */
-  request(time: number, revision: number, parent?: PerfOperation): void {
+  request(time: number, revision: number, parent?: PerfOperation, options?: { continuous?: boolean; seek?: PreviewSeek; force?: boolean }): void {
+    const viewGeneration = this.getViewGeneration?.();
+    const contextKey = this.getContextKey?.();
+    const sameTarget = (token: FrameRequestToken | null) => token && token.epoch === this.epoch &&
+      token.time === time && token.revision === revision && token.viewGeneration === viewGeneration &&
+      token.contextKey === contextKey;
+    // A pointer release or decoder notification at the same visual target must
+    // not supersede the work already producing (or displaying) that picture.
+    if (!options?.force && (sameTarget(this.pending) || (!this.pending && sameTarget(this.active)) ||
+      (!this.active && !this.pending && sameTarget(this.lastCommitted)))) {
+      getPerfSink().count("frame.deduplicated", 1);
+      if (options?.seek && options.seek !== (this.pending ?? this.active ?? this.lastCommitted)?.seek) {
+        finishPreviewSeek(options.seek, "cancelled", "same-target");
+      }
+      return;
+    }
     this.seq += 1;
     this.latestRevision = revision;
+    this.latestContinuous = options?.continuous ?? false;
+    if (!this.latestContinuous) this.strictSeq = this.seq;
     endPerfOperation(this.pending?.performance, "superseded");
+    if (this.pending?.seek !== options?.seek) finishPreviewSeek(this.pending?.seek, "superseded", "coalesced");
     const operation = getPerfSink().enabled
       ? beginPerfOperation("frame.render", parent, { frameSeq: this.seq, frameEpoch: this.epoch, revision })
       : undefined;
-    if (operation) {
-      this.pending = {
-        time,
-        revision,
-        ...(this.getViewGeneration ? { viewGeneration: this.getViewGeneration() } : {}),
-        performance: operation,
-      };
-      operation.sink.mark("frame.requested", operation.context, { timelineTimeSeconds: time });
-    } else {
-      this.pending = {
-        time,
-        revision,
-        ...(this.getViewGeneration ? { viewGeneration: this.getViewGeneration() } : {}),
-      };
-    }
+    this.pending = {
+      seq: this.seq, epoch: this.epoch, time, revision, viewGeneration, contextKey,
+      continuous: this.latestContinuous, seek: options?.seek, performance: operation,
+    };
+    markPerfOperation(operation, "frame.requested", { timelineTimeSeconds: time, seekId: options?.seek?.id ?? 0 });
     void this.pump();
   }
 
@@ -79,7 +96,10 @@ export class FrameRenderScheduler {
   invalidate(): void {
     this.epoch += 1;
     endPerfOperation(this.pending?.performance, "cancelled");
+    finishPreviewSeek(this.pending?.seek, "cancelled");
+    finishPreviewSeek(this.active?.seek, "cancelled");
     this.pending = null;
+    this.lastCommitted = null;
   }
 
   /**
@@ -90,9 +110,10 @@ export class FrameRenderScheduler {
   isCurrent(token: FrameRequestToken): boolean {
     return (
       token.epoch === this.epoch &&
-      token.seq === this.seq &&
+      (token.seq === this.seq || (token.continuous === true && this.latestContinuous && token.seq >= this.strictSeq)) &&
       token.revision === this.latestRevision &&
       (token.viewGeneration === undefined || token.viewGeneration === this.getViewGeneration?.()) &&
+      (token.contextKey === undefined || token.contextKey === this.getContextKey?.()) &&
       token.seq > this.committedSeq
     );
   }
@@ -105,6 +126,7 @@ export class FrameRenderScheduler {
   markCommitted(token: FrameRequestToken): boolean {
     if (!this.isCurrent(token)) return false;
     this.committedSeq = token.seq;
+    this.lastCommitted = token;
     markPerfOperation(token.performance, "frame.commit-claimed");
     return true;
   }
@@ -121,21 +143,25 @@ export class FrameRenderScheduler {
       while (this.pending) {
         const target = this.pending;
         this.pending = null;
-        const token: FrameRequestToken = {
-          seq: this.seq,
-          epoch: this.epoch,
-          time: target.time,
-          revision: target.revision,
-          ...(target.viewGeneration !== undefined ? { viewGeneration: target.viewGeneration } : {}),
-          ...(target.performance ? { performance: target.performance } : {}),
-        };
+        const token = target;
+        this.active = token;
+        if (token.seek) token.seek.started = true;
         markPerfOperation(token.performance, "frame.started");
         try {
           await this.runner(token);
-          endPerfOperation(token.performance, token.seq === this.committedSeq ? "ok" : this.isCurrent(token) ? "error" : "superseded");
+          const outcome = token.seq === this.committedSeq ? "ok" : this.isCurrent(token) ? "error" : "superseded";
+          endPerfOperation(token.performance, outcome);
+          if (outcome === "superseded") finishPreviewSeek(token.seek, outcome);
         } catch (error) {
           endPerfOperation(token.performance, "error");
+          finishPreviewSeek(token.seek, "error");
           throw error;
+        } finally {
+          if (token.seek) {
+            token.seek.started = false;
+            if (token.seq < this.seq && (this.pending as FrameRequestToken | null)?.seek !== token.seek) finishPreviewSeek(token.seek, "superseded");
+          }
+          this.active = null;
         }
       }
     } finally {

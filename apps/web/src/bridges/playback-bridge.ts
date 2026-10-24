@@ -1,3 +1,5 @@
+import { beginPreviewSeek, finishPreviewSeek, startPreviewScrub, type PreviewSeekKind } from "../performance/seek-flow";
+import { bindTimelineSeekTarget } from "../performance/product-flow";
 import type { PlaybackController, PlaybackEvent } from "@reelterminal/core";
 import { useTimelineStore, type PlaybackState } from "../stores/timeline-store";
 import { useEngineStore } from "../stores/engine-store";
@@ -240,9 +242,16 @@ export class PlaybackBridge {
    */
   async requestSeek(
     time: number,
-    options?: { pause?: boolean },
+    options?: { pause?: boolean; source?: PreviewSeekKind },
   ): Promise<void> {
     const generation = ++this.seekGeneration;
+    const state = useProjectStore.getState();
+    const seek = beginPreviewSeek(time, options?.source ?? "jump", {
+      projectId: state.project.id, workspaceId: state.workspaceId, revision: state.projectRevision,
+    });
+    if (time === useTimelineStore.getState().playheadPosition && options?.source !== "scrub") {
+      finishPreviewSeek(seek, "cancelled", "no-op");
+    }
     const shouldPause = options?.pause ?? true;
     if (shouldPause && useTimelineStore.getState().playbackState === "playing") {
       this.pause();
@@ -258,7 +267,12 @@ export class PlaybackBridge {
     }
     // syncClockTo is genuinely async while playing, so seeks can settle out
     // of order; only the most recently requested one may commit.
-    if (generation !== this.seekGeneration) return;
+    const currentState = useProjectStore.getState();
+    if (generation !== this.seekGeneration || state.project.id !== currentState.project.id ||
+      state.workspaceId !== currentState.workspaceId || state.projectRevision !== currentState.projectRevision) {
+      finishPreviewSeek(seek, "superseded");
+      return;
+    }
     useTimelineStore.getState().seekTo(time);
   }
 
@@ -268,6 +282,15 @@ export class PlaybackBridge {
   async requestSeekRelative(delta: number): Promise<void> {
     const current = useTimelineStore.getState().playheadPosition;
     await this.requestSeek(Math.max(0, current + delta));
+  }
+
+  /** Step on the project's frame grid, rather than adding a fixed 1/30s. */
+  async stepFrame(direction: -1 | 1): Promise<void> {
+    const { project } = useProjectStore.getState();
+    const current = useTimelineStore.getState().playheadPosition;
+    const frame = Math.round(current * project.settings.frameRate) + direction;
+    const target = Math.max(0, Math.min(frame / project.settings.frameRate, project.timeline.duration));
+    await this.requestSeek(target, { source: "frame-step" });
   }
 
   /**
@@ -285,6 +308,7 @@ export class PlaybackBridge {
    * Start scrubbing mode
    */
   startScrubbing(): void {
+    startPreviewScrub();
     if (this.playbackController) {
       this.playbackController.startScrubbing();
     }
@@ -307,6 +331,9 @@ export class PlaybackBridge {
     // Keep pointer movement lightweight. Preview already observes the timeline
     // store and renders a debounced scrub frame; seeking the core controller on
     // every mousemove duplicated video rendering and repeatedly touched audio.
+    const state = useProjectStore.getState();
+    beginPreviewSeek(time, "scrub", { projectId: state.project.id, workspaceId: state.workspaceId, revision: state.projectRevision });
+    bindTimelineSeekTarget(state.project, state.projectRevision, time);
     useTimelineStore.getState().updateScrubPosition(time);
   }
 
@@ -326,7 +353,7 @@ export class PlaybackBridge {
     // Commit the exact release position through the unified seek path
     // (master clock + audio + store). Preview requests the final precise
     // frame itself when it sees the scrub end.
-    void this.requestSeek(finalPosition);
+    void this.requestSeek(finalPosition, { source: "scrub" });
   }
 
   /**

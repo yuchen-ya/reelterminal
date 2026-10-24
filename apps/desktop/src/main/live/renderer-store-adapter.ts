@@ -127,6 +127,8 @@ export interface LiveStoreBridgeDeps {
 }
 
 export interface LiveStoreBridge {
+  readonly reviewContext?: () => Promise<import("@reelterminal/core/review/types").ReviewContext>;
+  readonly reviewCommand?: import("@reelterminal/agent-facade/review").ReviewBridge;
   readonly store: LiveProjectStore;
   /** Optional material-library seam (material.* verbs → renderer library). */
   readonly materialLibrary?: MaterialLibraryBridge;
@@ -488,6 +490,8 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
 
   return {
     store,
+    reviewContext: () => request("reviewContext", {}, READ_TIMEOUT_MS) as Promise<import("@reelterminal/core/review/types").ReviewContext>,
+    reviewCommand: (verb, params) => request("reviewCommand", { reviewVerb: verb, reviewParams: params }, APPLY_TIMEOUT_MS),
     materialLibrary,
     fontLibrary,
     presetLibrary,
@@ -536,6 +540,8 @@ export function installLiveStoreBridge(): LiveStoreBridge {
   ipcMain.on(CHANNELS.liveResponse, listener);
   return {
     store: bridge.store,
+    reviewContext: bridge.reviewContext,
+    reviewCommand: bridge.reviewCommand,
     materialLibrary: bridge.materialLibrary,
     fontLibrary: bridge.fontLibrary,
     presetLibrary: bridge.presetLibrary,

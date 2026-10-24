@@ -40,10 +40,6 @@ export function startNewProject(format: NewProjectFormat): Promise<void> {
   return createAndShowProject(format, format.label);
 }
 
-export function startNewMotionProject(format: NewProjectFormat): Promise<void> {
-  return createAndShowProject(format, `${format.label} Motion Creator`);
-}
-
 export interface RecentEntry {
   id: string;
   name: string;

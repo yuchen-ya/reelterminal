@@ -1,8 +1,8 @@
 # Desktop distribution
 
-## Version 1.2.5
+## Version 1.3.0
 
-This checkout builds version 1.2.5 as an unsigned Windows x64 installer and
+This checkout builds version 1.3.0 as an unsigned Windows x64 installer and
 portable ZIP. Publication status and available assets are shown on Releases.
 This release targets Windows x64 only. See the user-facing [upgrade guide](../../docs/WINDOWS-UPGRADE.md) before replacing an existing installation. Legacy unsafe uninstallers are blocked; a successful one-off attended migration is not general automatic-upgrade support.
 
@@ -12,7 +12,7 @@ directory; do not rename an older package to a new version. For example:
 ```bash
 pnpm install --frozen-lockfile
 pnpm build:wasm
-pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.2.5-<short-sha>
+pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.3.0-<short-sha>
 ```
 
 Verify the packaged app version and `dist/performance-build.json` source SHA,

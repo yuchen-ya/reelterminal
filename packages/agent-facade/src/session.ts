@@ -1,5 +1,6 @@
 import { collaborationInstructionsSummary, collaborationInstructionsView, type CollaborationInstructionsResult } from "./collaboration-instructions";
 import { AUDIO_NORMALIZE_MAX_RANGE_SEC } from "./audio-normalize";
+import { REVIEW_VERBS } from "./review";
 import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
 import { AUDIO_SEPARATE_MAX_RANGE_SEC, assertDemucsModelReady } from "./audio-separate";
 import { runAudioNormalizationTask, runAudioDenoiseTask, runAudioSeparationTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
@@ -190,6 +191,19 @@ import {
   HELP_SEARCH_SCHEMA,
 } from "./verb-schemas";
 import {
+  WORKBENCH_CHANGES_SCHEMA,
+  WORKBENCH_GET_SCHEMA,
+  WORKBENCH_HANDOFF_GET_SCHEMA,
+  WORKBENCH_INGEST_SCHEMA,
+  workbenchBuilderError,
+  workbenchChangesView,
+  workbenchGetView,
+  workbenchHandoffGetView,
+  workbenchIngestInput,
+} from "./workbench";
+import { buildWorkbenchIngestActions } from "@reelterminal/core/actions/workbench-actions";
+import { emptyWorkbenchState } from "@reelterminal/core/types/workbench";
+import {
   describeManualScreen,
   listManualScreens,
   searchManualScreens,
@@ -262,6 +276,14 @@ import type {
   HistoryControlResult,
   VerifyArtifactParams,
   VerifyArtifactResult,
+  WorkbenchChangesParams,
+  WorkbenchChangesResult,
+  WorkbenchGetParams,
+  WorkbenchGetResult,
+  WorkbenchHandoffGetParams,
+  WorkbenchHandoffGetResult,
+  WorkbenchIngestParams,
+  WorkbenchIngestResult,
 } from "./types";
 import {
   MAX_VISUAL_PNG_BYTES,
@@ -363,6 +385,7 @@ export class AgentFacadeSession {
 
   private capabilityContext() {
     return {
+      unavailableVerbs: ["review.context" as const, ...REVIEW_VERBS],
 
       mediaRoots: this.config.mediaRoots ?? [],
       deliveryRoots: this.config.deliveryRoots ?? [],
@@ -386,9 +409,9 @@ export class AgentFacadeSession {
 
   /* ------------------------------ reads ------------------------------ */
 
-  async sessionDescribe(): Promise<FacadeResult<SessionDescription>> {
+  async sessionDescribe(params: Pick<CapabilitiesGetParams, "kind"> = {}): Promise<FacadeResult<SessionDescription>> {
     try {
-      return ok(await buildSessionDescription(this.capabilityContext()));
+      return ok(await buildSessionDescription(this.capabilityContext(), params));
     } catch (error) {
       return toFailure<SessionDescription>(error);
     }
@@ -600,6 +623,7 @@ export class AgentFacadeSession {
         timeRange: null,
         canvasPoint: null,
         references: {},
+        workbench: null,
         requirements: { ready: 0, inProgress: 0, ids: [] },
         collaborationInstructions: collaborationInstructionsSummary(this.project),
         identity: {
@@ -1742,6 +1766,158 @@ export class AgentFacadeSession {
         applied: outcome.value.applied,
         replayed: outcome.replayed,
       });
+    });
+  }
+
+  /* ---------------------------- workbench ----------------------------- */
+
+  /**
+   * workbench.ingest (headless): build the ingest actions against the
+   canonical project's workbench state via the shared core builder, then
+   commit them through the standard mutation pipeline — one revision, one
+   idempotency ledger entry, and a discarded draft on any failure.
+   */
+  async workbenchIngest(
+    params: WorkbenchIngestParams,
+  ): Promise<FacadeResult<WorkbenchIngestResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<WorkbenchIngestParams>(
+        params,
+        WORKBENCH_INGEST_SCHEMA,
+        "workbench.ingest params",
+      );
+      if (!this.project) return this.noProject();
+      const payload = {
+        batchId: valid.batchId,
+        name: valid.name,
+        description: valid.description,
+        items: valid.items,
+      };
+      const prior = this.beginMutation<WorkbenchIngestResult>(
+        "workbench.ingest",
+        valid.expectedRevision,
+        valid.idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<WorkbenchIngestResult>({
+          ...prior.value,
+          revision: prior.revision,
+          replayed: true,
+        });
+      }
+
+      const wbState = this.project.workbench ?? emptyWorkbenchState();
+      if (this.project.reviewMigration) throw new FacadeError("CONFLICT", "MIGRATED: use the independent review node; this project workbench is a read-only backup.");
+      const existingIds = new Set(wbState.items.map((item) => item.id));
+      const built = buildWorkbenchIngestActions(
+        wbState,
+        workbenchIngestInput(valid, Date.now()),
+      );
+      if (!built.ok) throw workbenchBuilderError("workbench.ingest", built);
+      if (built.actions.length === 0) {
+        // Fully idempotent re-ingest: an honest no-op — no revision bump,
+        // nothing committed, nothing recorded in the ledger.
+        return ok<WorkbenchIngestResult>({
+          revision: this.revision,
+          batchId: valid.batchId,
+          batchRevision: wbState.batches.find((batch) => batch.id === valid.batchId)?.revision ?? 0,
+          acceptedItemIds: [],
+          skippedItemIds: valid.items.map((item) => item.id),
+          received: true,
+          replayed: false,
+        });
+      }
+
+      const outcome = await this.commitMutation<
+        Omit<WorkbenchIngestResult, "revision" | "replayed">
+      >({
+        verb: "workbench.ingest",
+        idempotencyKey: valid.idempotencyKey,
+        payload,
+        apply: async (draft) => {
+          const executor = new ActionExecutor(new ActionHistory());
+          for (const action of built.actions) {
+            const result = await executor.execute(action, draft);
+            if (!result.success) {
+              throw new FacadeError(
+                "ACTION_FAILED",
+                `workbench.ingest failed: ${result.error?.message ?? "unknown core error"}`,
+                { coreCode: result.error?.code },
+              );
+            }
+          }
+          const after = draft.workbench ?? emptyWorkbenchState();
+          return {
+            batchId: valid.batchId,
+            batchRevision:
+              after.batches.find((batch) => batch.id === valid.batchId)?.revision ?? 0,
+            acceptedItemIds: valid.items
+              .map((item) => item.id)
+              .filter((id) => !existingIds.has(id)),
+            skippedItemIds: valid.items
+              .map((item) => item.id)
+              .filter((id) => existingIds.has(id)),
+            received: true as const,
+          };
+        },
+      });
+      return ok<WorkbenchIngestResult>({
+        revision: outcome.revision,
+        ...outcome.value,
+        replayed: outcome.replayed,
+      });
+    });
+  }
+
+  /** workbench.get (read-only): bounded batch/item projection. */
+  async workbenchGet(
+    params: WorkbenchGetParams = {},
+  ): Promise<FacadeResult<WorkbenchGetResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<WorkbenchGetParams>(
+        params,
+        WORKBENCH_GET_SCHEMA,
+        "workbench.get params",
+      );
+      if (!this.project) return this.noProject();
+      return ok(
+        workbenchGetView(this.project.workbench ?? emptyWorkbenchState(), this.revision, valid),
+      );
+    });
+  }
+
+  /** workbench.changes (read-only): decision log + handoff events with an approximate revision cursor. */
+  async workbenchChanges(
+    params: WorkbenchChangesParams,
+  ): Promise<FacadeResult<WorkbenchChangesResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<WorkbenchChangesParams>(
+        params,
+        WORKBENCH_CHANGES_SCHEMA,
+        "workbench.changes params",
+      );
+      if (!this.project) return this.noProject();
+      return ok(
+        workbenchChangesView(this.project.workbench ?? emptyWorkbenchState(), this.revision, valid),
+      );
+    });
+  }
+
+  /** workbench.handoff.get (read-only): one immutable handoff snapshot. */
+  async workbenchHandoffGet(
+    params: WorkbenchHandoffGetParams,
+  ): Promise<FacadeResult<WorkbenchHandoffGetResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<WorkbenchHandoffGetParams>(
+        params,
+        WORKBENCH_HANDOFF_GET_SCHEMA,
+        "workbench.handoff.get params",
+      );
+      if (!this.project) return this.noProject();
+      return ok(
+        workbenchHandoffGetView(this.project.workbench ?? emptyWorkbenchState(), this.revision, valid),
+      );
     });
   }
 

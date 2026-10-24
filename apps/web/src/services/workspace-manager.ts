@@ -7,6 +7,7 @@ import {
 import type { Action, PerfOperation, Project } from "@reelterminal/core";
 import { v4 as uuidv4 } from "uuid";
 import i18next from "i18next";
+import { recoverReviewMigration } from "./review-workspace/migration-records";
 import { useUIStore, type SelectionItem } from "../stores/ui-store";
 import { useTimelineStore } from "../stores/timeline-store";
 import { useEngineStore } from "../stores/engine-store";
@@ -1161,6 +1162,7 @@ export class WorkspaceManager {
     const record = await this.requireWorkspace(target);
     let store = this.runtimes.get(target.workspaceId);
     if (!store) store = await this.ensureRuntime(record, false);
+    await recoverReviewMigration(store);
     this.requireAvailableProject(target.projectId);
     return {
       projectId: target.projectId,

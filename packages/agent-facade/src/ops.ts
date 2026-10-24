@@ -108,6 +108,11 @@ import {
   type WorkAssetRenameOp,
   type WorkAssetDeleteOp,
   type WorkAssetInstantiateOp,
+  type WorkbenchContentUpdateOp,
+  type WorkbenchDecideOp,
+  type WorkbenchFeedbackSaveOp,
+  type WorkbenchHandoffAckOp,
+  type WorkbenchReworkOp,
 } from "./types";
 import { validateReferenceComparisonConfig } from "@reelterminal/core/types/reference-comparison";
 import { DEFAULT_CHROMA_KEY_SETTINGS } from "@reelterminal/core/video/chroma-key-engine";
@@ -131,6 +136,16 @@ import { WORK_ASSET_MAX_MEMBERS } from "@reelterminal/core/types/work-asset";
 import { timelineDurationSec } from "./projection";
 import { basename } from "node:path";
 import { resolveContainedPathDetailed } from "./media/path-roots";
+import {
+  WORKBENCH_CONTENT_UPDATE_OP_SCHEMA,
+  WORKBENCH_DECIDE_OP_SCHEMA,
+  WORKBENCH_FEEDBACK_SAVE_OP_SCHEMA,
+  WORKBENCH_HANDOFF_ACK_OP_SCHEMA,
+  WORKBENCH_REWORK_OP_SCHEMA,
+  validateWorkbenchContentUpdateOp,
+} from "./workbench";
+import { workbenchOpActions } from "./workbench-op-actions";
+import { emptyWorkbenchState } from "@reelterminal/core/types/workbench";
 
 /* ------------------------------------------------------------------ */
 /* Strict op validation                                                */
@@ -3218,6 +3233,27 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<MediaSetProductionOp>(raw, MEDIA_PRODUCTION_SCHEMA, label);
     case "media.rename":
       return validateObject<MediaRenameOp>(raw, MEDIA_RENAME_SCHEMA, label);
+    case "workbench.decide":
+      // Cross-field semantics (expected-item-version CAS, modified⇒revision,
+      // batch membership) run against the live draft in opToCoreActions.
+      return validateObject<WorkbenchDecideOp>(raw, WORKBENCH_DECIDE_OP_SCHEMA, label);
+    case "workbench.feedback.save":
+      return validateObject<WorkbenchFeedbackSaveOp>(raw, WORKBENCH_FEEDBACK_SAVE_OP_SCHEMA, label);
+    case "workbench.handoff.ack":
+      return validateObject<WorkbenchHandoffAckOp>(raw, WORKBENCH_HANDOFF_ACK_OP_SCHEMA, label);
+    case "workbench.rework":
+      return validateObject<WorkbenchReworkOp>(raw, WORKBENCH_REWORK_OP_SCHEMA, label);
+    case "workbench.content.update": {
+      const op = validateObject<WorkbenchContentUpdateOp>(
+        raw,
+        WORKBENCH_CONTENT_UPDATE_OP_SCHEMA,
+        label,
+      );
+      // kind⇒payload exclusivity is a cross-field rule the emitted schema
+      // cannot express (at-least-one-of / exactly-one-of).
+      validateWorkbenchContentUpdateOp(op, label);
+      return op;
+    }
     default:
       // Unreachable: opType was allowlist-checked above. Keeps the function
       // total for the compiler and fail-closed for the runtime.
@@ -3521,6 +3557,7 @@ function extractSvgViewBox(content: string): ViewBox {
  * before any core action is produced when the op cannot succeed.
  */
 export function opToCoreActions(op: EditOp, draft: Project): Action[] {
+  if (op.op.startsWith("workbench.") && draft.reviewMigration) throw new FacadeError("CONFLICT", "MIGRATED: use the independent review node; this project workbench is a read-only backup.");
   switch (op.op) {
     case "track.add": {
       if (
@@ -5457,5 +5494,12 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         }),
       ];
     }
+
+    case "workbench.decide":
+    case "workbench.feedback.save":
+    case "workbench.handoff.ack":
+    case "workbench.rework":
+    case "workbench.content.update":
+      return workbenchOpActions(op, draft.workbench ?? emptyWorkbenchState());
   }
 }

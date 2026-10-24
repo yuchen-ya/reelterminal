@@ -18,6 +18,8 @@ export interface ParsedInvocation {
 }
 
 const ALIASES: Readonly<Record<string, string>> = {
+  "review context": "review.context",
+  "video context": "editor.get_context",
   context: "editor.get_context",
   query: "timeline.query",
   "edit validate": "edit.validate",
@@ -367,6 +369,9 @@ Usage:
   reelctl frames extract --media-id m1 --start-frame 100 --end-frame 104
   reelctl frames sheet --file frames.json
   reelctl video compare --file compare.json
+  reelctl review context | capabilities | describe
+  reelctl video context | capabilities | describe
+  reelctl review call review.ingest --file review-input.json
   reelctl patch apply --file patch.json
   reelctl image align --file align.json
   reelctl motion track --file track.json

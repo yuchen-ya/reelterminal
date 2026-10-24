@@ -46,6 +46,8 @@ export interface DesktopCollabSetAccessArgs {
 }
 
 export type DesktopLiveBridgeKind =
+  | "reviewContext"
+  | "reviewCommand"
   | "getIdentity"
   | "getState"
   | "requirements"
@@ -75,6 +77,8 @@ export interface DesktopLiveBridgeRequest {
   /** Runtime generation captured by the preceding targeted read in this command. */
   readonly expectedWorkspaceInstanceId?: string;
   readonly kind: DesktopLiveBridgeKind;
+  readonly reviewVerb?: import("./review").ReviewVerb;
+  readonly reviewParams?: Record<string, unknown>;
   readonly requirementVerb?: "requirements.list" | "requirements.get";
   readonly requirementParams?: import("./requirements").RequirementsListParams | import("./requirements").RequirementsGetParams;
   readonly actions?: readonly Action[];
@@ -181,6 +185,8 @@ export interface DesktopCollabControlApi {
   getStatus(): Promise<DesktopCollabStatus>;
   /** Explicitly change the authorization boundary; independent of client behavior. */
   setAccess(access: AgentAccessMode): Promise<DesktopCollabStatus>;
+  setReviewAccess?(input: { access: AgentAccessMode; reviewWorkspaceId: string; instanceId: string }): Promise<import("@reelterminal/core/review/types").ReviewContext>;
   openWorkspace(): Promise<string>;
   getStartupInfo(): Promise<{ cliCommand: string; shell: string; workspaceRoot: string }>;
+  getReviewAccess?(input: { reviewWorkspaceId: string; instanceId: string }): Promise<AgentAccessMode>;
 }

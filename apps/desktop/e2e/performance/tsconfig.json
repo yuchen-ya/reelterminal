@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": { "noEmit": true, "composite": false },
-  "include": ["../harness/performance/**/*.ts", "./**/*.ts", "../../../web/src/types/global.d.ts"]
+  "include": ["../frame-stepping.e2e.ts", "../harness/performance/**/*.ts", "./**/*.ts", "../../../web/src/types/global.d.ts"]
 }

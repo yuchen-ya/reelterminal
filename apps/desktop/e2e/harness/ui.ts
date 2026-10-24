@@ -63,6 +63,7 @@ export async function waitForEditorReady(page: Page): Promise<void> {
 }
 
 export async function openRecentProjectViaUI(page: Page, projectName: string): Promise<void> {
+  await page.getByRole("tab", { name: /Video edit|视频编辑/i }).click();
   await page.getByTestId("project-library").waitFor({ timeout: 60_000 });
   const card = page.getByLabel(`Open ${projectName}`);
   await card.waitFor({ timeout: 60_000 });

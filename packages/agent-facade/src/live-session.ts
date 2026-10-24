@@ -1,5 +1,6 @@
 import { collaborationInstructionsSummary, collaborationInstructionsView, type CollaborationInstructionsResult } from "./collaboration-instructions";
 import { AUDIO_NORMALIZE_MAX_RANGE_SEC } from "./audio-normalize";
+import { REVIEW_VERBS, REVIEW_SCHEMAS, type ReviewBridge, type ReviewVerb, type ReviewFacadeBindings } from "./review";
 import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
 import { AUDIO_SEPARATE_MAX_RANGE_SEC, assertDemucsModelReady } from "./audio-separate";
 import { runAudioNormalizationTask, runAudioDenoiseTask, runAudioSeparationTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
@@ -206,6 +207,19 @@ import {
   HELP_SEARCH_SCHEMA,
 } from "./verb-schemas";
 import {
+  WORKBENCH_CHANGES_SCHEMA,
+  WORKBENCH_GET_SCHEMA,
+  WORKBENCH_HANDOFF_GET_SCHEMA,
+  WORKBENCH_INGEST_SCHEMA,
+  workbenchBuilderError,
+  workbenchChangesView,
+  workbenchGetView,
+  workbenchHandoffGetView,
+  workbenchIngestInput,
+} from "./workbench";
+import { buildWorkbenchIngestActions } from "@reelterminal/core/actions/workbench-actions";
+import { emptyWorkbenchState } from "@reelterminal/core/types/workbench";
+import {
   describeManualScreen,
   listManualScreens,
   searchManualScreens,
@@ -309,6 +323,14 @@ import {
   type HistoryControlResult,
   type VerifyArtifactParams,
   type VerifyArtifactResult,
+  type WorkbenchChangesParams,
+  type WorkbenchChangesResult,
+  type WorkbenchGetParams,
+  type WorkbenchGetResult,
+  type WorkbenchHandoffGetParams,
+  type WorkbenchHandoffGetResult,
+  type WorkbenchIngestParams,
+  type WorkbenchIngestResult,
   AnalysisGetParams,
   AnalysisListParams,
   AnalysisListResult,
@@ -397,10 +419,14 @@ export interface LiveTaskInputReferences {
 }
 
 export interface LiveFacadeConfig {
+  readonly reviewContext?: () => Promise<import("@reelterminal/core/review/types").ReviewContext>;
+  readonly reviewCommand?: ReviewBridge;
+  readonly reviewAccess?: (target?: import("@reelterminal/core/review/types").ReviewContext["target"]) => AgentAccessMode;
   /** The canonical-store seam (Decision 1). */
   readonly store: LiveProjectStore;
   /** Absolute roots from which media.import may read local files. */
   readonly mediaRoots?: readonly string[];
+  readonly workspaceRoots?: { readonly video: string; readonly review: string };
   /**
    * Absolute roots under which export.start's destinationPath may deliver a
    * verified artifact copy (`<deliveryRoot>/jobs/<slug>/output/`) — same
@@ -572,6 +598,8 @@ export class LiveFacadeSession {
     if (!mediaImportAvailable) unavailableVerbs.push("media.import");
     if (!materialLibraryAvailable) unavailableVerbs.push(...MATERIAL_VERBS);
     if (!workspaceLibraryAvailable) unavailableVerbs.push("project.create", "project.save", ...WORKSPACE_VERBS);
+    if (!this.config.reviewContext) unavailableVerbs.push("review.context");
+    if (!this.config.reviewCommand) unavailableVerbs.push(...REVIEW_VERBS);
     return {
 
       mediaRoots: this.config.mediaRoots ?? [],
@@ -669,6 +697,10 @@ export class LiveFacadeSession {
    */
   private gate(verb: FacadeVerb): void {
     if (isReadOnlyVerb(verb)) return;
+    if (verb.startsWith("review.")) {
+      if (this.config.reviewAccess?.() !== "write") throw new FacadeError("FORBIDDEN", "Review write access is not enabled for this launch");
+      return;
+    }
     if (this.accessMode() === "read-only") {
       throw new FacadeError(
         "FORBIDDEN",
@@ -712,9 +744,18 @@ export class LiveFacadeSession {
     return this.writer;
   }
 
-  async sessionDescribe(): Promise<FacadeResult<SessionDescription>> {
+  private async discoveryContext(kind?: "video" | "review") {
+    const base = this.capabilityContext();
+    const root = kind && this.config.workspaceRoots?.[kind];
+    const context = root ? { ...base, mediaRoots: [root, ...base.mediaRoots.filter(candidate => candidate !== root)] } : base;
+    if (kind !== "review" || !this.config.reviewContext) return context;
+    const review = await this.config.reviewContext();
+    return { ...context, review: { available: !!this.config.reviewCommand, access: this.config.reviewAccess?.(review.target) ?? "read-only" } };
+  }
+
+  async sessionDescribe(params: Pick<CapabilitiesGetParams, "kind"> = {}): Promise<FacadeResult<SessionDescription>> {
     try {
-      return ok(await buildSessionDescription(this.capabilityContext()));
+      return ok(await buildSessionDescription(await this.discoveryContext(params.kind), params));
     } catch (error) {
       return toFailure<SessionDescription>(error);
     }
@@ -722,10 +763,35 @@ export class LiveFacadeSession {
 
   async capabilitiesGet(params: CapabilitiesGetParams = {}): Promise<FacadeResult<Capabilities>> {
     try {
-      return ok(await buildCapabilities(this.capabilityContext(), params));
+      return ok(await buildCapabilities(await this.discoveryContext(params.kind), params));
     } catch (error) {
       return toFailure<Capabilities>(error);
     }
+  }
+
+  async reviewContext(params: Record<string, never> = {}): Promise<FacadeResult<import("@reelterminal/core/review/types").ReviewContext>> {
+    return this.enqueue(async () => {
+      validateObject(params, EMPTY_PARAMS_SCHEMA, "review.context params");
+      if (!this.config.reviewContext) throw new FacadeError("UNSUPPORTED", "Independent review is unavailable in this host");
+      const context = await this.config.reviewContext();
+      return ok({ ...context, access: this.config.reviewAccess?.(context.target) ?? "read-only" });
+    });
+  }
+
+  async reviewCommand(verb: ReviewVerb, params: Record<string, unknown>): Promise<FacadeResult<unknown>> {
+    return this.enqueue(async () => {
+      this.gate(verb);
+      validateObject(params, REVIEW_SCHEMAS[verb], `${verb} params`);
+      if (verb === "review.attach") this.gate("media.import");
+      if (!isReadOnlyVerb(verb) && this.config.reviewAccess?.(params.target as import("@reelterminal/core/review/types").ReviewContext["target"]) !== "write") throw new FacadeError("CONFLICT", "Review workspace or runtime changed; discover and authorize the current target");
+      if (!this.config.reviewCommand) throw new FacadeError("UNSUPPORTED", "Review commands are unavailable in this host");
+      try { return ok(await this.config.reviewCommand(verb, params)); }
+      catch (error) {
+        const problem = error as { code?: string; details?: Record<string, unknown> };
+        if (problem.code && (FACADE_ERROR_CODES as readonly string[]).includes(problem.code)) throw new FacadeError(problem.code as FacadeErrorCode, error instanceof Error ? error.message : String(error), problem.details);
+        throw error;
+      }
+    });
   }
 
   async projectGetState(): Promise<FacadeResult<ProjectState>> {
@@ -989,6 +1055,13 @@ export class LiveFacadeSession {
         timeRange: context.timeRange ? { ...context.timeRange } : null,
         canvasPoint: context.canvasPoint ? { ...context.canvasPoint } : null,
         references: context.references ? { ...context.references } : {},
+        workbench: context.workbench
+          ? {
+              activeBatchId: context.workbench.activeBatchId,
+              currentItemId: context.workbench.currentItemId,
+              selectedItemIds: [...context.workbench.selectedItemIds],
+            }
+          : null,
         collaborationInstructions: collaborationInstructionsSummary(state.project),
         requirements: {
           ready: requirementItems.filter((item) => item.status === "ready").length,
@@ -2292,6 +2365,171 @@ export class LiveFacadeSession {
         applied,
         replayed: false,
       });
+    });
+  }
+
+  /* ---------------------------- workbench ----------------------------- */
+
+  /**
+   * workbench.ingest (live): build the ingest actions against the CURRENT
+   workbench snapshot via the shared core builder, then commit them through
+   the store seam exactly like edit.apply — unconditional CAS (the snapshot
+   revision guards an omitted expectedRevision), one "agent:
+   * workbench.ingest" undo group, and ledger replay for retrying transports.
+   */
+  async workbenchIngest(
+    params: WorkbenchIngestParams,
+  ): Promise<FacadeResult<WorkbenchIngestResult>> {
+    return this.enqueue(async () => {
+      this.gate("workbench.ingest");
+      const valid = validateObject<WorkbenchIngestParams>(
+        params,
+        WORKBENCH_INGEST_SCHEMA,
+        "workbench.ingest params",
+      );
+      const payload = {
+        batchId: valid.batchId,
+        name: valid.name,
+        description: valid.description,
+        items: valid.items,
+      };
+      const receipt = await this.replayLookup<WorkbenchIngestResult>(
+        "workbench.ingest",
+        valid.idempotencyKey,
+        payload,
+      );
+      if (receipt?.prior) {
+        return ok<WorkbenchIngestResult>({
+          ...receipt.prior.value,
+          revision: receipt.prior.revision,
+          replayed: true,
+        });
+      }
+
+      const { project: snapshot, revision } = await this.config.store.getState();
+      if (
+        valid.expectedRevision !== undefined &&
+        valid.expectedRevision !== revision
+      ) {
+        throw new FacadeError(
+          "CONFLICT",
+          `revision conflict: expected ${valid.expectedRevision}, current is ${revision}`,
+          { currentRevision: revision },
+        );
+      }
+
+      const wbState = snapshot.workbench ?? emptyWorkbenchState();
+      if (snapshot.reviewMigration) throw new FacadeError("CONFLICT", "MIGRATED: use the independent review node; this project workbench is a read-only backup.");
+      const built = buildWorkbenchIngestActions(
+        wbState,
+        workbenchIngestInput(valid, Date.now()),
+      );
+      if (!built.ok) throw workbenchBuilderError("workbench.ingest", built);
+
+      const existingIds = new Set(wbState.items.map((item) => item.id));
+      if (built.actions.length === 0) {
+        // Fully idempotent re-ingest: every item identity already exists —
+        // report received without touching the store or the revision.
+        return ok<WorkbenchIngestResult>({
+          revision,
+          batchId: valid.batchId,
+          batchRevision: wbState.batches.find((batch) => batch.id === valid.batchId)?.revision ?? 0,
+          acceptedItemIds: [],
+          skippedItemIds: valid.items.map((item) => item.id),
+          received: true,
+          replayed: false,
+        });
+      }
+
+      let committed: LiveApplyActionsResult;
+      try {
+        this.gate("workbench.ingest");
+        committed = await this.config.store.applyActions(built.actions, {
+          groupLabel: "agent: workbench.ingest",
+          expectedRevision: valid.expectedRevision ?? revision,
+          ...(valid.idempotencyKey !== undefined
+            ? { idempotencyKey: valid.idempotencyKey, idempotencyPayload: payload }
+            : {}),
+        });
+      } catch (error) {
+        if (isLiveStoreConflict(error)) {
+          throw new FacadeError(
+            "CONFLICT",
+            `workbench.ingest: ${error instanceof Error ? error.message : String(error)}`,
+            error instanceof LiveStoreConflictError ? error.details : undefined,
+          );
+        }
+        throw error;
+      }
+      const after = await this.config.store.getState();
+      const value: WorkbenchIngestResult = {
+        revision: committed.revision,
+        batchId: valid.batchId,
+        batchRevision:
+          after.project.workbench?.batches.find((batch) => batch.id === valid.batchId)?.revision ?? 0,
+        acceptedItemIds: valid.items
+          .map((item) => item.id)
+          .filter((id) => !existingIds.has(id)),
+        skippedItemIds: valid.items.map((item) => item.id).filter((id) => existingIds.has(id)),
+        received: true,
+        replayed: false,
+      };
+      receipt?.commit(value, committed.revision);
+      return ok(value);
+    });
+  }
+
+  /** workbench.get (read-only): bounded batch/item projection. */
+  async workbenchGet(
+    params: WorkbenchGetParams = {},
+  ): Promise<FacadeResult<WorkbenchGetResult>> {
+    return this.enqueue(async () => {
+      this.gate("workbench.get");
+      const valid = validateObject<WorkbenchGetParams>(
+        params,
+        WORKBENCH_GET_SCHEMA,
+        "workbench.get params",
+      );
+      const { project, revision } = await this.config.store.getState();
+      return ok(
+        workbenchGetView(project.workbench ?? emptyWorkbenchState(), revision, valid),
+      );
+    });
+  }
+
+  /** workbench.changes (read-only): decision log + handoff events with an approximate revision cursor. */
+  async workbenchChanges(
+    params: WorkbenchChangesParams,
+  ): Promise<FacadeResult<WorkbenchChangesResult>> {
+    return this.enqueue(async () => {
+      this.gate("workbench.changes");
+      const valid = validateObject<WorkbenchChangesParams>(
+        params,
+        WORKBENCH_CHANGES_SCHEMA,
+        "workbench.changes params",
+      );
+      const { project, revision } = await this.config.store.getState();
+      return ok(
+        workbenchChangesView(project.workbench ?? emptyWorkbenchState(), revision, valid),
+      );
+    });
+  }
+
+  /** workbench.handoff.get (read-only): one immutable handoff snapshot. */
+  async workbenchHandoffGet(
+    params: WorkbenchHandoffGetParams,
+  ): Promise<FacadeResult<WorkbenchHandoffGetResult>> {
+    return this.enqueue(async () => {
+      this.gate("workbench.handoff.get");
+      const valid = validateObject<WorkbenchHandoffGetParams>(
+        params,
+        WORKBENCH_HANDOFF_GET_SCHEMA,
+        "workbench.handoff.get params",
+      );
+      const { project, revision } = await this.config.store.getState();
+      return ok(
+        workbenchHandoffGetView(project.workbench ?? emptyWorkbenchState(), revision, valid),
+      );
     });
   }
 
@@ -4654,7 +4892,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
   return withValidatedFacadeCalls({
     ...bindBundledTools(session, config, "live"),
     ...Object.fromEntries(WORKSPACE_VERBS.map((verb) => [verb, (params: Record<string, unknown> = {}) => session.workspaceCommand(verb, params)])) as Pick<LiveAgentFacade, WorkspaceVerb>,
-    "session.describe": () => session.sessionDescribe(),
+    "session.describe": (params) => session.sessionDescribe(params),
     "capabilities.get": (params) => session.capabilitiesGet(params),
     "project.create": (params) => session.projectCreate(params),
     "project.open": (params) => session.projectOpen(params),
@@ -4676,6 +4914,8 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "timeline.query": (params) => session.timelineQuery(params),
     "timeline.mapSourceTimes": (params) => session.timelineMapSourceTimes(params),
     "editor.get_context": (params) => session.editorGetContext(params),
+    "review.context": (params) => session.reviewContext(params),
+    ...Object.fromEntries(REVIEW_VERBS.map(verb => [verb, (params: Record<string, unknown>) => session.reviewCommand(verb, params)])) as ReviewFacadeBindings,
     "editor.control": (params) => session.editorControl(params),
     "edit.apply": (params) => session.editApply(params),
     "edit.validate": (params) => session.editValidate(params),
@@ -4690,6 +4930,10 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "job.status": (params) => session.jobStatus(params),
     "job.cancel": (params) => session.jobCancel(params),
     "verify.artifact": (params) => session.verifyArtifact(params),
+    "workbench.ingest": (params) => session.workbenchIngest(params),
+    "workbench.get": (params) => session.workbenchGet(params),
+    "workbench.changes": (params) => session.workbenchChanges(params),
+    "workbench.handoff.get": (params) => session.workbenchHandoffGet(params),
     "material.list": (params) => session.materialList(params),
     "material.get": (params) => session.materialGet(params),
     "material.create": (params) => session.materialCreate(params),

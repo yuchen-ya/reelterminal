@@ -1,15 +1,95 @@
 # Command API
 
-The desktop exposes the open project's command catalog on loopback. The GUI
-owns the project; an external Agent reads and edits that same state through
-`reelctl`.
+The desktop exposes video-project and independent review command catalogs on
+loopback. The GUI owns both stores; an external Agent uses `reelctl` to read or
+edit an explicit target. Review does not require an open video project.
 
 ## Access
 
-The command service starts with read-only access when a project is open. Use
+The app-lifetime command service starts read-only. For video projects, use
 **Allow editing** in the status strip to grant write access and **Set
 read-only** to revoke it. The endpoint token is a credential; clients read it
 privately and must not print or log it.
+
+## Independent Review Workspace
+
+Select **Review Workspace**, create a data node, and use **Copy connection
+instructions** for the current installation. Review editing has its own checkbox;
+video write permission does not grant review write permission. Human GUI edits
+do not require granting an external Agent access.
+
+```powershell
+reelctl review context
+reelctl review capabilities
+reelctl review describe
+reelctl schema review.ingest
+reelctl review call review.ingest --file review-input.json
+```
+
+`review.context` supplies `{kind:"review", reviewWorkspaceId, instanceId}`.
+Node commands additionally require `nodeId`. Resolve the target explicitly and
+keep it throughout a task. Node writes require `expectedNodeRevision` and a UUID
+`requestId`; directory writes use `expectedWorkspaceRevision`. Revisions are
+monotonic through undo/redo. Replaying an identical durable request returns its
+receipt, while stale instances/revisions or changed request bodies fail with
+`CONFLICT`. Do not substitute a video project ID or infer the node from selection.
+
+Available command families (query their schemas for exact arguments):
+
+- `review.directory.get/apply/history.control`, `review.nodes.list/create` manage
+  node metadata, groups, archive and recycle states separately from item history.
+- `review.ingest/get/changes`, `review.apply`, `review.versions.get` and
+  `review.history.control` share the existing review semantics for four content
+  types. Reads are paged (default 100, maximum 500); an exact item/version read
+  returns its body. File bytes stay outside command JSON. File ingest prepares
+  independent managed originals before committing their references.
+- `review.handoff.get` reads an immutable human-published snapshot. Use the
+  IDs from each `review.changes.entries[].handoffIds` event to discover published,
+  acknowledged, returned or removed snapshots; a removed ID reads `NOT_FOUND`.
+  Fetch each snapshot to inspect its current delivery state and historical flag.
+  Acknowledgement and rework operations use `review.apply`, exact versions and decision revisions.
+  Publishing remains a human GUI action. Migrated/restored handoffs are historical
+  evidence and cannot resume old tasks.
+- `review.steps.start/complete/fail/list` records actual tool runs, exact
+  inputs/outputs, parameters, mappings and failures. Completing a step commits its
+  outputs atomically. External reports remain declared; these commands do not run
+  a model or infer a processing history from a final file.
+- `review.media.inspect` and `review.frames.extract` are shared read-only native
+  operations on an exact node-owned version/resource, guarded by node revision.
+  Frames reuse the existing FFmpeg processor. Outputs go under
+  `agent-workspace/review/jobs/<date>-review-frames-<uuid>/output/`. They do not
+  automatically create review items, feedback or steps. Other project processors
+  are not available for review targets.
+- `review.export.prepare/status/cancel/copy` freezes `original`, `adopted`,
+  `node-package` or exact-reference `version` exports. Region/time annotations do
+  not crop or trim the exported file. Prepared exports are disposable copies;
+  handing a drag to the OS does not prove a target app received it.
+- `review.package.inspect/restore` validates a complete node package and restores
+  new IDs with references remapped. Missing media/version bodies remain explicit
+  gaps. Historical journals are evidence, not executable undo records. Whole-node
+  backup is available in the GUI; directory metadata is saved but restoration is
+  currently per node.
+- `review.attach` copies an exact human-adopted image/video to an explicitly
+  selected video project/workspace/runtime through canonical media import. Agent
+  use requires both write grants. It adds no timeline clip. A retried import that
+  was subsequently undone returns `present:false` instead of resurrecting it.
+
+Legacy migration and permanent node clearing are explicit human GUI actions.
+Migration copies readable files, retains unavailable markers, and locks the old
+project workbench as a backup. It removes undo groups containing old workbench
+actions and clears the redo branch at the normal new-edit boundary; other project
+undo remains. Interrupted project-pointer saving can be retried without duplicate
+nodes. A source changed by an older application is imported as new batches only
+after another preview/confirmation. Old applications do not enforce this lock.
+Permanent clearing previews references and requires confirmation to delete all
+node history. Other nodes and project copies remain; managed orphan cleanup uses
+the existing 24-hour grace period and a later app startup.
+
+`NOT_FOUND` distinguishes a missing entity or unavailable retained body; native
+file errors additionally report a reason such as `MISSING_FILE` or
+`SOURCE_CHANGED`. Read the error before deciding whether to prepare a new export
+or preview. Permissions, malformed targets and cross-node references never imply
+permission to retry against another target.
 
 ## CLI
 
@@ -207,3 +287,94 @@ discovered through the shared CLI catalog. `edit.apply` adds
 verified CFR/frame-count preservation. See
 [PRODUCTION-MANAGEMENT.md](PRODUCTION-MANAGEMENT.md) for shared GUI records,
 review-to-board adoption, batch persistence boundaries and rendering details.
+
+## AI material workbench
+
+The workbench (`workbench.*` verbs, shared by reelctl and the GUI project
+store) reviews batches of Agent-produced items. Four content kinds are
+first-class: `image`, `text`, `data` and `video`. Text corpora and data tables
+carry their own payloads — they are never disguised as media files; image and
+video items reference existing project media ids (import bytes first).
+
+- `workbench.ingest` — create or append a batch with stable item ids
+  (`{batchId, name, items: [{id, title, type, content, provenanceTags?,
+  agentGuidance?, lineage?}]}`). Re-submitting an existing item id is an
+  idempotent skip; ids are never reused for different content. Supports
+  `expectedRevision` and `idempotencyKey` like other writes.
+- Video marker legacy fields `startPtsSec`, `endPtsSec` and annotation `ptsSec`
+  use the browser media timeline (`HTMLVideoElement.currentTime`). New video
+  handoff items declare `videoTimeBasis: "browser-current-time"`; this also
+  applies to independent `review.handoff.get`. They are not automatic container
+  PTS conversions. With no source-frame mapping, do not infer a frame number or
+  add/subtract `start_time`; external source processing may need a separate
+  verified mapping. `review.frames.extract` supplies its own exact decode-index
+  and PTS facts and does not automatically attach them to GUI markers.
+- `workbench.get` — read batches/items with status, versions, feedback counts
+  and pagination (`limit` ≤ 200). Data tables return `rowCount`/columns by
+  default; pass `includeData: true` for full rows. Text returns the current
+  text plus a version count. Default output stays bounded; opt in with
+  `includeFeedback` (per-issue `intent`/`target`/`clearedBy`/`historical`),
+  `includeMarkers` (browser-time ranges, `timeBasis: "browser-current-time"`
+  and `hasFrameMapping`, no fake frame
+  numbers) and `includeRevisions` (kind/producedVersion/media/base). Each
+  response carries `read: {capturedAt, stateRevision}` for one store snapshot.
+- `workbench.changes` — decision and handoff events for one batch, keyed by a
+  `projectRevision` cursor. An older cursor returns `stale: true` with a full
+  re-read; a newer cursor is a CONFLICT.
+- `workbench.handoff.get` — read an immutable published snapshot by
+  `snapshotId` (the legacy `handoffId` is the same identity). The snapshot
+  carries execution-level `issues` per item: `itemVersion`, stable `issueId`,
+  full pixel/video/data-cell/text geometry, and `referencedTags` frozen at
+  publish time (`referenceState: "unresolved"` keeps the raw value). It also
+  freezes `provenanceTags`, `imageAnnotations`, `videoMarkers` and
+  `revisions`. Omit both ids to read only the latest snapshot header.
+  Superseded snapshots stay byte-identical; only delivery bookkeeping
+  (`deliveryState`, `returnedItemIds`) advances. Publishing a snapshot with the
+  same content is an idempotent replay (`replayed: true`); changing feedback
+  publishes a new snapshot linked by `supersedesHandoffId`, scoped per item.
+
+`edit.apply` ops for the agent channel: `workbench.decide` (operator is always
+recorded as `agent` — human verdicts come from the GUI; `expectedItemVersion`
+guards against stale decisions), `workbench.content.update` (text or explicit
+data cell patches; **requires `expectedItemVersion`**, and a valueless patch
+must resolve a proposal), `workbench.feedback.save`, `workbench.handoff.ack`
+and `workbench.rework`. Rework results are bound to the handoff item's
+`itemVersion` and decision revision: a human revision, retrieval, re-decision
+or a newer handoff covering that item rejects the old result with CONFLICT.
+Text rework appends the produced version and keeps older bodies byte-identical
+(no in-place overwrite of the parent version). Members of one handoff return
+independently; the handoff only reads `rework_returned` after every rework
+target has returned. Publishing a handoff is a human action in the GUI; there
+is no agent publish op by design.
+
+`editor.get_context` additionally reports `workbench: {activeBatchId,
+currentItemId, selectedItemIds}` while the workbench page is the active
+desktop page (`null` otherwise).
+
+
+### 审阅 GLB（轻量只读预览）
+
+独立 `review.ingest` 的正式类型为 `model3d`，内容是
+`{"type":"model3d","resourceId":"<FileResource UUID>"}`；`files` 使用
+`model/gltf-binary`，不是图片/视频 mediaId。`review.apply` 的 content.update/rework
+及 `review.steps.complete` 沿用同一内容结构、显式目标、revision/requestId 守卫。
+未支持预览的 GLB 原件仍注册并可按 original/version/adopted 导出，不隐式转换视频。
+视频项目不接受模型 attach。
+
+查看器只接受自包含 GLB 2.0，嵌入 PNG/JPEG、基础 PBR/unlit 与已有骨骼/morph 动画。
+外部 URI、未知 required 扩展、Draco/Meshopt/KTX2 和实例扩展明确拒绝预览；没有 CDN
+或自动下载解码器。当前预览门限是 48 MiB 文件、96 MiB 保守展开计数、16M 纹理像素、
+4096 纹理边长、50 万含实例三角图元、10000 节点和 128 层层级。门限是资源保护，
+不保证门限内任意模型的外观或性能。实际样例和环境见 `REVIEW-3D-PREVIEW-DELIVERY.md`。
+
+GUI `model-view` 反馈 target 包含 observationId、模型 resourceId、screenshotResourceId、
+observation（neutral-r182-v1 preset、背景、相机 position/quaternion/target/fov/near/far、
+动画 index/name/time 或 null、CSS 视口宽高）；feedback.itemVersion 绑定准确版本。
+`review.get` 和 `review.handoff.get` 可读回这些真实值。截图是反馈资源，不是新模型版本。
+相机/播放变化不产生内容修订；旧观察在新 GLB 上不被自动套用。没有 mesh/vertex
+永久锚点、自动坐标配准或动画映射 API。
+
+含 model3d 的 `node.json` 使用 archive schemaVersion 2；原文件清单 manifest 仍为
+通用库存格式 v1。当前 reader 同时接受 archive v1/v2，并拒绝把 model3d 冒充 v1；
+旧 reader 会明确拒绝 v2。恢复生成新实体/资源身份，历史交接不可执行；原 GLB、
+当前截图和历史截图均进入包及保留引用，恢复后再次打包仍保留其库存。

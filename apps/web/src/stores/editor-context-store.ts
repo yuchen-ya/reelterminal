@@ -2,10 +2,15 @@ import { create } from "zustand";
 // Subpath import (not the package index) so the web bundle never pulls in the
 // facade's node-only session module.
 import type { LiveEditorContext } from "@reelterminal/agent-facade/live-store";
-import type { Project } from "@reelterminal/core";
+import { workbenchBatchItems, type Project } from "@reelterminal/core";
+import {
+  filterVisibleWorkbenchItems,
+  resolveVisibleWorkbenchCursor,
+} from "../desktop/workbench/visible-scope";
 import { getProjectRevision, useProjectStore } from "./project-store";
 import { useTimelineStore } from "./timeline-store";
 import { useUIStore } from "./ui-store";
+import { useWorkbenchUiStore } from "./workbench-ui-store";
 import {
   getAgentReferenceTargetForClip,
   getAgentReferenceTargetForGraphic,
@@ -251,6 +256,40 @@ export function getLiveEditorContext(): LiveEditorContext {
   const { contextRevision, canvasPoint, timeRange, references } =
     useEditorContextStore.getState();
   const selectedItems = useUIStore.getState().selectedItems;
+  // Workbench GUI state is reported only while the workbench page is active.
+  const desktopPage = useUIStore.getState().desktopPage;
+  let workbench: LiveEditorContext["workbench"] = null;
+  if (desktopPage === "workbench") {
+    const ui = useWorkbenchUiStore.getState();
+    const batchId = ui.activeBatchId;
+    const workbenchState = useProjectStore.getState().project.workbench;
+    const rawSelection = batchId ? ui.selectionByBatch[batchId] ?? [] : [];
+    if (batchId && workbenchState) {
+      // Report the SAME visible scope the controller acts on: a filter/search
+      // must not leak a hidden cursor or hidden selection ids to the Agent.
+      const visible = filterVisibleWorkbenchItems(
+        workbenchBatchItems(workbenchState, batchId),
+        ui.typeFilter,
+        ui.searchQuery,
+      );
+      const cursor = resolveVisibleWorkbenchCursor(
+        visible,
+        ui.cursorByBatch[batchId],
+      );
+      const visibleIds = new Set(visible.map((item) => item.id));
+      workbench = {
+        activeBatchId: batchId,
+        currentItemId: cursor?.id ?? null,
+        selectedItemIds: rawSelection.filter((id) => visibleIds.has(id)),
+      };
+    } else {
+      workbench = {
+        activeBatchId: batchId,
+        currentItemId: null,
+        selectedItemIds: [],
+      };
+    }
+  }
 
   return {
     contextRevision,
@@ -267,5 +306,6 @@ export function getLiveEditorContext(): LiveEditorContext {
     timeRange,
     canvasPoint,
     references,
+    workbench,
   };
 }

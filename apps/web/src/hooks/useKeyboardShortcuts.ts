@@ -39,11 +39,10 @@ export function useKeyboardShortcuts() {
     useUIStore();
   const {
     togglePlayback,
-    playheadPosition,
     zoomIn,
     zoomOut,
     zoomToFit,
-  } = useTimelineStore();
+  } = useTimelineStore.getState();
 
   const handlePlayPause = useCallback(() => {
     togglePlayback();
@@ -53,11 +52,11 @@ export function useKeyboardShortcuts() {
   // + store together) — store-only seekTo leaves the playback clock free to
   // pull the playhead back on the next tick.
   const handleFrameBack = useCallback(() => {
-    void getPlaybackBridge().requestSeekRelative(-1 / 30);
+    void getPlaybackBridge().stepFrame(-1);
   }, []);
 
   const handleFrameForward = useCallback(() => {
-    void getPlaybackBridge().requestSeekRelative(1 / 30);
+    void getPlaybackBridge().stepFrame(1);
   }, []);
 
   const handleSecondBack = useCallback(() => {
@@ -89,7 +88,7 @@ export function useKeyboardShortcuts() {
   }, [project]);
 
   const handlePrevClip = useCallback(() => {
-    const currentTime = playheadPosition;
+    const currentTime = useTimelineStore.getState().playheadPosition;
     let prevEdge = 0;
 
     for (const clip of getTimelineItemRanges(project)) {
@@ -103,10 +102,10 @@ export function useKeyboardShortcuts() {
     }
 
     void getPlaybackBridge().requestSeek(prevEdge);
-  }, [project, playheadPosition]);
+  }, [project]);
 
   const handleNextClip = useCallback(() => {
-    const currentTime = playheadPosition;
+    const currentTime = useTimelineStore.getState().playheadPosition;
     let nextEdge = Infinity;
 
     for (const clip of getTimelineItemRanges(project)) {
@@ -122,7 +121,7 @@ export function useKeyboardShortcuts() {
     if (nextEdge !== Infinity) {
       void getPlaybackBridge().requestSeek(nextEdge);
     }
-  }, [project, playheadPosition]);
+  }, [project]);
 
   // Editing shortcuts below are gated on the read-only version preview
   // (docs/VERSION-NODES-UX.md 预览不会打断编辑): the timeline gates its own
@@ -216,6 +215,7 @@ export function useKeyboardShortcuts() {
 
   const handleSplit = useCallback(() => {
     if (blockPreviewEditInteraction()) return;
+    const playheadPosition = useTimelineStore.getState().playheadPosition;
     const selectedIds = getSelectedClipIds();
     const splittableIds = getSplittableTimelineItemIds(
       project,
@@ -226,10 +226,11 @@ export function useKeyboardShortcuts() {
     void Promise.all(
       splittableIds.map((id) => splitTimelineItem(store, id, playheadPosition)),
     );
-  }, [getSelectedClipIds, playheadPosition, project]);
+  }, [getSelectedClipIds, project]);
 
   const handleTrimStart = useCallback(() => {
     if (blockPreviewEditInteraction()) return;
+    const playheadPosition = useTimelineStore.getState().playheadPosition;
     const selectedIds = getSelectedClipIds();
     const trimmableIds = getSplittableTimelineItemIds(
       project,
@@ -242,10 +243,11 @@ export function useKeyboardShortcuts() {
         trimTimelineItemToPlayhead(store, id, playheadPosition, true),
       ),
     );
-  }, [getSelectedClipIds, playheadPosition, project]);
+  }, [getSelectedClipIds, project]);
 
   const handleTrimEnd = useCallback(() => {
     if (blockPreviewEditInteraction()) return;
+    const playheadPosition = useTimelineStore.getState().playheadPosition;
     const selectedIds = getSelectedClipIds();
     const trimmableIds = getSplittableTimelineItemIds(
       project,
@@ -258,7 +260,7 @@ export function useKeyboardShortcuts() {
         trimTimelineItemToPlayhead(store, id, playheadPosition, false),
       ),
     );
-  }, [getSelectedClipIds, playheadPosition, project]);
+  }, [getSelectedClipIds, project]);
 
   const handleSelectAll = useCallback(() => {
     selectMultiple(getTimelineSelectionItems(project));
@@ -354,10 +356,10 @@ export function useKeyboardShortcuts() {
   const handleAddText = useCallback(() => {}, []);
 
   const handleAddMarker = useCallback(() => {
-    const currentTime = playheadPosition;
+    const currentTime = useTimelineStore.getState().playheadPosition;
     const markerCount = project.timeline.markers.length;
     addMarker(currentTime, `Marker ${markerCount + 1}`, "#3b82f6");
-  }, [playheadPosition, project.timeline.markers.length, addMarker]);
+  }, [project.timeline.markers.length, addMarker]);
 
   useEffect(() => {
     const handlers: Array<[string, ShortcutHandler]> = [

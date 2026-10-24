@@ -1,7 +1,8 @@
 import { PLUGIN_TOOLS } from "./plugins";
+import { REVIEW_VERBS } from "./review";
 /**
- * Adversarial corpus per verb: dependency-free
- * DATA ONLY — no imports, no logic. The transport's differential test
+ * Adversarial corpus per verb, including cases generated from the registered
+ * plugin tools and review verbs. The transport's differential test
  * evaluates every case twice and asserts one classification:
  *
  *  - the emitted JSON Schema (EMITTED_VERB_JSON_SCHEMAS, via ajv — ajv is
@@ -36,16 +37,61 @@ export interface VerbSchemaCorpusCase {
   readonly schemaValid?: boolean;
 }
 
+const reviewTarget = { kind: "review", reviewWorkspaceId: "11111111-1111-4111-8111-111111111111", instanceId: "22222222-2222-4222-8222-222222222222", nodeId: "33333333-3333-4333-8333-333333333333" };
+const reviewRequest = "44444444-4444-4444-8444-444444444444";
+const reviewValid: Record<typeof REVIEW_VERBS[number], Record<string, unknown>> = {
+  "review.package.inspect": { target: reviewTarget, directory: "C:/allowed/backup" },
+  "review.media.inspect": { target: { ...reviewTarget, nodeId: reviewRequest }, expectedNodeRevision: 0, reference: { resourceId: reviewRequest, role: "source" } },
+  "review.frames.extract": { target: { ...reviewTarget, nodeId: reviewRequest }, expectedNodeRevision: 0, reference: { resourceId: reviewRequest, role: "source" }, frames: [0, 2] },
+  "review.attach": { target: { ...reviewTarget, nodeId: reviewRequest }, expectedNodeRevision: 0, itemId: reviewRequest, requestId: reviewRequest,
+    destination: { kind: "video", projectId: reviewRequest, workspaceId: reviewRequest, instanceId: reviewRequest }, expectedProjectRevision: 0 },
+  "review.package.restore": { target: reviewTarget, expectedWorkspaceRevision: 0, requestId: reviewRequest, packageId: reviewRequest, digest: "a".repeat(64) },
+  "review.steps.start": { target: reviewTarget, expectedNodeRevision: 0, requestId: reviewRequest, stepId: reviewRequest, runId: reviewRequest, label: "Real processing", inputs: [], method: { kind: "algorithm", name: "Local tool" }, parameters: {} },
+  "review.steps.complete": { target: reviewTarget, expectedNodeRevision: 1, requestId: reviewRequest, stepId: reviewRequest, outputs: [{ resourceId: reviewRequest, role: "result" }] },
+  "review.steps.fail": { target: reviewTarget, expectedNodeRevision: 1, requestId: reviewRequest, stepId: reviewRequest, error: "Tool failed" },
+  "review.steps.list": { target: reviewTarget },
+  "review.export.prepare": { target: reviewTarget, exportId: reviewRequest, expectedNodeRevision: 0, mode: "original", scope: "node" },
+  "review.export.status": { target: reviewTarget, exportId: reviewRequest },
+  "review.export.cancel": { target: reviewTarget, exportId: reviewRequest },
+  "review.export.copy": { target: reviewTarget, exportId: reviewRequest, directory: "C:/allowed/review/output" },
+  "review.nodes.list": { target: reviewTarget },
+  "review.nodes.create": { target: reviewTarget, name: "Review", expectedWorkspaceRevision: 0, requestId: reviewRequest },
+  "review.directory.get": { target: reviewTarget },
+  "review.directory.apply": { target: reviewTarget, expectedWorkspaceRevision: 0, requestId: reviewRequest, commands: [{ kind: "group.create", name: "Group" }] },
+  "review.directory.history.control": { target: reviewTarget, expectedWorkspaceRevision: 0, requestId: reviewRequest, direction: "undo" },
+  "review.get": { target: reviewTarget },
+  "review.apply": { target: reviewTarget, expectedNodeRevision: 0, requestId: reviewRequest, ops: [{ op: "workbench.handoff.ack", handoffId: "55555555-5555-4555-8555-555555555555" }] },
+  "review.handoff.get": { target: reviewTarget, handoffId: "55555555-5555-4555-8555-555555555555" },
+  "review.versions.get": { target: reviewTarget, itemId: "66666666-6666-4666-8666-666666666666", version: 1 },
+  "review.changes": { target: reviewTarget, afterSequence: 0 },
+  "review.history.control": { target: reviewTarget, expectedNodeRevision: 0, requestId: reviewRequest, direction: "undo" },
+  "review.ingest": { target: reviewTarget, expectedNodeRevision: 0, requestId: reviewRequest, batchId: "55555555-5555-4555-8555-555555555555", name: "Input",
+    items: [{ id: "66666666-6666-4666-8666-666666666666", title: "Text", type: "text", content: { type: "text", entryId: "77777777-7777-4777-8777-777777777777", title: "Text", speakerOrContext: "", text: "Original body" } }] },
+};
+
 export const VERB_SCHEMA_CORPUS: Readonly<
   Record<string, readonly VerbSchemaCorpusCase[]>
 > = {
+  ...Object.fromEntries(REVIEW_VERBS.map(verb => [verb, [
+    { name: "explicit review request", params: reviewValid[verb], expectValid: true },
+    { name: "unknown field", params: { ...reviewValid[verb], extra: true }, expectValid: false },
+    { name: "video target is not review", params: { ...reviewValid[verb], target: { kind: "video", projectId: "video" } }, expectValid: false },
+  ]])),
   ...Object.fromEntries(PLUGIN_TOOLS.map((tool) => [tool.name, tool.schemaCases])),
+  "review.context": [
+    { name: "discovery without a video target", params: {}, expectValid: true },
+    { name: "video target is rejected", params: { projectId: "video-project" }, expectValid: false },
+  ],
   "session.describe": [
     { name: "no params is valid", params: {}, expectValid: true },
+    { name: "review scope", params: { kind: "review" }, expectValid: true },
+    { name: "invalid scope", params: { kind: "audio" }, expectValid: false },
     { name: "unknown field", params: { verbose: true }, expectValid: false },
   ],
   "capabilities.get": [
     { name: "no params is valid", params: {}, expectValid: true },
+    { name: "review scope", params: { kind: "review" }, expectValid: true },
+    { name: "video scope", params: { kind: "video", domain: "frames" }, expectValid: true },
     { name: "audio domain is valid", params: { domain: "audio" }, expectValid: true },
     { name: "render domain is valid", params: { domain: "render" }, expectValid: true },
     { name: "unknown domain", params: { domain: "nope" }, expectValid: false },
@@ -1535,6 +1581,209 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
       schemaValid: true,
     },
+    {
+      name: "valid workbench.decide",
+      params: {
+        ops: [
+          {
+            op: "workbench.decide",
+            batchId: "batch-1",
+            decisions: [{ itemId: "item-1", decision: "kept", expectedItemVersion: 1 }],
+          },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "workbench.decide missing decisions",
+      params: { ops: [{ op: "workbench.decide", batchId: "batch-1" }] },
+      expectValid: false,
+    },
+    {
+      name: "workbench.decide rejects an operator field (the channel is pinned)",
+      params: {
+        ops: [
+          {
+            op: "workbench.decide",
+            batchId: "batch-1",
+            decisions: [{ itemId: "item-1", decision: "kept", operator: "human" }],
+          },
+        ],
+      },
+      expectValid: false,
+    },
+    {
+      name: "valid workbench.feedback.save",
+      params: {
+        ops: [
+          {
+            op: "workbench.feedback.save",
+            feedback: {
+              id: "fb-1",
+              itemId: "item-1",
+              itemVersion: 1,
+              text: "配色需要更亮",
+              referencedTagIds: ["prov_light"],
+              state: "draft",
+            },
+          },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "workbench.feedback.save missing feedback",
+      params: { ops: [{ op: "workbench.feedback.save" }] },
+      expectValid: false,
+    },
+    {
+      name: "workbench.feedback.save state enum",
+      params: {
+        ops: [
+          {
+            op: "workbench.feedback.save",
+            feedback: {
+              id: "fb-1",
+              itemId: "item-1",
+              itemVersion: 1,
+              text: "x",
+              referencedTagIds: [],
+              state: "sent",
+            },
+          },
+        ],
+      },
+      expectValid: false,
+    },
+    {
+      name: "valid workbench.handoff.ack",
+      params: { ops: [{ op: "workbench.handoff.ack", handoffId: "handoff-1" }] },
+      expectValid: true,
+    },
+    {
+      name: "workbench.handoff.ack missing handoffId",
+      params: { ops: [{ op: "workbench.handoff.ack" }] },
+      expectValid: false,
+    },
+    {
+      name: "valid workbench.rework with data content",
+      params: {
+        ops: [
+          {
+            op: "workbench.rework",
+            handoffId: "handoff-1",
+            results: [
+              {
+                sourceItemId: "item-2",
+                previousVersion: 1,
+                content: {
+                  type: "data",
+                  datasetId: "ds-1",
+                  columns: [{ columnId: "col-a", title: "A" }],
+                  rows: [{ rowId: "r1", cells: { "col-a": "fixed" } }],
+                  proposals: [],
+                },
+                reworkSummary: "已修正取值",
+              },
+            ],
+          },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "workbench.rework missing results",
+      params: { ops: [{ op: "workbench.rework", handoffId: "handoff-1" }] },
+      expectValid: false,
+    },
+    {
+      name: "valid workbench.content.update (text)",
+      params: {
+        ops: [
+          {
+            op: "workbench.content.update",
+            itemId: "item-1",
+            expectedItemVersion: 1,
+            kind: "text",
+            text: "全新正文",
+          },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid workbench.content.update (data patches)",
+      params: {
+        ops: [
+          {
+            op: "workbench.content.update",
+            itemId: "item-2",
+            expectedItemVersion: 3,
+            kind: "data",
+            patches: [
+              { rowId: "r1", columnId: "col-a", value: null },
+              { rowId: "r2", columnId: "col-a", proposalId: "p1", proposalOutcome: "rejected" },
+            ],
+          },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "workbench.content.update without an item version guard",
+      params: {
+        ops: [{ op: "workbench.content.update", itemId: "item-1", kind: "text", text: "x" }],
+      },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: text kind without text",
+      params: {
+        ops: [
+          {
+            op: "workbench.content.update",
+            itemId: "item-1",
+            expectedItemVersion: 1,
+            kind: "text",
+          },
+        ],
+      },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "schema-valid but facade-rejected: text kind must not carry patches",
+      params: {
+        ops: [
+          {
+            op: "workbench.content.update",
+            itemId: "item-1",
+            expectedItemVersion: 1,
+            kind: "text",
+            text: "x",
+            patches: [{ rowId: "r1", columnId: "col-a", value: "v" }],
+          },
+        ],
+      },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "schema-valid but facade-rejected: valueless patch without a proposal",
+      params: {
+        ops: [
+          {
+            op: "workbench.content.update",
+            itemId: "item-2",
+            expectedItemVersion: 1,
+            kind: "data",
+            patches: [{ rowId: "r1", columnId: "col-a" }],
+          },
+        ],
+      },
+      expectValid: false,
+      schemaValid: true,
+    },
   ],
   "history.get": [
     { name: "empty params valid", params: {}, expectValid: true },
@@ -1704,6 +1953,192 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
       schemaValid: true,
     },
+  ],
+  "workbench.ingest": [
+    {
+      name: "valid text ingest",
+      params: {
+        batchId: "batch-1",
+        name: "开场素材",
+        items: [
+          {
+            id: "item-1",
+            title: "旁白",
+            type: "text",
+            content: { type: "text", entryId: "e1", title: "旁白", speakerOrContext: "旁白", text: "第一版正文" },
+          },
+        ],
+        idempotencyKey: "wb-1",
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid image ingest with provenance and guidance",
+      params: {
+        batchId: "batch-2",
+        name: "封面",
+        items: [
+          {
+            id: "item-2",
+            title: "封面图",
+            type: "image",
+            content: { type: "image", mediaId: "media-1", naturalWidth: 1920, naturalHeight: 1080 },
+            provenanceTags: [
+              {
+                id: "prov_model",
+                category: "model",
+                shortName: "图像模型",
+                version: "v3",
+                verification: "declared",
+                detailSummary: "生成模型声明",
+              },
+            ],
+            agentGuidance: {
+              triageGroup: "need_verdict",
+              branchName: "封面分支",
+              nodeSlotLabel: "输出",
+              whatHappened: "生成了三张候选封面",
+              whatToDoNext: "请选择或要求重做",
+              nodButtonLabel: "采纳",
+              nodDecision: "kept",
+            },
+          },
+        ],
+        expectedRevision: 3,
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid data ingest with nullable cells and proposals",
+      params: {
+        batchId: "batch-3",
+        name: "台词表",
+        items: [
+          {
+            id: "item-3",
+            title: "台词",
+            type: "data",
+            content: {
+              type: "data",
+              datasetId: "ds-1",
+              columns: [{ columnId: "col-a", title: "A", monospace: true }],
+              rows: [{ rowId: "r1", cells: { "col-a": null } }],
+              proposals: [
+                {
+                  proposalId: "p1",
+                  rowId: "r1",
+                  columnId: "col-a",
+                  originalValue: null,
+                  proposedValue: "补",
+                  reason: "缺字",
+                  provenanceTagId: "prov_model",
+                  status: "proposed",
+                },
+              ],
+            },
+          },
+        ],
+      },
+      expectValid: true,
+    },
+    { name: "missing required batchId", params: { name: "b", items: [] }, expectValid: false },
+    { name: "missing required items", params: { batchId: "b1", name: "b" }, expectValid: false },
+    {
+      name: "items must be a non-empty array",
+      params: { batchId: "b1", name: "b", items: [] },
+      expectValid: false,
+    },
+    {
+      name: "item type must match the content discriminator set",
+      params: {
+        batchId: "b1",
+        name: "b",
+        items: [{ id: "i1", title: "t", type: "audio", content: { type: "image", mediaId: "m1" } }],
+      },
+      expectValid: false,
+    },
+    {
+      name: "text content requires the complete text",
+      params: {
+        batchId: "b1",
+        name: "b",
+        items: [
+          { id: "i1", title: "t", type: "text", content: { type: "text", entryId: "e1", title: "x", speakerOrContext: "s" } },
+        ],
+      },
+      expectValid: false,
+    },
+    {
+      name: "provenance verification enum",
+      params: {
+        batchId: "b1",
+        name: "b",
+        items: [
+          {
+            id: "i1",
+            title: "t",
+            type: "image",
+            content: { type: "image", mediaId: "m1" },
+            provenanceTags: [
+              { id: "p", category: "model", shortName: "m", verification: "rumored", detailSummary: "d" },
+            ],
+          },
+        ],
+      },
+      expectValid: false,
+    },
+    {
+      name: "guidance nodDecision is closed to real decisions",
+      params: {
+        batchId: "b1",
+        name: "b",
+        items: [
+          {
+            id: "i1",
+            title: "t",
+            type: "image",
+            content: { type: "image", mediaId: "m1" },
+            agentGuidance: {
+              triageGroup: "need_verdict",
+              branchName: "b",
+              nodeSlotLabel: "n",
+              whatHappened: "h",
+              whatToDoNext: "n",
+              nodButtonLabel: "ok",
+              nodDecision: "pending",
+            },
+          },
+        ],
+      },
+      expectValid: false,
+    },
+    { name: "unknown field", params: { batchId: "b1", name: "b", items: [{ id: "i1", title: "t", type: "image", content: { type: "image", mediaId: "m1" } }], operator: "agent" }, expectValid: false },
+  ],
+  "workbench.get": [
+    { name: "no params is valid", params: {}, expectValid: true },
+    { name: "status filter", params: { status: "pending", limit: 50, offset: 0 }, expectValid: true },
+    { name: "includeData", params: { batchId: "b1", includeData: true }, expectValid: true },
+    {
+      name: "execution-level includes",
+      params: { itemId: "i1", includeFeedback: true, includeMarkers: true, includeRevisions: true },
+      expectValid: true,
+    },
+    { name: "bad status enum", params: { status: "queued" }, expectValid: false },
+    { name: "limit above ceiling", params: { limit: 201 }, expectValid: false },
+    { name: "unknown field", params: { includeRows: true }, expectValid: false },
+  ],
+  "workbench.changes": [
+    { name: "valid with cursor", params: { batchId: "batch-1", cursor: 12 }, expectValid: true },
+    { name: "missing batchId", params: { cursor: 1 }, expectValid: false },
+    { name: "negative cursor", params: { batchId: "batch-1", cursor: -1 }, expectValid: false },
+    { name: "unknown field", params: { batchId: "batch-1", itemId: "i1" }, expectValid: false },
+  ],
+  "workbench.handoff.get": [
+    { name: "valid legacy handoffId", params: { handoffId: "handoff-1" }, expectValid: true },
+    { name: "valid snapshotId", params: { snapshotId: "handoff-1" }, expectValid: true },
+    { name: "header-only read", params: {}, expectValid: true },
+    { name: "wrong type handoffId", params: { handoffId: 9 }, expectValid: false },
+    { name: "unknown field", params: { handoffId: "h1", revision: 1 }, expectValid: false },
   ],
   "material.list": [
     { name: "empty params valid", params: {}, expectValid: true },

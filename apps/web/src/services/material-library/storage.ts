@@ -22,10 +22,11 @@ import type {
 } from "@reelterminal/core/material/types";
 import { normalizeMaterialJournalOrder } from "@reelterminal/core/material/journal-order";
 import { LEGACY_MATERIAL_LIBRARY_DB_NAME } from "../legacy-storage-keys";
+import { upgradeReviewStores } from "../review-workspace/schema";
 
 // Persisted database name for materials, journal entries, and blobs.
 export const MATERIAL_LIBRARY_DB_NAME = LEGACY_MATERIAL_LIBRARY_DB_NAME;
-export const MATERIAL_LIBRARY_DB_VERSION = 1;
+export const MATERIAL_LIBRARY_DB_VERSION = 2;
 
 export interface MaterialStorageCommit {
   /** Raw, atomically read input state. Checked inside the write transaction. */
@@ -111,13 +112,15 @@ interface BlobRecord {
   readonly blob: Blob;
 }
 
-function openDatabase(): Promise<IDBDatabase> {
+export function openMaterialDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
+    let abandoned = false;
     const request = indexedDB.open(
       MATERIAL_LIBRARY_DB_NAME,
       MATERIAL_LIBRARY_DB_VERSION,
     );
     request.onupgradeneeded = () => {
+      if (abandoned) { request.transaction!.abort(); return; }
       const db = request.result;
       if (!db.objectStoreNames.contains("materials")) {
         db.createObjectStore("materials", { keyPath: "id" });
@@ -128,10 +131,19 @@ function openDatabase(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains("blobs")) {
         db.createObjectStore("blobs", { keyPath: "id" });
       }
+      upgradeReviewStores(db);
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const database = request.result;
+      if (abandoned) { database.close(); return; }
+      database.onversionchange = () => database.close();
+      resolve(database);
+    };
     request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
-    request.onblocked = () => reject(new Error("IndexedDB open blocked"));
+    request.onblocked = () => {
+      abandoned = true;
+      reject(Object.assign(new Error("Close other windows using the old material/review database, then retry"), { code: "ACTION_FAILED", details: { reason: "DB_BLOCKED" } }));
+    };
   });
 }
 
@@ -140,7 +152,7 @@ export function createIdbMaterialStorage(): MaterialStorage {
   let dbPromise: Promise<IDBDatabase> | null = null;
 
   const db = (): Promise<IDBDatabase> => {
-    if (!dbPromise) dbPromise = openDatabase();
+    if (!dbPromise) dbPromise = openMaterialDatabase();
     return dbPromise;
   };
 

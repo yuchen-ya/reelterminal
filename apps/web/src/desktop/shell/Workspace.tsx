@@ -1,11 +1,7 @@
 import type { JSX } from "react";
 import { lazy, Suspense } from "react";
 import { EditorBootstrapGate } from "../editor/EditorBootstrapGate";
-import { useUIStore, type DesktopPage } from "../../stores/ui-store";
-import {
-  WorkspaceModeTabs,
-  type WorkspaceMode,
-} from "../../components/WorkspaceModeTabs";
+import { useUIStore } from "../../stores/ui-store";
 import { useTranslation } from "react-i18next";
 
 const EditPage = lazy(() =>
@@ -15,36 +11,20 @@ const MotionPage = lazy(() =>
   import("../pages/MotionPage").then((module) => ({ default: module.MotionPage })),
 );
 
-type PrimaryDesktopPage = Extract<DesktopPage, "edit" | "motion">;
-
 export function Workspace(): JSX.Element {
   const { t } = useTranslation();
   const desktopPage = useUIStore((state) => state.desktopPage);
-  const setDesktopPage = useUIStore((state) => state.setDesktopPage);
-  const activePage: PrimaryDesktopPage =
-    desktopPage === "motion" ? "motion" : "edit";
-  const activeMode: WorkspaceMode =
-    activePage === "motion" ? "motion" : "video";
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg text-fg" data-testid="desktop-workspace">
-      <div className="flex h-10 shrink-0 items-center justify-center border-b border-border bg-bg-1 px-3">
-        <WorkspaceModeTabs
-          activeMode={activeMode}
-          ariaLabel={t("desktop.workspace.ariaLabel")}
-          accessibleLabels={{
-            video: t("desktop.workspace.videoEditing"),
-            motion: t("desktop.workspace.motionCreation"),
-          }}
-          onSelectMode={(mode) =>
-            setDesktopPage(mode === "motion" ? "motion" : "edit")
-          }
-        />
-      </div>
       <EditorBootstrapGate>
         <Suspense fallback={<div className="grid h-full place-items-center text-sm text-fg-muted">{t("desktop.workspace.loading")}</div>}>
           <div className="min-h-0 flex-1">
-            {activePage === "motion" ? <MotionPage /> : <EditPage />}
+            {desktopPage === "motion" ? (
+              <MotionPage />
+            ) : (
+              <EditPage />
+            )}
           </div>
         </Suspense>
       </EditorBootstrapGate>

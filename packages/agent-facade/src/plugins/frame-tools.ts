@@ -152,7 +152,7 @@ async function fingerprintOf(path: string) {
 }
 
 async function revisionGuard(context: ToolContext, expectedRevision: number | undefined) {
-  const { revision } = await context.snapshot();
+  const revision = context.sourceRevision ?? (await context.snapshot()).revision;
   if (expectedRevision !== undefined && expectedRevision !== revision) {
     throw new FacadeError("CONFLICT", `revision conflict: expected ${expectedRevision}, current is ${revision}`);
   }

@@ -25,6 +25,8 @@ export interface DataRootLayout {
   readonly projects: string;
   /** The Agent workspace root (`jobs/` + `shared/`). */
   readonly agentWorkspace: string;
+  /** Independent originals, staging and disposable export copies. */
+  readonly review: string;
   readonly logs: string;
 }
 
@@ -43,6 +45,7 @@ export function dataRootLayout(root: string): DataRootLayout {
     appData: join(root, "app-data"),
     projects: join(root, "projects"),
     agentWorkspace: join(root, "agent-workspace"),
+    review: join(root, "review"),
     logs: join(root, "logs"),
   };
 }

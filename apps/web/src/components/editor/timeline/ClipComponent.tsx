@@ -69,7 +69,6 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   const effectApplicationLabel = useUIStore(
     (state) => state.effectApplicationLabel,
   );
-  const { playheadPosition } = useTimelineStore();
   const mediaItem = getMediaItem(clip.mediaId);
   const motionCompositionId =
     typeof clip.metadata?.motionCompositionId === "string"
@@ -574,7 +573,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         rawTime,
         clip.id,
         allTracks,
-        playheadPosition,
+        useTimelineStore.getState().playheadPosition,
         dragSnapSettings,
         pixelsPerSecond,
         clip.duration,
@@ -716,7 +715,6 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     allTracks,
     trackHeights,
     timelineRef,
-    playheadPosition,
     snapSettings,
     onCommitMoveClips,
     onSnapIndicator,

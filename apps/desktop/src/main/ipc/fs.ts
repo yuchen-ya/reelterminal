@@ -184,7 +184,18 @@ export async function revealInFolder(args: { path: string }): Promise<void> {
   shell.showItemInFolder(args.path);
 }
 
+const allocatedTempFiles = new Set<string>();
 export async function tempFilePath(args: { ext: string }): Promise<string> {
   const safeExt = args.ext.replace(/[^a-zA-Z0-9]/g, "") || "bin";
-  return path.join(os.tmpdir(), `reelterminal-mat-${randomUUID()}.${safeExt}`);
+  const file = path.join(os.tmpdir(), `reelterminal-mat-${randomUUID()}.${safeExt}`);
+  allocatedTempFiles.add(file);
+  return file;
+}
+
+/** Only paths allocated by this process can be discarded through renderer IPC. */
+export async function discardTempFile(args: { path: string }): Promise<void> {
+  if (!allocatedTempFiles.has(args.path)) throw new Error("This is not an application-allocated temporary file");
+  try { await fs.unlink(args.path); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  allocatedTempFiles.delete(args.path);
 }

@@ -25,7 +25,7 @@ export type MigrationItemStatus =
   | "failed";
 
 export interface MigrationSource {
-  readonly kind: "appData" | "workspace";
+  readonly kind: "appData" | "workspace" | "review";
   readonly from: string;
   readonly to: string;
 }

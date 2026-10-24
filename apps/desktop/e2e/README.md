@@ -42,7 +42,69 @@ Chromium plus ffmpeg/ffprobe. Run specs selectively using the separate
 `e2e/vitest.config.ts`. Test fixture files stay in isolated run directories;
 retained evidence follows the harness evidence policy. Never print descriptors.
 
+The independent review acceptance specs are `review-foundation-{context,service,
+ui,process,attach,migration,rework,scale}.e2e.ts`. They cover no-project identity,
+transactions, four content types, processing comparisons, packages, migration,
+independent project copies and bounded UI pages. `scale` reports warm text-only
+interaction timings and sampled working sets; it is not a media throughput gate.
+Set `REELTERMINAL_E2E_APP_EXECUTABLE` to an unpacked EXE to use the same isolated
+profiles against a packaged app; external calls normally use the current build CLI.
+
+`review-video-a7.e2e.ts` uses generated VFR, 90-degree display-matrix and nonzero
+start-time MP4s. `harness/review-video-fixtures.ts` records ffprobe timestamps and
+actual autorotated FFmpeg RGB samples; GUI canvas pixels and video-frame-callback
+mediaTime are checked independently. Real pointer seeks/drawing, marker feedback,
+v1 publication/v2 rework, profile reopen, mapped 2x comparison and unmapped
+independent seeking are covered. Evidence is `e2e/.artifacts/review-video-a7*`.
+Legacy `*PtsSec` fields use browser currentTime, not an assumed container PTS;
+this test does not create an automatic source-frame mapping or fake frame index.
+
+`review-foundation-native-drag.e2e.ts` is opt-in with
+`REELTERMINAL_REVIEW_NATIVE_DRAG=1`. It opens the formal export dialog and an empty
+temporary Explorer destination. A human drags a single file, then multiple files
+and a folder; the test verifies actual received bytes. It never synthesizes a drop
+or equates OS drag initiation with target receipt. In packaged mode it also checks
+the actual packaged CLI through Electron's Node runtime. Preview appearance still
+requires human feedback. No user project/profile is used.
+
 The P2 synthetic performance suite is opt-in and remains skipped by ordinary
 E2E runs. Use `test:perf:counts`, `test:perf:quick`, or `test:perf:benchmark`;
 see [P2 runner](../../../docs/performance/p2-runner.md) for strict CLI options,
 production build stamps, cold/warm definitions and measurement limitations.
+
+## Paused video frame stepping
+
+Run `pnpm --filter @reelterminal/desktop build:renderer` and
+`pnpm --filter @reelterminal/desktop build:main`, then
+`pnpm --filter @reelterminal/desktop exec vitest run --config e2e/vitest.config.ts e2e/frame-stepping.e2e.ts`.
+This regular, non-gated E2E uses an isolated profile and a generated H.264 video
+whose pixels encode each source frame number. It covers global and scrub-bar
+keyboard stepping, slow steps 600ms apart, repeat input, reverse stepping, and
+idle decoder release/reload. Project frame rates 24/30/60 are also covered by
+`playback-bridge.scrubbing.test.ts`.
+
+The 1:1 trace is retained in `e2e/.artifacts/frame-stepping-*.json`.
+`seekToCanvasFrame` correlates each accepted seek command to a complete canvas
+commit by seek ID and target time. Superseded, no-op, failed and cancelled inputs
+have explicit outcomes; project revision alone is insufficient to identify a
+seek. Pointer gesture endpoints additionally require the final target time.
+`frameDiagnostics` reports exact render/decoder counts even when event sampling
+is enabled; per-seek render counts are marked incomplete when samples are lost.
+All latency endpoints use the renderer clock. They do not include Playwright/CLI
+round trips and do not claim compositor presentation.
+
+The smoke gates require one render/commit per isolated step, no decode timeout,
+progress before repeat input ends, exact final pixels, warm input-to-canvas and
+repeat commit gaps below 250ms, and decoder reuse across slow steps. Larger
+media and comparison mode can add real decoding/composition cost; the fixture's
+latencies are not a hardware-independent product promise.
+
+
+`review-model3d.e2e.ts` uses original MIT programmatic GLB/PNG fixtures (PBR,
+alpha, skin and morph). Two real isolated GUI cases cover import/observe/pause/
+seek/capture, version-bound handoff and GLB rework, step comparisons, original
+byte exports, reopen/package restore/re-export, offline rejects, context loss,
+rapid selection, hidden RAF and bounded dual-view measurements. It runs against
+an unpacked EXE with `REELTERMINAL_E2E_APP_EXECUTABLE`. Evidence follows
+`e2e/.artifacts/review-model3d*`; synthetic measurements do not validate user
+models or arbitrary hardware. See `docs/REVIEW-3D-PREVIEW-DELIVERY.md` at repo root.

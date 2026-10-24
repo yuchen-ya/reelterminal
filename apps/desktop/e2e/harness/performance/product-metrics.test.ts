@@ -21,6 +21,33 @@ function completedGesture(events: PerfEvent[], outcome: Outcome = "ok"): PerfEve
 }
 
 describe("product endpoint evidence", () => {
+  it("measures keyboard seek latency and reports coalesced inputs explicitly", () => {
+    const events: PerfEvent[] = [
+      { ...mark(0, "seek.frame-step", 80), kind: "span_begin", spanId: 1 },
+      { ...mark(1, "seek.received", 100), dims: { seekId: 1, timelineTimeSeconds: 2 } },
+      { ...mark(2, "seek.canvas-committed", 200), dims: { seekId: 1, timelineTimeSeconds: 1 } },
+      { ...mark(3, "seek.canvas-committed", 300), dims: { seekId: 1, timelineTimeSeconds: 2 } },
+      { ...mark(4, "seek.frame-step", 310), kind: "span_end", spanId: 1, outcome: "ok", spanDurationUs: 230 },
+      { ...mark(5, "seek.frame-step", 400), kind: "span_begin", spanId: 2, operationId: "step-2" },
+      { ...mark(6, "seek.received", 410), operationId: "step-2", dims: { seekId: 2, timelineTimeSeconds: 3 } },
+      { ...mark(7, "seek.finished.coalesced", 420), operationId: "step-2" },
+      { ...mark(8, "seek.frame-step", 430), kind: "span_end", spanId: 2, operationId: "step-2", outcome: "superseded", spanDurationUs: 30 },
+    ];
+    const measurements = extractProductMeasurements(report(events)).seekToCanvasFrame;
+    expect(measurements[0]).toMatchObject({ status: "ok", durationUs: 200 });
+    expect(measurements[1]).toMatchObject({ status: "superseded", reason: "coalesced", durationUs: null });
+  });
+
+  it("requires the final seek time as well as revision for a pointer gesture", () => {
+    const events = completedGesture([
+      mark(1, "input.received", 100),
+      { ...mark(2, "gesture.first-valid-frame", 200, 7), dims: { timelineTimeSeconds: 1 } },
+      { ...mark(3, "gesture.final-commit", 300, 7), dims: { timelineTimeSeconds: 2 } },
+      { ...mark(4, "gesture.first-valid-frame", 400, 7), dims: { timelineTimeSeconds: 2 } },
+    ]);
+    expect(extractProductMeasurements(report(events)).inputToFinalCanvasFrame[0]).toMatchObject({ durationUs: 300 });
+  });
+
   it("selects only the canvas frame for the gesture's final revision", () => {
     const result = extractProductMeasurements(report(completedGesture([
       mark(1, "input.received", 100), mark(2, "gesture.final-commit", 300, 7),

@@ -55,7 +55,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * the manual binds to the APP, not only the facade.
  */
 export const GUI_MANUAL_CONTENT_VERSION = "1.7.4" as const;
-export const GUI_MANUAL_APP_VERSION = "1.2.5" as const;
+export const GUI_MANUAL_APP_VERSION = "1.3.0" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
 /** Agent-facing payload limits for the help verbs. */
@@ -112,6 +112,27 @@ export interface ManualCapability {
 
 export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
   {
+    id: "review-workspace",
+    title: { zh: "审阅工作台", en: "Review Workspace" },
+    // @source apps/web/src/desktop/pages/ReviewPage.tsx
+    // @source apps/web/src/desktop/workbench/components/ReviewProcessView.tsx
+    summary: { zh: "无需视频项目，独立保存和审阅图片、文字、数据与视频节点，查看实际处理步骤并导出精确版本。", en: "Review independent image, text, data and video nodes without a video project; inspect recorded processing and export exact versions." },
+    entry: [{ zh: "点击顶栏“审阅工作台”，创建数据节点，再导入文件、文件夹、CSV/JSON 或粘贴文本。", en: "Choose Review Workspace in the top tabs, create a data node, then import files, a folder, CSV/JSON or pasted text." }],
+    steps: [
+      { zh: "节点侧栏管理最近、置顶、单层分组、搜索、归档与回收站。节点内的批次队列、正文和处理步骤按页读取。", en: "Use the node sidebar for recents, pins, single-level groups, search, archive and recycle. Item bodies and processing steps are paged." },
+      { zh: "保留、丢弃与返工可撤销。图片修补、改文和单元格修改保留版本；交回本轮决策由人工发布不可变快照，等待 Agent 真实读取与回报。", en: "Keep, discard and rework decisions are undoable. Repairs, text edits and cell changes retain versions. A human publishes an immutable decision snapshot, then waits for real Agent acknowledgement." },
+      { zh: "处理过程显示真实记录的输入、方法、输出、候选与失败；可固定两个版本比较，并从步骤引用导出精确版本。缺步骤、缺文件或缺旧正文明确标记。", en: "Processing shows recorded inputs, methods, outputs, candidates and failures. Pin two versions for comparison or export an exact step reference. Missing steps, files and historical bodies remain explicit." },
+      { zh: "导出可选初始原件、人工采用版本或完整节点包，准备后保存副本或拖出文件/文件夹。备份全部节点包含目录索引，目前逐节点恢复；旧交接仅作历史。", en: "Choose originals, human-adopted versions or a full node package, prepare it, then save copies or drag files/a folder out. Whole-node backup includes the directory index; restoration is per node and old handoffs are historical." },
+      { zh: "添加采用版本到项目时明确选定目标视频工作区，生成独立媒体副本，不加入时间线。迁移旧项目须预览确认，旧工作台保留为只读备份；永久清空须确认删除节点全部历史。", en: "Attach adopted media to an explicit video workspace as independent media without adding timeline clips. Preview and confirm legacy migration; keep the old workbench read-only. Permanent clearing requires deleting all node history." },
+      { zh: "复制工作台接入说明；Agent 审阅写权限与视频写权限分开。人工操作不依赖 Agent，审阅使用 review.*，旧项目工作台使用 workbench.*。", en: "Copy the review connection instructions. Review and video Agent-write grants are separate; human editing needs neither. Independent review uses review.* and the legacy project workbench uses workbench.*." },
+    ],
+    limitations: [
+      { zh: "不从最终文件推测处理历史，不自动执行模型。区域和时间标记不会裁剪导出；无明确映射时不假装视频同步或图片对齐。", en: "No processing history is inferred from a final file and no model runs automatically. Region/time marks do not crop exports; missing mappings do not imply alignment or synchronized video." },
+      { zh: "拖拽交给系统不等于目标已接收。旧应用不会遵守迁移锁；清空后的孤儿文件在宽限期后、后续启动时回收。", en: "An OS drag handoff does not prove receipt. Old app versions do not honor the migration lock. Unreferenced files are collected after the grace period on a later startup." },
+    ],
+    keywords: ["review", "node", "handoff", "migration", "export", "backup", "审阅", "节点", "迁移", "拖出", "处理过程"],
+  },
+  {
     id: "quick-start",
     title: { zh: "快速开始", en: "Quick Start" },
     // @source apps/web/src/desktop/start/DesktopStartScreen.tsx
@@ -122,7 +143,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     },
     entry: [
       { zh: "Windows 安装版：安装后打开 ReelTerminal。便携版：解压完整 ZIP 后，打开目录内的 ReelTerminal.exe；不要只复制 EXE。", en: "Windows installer: install and open ReelTerminal. Portable build: extract the entire ZIP and open ReelTerminal.exe inside it; keep its supporting files together." },
-      { zh: "首页选择“视频编辑器”，再点击横屏（16:9）、竖屏（9:16）或方形（1:1）。动画制作使用“动态图形创作”，它是另一个工作区。", en: "On the start screen, choose Video Editor, then Horizontal (16:9), Vertical (9:16), or Square (1:1). Motion Creator is a separate workspace for animation." },
+      { zh: "首页选择“视频编辑”，再点击横屏（16:9）、竖屏（9:16）或方形（1:1）。审阅工作台无需视频项目；旧动画制作从次级工具入口进入。", en: "Choose Video Editor, then Horizontal (16:9), Vertical (9:16), or Square (1:1). Review Workspace needs no video project; legacy animation is under the secondary tools entry." },
     ],
     steps: [
       { zh: "导入：点击左侧素材面板的“导入”，选择本地视频、音频或图片，再拖到时间线。SRT/VTT 字幕也可由此导入，会按文件时间码直接添加到字幕轨。", en: "Import: choose local video, audio, or images in the left media panel, then drag them onto the timeline. SRT/VTT files use the same import control and add captions directly at their file timecodes." },

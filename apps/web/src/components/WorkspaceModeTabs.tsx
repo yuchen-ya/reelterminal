@@ -1,14 +1,17 @@
 import type { JSX } from "react";
 import { useTranslation } from "react-i18next";
 
-export type WorkspaceMode = "video" | "motion";
+export type WorkspaceMode = "video" | "motion" | "workbench";
 
 const MODES: Array<{
   id: WorkspaceMode;
-  labelKey: "desktop.workspace.videoEditor" | "desktop.workspace.motionDesign";
+  labelKey:
+    | "desktop.workspace.videoEditor"
+    | "desktop.workspace.motionDesign"
+    | "desktop.workspace.workbench";
 }> = [
   { id: "video", labelKey: "desktop.workspace.videoEditor" },
-  { id: "motion", labelKey: "desktop.workspace.motionDesign" },
+  { id: "workbench", labelKey: "desktop.workspace.workbench" },
 ];
 
 export function WorkspaceModeTabs({

@@ -15,6 +15,7 @@ const fixture = vi.hoisted(() => ({
     startScrubbing: vi.fn(),
     scrubTo: vi.fn(),
     endScrubbing: vi.fn(),
+    stepFrame: vi.fn(async () => {}),
     requestSeek: vi.fn(async () => {}),
     requestSeekRelative: vi.fn(async () => {}),
   },
@@ -212,7 +213,7 @@ describe("usePreviewScrubBar", () => {
 
     const left = keyEvent("ArrowLeft");
     act(() => first.result.current.handleScrubKeyDown(left));
-    expect(fixture.bridge.requestSeek).toHaveBeenLastCalledWith(2 - 1 / 30);
+    expect(fixture.bridge.stepFrame).toHaveBeenLastCalledWith(-1);
     expect(left.preventDefault).toHaveBeenCalledTimes(1);
     expect(left.stopPropagation).toHaveBeenCalledTimes(1);
 
@@ -229,20 +230,20 @@ describe("usePreviewScrubBar", () => {
     const unhandled = keyEvent("a");
     act(() => first.result.current.handleScrubKeyDown(unhandled));
     expect(unhandled.preventDefault).not.toHaveBeenCalled();
-    expect(fixture.bridge.requestSeek).toHaveBeenCalledTimes(4);
+    expect(fixture.bridge.requestSeek).toHaveBeenCalledTimes(3);
 
     // Never seeks before 0…
     const fromStart = renderHook(() =>
       usePreviewScrubBar({ actualEndTime: 6, playheadPosition: 0 }),
     );
-    act(() => fromStart.result.current.handleScrubKeyDown(keyEvent("ArrowLeft")));
+    act(() => fromStart.result.current.handleScrubKeyDown(keyEvent("ArrowLeft", true)));
     expect(fixture.bridge.requestSeek).toHaveBeenLastCalledWith(0);
 
-    // …nor past the end: 6 + 1/30 clamps to 6.
+    // …nor past the end: the one-second shift step clamps to 6.
     const nearEnd = renderHook(() =>
       usePreviewScrubBar({ actualEndTime: 6, playheadPosition: 6 }),
     );
-    act(() => nearEnd.result.current.handleScrubKeyDown(keyEvent("ArrowRight")));
+    act(() => nearEnd.result.current.handleScrubKeyDown(keyEvent("ArrowRight", true)));
     expect(fixture.bridge.requestSeek).toHaveBeenLastCalledWith(6);
   });
 

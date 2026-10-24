@@ -49,6 +49,9 @@ import { liveMediaRoots } from "./live/host-instance";
 import { registerAnalysisRecordsIpc } from "./ipc/analysis-records";
 import { registerCaptionIpc } from "./ipc/captions";
 import { registerControlledMediaIpc } from "./ipc/controlled-media";
+import { getReviewFileStore, registerReviewFilesIpc } from "./ipc/review-files";
+import { registerReviewExportIpc } from "./ipc/review-export";
+import { registerReviewPackageIpc } from "./ipc/review-package";
 import {
   disposeLiveSessionHost,
   getLiveSessionHost,
@@ -71,6 +74,7 @@ import {
   writeTextFile,
   revealInFolder,
   tempFilePath,
+  discardTempFile,
 } from "./ipc/fs";
 import {
   generateProxy,
@@ -260,7 +264,10 @@ app.whenReady().then(async () => {
   if (process.platform === "darwin" && !app.isPackaged) {
     app.dock?.setIcon(applicationIconPath());
   }
-  handleAppScheme(rendererRoot());
+  handleAppScheme(rendererRoot(), async id => {
+    const resolved = await getReviewFileStore().resolve(id);
+    return { path: resolved.path, mime: resolved.resource.mime };
+  });
   handle(CHANNELS.probeHardware, z.undefined(), () => collectHardwareInfo());
   handle(CHANNELS.fsShowSaveDialog, saveDialogArgsSchema, showSaveDialog);
   handle(CHANNELS.fsShowOpenDialog, openDialogArgsSchema, showOpenDialog);
@@ -286,6 +293,10 @@ app.whenReady().then(async () => {
   handle(CHANNELS.fsReadFileBytes, readFileBytesArgsSchema, readFileBytes);
   handle(CHANNELS.fsPathStatus, pathStatusArgsSchema, pathStatus);
   handle(CHANNELS.fsTempFilePath, z.object({ ext: z.string() }), tempFilePath);
+  handle(CHANNELS.fsDiscardTempFile, z.object({ path: z.string() }).strict(), discardTempFile);
+  handle(CHANNELS.inputHistory, z.object({ direction: z.enum(["undo", "redo"]) }).strict(), ({ direction }) => {
+    getEditorWebContents()?.[direction]();
+  });
   handle(CHANNELS.dataRootGetInfo, z.undefined(), () => getDataRootInfo());
   handle(CHANNELS.dataRootChange, dataRootChangeArgsSchema, (args) =>
     changeDataRoot(args.path),
@@ -296,6 +307,9 @@ app.whenReady().then(async () => {
   handle(CHANNELS.mediaProbeAudioStreams, probeAudioArgsSchema, probeAudioStreams);
   handle(CHANNELS.mediaFetchUrl, fetchUrlArgsSchema, fetchUrl);
   registerControlledMediaIpc();
+  registerReviewFilesIpc(liveMediaRoots);
+  registerReviewExportIpc(liveMediaRoots);
+  registerReviewPackageIpc(liveMediaRoots);
   registerCaptionIpc();
   handle(CHANNELS.auroraRenderPreview, auroraRenderPreviewArgsSchema, async (args) =>
     auroraRenderPreviewResultSchema.parse(

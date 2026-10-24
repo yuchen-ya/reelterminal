@@ -91,6 +91,15 @@ export interface LiveEditorContext {
   readonly canvasPoint: { readonly x: number; readonly y: number } | null;
   /** Ephemeral, session-local number → reference mapping for agent collaboration. */
   readonly references?: LiveEditorReferences;
+  /**
+   * AI material workbench GUI state, present only while the workbench page is
+   * the active desktop page (null otherwise — never fabricated).
+   */
+  readonly workbench?: {
+    readonly activeBatchId: string | null;
+    readonly currentItemId: string | null;
+    readonly selectedItemIds: readonly string[];
+  } | null;
 }
 
 /** A target the live editor can select/reveal without changing the project. */

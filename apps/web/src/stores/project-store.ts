@@ -61,6 +61,7 @@ import {
   type CreateProjectRequirementInput,
 } from "./project/requirements-slice";
 import { createWorkAssetsSlice } from "./project/work-assets-slice";
+import { createWorkbenchSlice } from "./project/workbench-slice";
 import { createSubtitleSlice } from "./project/subtitle-slice";
 import { createTrackSlice } from "./project/track-slice";
 import { createMediaSlice } from "./project/media-slice";
@@ -730,6 +731,88 @@ export interface ProjectState {
     workAssetId: string,
     options?: import("./project/work-assets-slice").InstantiateWorkAssetOptions,
   ) => Promise<import("./project/work-assets-slice").InstantiateWorkAssetResult>;
+
+  // AI material workbench (project.workbench); see workbench-slice
+  ingestWorkbenchBatch: (
+    input: import("@reelterminal/core").WorkbenchIngestInput,
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  decideWorkbenchItems: (
+    batchId: string,
+    targets: ReadonlyArray<{
+      itemId: string;
+      decision: import("@reelterminal/core").WorkbenchDecision;
+      contentRevisionId?: string;
+    }>,
+    operator?: "human" | "agent",
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  saveWorkbenchTextRevision: (
+    itemId: string,
+    newText: string,
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  saveWorkbenchDataPatches: (
+    itemId: string,
+    patches: readonly import("@reelterminal/core").WorkbenchDataPatch[],
+    expectedVersion?: number,
+    markModified?: boolean,
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  markWorkbenchDataRework: (
+    input: import("@reelterminal/core").WorkbenchMarkDataReworkInput,
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  clearWorkbenchDataRework: (
+    itemId: string,
+    itemVersion: number,
+    cells: readonly { rowId: string; columnId: string }[],
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  commitWorkbenchImageRepair: (
+    itemId: string,
+    derivedMediaId: string,
+    strokes: readonly import("@reelterminal/core").WorkbenchPixelStroke[],
+    base?: import("@reelterminal/core").WorkbenchRepairBase,
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  setWorkbenchAnnotations: (
+    itemId: string,
+    itemVersion: number,
+    update: {
+      annotations?: readonly import("@reelterminal/core").WorkbenchSpatialAnnotation[];
+      strokes?: readonly import("@reelterminal/core").WorkbenchPixelStroke[];
+      markers?: readonly import("@reelterminal/core").WorkbenchVideoMarker[];
+    },
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  saveWorkbenchFeedback: (
+    feedback: import("@reelterminal/core").WorkbenchFeedback,
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  saveWorkbenchIssueFeedback: (
+    itemId: string,
+    itemVersion: number,
+    update: {
+      annotations?: readonly import("@reelterminal/core").WorkbenchSpatialAnnotation[];
+      markers?: readonly import("@reelterminal/core").WorkbenchVideoMarker[];
+      feedback: import("@reelterminal/core").WorkbenchFeedback;
+      decision?: "rework";
+    },
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  revertWorkbenchItems: (
+    itemIds: readonly string[],
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  setWorkbenchUserTags: (
+    itemId: string,
+    tags: readonly string[],
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  dismissWorkbenchDuplicate: (
+    itemId: string,
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  publishWorkbenchHandoff: (
+    batchId: string,
+    itemIds?: readonly string[],
+    idempotencyKey?: string,
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  ackWorkbenchHandoff: (
+    handoffId: string,
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
+  ingestWorkbenchRework: (
+    handoffId: string,
+    results: readonly import("@reelterminal/core").WorkbenchReworkResult[],
+  ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
 }
 
 function motionCompositionsEqual(
@@ -3624,6 +3707,9 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
 
       // Project work asset actions
       ...createWorkAssetsSlice(set, get),
+
+      // AI material workbench actions (project.workbench)
+      ...createWorkbenchSlice(set, get),
 
 
       // Photo editing actions

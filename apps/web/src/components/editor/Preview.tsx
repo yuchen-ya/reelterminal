@@ -1,5 +1,7 @@
 import { ReviewRangeControl } from "./preview/ReviewRangeControl";
 import { getPerfSink, markPerfOperation, withPerfSpan } from "@reelterminal/core";
+import { finishPreviewSeek, getPreviewSeek } from "../../performance/seek-flow";
+import { PausedVideoFrameReader, SCRUB_VIDEO_IDLE_MS } from "./preview/paused-video-frame";
 import { getProjectPerfOperation } from "../../performance/product-flow";
 import {
   releasePreviewResourceCounts,
@@ -517,12 +519,14 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   // Video element cache for native hardware-accelerated frame decoding (thumbnails/scrubbing)
   // Much more reliable than MediaBunny's CanvasSink for random-access seeking
   const videoElementCacheRef = useRef<
-    Map<string, { video: HTMLVideoElement; url: string; lastUsed: number }>
+    Map<string, { video: HTMLVideoElement; url: string; lastUsed: number; reader: PausedVideoFrameReader }>
   >(new Map());
 
   const releaseVideoElement = useCallback(
-    (entry: { video: HTMLVideoElement; url: string }): void => {
+    (entry: { video: HTMLVideoElement; url: string; reader?: PausedVideoFrameReader }): void => {
       const { video, url } = entry;
+      if (entry.reader) getPerfSink().count("decoder.released", 1);
+      entry.reader?.dispose();
       video.pause();
       video.removeAttribute("src");
       video.onloadedmetadata = null;
@@ -590,7 +594,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         return;
       }
       releaseScrubVideoElements();
-    }, 350);
+    }, SCRUB_VIDEO_IDLE_MS);
   }, [releaseScrubVideoElements]);
   scheduleScrubVideoReleaseRef.current = scheduleScrubVideoRelease;
 
@@ -639,7 +643,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     const ownerId = `preview:${workspaceId ?? project.id}`;
     let active = true;
     void installProjectRenderFonts(project, ownerId).then(() => {
-      if (active && !isPlayingRef.current) frameSchedulerRef.current?.request(playheadPositionRef.current, useProjectStore.getState().projectRevision);
+      if (active && !isPlayingRef.current) frameSchedulerRef.current?.request(playheadPositionRef.current, useProjectStore.getState().projectRevision, undefined, { force: true });
     }).catch((error: unknown) => {
       console.warn("Could not load a project render font; preview will use its fallback.", error);
     });
@@ -1748,6 +1752,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       time: number,
       canvasWidth: number,
       canvasHeight: number,
+      token?: FrameRequestToken,
     ): Promise<ImageBitmap | null> => {
       const mediaItem = getMediaItem(clip.mediaId);
       if (!mediaItem?.blob) return null;
@@ -1797,39 +1802,21 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           video.playsInline = true;
           video.preload = "metadata";
           video.crossOrigin = "anonymous";
-          const onFrameReady = () => {
-            // A paused decode can outlive its bounded wait. Once this actual
-            // decoder becomes ready, redraw the current view instead of
-            // leaving a fallback until the next user seek/play action.
-            if (videoElementCacheRef.current.get(cacheKey)?.video === video && !isPlayingRef.current) {
-              frameSchedulerRef.current?.request(playheadPositionRef.current, useProjectStore.getState().projectRevision);
+          const reader = new PausedVideoFrameReader(video);
+          cached = { video, url, lastUsed: Date.now(), reader };
+          videoElementCacheRef.current.set(cacheKey, cached);
+          getPerfSink().count("decoder.created", 1);
+          const loaded = token?.performance
+            ? await withPerfSpan("frame.video-load", token.performance.context, () => reader.waitForMetadata())
+            : await reader.waitForMetadata();
+          if (isStaleRequest() || (loaded !== "ready" && loaded !== "cached")) {
+            finishPreviewSeek(token?.seek, isStaleRequest() ? "cancelled" : loaded === "timeout" ? "timeout" : "error");
+            if (videoElementCacheRef.current.get(cacheKey) === cached) {
+              releaseVideoElement(cached);
+              videoElementCacheRef.current.delete(cacheKey);
             }
-          };
-          video.addEventListener("loadeddata", onFrameReady);
-          video.addEventListener("seeked", onFrameReady);
-
-          await new Promise<void>((res, rej) => {
-            const timeoutId = setTimeout(
-              () => rej(new Error("Video load timeout")),
-              10000,
-            );
-            video.onloadedmetadata = () => {
-              clearTimeout(timeoutId);
-              res();
-            };
-            video.onerror = () => {
-              clearTimeout(timeoutId);
-              rej(new Error("Video load failed"));
-            };
-          });
-
-          if (isStaleRequest()) {
-            releaseVideoElement({ video, url });
             return null;
           }
-
-          cached = { video, url, lastUsed: Date.now() };
-          videoElementCacheRef.current.set(cacheKey, cached);
 
           const cacheLimit = scrubVideoCacheLimit(timelineTracksRef.current, time, id => getMediaItem(id)?.type);
           while (videoElementCacheRef.current.size > cacheLimit) {
@@ -1837,6 +1824,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           }
         }
 
+        getPerfSink().count("decoder.used", 1);
         cached.lastUsed = Date.now();
         const { video } = cached;
 
@@ -1844,125 +1832,35 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           0,
           Math.min(mediaTime, video.duration - 0.001),
         );
-        const seekTime =
-          clampedTime <= 0 && video.duration > 0.002 ? 0.001 : clampedTime;
-        let seekConfirmed = false;
-        if (
-          Math.abs(video.currentTime - seekTime) > 0.01 ||
-          video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
-        ) {
-          video.currentTime = seekTime;
-          await new Promise<void>((res) => {
-            let settled = false;
-            let timeoutId: ReturnType<typeof setTimeout> | null = null;
-            const onSeeked = () => {
-              if (settled) return;
-              settled = true;
-              seekConfirmed = true;
-              if (timeoutId) clearTimeout(timeoutId);
-              video.removeEventListener("seeked", onSeeked);
-              res();
-            };
-            video.addEventListener("seeked", onSeeked);
-            timeoutId = setTimeout(() => {
-              if (settled) return;
-              settled = true;
-              video.removeEventListener("seeked", onSeeked);
-              res();
-            }, 250);
+        // Chromium converts seeks to microseconds. Round upward so an exact
+        // project-frame boundary (for example 32/30s) cannot truncate to the
+        // preceding source frame. This moves the target by less than 1us.
+        const seekTime = clampedTime <= 0 && video.duration > 0.002
+          ? 0.001 : Math.ceil(clampedTime * 1_000_000) / 1_000_000;
+        markPerfOperation(token?.performance, "frame.video-seek-target", { sourceTimeSeconds: seekTime });
+        const identity = useProjectStore.getState();
+        const readFrame = () => cached.reader.seek(seekTime, () => {
+            const state = useProjectStore.getState();
+            if (videoElementCacheRef.current.get(cacheKey)?.video === video &&
+              !isPlayingRef.current && playheadPositionRef.current === time &&
+              state.project.id === identity.project.id && state.workspaceId === identity.workspaceId &&
+              state.projectRevision === identity.projectRevision &&
+              (token?.viewGeneration === undefined || token.viewGeneration === getPreviewViewGeneration())) {
+              requestFrameRender(time, true);
+            }
           });
-        } else {
-          seekConfirmed = true;
-        }
-
-        if (isStaleRequest()) return null;
-
-        // Frame callback info: the presented frame's media time, when the
-        // browser reports one. Used below to confirm the element really
-        // shows a frame at (or contaning) the target time.
-        let presentedTime: number | null = null;
-        await new Promise<void>((res) => {
-          if (!("requestVideoFrameCallback" in video)) {
-            res();
-            return;
-          }
-
-          let settled = false;
-          let timeoutId: ReturnType<typeof setTimeout> | null = null;
-          const finish = (_now: number, metadata?: { mediaTime?: number }) => {
-            if (settled) return;
-            settled = true;
-            if (
-              metadata &&
-              typeof metadata.mediaTime === "number" &&
-              Number.isFinite(metadata.mediaTime)
-            ) {
-              presentedTime = metadata.mediaTime;
-            }
-            if (timeoutId) clearTimeout(timeoutId);
-            res();
-          };
-
-          (
-            video as HTMLVideoElement & {
-              requestVideoFrameCallback: (
-                cb: (now: number, metadata?: { mediaTime?: number }) => void,
-              ) => number;
-            }
-          ).requestVideoFrameCallback(finish);
-          timeoutId = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            res();
-          }, 300);
-        });
-
-        if (isStaleRequest()) return null;
-
-        await new Promise<void>((res) => {
-          if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-            res();
-            return;
-          }
-
-          let settled = false;
-          let timeoutId: ReturnType<typeof setTimeout> | null = null;
-          const finish = () => {
-            if (settled) return;
-            settled = true;
-            if (timeoutId) clearTimeout(timeoutId);
-            video.removeEventListener("loadeddata", finish);
-            video.removeEventListener("canplay", finish);
-            res();
-          };
-
-          video.addEventListener("loadeddata", finish);
-          video.addEventListener("canplay", finish);
-          timeoutId = setTimeout(finish, 250);
-        });
-
-        if (isStaleRequest()) return null;
-
-        // Decode success is judged by media state, the target time and the
-        // frame-callback info — never by pixel colors (legitimate black or
-        // white frames exist). A timed-out wait is NOT success by itself: the
-        // element must confirm it actually presents a frame at the target.
-        // Tolerance is generous because HTMLVideoElement is not frame-exact.
-        const FRAME_TIME_TOLERANCE = 0.1;
-        const atTargetTime =
-          Math.abs(video.currentTime - seekTime) <= FRAME_TIME_TOLERANCE;
-        const presentedAtTarget =
-          presentedTime === null ||
-          Math.abs(presentedTime - seekTime) <= FRAME_TIME_TOLERANCE * 2;
-        const frameReady =
-          video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
-          video.videoWidth > 0 &&
-          video.videoHeight > 0;
-        if (!frameReady || !atTargetTime || !presentedAtTarget || !seekConfirmed) {
-          // Unconfirmed (timeout / stale frame / released element): fail the
-          // decode instead of baking a blank placeholder into a "valid" frame.
+        const result = token?.performance
+          ? await withPerfSpan("frame.video-seek", token.performance.context, readFrame)
+          : await readFrame();
+        markPerfOperation(token?.performance, `frame.video-${result}`);
+        getPerfSink().count(`decoder.seek-${result}`, 1);
+        if (result === "cached") getPerfSink().count("decoder.cache-hit", 1);
+        if (result !== "ready" && result !== "cached") {
+          finishPreviewSeek(token?.seek, result === "timeout" ? "timeout" : result === "error" ? "error" : "cancelled");
+          scheduleScrubVideoRelease();
           return null;
         }
+        if (isStaleRequest()) return null;
 
         const tempCanvas = document.createElement("canvas");
         tempCanvas.width = canvasWidth;
@@ -2013,6 +1911,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         return frame;
       } catch {
         // Evict using the same clip/source/stabilization identity as lookup.
+        finishPreviewSeek(token?.seek, "error");
         const failedKey = scrubVideoCacheKey(
           clip.id,
           clip.mediaId,
@@ -2066,11 +1965,11 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       const decodeFrame = token?.performance
         ? async (...args: Parameters<typeof decodeClipFrame>) => {
             const operation = token.performance!;
-            const frame = await withPerfSpan("frame.decode", { ...operation.context, parentSpanId: operation.span.id }, () => decodeClipFrame(...args));
+            const frame = await withPerfSpan("frame.decode", { ...operation.context, parentSpanId: operation.span.id }, () => decodeClipFrame(args[0], args[1], args[2], args[3], token));
             markPerfOperation(operation, "frame.decoded", { frameAvailable: Boolean(frame) });
             return frame;
           }
-        : decodeClipFrame;
+        : (...args: Parameters<typeof decodeClipFrame>) => decodeClipFrame(args[0], args[1], args[2], args[3], token);
       const canvas = canvasRef.current;
       if (!canvas) return false;
 
@@ -3069,22 +2968,27 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           await previewSession.failPendingFrame(projectAtStart, error);
         }
       }
-    }, getPreviewViewGeneration);
+    }, getPreviewViewGeneration, () => {
+      const state = useProjectStore.getState();
+      return JSON.stringify([state.project.id, state.workspaceId, state.projectRevision]);
+    });
   }
 
-  const requestFrameRender = useCallback((time: number) => {
+  const requestFrameRender = useCallback((time: number, force = false) => {
     const state = useProjectStore.getState();
+    const seek = getPreviewSeek(time, { projectId: state.project.id, workspaceId: state.workspaceId, revision: state.projectRevision });
     frameSchedulerRef.current?.request(
       time,
       state.projectRevision,
-      getPerfSink().enabled ? getPreviewPerfOperation(state.project) ?? getProjectPerfOperation(state.project) : undefined,
+      getPerfSink().enabled ? seek?.operation ?? getPreviewPerfOperation(state.project) ?? getProjectPerfOperation(state.project) : undefined,
+      { continuous: seek?.kind === "frame-step" || seek?.kind === "scrub", seek, force },
     );
   }, []);
 
   useEffect(() => {
     setImageLoadCallback(() => {
       if (!isPlayingRef.current) {
-        requestFrameRender(playheadPositionRef.current);
+        requestFrameRender(playheadPositionRef.current, true);
       }
     });
     return () => setImageLoadCallback(null);
@@ -6094,8 +5998,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     if (isPlaying || previewInvalidateCounter === 0) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    requestFrameRender(playheadPosition);
-  }, [previewInvalidateCounter, isPlaying, requestFrameRender, playheadPosition]);
+    requestFrameRender(playheadPositionRef.current, true);
+  }, [previewInvalidateCounter, isPlaying, requestFrameRender]);
 
   const selectedClipId = useMemo(() => {
     const clipSelection = selectedItems.find((item) => item.type === "clip");

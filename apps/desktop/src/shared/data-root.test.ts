@@ -13,12 +13,13 @@ import {
 } from "./data-root";
 
 describe("dataRootLayout", () => {
-  it("spreads the four user-scoped stores under one root", () => {
+  it("keeps user stores and independent review files under one root", () => {
     const layout = dataRootLayout(join("D:", "RT"));
     expect(layout.root).toBe(join("D:", "RT"));
     expect(layout.appData).toBe(join("D:", "RT", "app-data"));
     expect(layout.projects).toBe(join("D:", "RT", "projects"));
     expect(layout.agentWorkspace).toBe(join("D:", "RT", "agent-workspace"));
+    expect(layout.review).toBe(join("D:", "RT", "review"));
     expect(layout.logs).toBe(join("D:", "RT", "logs"));
   });
 });

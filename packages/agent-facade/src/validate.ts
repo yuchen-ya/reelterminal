@@ -38,7 +38,13 @@ export type ObjectSchema = Record<string, FieldRule>;
  * (`additionalProperties: false`) and never places a combinator at a root.
  */
 export type JsonSchemaNode =
-  | { readonly type: "string"; readonly minLength?: number; readonly maxLength?: number }
+  | { readonly type: "string"; readonly minLength?: number; readonly maxLength?: number; readonly pattern?: string }
+  /**
+   * Nullable string leaf (draft-2020-12 type array). Added for the workbench
+   * boundary where "no value" is expressed as JSON null (cell values,
+   * proposals); the runtime validator owns the same string|null rule.
+   */
+  | { readonly type: readonly ["string", "null"]; readonly minLength?: number; readonly maxLength?: number }
   | {
       readonly type: "number";
       readonly minimum?: number;
@@ -55,6 +61,8 @@ export type JsonSchemaNode =
   /** Mixed-type enums are expressed as a single `enum` (e.g. fontWeight). */
   | { readonly enum: readonly (string | number)[] }
   | { readonly const: string }
+  | { readonly type: readonly ["object", "null"]; readonly additionalProperties: false;
+      readonly properties: Readonly<Record<string, JsonSchemaNode>>; readonly required: readonly string[] }
   | JsonSchemaObjectNode
   /**
    * The one open-object leaf (no additionalProperties key = JSON-Schema
@@ -185,4 +193,16 @@ export function validateObject<T>(
     out[key] = fieldValue;
   }
   return out as unknown as T;
+}
+
+/** Match a closed nested schema without masking validator implementation errors. */
+export function matchesSchema(value: unknown, schema: ObjectSchema): boolean {
+  if (!isPlainObject(value)) return false;
+  try {
+    validateObject(value, schema, "value");
+    return true;
+  } catch (error) {
+    if (error instanceof FacadeError && error.code === "INVALID_PARAMS") return false;
+    throw error;
+  }
 }

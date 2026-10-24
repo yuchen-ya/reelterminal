@@ -33,6 +33,12 @@ export type MediaSlice = Pick<
 
 /** Optional provenance/coordination data for an import. */
 export interface ImportMediaOptions {
+  /** Stable identity and lineage for a retried review attachment. */
+  readonly reviewSource?: NonNullable<MediaItem["reviewSource"]>;
+  readonly mediaId?: string;
+  /** Detach the committed/history Blob from an ephemeral streaming source. */
+  readonly detachSource?: boolean;
+  readonly expectedContentHash?: string;
   /** Explicit write target for multi-workspace callers. */
   readonly projectId?: string;
   readonly workspaceId?: string;
@@ -396,7 +402,7 @@ export function createMediaSlice(
         }
 
         let newMediaItem: MediaItem = {
-          id: uuidv4(),
+          id: options.mediaId ?? uuidv4(),
           name: file.name,
           type: mediaType,
           fileHandle: null,
@@ -425,6 +431,7 @@ export function createMediaSlice(
             ? { materialSource: options.materialSource }
             : {}),
           ...(options.versionSource ? { versionSource: options.versionSource } : {}),
+          ...(options.reviewSource ? { reviewSource: options.reviewSource } : {}),
         };
         let committedMediaId = newMediaItem.id;
 
@@ -466,10 +473,12 @@ export function createMediaSlice(
             file,
             newMediaItem.metadata,
             file.name,
+            { detachSource: options.detachSource, expectedHash: options.expectedContentHash },
           );
           newMediaItem = {
             ...newMediaItem,
             contentHash: savedVersion.contentHash,
+            ...(savedVersion.persistedBlob ? { blob: savedVersion.persistedBlob } : {}),
             ...(savedVersion.contentUrl ? { contentUrl: savedVersion.contentUrl } : {}),
           };
         } catch (err) {
