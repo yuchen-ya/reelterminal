@@ -17,10 +17,12 @@
  * - save failures keep the draft and surface the reason;
  * - "保存反馈" and "保存并标返工" are distinct; neither publishes a handoff.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   Crosshair,
   Loader2,
@@ -87,6 +89,8 @@ export interface WorkbenchIssuePanelProps {
   readonly feedbacks?: readonly FeedbackView[];
   readonly widthPx: number;
   readonly emptyHint: string;
+  readonly collapsed?: boolean;
+  readonly onToggleCollapse?: () => void;
 }
 
 interface IssueDraft {
@@ -140,12 +144,25 @@ export function WorkbenchIssuePanel({
   feedbacks,
   widthPx,
   emptyHint,
+  collapsed,
+  onToggleCollapse,
 }: WorkbenchIssuePanelProps): JSX.Element {
   const [drafts, setDrafts] = useState<Readonly<Record<string, IssueDraft>>>({});
   const [busy, setBusy] = useState<"save" | "rework" | "delete" | null>(null);
   const [notice, setNotice] = useState<
     { readonly kind: "ok" | "error"; readonly message: string } | null
   >(null);
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
+  const prevCountRef = useRef<number>(issues.length);
+
+  useEffect(() => {
+    if (issues.length > prevCountRef.current) {
+      setUserCollapsed(false);
+    }
+    prevCountRef.current = issues.length;
+  }, [issues.length]);
+
+  const isCollapsed = collapsed ?? (userCollapsed ?? (issues.length === 0));
 
   const selectedIssue = useMemo(
     () => issues.find((issue) => issue.id === selectedIssueId) ?? null,
@@ -289,10 +306,64 @@ export function WorkbenchIssuePanel({
     [draft, updateDraft],
   );
 
+  if (isCollapsed) {
+    return (
+      <div
+        style={{ width: 36 }}
+        className="flex w-9 shrink-0 flex-col items-center border-l border-border bg-bg-1 py-2 select-none"
+        data-testid="workbench-issue-panel"
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (onToggleCollapse) onToggleCollapse();
+            else setUserCollapsed(false);
+          }}
+          className="rounded p-1 text-fg-3 hover:bg-bg-2 hover:text-fg transition-colors"
+          title="展开问题面板"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (onToggleCollapse) onToggleCollapse();
+            else setUserCollapsed(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              if (onToggleCollapse) onToggleCollapse();
+              else setUserCollapsed(false);
+            }
+          }}
+          className="mt-3 flex flex-col items-center gap-2 cursor-pointer hover:opacity-80"
+          title="展开问题面板"
+        >
+          <MessageSquareWarning className="h-4 w-4 text-accent" />
+          <span className="rounded-full bg-bg-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-3">
+            {issues.length}
+          </span>
+          <span
+            className="text-[11px] text-fg-3 select-none"
+            style={{ writingMode: "vertical-rl" }}
+          >
+            问题速改
+          </span>
+        </div>
+        <div className="sr-only">
+          <span>选区问题速改</span>
+          <span>暂无问题记录</span>
+          <span>{emptyHint}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{ width: widthPx }}
-      className="my-3 mr-3 flex shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-bg-1"
+      className="flex shrink-0 flex-col overflow-hidden border-l border-border bg-bg-1"
       data-testid="workbench-issue-panel"
     >
       <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-3 select-none">
@@ -300,7 +371,20 @@ export function WorkbenchIssuePanel({
           <MessageSquareWarning className="h-3.5 w-3.5 text-accent" />
           选区问题速改
         </span>
-        <span className="font-mono text-[11px] text-fg-3">{issues.length} 处</span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[11px] text-fg-3">{issues.length} 处</span>
+          <button
+            type="button"
+            onClick={() => {
+              if (onToggleCollapse) onToggleCollapse();
+              else setUserCollapsed(true);
+            }}
+            className="rounded p-1 text-fg-3 hover:bg-bg-2 hover:text-fg transition-colors"
+            title="收起问题面板"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       {agentGuidance && (
