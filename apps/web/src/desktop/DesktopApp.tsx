@@ -296,6 +296,21 @@ export function DesktopApp(): JSX.Element {
         // browser-only Toolbar. Both editor workspaces rename the same project;
         // the chooser hides this control until the user returns or chooses.
         projectControl={showEditor && !isReview ? <DesktopProjectNameControl onNewProject={handleNewProject} /> : null}
+        centerControl={
+          <WorkspaceModeTabs
+            activeMode={isReview ? "workbench" : "video"}
+            ariaLabel={t("desktop.workspace.ariaLabel")}
+            accessibleLabels={{
+              video: t("desktop.workspace.videoEditing"),
+              workbench: t("desktop.workspace.workbenchReview"),
+            }}
+            onSelectMode={(mode) => {
+              stopTour();
+              useUIStore.getState().setDesktopPage(mode === "workbench" ? "workbench" : "edit");
+              setChoosingProject(false);
+            }}
+          />
+        }
       >
         {showEditor && isVideoEditing ? <span data-tour="desktop-export"><DesktopExportButton /></span> : null}
         <ToolcraftTooltip content={t("common.githubRepository")} placement="below">
@@ -326,17 +341,8 @@ export function DesktopApp(): JSX.Element {
           className="mr-2"
         />
       </DesktopTitleBar>
-      <div className="flex h-11 shrink-0 items-center justify-center gap-3 border-b border-border bg-bg-1 px-3">
-        <WorkspaceModeTabs activeMode={isReview ? "workbench" : "video"} ariaLabel={t("desktop.workspace.ariaLabel")}
-          accessibleLabels={{ video: t("desktop.workspace.videoEditing"), workbench: t("desktop.workspace.workbenchReview") }}
-          onSelectMode={mode => { stopTour(); useUIStore.getState().setDesktopPage(mode === "workbench" ? "workbench" : "edit"); setChoosingProject(false); }} />
-        <details className="relative text-xs text-fg-3"><summary className="cursor-pointer">{t("review.legacyTools")}</summary>
-          <div className="absolute right-0 z-50 mt-1 w-52 rounded-lg border border-border bg-bg-1 p-2 shadow-lg">
-            <button type="button" disabled={!hasProject} className="w-full rounded-md px-2 py-1.5 text-left disabled:opacity-40" title={t("review.openProjectFirst")}
-              onClick={() => useUIStore.getState().setDesktopPage("motion")}>{t("review.legacyMotion")}</button>
-          </div>
-        </details>
-      </div>
+
+
       <div className="min-h-0 flex-1">
         <ErrorBoundary
           onError={(error, info) =>

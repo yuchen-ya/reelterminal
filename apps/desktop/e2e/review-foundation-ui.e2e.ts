@@ -145,6 +145,7 @@ describe("independent review GUI without a video project", () => {
     await vi.waitFor(async () => { packageExport = value(await agent.callCommand<ReviewExportStatus>("review.export.status", { target, exportId: packageExportId })); expect(packageExport.state).toBe("ready"); }, { timeout: 20_000 });
     const packageCopy = value(await agent.callCommand<{ directory: string }>("review.export.copy", { target, exportId: packageExportId, directory: destination }));
     expect(packageExport!.manifest!.archive!.relativePath).toBe("node.json");
+    await page.getByTestId("review-admin-menu-trigger").click();
     await page.getByTestId("review-restore-open").click();
     await page.getByTestId("review-restore-folder-input").setInputFiles(packageCopy.directory);
     await page.getByTestId("review-restore-preview").waitFor({ timeout: 20_000 });
@@ -157,6 +158,7 @@ describe("independent review GUI without a video project", () => {
     const restoredImage = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target: { ...target, nodeId: restoredNodeId! }, itemId: restoredItems.items.find(item => item.title.endsWith("original.png"))!.id })).item;
     expect(restoredImage.revisions[0].mediaId).not.toBe(repaired!.revisions[0].mediaId);
     // Reopen the same attempt: its persisted request receipt returns the same node.
+    await page.getByTestId("review-admin-menu-trigger").click();
     await page.getByTestId("review-restore-open").click();
     await page.getByTestId("review-restore-folder-input").setInputFiles(packageCopy.directory);
     await page.getByTestId("review-restore-preview").waitFor();
@@ -175,12 +177,15 @@ describe("independent review GUI without a video project", () => {
     const restoredRepair = await page.evaluate(async id => window.reelterminal!.reviewFiles!.resolve(id!, true), restoredImage.revisions[0].mediaId);
     if (!restoredRepair.ok) throw new Error(restoredRepair.error.message);
     expect((await readFile(restoredRepair.value.path)).equals(repairBytes)).toBe(true);
+    await page.getByTestId("review-admin-menu-trigger").click();
     await page.getByTestId("review-backup-open").click();
     await page.getByTestId("review-backup-prepare").click();
     await vi.waitFor(async () => expect(await page.getByTestId("review-backup-progress").getAttribute("data-ready")).toBe("true"), { timeout: 30_000 });
     expect(await page.getByTestId("review-backup-progress").textContent()).toContain("3 / 3");
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Move to recycle bin", exact: true }).click();
+    await page.getByTestId("review-node-menu-trigger").click();
+    await page.getByRole("menuitem", { name: /Move to recycle bin|移到回收站/ }).click();
+    await page.getByTestId("review-node-menu-trigger").click();
     await page.getByTestId("review-purge-open").click();
     await page.getByTestId("review-purge-confirm").waitFor();
     expect(await page.getByTestId("review-purge-submit").isDisabled()).toBe(true);

@@ -463,7 +463,7 @@ describe("review workbench visual baseline captures", () => {
     await page.getByTestId("workbench-tree-panel").waitFor({ state: "visible", timeout: 20_000 });
 
     // -------------------------------------------------------------
-    // State 9: sidebar-collapsed (node sidebar collapsed)
+    // State 9: sidebar-expanded (expand sidebar from default collapsed)
     // -------------------------------------------------------------
     // Switch to video item so it directly compares with State 3
     await page
@@ -481,20 +481,40 @@ describe("review workbench visual baseline captures", () => {
       { timeout: 20_000 },
     );
 
-    const toggleSidebarBtn = page.getByRole("button", { name: "数据节点", exact: true });
-    await toggleSidebarBtn.click();
-    await page.locator('[data-review-directory="true"]').waitFor({
-      state: "detached",
-      timeout: 10_000,
-    });
-    await captureScreenshot(page, "sidebar-collapsed");
-
-    // Restore sidebar
-    await toggleSidebarBtn.click();
+    const expandSidebarBtn = page.getByRole("button", { name: /展开数据节点侧栏|展开侧栏/i }).first();
+    if (await expandSidebarBtn.isVisible()) {
+      await expandSidebarBtn.click();
+    }
     await page.locator('[data-review-directory="true"]').waitFor({
       state: "visible",
       timeout: 10_000,
     });
+    await captureScreenshot(page, "sidebar-expanded");
+
+    // Collapse sidebar again
+    const collapseBtn = page.getByRole("button", { name: /收起侧栏/i }).first();
+    if (await collapseBtn.isVisible()) {
+      await collapseBtn.click();
+    }
+    await page.waitForTimeout(300);
+
+    // -------------------------------------------------------------
+    // State: node-menu-open (node action dropdown menu open)
+    // -------------------------------------------------------------
+    await page.getByTestId("review-node-menu-trigger").click();
+    await page.getByText("重命名").waitFor({ state: "visible", timeout: 10_000 });
+    await captureScreenshot(page, "node-menu-open");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
+    // -------------------------------------------------------------
+    // State: admin-menu-open (more admin options dropdown menu open)
+    // -------------------------------------------------------------
+    await page.getByTestId("review-admin-menu-trigger").click();
+    await page.getByTestId("review-backup-open").waitFor({ state: "visible", timeout: 10_000 });
+    await captureScreenshot(page, "admin-menu-open");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
 
     // -------------------------------------------------------------
     // State 10: dialog-import (import modal dialog)
@@ -558,5 +578,21 @@ describe("review workbench visual baseline captures", () => {
     await page.getByText("互斥计数守恒").waitFor({ state: "visible", timeout: 15_000 });
     await captureScreenshot(page, "dialog-handoff");
     await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
+    // -------------------------------------------------------------
+    // State 13: editor-shell (switch to video editing mode to verify shell)
+    // -------------------------------------------------------------
+    const videoEditTab = page.getByRole("tab", { name: /Video edit|视频编辑/i });
+    await videoEditTab.click();
+    await page.waitForFunction(() => {
+      const tab = document.querySelector('[role="tab"][aria-selected="true"]');
+      return tab !== null && /视频编辑|Video edit/i.test(tab.textContent ?? "");
+    }, undefined, { timeout: 10_000 });
+    await captureScreenshot(page, "editor-shell");
+
+    // Switch back to review workspace tab
+    await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await page.getByTestId("review-page").waitFor({ state: "visible", timeout: 10_000 });
   }, 300_000);
 });

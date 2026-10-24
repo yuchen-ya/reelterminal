@@ -266,6 +266,9 @@ export async function switchToWorkbench(page: Page, timeout = 20_000): Promise<v
     for (const dismiss of await page.getByRole("button", { name: "Dismiss notification", exact: true }).all()) {
       await dismiss.click();
     }
+    if (await page.getByTestId("review-admin-menu-trigger").isVisible()) {
+      await page.getByTestId("review-admin-menu-trigger").click();
+    }
     await page.getByTestId("review-legacy-project").click();
   }
   await page.getByTestId("workbench-page").waitFor({ state: "visible", timeout });

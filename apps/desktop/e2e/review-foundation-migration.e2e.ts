@@ -47,7 +47,9 @@ describe("legacy project review migration", () => {
     let page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
     for (const dismiss of await page.getByRole("button", { name: "Dismiss notification", exact: true }).all()) await dismiss.click();
+    await page.getByTestId("review-admin-menu-trigger").click();
     await page.getByTestId("review-legacy-project").click();
+    await page.getByTestId("workbench-page").waitFor({ state: "visible" });
     const select = async (title: string) => page.getByTestId("workbench-tree-panel").getByText(title, { exact: true }).click();
     await select("Migration image");
     await page.waitForFunction(() => document.querySelector<HTMLImageElement>("[data-testid='image-stage'] img")?.naturalWidth);
@@ -101,6 +103,7 @@ describe("legacy project review migration", () => {
     agent = await connectExternalAgent(launched.endpointFile);
     page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await page.getByTestId("review-admin-menu-trigger").click();
     await page.getByTestId("review-migration-open").click();
     await page.getByTestId("review-migration-source").selectOption(identity.workspaceId);
     await page.getByTestId("review-migration-inspect").click();
