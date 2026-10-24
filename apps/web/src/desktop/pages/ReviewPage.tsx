@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
 import type { ReviewContext, ReviewGroup, ReviewNode } from "@reelterminal/core/review/types";
@@ -56,18 +56,11 @@ export function ReviewPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Default: collapsed when a node is selected; expanded when empty/no node selected
-  const userToggledSidebar = useRef(false);
-  const [sidebarOpen, setSidebarOpen] = useState(() => !selectedId);
-
-  useEffect(() => {
-    if (!userToggledSidebar.current) {
-      setSidebarOpen(!selectedId);
-    }
-  }, [selectedId]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarUserToggled, setSidebarUserToggled] = useState(false);
 
   const handleToggleSidebar = (open: boolean) => {
-    userToggledSidebar.current = true;
+    setSidebarUserToggled(true);
     setSidebarOpen(open);
   };
 
@@ -115,7 +108,11 @@ export function ReviewPage() {
       setDirectory(metadata);
       setNodes(page.nodes);
       setCursor(page.cursor);
-      setSelectedId((current) => current ?? page.nodes[0]?.id ?? null);
+      const nextSelected = selectedId ?? page.nodes[0]?.id ?? null;
+      setSelectedId(nextSelected);
+      if (!sidebarUserToggled) {
+        setSidebarOpen(!nextSelected);
+      }
     };
     void load().catch((problem) => {
       if (!cancelled) setError(problem instanceof Error ? problem.message : String(problem));
@@ -341,6 +338,7 @@ export function ReviewPage() {
               setView("recent");
               setGroupId("");
               chooseNode(result.nodes[0].id);
+              if (!sidebarUserToggled) setSidebarOpen(false);
             }}
             onCreateGroup={async (name) => {
               await mutate([{ kind: "group.create", name }]);
@@ -665,6 +663,35 @@ function ReviewNodeEditor({
             independent
             loading={state.loading}
             onImport={() => setImportOpen(true)}
+              paginationFooter={
+                <div
+                  className="flex shrink-0 items-center justify-between border-t border-border pt-1.5 text-[11px]"
+                  data-testid="review-item-pagination"
+                  title={t("review.pageScope")}
+                >
+                  {state.loading && <span role="status" className="text-fg-3">{t("review.loading")}</span>}
+                  <span className="truncate text-fg-3">{t("review.pageScope")}</span>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <button
+                      type="button"
+                      className={wbButton.ghost}
+                      disabled={state.loading || !state.hasPrevious}
+                      onClick={state.previousPage}
+                    >
+                      {t("review.previous")}
+                    </button>
+                    <span className="px-1 font-mono font-medium text-fg">{state.pageNumber}</span>
+                    <button
+                      type="button"
+                      className={wbButton.ghost}
+                      disabled={state.loading || !state.hasNext}
+                      onClick={state.nextPage}
+                    >
+                      {t("review.next")}
+                    </button>
+                  </div>
+                </div>
+              }
             emptyContent={
               <div className="grid h-full place-items-center p-8 text-center">
                 <div className="space-y-3">
@@ -684,33 +711,6 @@ function ReviewNodeEditor({
               </div>
             }
           />
-        </div>
-      )}
-
-      {view === "content" && (
-        <div
-          className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-1.5 text-xs"
-          data-testid="review-item-pagination"
-        >
-          {state.loading && <span role="status" className="mr-auto">{t("review.loading")}</span>}
-          <span className="mr-auto text-fg-3">{t("review.pageScope")}</span>
-          <button
-            type="button"
-            className={wbButton.ghost}
-            disabled={state.loading || !state.hasPrevious}
-            onClick={state.previousPage}
-          >
-            {t("review.previous")}
-          </button>
-          <span>{state.pageNumber}</span>
-          <button
-            type="button"
-            className={wbButton.ghost}
-            disabled={state.loading || !state.hasNext}
-            onClick={state.nextPage}
-          >
-            {t("review.next")}
-          </button>
         </div>
       )}
 
