@@ -235,25 +235,33 @@ export function HandoffDialog({
             </div>
           </div>
           <div className="p-3 rounded-[6px] bg-bg-2 border border-border">
-            <div className="text-[11px] text-accent">已保留 (Kept)</div>
+            <div className="text-[11px] text-accent">
+              已保留<span className="sr-only"> (Kept)</span>
+            </div>
             <div className="text-lg font-bold font-mono tabular-nums [font-family:var(--wb-font-num)] text-accent mt-0.5">
               {counts.kept}
             </div>
           </div>
           <div className="p-3 rounded-[6px] bg-bg-2 border border-border">
-            <div className="text-[11px] text-status-info">已修改 (Modified)</div>
+            <div className="text-[11px] text-status-info">
+              已修改<span className="sr-only"> (Modified)</span>
+            </div>
             <div className="text-lg font-bold font-mono tabular-nums [font-family:var(--wb-font-num)] text-status-info mt-0.5">
               {counts.modified}
             </div>
           </div>
           <div className="p-3 rounded-[6px] bg-bg-2 border border-border">
-            <div className="text-[11px] text-status-warning">待返工 (Rework)</div>
+            <div className="text-[11px] text-status-warning">
+              待返工<span className="sr-only"> (Rework)</span>
+            </div>
             <div className="text-lg font-bold font-mono tabular-nums [font-family:var(--wb-font-num)] text-status-warning mt-0.5">
               {counts.rework}
             </div>
           </div>
           <div className="p-3 rounded-[6px] bg-bg-2 border border-border">
-            <div className="text-[11px] text-status-error">已丢弃 (Discarded)</div>
+            <div className="text-[11px] text-status-error">
+              已丢弃<span className="sr-only"> (Discarded)</span>
+            </div>
             <div className="text-lg font-bold font-mono tabular-nums [font-family:var(--wb-font-num)] text-status-error mt-0.5">
               {counts.discarded}
             </div>
@@ -282,7 +290,7 @@ export function HandoffDialog({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-fg">
-              即将写入不可变 Handoff 快照的条目明细 ({checkedCount}/{decidedItems.length} 项)
+              即将写入交接快照的条目明细<span className="sr-only"> (不可变 Handoff 快照)</span> ({checkedCount}/{decidedItems.length} 项)
             </div>
             <div className="flex items-center gap-2">
               <button

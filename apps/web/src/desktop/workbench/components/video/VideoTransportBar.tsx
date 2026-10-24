@@ -155,7 +155,7 @@ export function VideoTransportBar({
               className="whitespace-nowrap rounded-[4px] bg-bg-2 px-1.5 py-0.5 font-mono text-fg-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
               title="把当前播放位置设为区间入点"
             >
-              ↳ In: {inPts !== null ? `${inPts.toFixed(3)}s` : "—"}
+              ↳ <span className="sr-only">In: </span>入点: {inPts !== null ? `${inPts.toFixed(3)}s` : "—"}
             </button>
             <button
               type="button"
@@ -164,7 +164,7 @@ export function VideoTransportBar({
               className="whitespace-nowrap rounded-[4px] bg-bg-2 px-1.5 py-0.5 font-mono text-fg-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
               title="把当前播放位置设为区间出点"
             >
-              ↪ Out: {outPts !== null ? `${outPts.toFixed(3)}s` : "—"}
+              ↪ <span className="sr-only">Out: </span>出点: {outPts !== null ? `${outPts.toFixed(3)}s` : "—"}
             </button>
             <button
               type="button"
