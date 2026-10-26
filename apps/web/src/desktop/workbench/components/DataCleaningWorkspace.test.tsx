@@ -210,6 +210,7 @@ describe("DataCleaningWorkspace scope and rework", () => {
     expect(screen.queryAllByTestId("workbench-data-rework-badge")).toHaveLength(0);
   });
 
+  // The large jsdom fixture checks reachability, not browser timing.
   it("keeps all 1,000 rows reachable while rendering only one bounded page", () => {
     const columns = Array.from({ length: 20 }, (_, index) => ({
       columnId: `c${index}`,
@@ -245,5 +246,5 @@ describe("DataCleaningWorkspace scope and rework", () => {
     expect(screen.getByTestId("workbench-data-pagination")).toHaveTextContent(
       "显示第 951–1000 行，共 1000 行",
     );
-  });
+  }, 30_000);
 });
