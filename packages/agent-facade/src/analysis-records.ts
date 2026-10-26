@@ -25,6 +25,7 @@ import { randomUUID } from "node:crypto";
 
 import { FacadeError } from "./errors";
 import type { AnalysisGetParams, MediaSilenceAnalysisParams } from "./types";
+import type { ArtifactFileTracker } from "./providers";
 
 export const ANALYSIS_RECORDS_SCHEMA_VERSION = 3;
 
@@ -202,6 +203,7 @@ export async function saveAnalysisRecord(
     readonly sourceRevision: number;
     readonly createdAt?: string;
   },
+  artifactFileTracker?: ArtifactFileTracker,
 ): Promise<AnalysisRecordView> {
   const dir = recordsDir(artifactRoot);
   await mkdir(dir, { recursive: true });
@@ -214,6 +216,14 @@ export async function saveAnalysisRecord(
     ...record,
   };
   const recordPath = resolvePath(dir, `${full.id}.json`);
+  artifactFileTracker?.record({
+    fileId: `analysis-record-${full.id}`,
+    path: recordPath,
+    kind: "work",
+    purpose: "Saved media analysis record",
+    rebuildable: true,
+    deliveryStatus: "pending",
+  });
   await writeFile(recordPath, `${JSON.stringify(full, null, 2)}\n`, "utf8");
   return { ...full, stale: await assertStaleness(full), recordPath };
 }
@@ -253,7 +263,7 @@ export async function loadAnalysisRecord(
 }
 
 /** Roll back a record if cancellation or checkpoint failure prevents job success. */
-export async function removeAnalysisRecord(artifactRoot: string, recordId: string): Promise<void> {
+export async function removeAnalysisRecord(artifactRoot: string, recordId: string, artifactFileTracker?: ArtifactFileTracker): Promise<void> {
   if (!/^analysis-[0-9a-f-]{8,}$/i.test(recordId)) {
     throw new FacadeError("INVALID_PARAMS", "Invalid analysis record id");
   }
@@ -261,6 +271,7 @@ export async function removeAnalysisRecord(artifactRoot: string, recordId: strin
   // its small-file rollback in this turn so status/list callers cannot observe
   // that failure alongside a record whose completion was never committed.
   rmSync(resolvePath(recordsDir(artifactRoot), `${recordId}.json`), { force: true });
+  artifactFileTracker?.forget(`analysis-record-${recordId}`);
 }
 
 const AUDIO_SERIES = {

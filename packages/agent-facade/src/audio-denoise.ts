@@ -29,6 +29,7 @@ import { FfmpegToolError, resolveFfmpegVersion, resolveToolFfmpeg, runToolProces
 import { resolveContainedPathDetailed } from "./media/path-roots";
 import { parseLoudnorm, probeAudioStreams, type NormalizeAudioMeasurement } from "./audio-normalize";
 import { computeAudioReuseKey, findReusableAudioArtifact, recordReusableAudioArtifact, stageReusableAudioWav } from "./audio-artifact-reuse";
+import type { ArtifactFileTracker } from "./providers";
 
 export const AUDIO_DENOISE_MAX_RANGE_SEC = 120;
 /** Bump when the denoise chain changes — it invalidates reuse keys. */
@@ -114,6 +115,7 @@ export interface ProduceDenoisedAudioParams {
   readonly signal?: AbortSignal;
   /** Stable, caller-owned identifier reserved for this denoise job. */
   readonly artifactId: string;
+  readonly artifactFileTracker?: ArtifactFileTracker;
 }
 
 function fail(code: "INVALID_PARAMS" | "NOT_FOUND" | "JOB_FAILED" | "UNSUPPORTED" | "CONFLICT", message: string): never {
@@ -250,11 +252,20 @@ async function measureFilterDelay(
   ffmpeg: string,
   filters: readonly string[],
   signal?: AbortSignal,
+  artifactFileTracker?: ArtifactFileTracker,
 ): Promise<{ samples: number; prominenceDb: number }> {
   throwIfCancelled(signal);
   const directory = await mkdtemp(join(tmpdir(), "rt-denoise-delay-"));
   const probePath = join(directory, "probe.f32");
   const source = probeNoise(Math.round(DELAY_PROBE_SECONDS * SAMPLE_RATE));
+  artifactFileTracker?.record({
+    fileId: "audio-delay-probe",
+    path: probePath,
+    kind: "work",
+    purpose: "Temporary denoise delay measurement probe",
+    rebuildable: true,
+    deliveryStatus: "pending",
+  });
   const buffer = Buffer.alloc(source.length * 4);
   for (let index = 0; index < source.length; index++) buffer.writeFloatLE(source[index]!, index * 4);
   try {
@@ -277,7 +288,12 @@ async function measureFilterDelay(
     }
     return { samples: measured.lagSamples, prominenceDb: measured.prominenceDb };
   } finally {
-    await rm(directory, { recursive: true, force: true }).catch(() => {});
+    try {
+      await rm(directory, { recursive: true, force: true });
+      artifactFileTracker?.forget("audio-delay-probe");
+    } catch {
+      // The exact probe file stays registered for task review.
+    }
   }
 }
 
@@ -523,6 +539,13 @@ export async function produceDenoisedAudio(input: ProduceDenoisedAudioParams): P
   const stagedProvenancePath = join(stagingDir, "provenance.json");
   let publishedByThisAttempt = false;
 
+  for (const file of [
+    { fileId: "audio-output", path: join(outputDir, "denoised.wav"), purpose: "Denoised audio work output" },
+    { fileId: "audio-output-provenance", path: join(outputDir, "provenance.json"), purpose: "Denoised audio provenance" },
+    { fileId: "audio-staged-output", path: stagedWavPath, purpose: "Temporary denoised audio work" },
+    { fileId: "audio-staged-provenance", path: stagedProvenancePath, purpose: "Temporary denoising provenance" },
+  ]) input.artifactFileTracker?.record({ ...file, kind: "work", rebuildable: true, deliveryStatus: "pending" });
+
   let before: NormalizeAudioMeasurement | null = null;
   let after: NormalizeAudioMeasurement | null = null;
   let processing: DenoiseAudioArtifact["processing"] | null = null;
@@ -540,7 +563,7 @@ export async function produceDenoisedAudio(input: ProduceDenoisedAudioParams): P
       const reusableBefore = reusableMeasurement(reuseHit.provenance.before);
       const reusableAfter = reusableMeasurement(reuseHit.provenance.after);
       if (reuseHit.provenance.sourceSha256 === sourceFingerprint.sha256 && reusableBefore !== null && reusableAfter !== null) {
-        await stageReusableAudioWav(reuseHit, stagedWavPath);
+        await stageReusableAudioWav(reuseHit, stagedWavPath, input.artifactFileTracker);
         before = reusableBefore;
         after = reusableAfter;
         processing = reuseHit.provenance.processing as DenoiseAudioArtifact["processing"];
@@ -548,7 +571,7 @@ export async function produceDenoisedAudio(input: ProduceDenoisedAudioParams): P
       }
     }
     if (reusedFrom === null) {
-      const delay = await measureFilterDelay(binaries.ffmpeg, chain.filters, input.signal);
+      const delay = await measureFilterDelay(binaries.ffmpeg, chain.filters, input.signal, input.artifactFileTracker);
       throwIfCancelled(input.signal);
       before = await measureInputLoudness(binaries.ffmpeg, sourcePath, streamIndex, input.params, timestampOriginSec, input.signal);
       throwIfCancelled(input.signal);
@@ -670,6 +693,8 @@ export async function produceDenoisedAudio(input: ProduceDenoisedAudioParams): P
       try {
         await rename(stagingDir, outputDir);
         publishedByThisAttempt = true;
+        input.artifactFileTracker?.forget("audio-staged-output");
+        input.artifactFileTracker?.forget("audio-staged-provenance");
         await prepareArtifactDir(outputDir, root, VERB);
         published = {
           wavPath: await assertContainedWrittenFile(join(outputDir, "denoised.wav"), root, VERB),
@@ -682,7 +707,11 @@ export async function produceDenoisedAudio(input: ProduceDenoisedAudioParams): P
         published = await inspectPublishedDirectory(outputDir, root, sha256, provenanceSha256);
       }
     }
-    if (!publishedByThisAttempt) await cleanupOwnedDirectory(stagingDir, root);
+    if (!publishedByThisAttempt) {
+      await cleanupOwnedDirectory(stagingDir, root);
+      input.artifactFileTracker?.forget("audio-staged-output");
+      input.artifactFileTracker?.forget("audio-staged-provenance");
+    }
     throwIfCancelled(input.signal);
     // AUD-13: name this published artifact as the reusable result. Best-effort.
     await recordReusableAudioArtifact({
@@ -694,12 +723,16 @@ export async function produceDenoisedAudio(input: ProduceDenoisedAudioParams): P
     const cleanupErrors: string[] = [];
     try {
       await cleanupOwnedDirectory(stagingDir, root);
+      input.artifactFileTracker?.forget("audio-staged-output");
+      input.artifactFileTracker?.forget("audio-staged-provenance");
     } catch (cleanupError) {
       cleanupErrors.push(`pending output cleanup failed: ${ffmpegMessage(cleanupError)}`);
     }
     if (publishedByThisAttempt) {
       try {
         await cleanupOwnedDirectory(outputDir, root);
+        input.artifactFileTracker?.forget("audio-output");
+        input.artifactFileTracker?.forget("audio-output-provenance");
       } catch (cleanupError) {
         cleanupErrors.push(`published output cleanup failed: ${ffmpegMessage(cleanupError)}`);
       }

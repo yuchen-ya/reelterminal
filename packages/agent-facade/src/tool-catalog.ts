@@ -31,8 +31,9 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   node_media: "List the saved media dependencies of one immutable node and report missing dependencies.",
   node_compare: "Compare two immutable nodes by added, replaced, and removed media IDs.",
   media_references: "Show which saved nodes, workspace drafts, and tasks retain a media version.",
-  media_cleanup_plan: "Plan safe removal of unreferenced controlled media and report file sizes and reasons.",
-  media_cleanup_execute: "Recheck and execute one previously returned media cleanup plan.",
+  media_cleanup_review: "Review the complete project node graph, retained media references, frame cache, and durable task records for an explicit workspace target.",
+  media_cleanup_plan: "Build a scope-bound cleanup plan for unreferenced media, deleted nodes, regenerable project frame cache, or only failed task input/status records (never task outputs or source media).",
+  media_cleanup_execute: "Execute one exact cleanup plan only when its target, revision, selected ids, exact file fingerprints, and confirmed flag match the reviewed scope.",
   project_rename:
     "Rename the active project with revision and idempotency guards; never renames an existing checkpoint path.",
   project_get_state:
@@ -83,7 +84,7 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Sample 1–12 real frames for a clip or time range; each frame is fitted into a per-frame byte budget (default 1.5 MiB, maxFrameBytes tunes it) — lossless PNG when it fits, otherwise a JPEG quality/width ladder — with per-frame fidelity metadata plus a contact sheet when supported.",
   export_start:
     "Start an export job for a snapshot of the current project; returns a jobId immediately.",
-  job_status: "Return the current status of an export, media-analysis, or audio-processing job. Completed analysis results contain scalar summaries, counts and analysisRecord.id; audio-process results contain the generated path, provenance, applied parameters, source range, sample timing, and before/after measurements.",
+  job_status: "Return the current status of an export, media-analysis, or audio-processing job. A completed video export includes a media.cleanup.review command entry for its explicit project/workspace/export target. Completed analysis results contain scalar summaries, counts and analysisRecord.id; audio-process results contain the generated path, provenance, applied parameters, source range, sample timing, and before/after measurements.",
   job_cancel: "Request cooperative cancellation of an export, media-analysis, or audio-processing job (idempotent on terminal jobs).",
   verify_artifact:
     "Verify an artifact with ffprobe/pixel checks and return the report as data.",
@@ -157,8 +158,9 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "node.media": "List media saved by one immutable node and disclose missing dependencies.",
   "node.compare": "Compare two immutable nodes and return added, replaced, and removed media IDs.",
   "media.references": "Query the retained-reference roots for one media version.",
-  "media.cleanup.plan": "Build a bounded cleanup plan for unreferenced controlled media; execution rechecks references.",
-  "media.cleanup.execute": "Recheck and execute a prior cleanup plan by planId.",
+  "media.cleanup.review": "Review one explicit project/workspace target, including the complete node graph, retained media roots, project frame cache, and durable task records.",
+  "media.cleanup.plan": "Plan one explicit action: remove unreferenced managed media, permanently remove deleted nodes, recycle/restore nodes, remove regenerable project cache, or remove only failed task input/status records (never task outputs or source media).",
+  "media.cleanup.execute": "Execute a reviewed plan only with confirmed:true and its exact plan id, target, revision, runtime identity, selections, and task file fingerprints.",
   "session.describe":
     "Describe this live collaboration session: runtime, independent access/writer state, available commands, and error codes.",
   "capabilities.get":
@@ -224,7 +226,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
     'Sample 1–12 real frames plus a contact sheet when supported. Pass exactly ONE selector: clipId (a timeline clip id from timeline_get) or timeRange as {"startSec": <number>, "endSec": <number>} in timeline seconds with endSec > startSec ≥ 0. Optional: sampleCount (1–12, default 6), width/height (even, ≤1024), maxFrameBytes (per-frame byte budget, 32768–8388608, default 1572864; oversized PNGs are JPEG-re-encoded to fit, with frames[].fidelity disclosing the delivered raster/format).',
   "export.start":
     'Start an export job for a snapshot of the current project; returns a jobId immediately. Optional destinationPath "<deliveryRoot>/jobs/<slug>/output/<name>.mp4" copies the verified artifact into the Agent workspace deliverables directory after completion (never overwrites; see capabilities_get.export.details.deliveryRoots). Poll job.status until done, then check deliveredTo/deliveryError.',
-  "job.status": "Return the current status of an export, media-analysis, or audio-processing job. Completed analysis results contain scalar summaries, counts and analysisRecord.id; completed audio-process results contain the generated path, provenance, applied parameters, source range, sample timing, and before/after measurements.",
+  "job.status": "Return the current status of an export, media-analysis, or audio-processing job. A completed video export includes a media.cleanup.review command entry for its exact project/workspace/export target. Completed analysis results contain scalar summaries, counts and analysisRecord.id; completed audio-process results contain the generated path, provenance, applied parameters, source range, sample timing, and before/after measurements.",
   "job.cancel":
     "Request cooperative cancellation of an export, media-analysis, or audio-processing job (idempotent on terminal jobs).",
   "verify.artifact":

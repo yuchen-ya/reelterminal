@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { sha256File } from "./artifact-io";
 import { resolveContainedPathDetailed } from "./media/path-roots";
 import { stableStringify } from "./idempotency";
+import type { ArtifactFileTracker } from "./providers";
 
 export const AUDIO_REUSE_INDEX_VERSION = 1;
 /** Bound on tracked entries so the sidecar cannot grow without limit. */
@@ -138,8 +139,24 @@ export async function findReusableAudioArtifact(options: {
 }
 
 /** Stage a validated reuse hit into the caller's staging directory. */
-export async function stageReusableAudioWav(hit: ReusableAudioHit, stagedWavPath: string): Promise<void> {
-  await copyFile(hit.sourcePath, stagedWavPath);
+export async function stageReusableAudioWav(
+  hit: ReusableAudioHit,
+  stagedWavPath: string,
+  artifactFileTracker?: ArtifactFileTracker,
+): Promise<void> {
+  artifactFileTracker?.record({
+    fileId: "audio-reuse-source",
+    path: hit.sourcePath,
+    kind: "source",
+    purpose: "Borrowed task input during content-addressed audio reuse",
+    rebuildable: false,
+    deliveryStatus: "pending",
+  });
+  try {
+    await copyFile(hit.sourcePath, stagedWavPath);
+  } finally {
+    artifactFileTracker?.forget("audio-reuse-source");
+  }
 }
 
 /** Record a freshly published artifact as reusable under its cache key. */

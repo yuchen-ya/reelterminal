@@ -1,4 +1,4 @@
-import type { ProjectSettings } from "./project";
+import type { Project, ProjectSettings } from "./project";
 import type { Timeline, Track, Clip, Subtitle } from "./timeline";
 
 export interface Template {
@@ -16,6 +16,8 @@ export interface Template {
   readonly tags: string[];
   readonly author?: string;
   readonly version: string;
+  /** v2 local templates retain editable project data; v1 rows have no snapshot. */
+  readonly projectSnapshot?: Project;
 }
 
 export type TemplateCategory =

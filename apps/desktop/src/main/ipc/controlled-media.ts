@@ -44,7 +44,10 @@ export function registerControlledMediaIpc(): void {
   );
   handle(
     CHANNELS.mediaStoreRead,
-    z.object({ projectId: z.string().min(1).max(128), mediaId: z.string().min(1).max(128) }),
+    z.object({
+      projectId: z.string().min(1).max(128),
+      mediaId: z.string().min(1).max(128),
+    }),
     (args) => mediaStore.read(args.projectId, args.mediaId),
   );
   handle(
@@ -59,8 +62,19 @@ export function registerControlledMediaIpc(): void {
   );
   handle(
     CHANNELS.mediaStoreDelete,
-    z.object({ mediaId: z.string().min(1).max(128) }),
-    (args) => mediaStore.delete(args.mediaId),
+    z.object({
+      mediaId: z.string().min(1).max(128),
+      expectedFiles: z
+        .array(
+          z.object({
+            path: z.string().min(1),
+            sizeBytes: z.number().nonnegative().int(),
+            lastModifiedMs: z.number().nonnegative(),
+          }),
+        )
+        .optional(),
+    }),
+    (args) => mediaStore.delete(args.mediaId, args.expectedFiles),
   );
   handle(
     CHANNELS.mediaStoreListProject,

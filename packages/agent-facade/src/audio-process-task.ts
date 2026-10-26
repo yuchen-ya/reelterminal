@@ -7,6 +7,13 @@ import { produceSeparatedAudio, discardSeparatedAudioArtifact, type SeparatedAud
 import { JobRegistry, type ProcessedAudioArtifact } from "./jobs";
 import { resolveContainedPathDetailed } from "./media/path-roots";
 
+function artifactFileTrackerFor(jobs: JobRegistry, jobId: string) {
+  return {
+    record: (file: import("./providers").ProducerArtifactFile) => jobs.recordArtifactFile(jobId, file),
+    forget: (fileId: string) => jobs.forgetArtifactFile(jobId, fileId),
+  };
+}
+
 /** Processing only: project mutations are an explicit, revision-guarded import. */
 export async function runAudioNormalizationTask(
   jobs: JobRegistry,
@@ -28,6 +35,7 @@ export async function runAudioNormalizationTask(
       ...input,
       signal: controller.signal,
       artifactId: jobId,
+      artifactFileTracker: artifactFileTrackerFor(jobs, jobId),
       progress: (percent) => jobs.markProgress(jobId, { phase: "rendering", percent }),
     });
     if (!controller.signal.aborted) jobs.markAudioProcessDone(jobId, artifact);
@@ -69,7 +77,7 @@ export async function runAudioDenoiseTask(
     if (controller.signal.aborted) return;
     jobs.markRunning(jobId);
     if (jobs.get(jobId)?.state !== "running") return;
-    artifact = await produceDenoisedAudio({ ...input, signal: controller.signal, artifactId: jobId });
+    artifact = await produceDenoisedAudio({ ...input, signal: controller.signal, artifactId: jobId, artifactFileTracker: artifactFileTrackerFor(jobs, jobId) });
     if (!controller.signal.aborted) jobs.markAudioProcessDone(jobId, artifact);
     if (jobs.get(jobId)?.state === "done") artifact = undefined;
   } catch (error) {
@@ -108,7 +116,7 @@ export async function runAudioSeparationTask(
     if (controller.signal.aborted) return;
     jobs.markRunning(jobId);
     if (jobs.get(jobId)?.state !== "running") return;
-    artifact = await produceSeparatedAudio({ ...input, signal: controller.signal, artifactId: jobId });
+    artifact = await produceSeparatedAudio({ ...input, signal: controller.signal, artifactId: jobId, artifactFileTracker: artifactFileTrackerFor(jobs, jobId) });
     if (!controller.signal.aborted) jobs.markAudioProcessDone(jobId, artifact);
     if (jobs.get(jobId)?.state === "done") artifact = undefined;
   } catch (error) {

@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { useTranslation } from "react-i18next";
 import type { VideoExportSettings } from "@reelterminal/core";
@@ -7,14 +7,23 @@ import { setEncoderBackendFactory, WebCodecsBackend } from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
 import { ExportDialog } from "../../components/editor/ExportDialog";
 import { deriveSourceExportMatch } from "../../services/export-source-match";
-import { useExportRunner, extForFormat, exportFilename } from "../../services/export-runner";
+import {
+  useExportRunner,
+  extForFormat,
+  exportFilename,
+} from "../../services/export-runner";
 import { NativeFFmpegBackend } from "../../services/native-ffmpeg-backend";
 import { Icon } from "@/icons/Icon";
+import { workspaceManager } from "../../services/workspace-manager";
+import { useUIStore } from "../../stores/ui-store";
+import { useDesktopExportStore } from "../../stores/desktop-export-store";
+import { getExportingProjectIds } from "../../services/project-export-activity";
 
 const NO_DRAG = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 const resolveExportOutputPath = (): string =>
-  (window as { __reelterminalExportPath?: string }).__reelterminalExportPath ?? "";
+  (window as { __reelterminalExportPath?: string }).__reelterminalExportPath ??
+  "";
 
 // Native ffmpeg writes the file itself via the resolved output path, so it does
 // not consume the writable stream — a no-op stream satisfies the interface.
@@ -41,10 +50,16 @@ function shouldUseWebCodecs(settings: VideoExportSettings): boolean {
   );
 }
 
-export function DesktopExportButton(): JSX.Element {
+export function DesktopExportButton({
+  onExportRequested,
+}: {
+  onExportRequested?: () => void;
+} = {}): JSX.Element {
   const { t } = useTranslation();
   const project = useProjectStore((state) => state.project);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const exportId = useRef<string | null>(null);
+  const activeSession = useDesktopExportStore((store) => store.session);
 
   const {
     state,
@@ -55,7 +70,24 @@ export function DesktopExportButton(): JSX.Element {
     failExport,
     cancel,
     resetError,
-  } = useExportRunner({ project });
+  } = useExportRunner({
+    project,
+    onStateChange: (state) => {
+      if (
+        exportId.current &&
+        (state.isExporting || state.complete || state.error)
+      ) {
+        useDesktopExportStore.getState().update(exportId.current, state);
+      } else if (
+        exportId.current &&
+        useDesktopExportStore.getState().session?.state.phase === "正在取消"
+      ) {
+        useDesktopExportStore
+          .getState()
+          .update(exportId.current, { ...state, phase: "已取消" });
+      }
+    },
+  });
 
   useEffect(() => {
     const open = () => setIsDialogOpen(true);
@@ -66,8 +98,22 @@ export function DesktopExportButton(): JSX.Element {
   const handleExport = useCallback(
     async (settings: VideoExportSettings) => {
       setIsDialogOpen(false);
+      if (getExportingProjectIds().size > 0) {
+        useUIStore.getState().setDesktopPage("deliver");
+        return;
+      }
+      if (onExportRequested) {
+        onExportRequested();
+        return;
+      }
 
       try {
+        const workspace = await workspaceManager.getActiveWorkspace();
+        if (!workspace || workspace.projectId !== project.id) {
+          throw new Error(
+            "Export workspace changed; reopen export from the intended project",
+          );
+        }
         const ext = extForFormat(settings.format, settings.codec);
         const useWebCodecs = shouldUseWebCodecs(settings);
         const writable = await showSavePicker(
@@ -77,6 +123,48 @@ export function DesktopExportButton(): JSX.Element {
         );
 
         beginExport();
+        exportId.current = crypto.randomUUID();
+        const sessionId = exportId.current;
+        useDesktopExportStore.getState().begin(
+          {
+            target: {
+              projectId: project.id,
+              workspaceId: workspace.id,
+              exportId: sessionId,
+              revision: workspace.revision,
+            },
+            projectName: project.name,
+            outputPath: resolveExportOutputPath() || undefined,
+            startedAt: Date.now(),
+            state: {
+              isExporting: true,
+              progress: 0,
+              phase: "Initializing...",
+              error: null,
+              complete: false,
+            },
+            ownership: {
+            kind: "work",
+            purpose: "Video export in progress",
+              origin: "product",
+              projectId: project.id,
+              workspaceId: workspace.id,
+              ...(workspace.baseNodeId ? { nodeId: workspace.baseNodeId } : {}),
+              deliveryStatus: "pending",
+            },
+          },
+          () => {
+            cancel();
+            useDesktopExportStore.getState().update(sessionId, {
+              isExporting: true,
+              progress: 0,
+              phase: "正在取消",
+              error: null,
+              complete: false,
+            });
+          },
+        );
+        useUIStore.getState().setDesktopPage("deliver");
 
         const needsUpscaling =
           settings.width > project.settings.width ||
@@ -85,7 +173,9 @@ export function DesktopExportButton(): JSX.Element {
         const exportSettings: Partial<VideoExportSettings> = {
           ...settings,
           upscaling:
-            settings.upscaling?.enabled && needsUpscaling ? settings.upscaling : undefined,
+            settings.upscaling?.enabled && needsUpscaling
+              ? settings.upscaling
+              : undefined,
         };
 
         if (useWebCodecs) {
@@ -104,13 +194,20 @@ export function DesktopExportButton(): JSX.Element {
           try {
             await runExport(exportSettings, ext, writable);
           } catch (webCodecsError) {
+            if (
+              webCodecsError instanceof Error &&
+              webCodecsError.name === "AbortError"
+            )
+              throw webCodecsError;
             console.warn(
               "[Export] WebCodecs export failed; falling back to native ffmpeg:",
               webCodecsError,
             );
             try {
               await writable.abort?.();
-            } catch {}
+            } catch {
+              // The failed runner may already have closed its writable.
+            }
             setEncoderBackendFactory(
               () => new NativeFFmpegBackend(resolveExportOutputPath),
             );
@@ -128,19 +225,28 @@ export function DesktopExportButton(): JSX.Element {
         failExport(error);
       }
     },
-    [project, runExport, showSavePicker, beginExport, finishExportSoon, failExport],
+    [
+      project,
+      runExport,
+      showSavePicker,
+      beginExport,
+      finishExportSoon,
+      failExport,
+      cancel,
+      onExportRequested,
+    ],
   );
 
-  if (state.isExporting) {
+  if (activeSession?.state.isExporting || state.isExporting) {
     return (
       <Button
-        label={`${Math.round(state.progress)}%`}
+        label={`${Math.round(activeSession?.state.progress ?? state.progress)}%`}
         variant="secondary"
         size="sm"
         style={NO_DRAG}
-        onClick={cancel}
+        onClick={() => useUIStore.getState().setDesktopPage("deliver")}
         className="mr-2"
-        aria-label={t("desktop.editor.cancelExport")}
+        aria-label="查看导出与整理"
       />
     );
   }
@@ -167,13 +273,21 @@ export function DesktopExportButton(): JSX.Element {
         size="sm"
         style={NO_DRAG}
         className="mr-2"
-        isDisabled
+        onClick={() => useUIStore.getState().setDesktopPage("deliver")}
       />
     );
   }
 
   return (
     <>
+      <Button
+        label="导出与整理"
+        variant="secondary"
+        size="sm"
+        style={NO_DRAG}
+        onClick={() => useUIStore.getState().setDesktopPage("deliver")}
+        className="mr-2"
+      />
       <Button
         label={t("desktop.editor.export")}
         variant="primary"

@@ -1,6 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, open, readFile, readdir, link, unlink, rm, stat } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  link,
+  unlink,
+  rm,
+  stat,
+  lstat,
+  realpath,
+} from "node:fs/promises";
 import path from "node:path";
 import type { FileHandle } from "node:fs/promises";
 
@@ -14,19 +25,27 @@ const PENDING_PREFIX = ".pending-";
 // Committed files are `<mediaId>[.<sha256>].<extension>`; the optional middle
 // segment can only be an embedded content hash because media ids never
 // contain dots and extensions are at most 10 characters.
-const MEDIA_NAME_PATTERN = /^([a-zA-Z0-9_-]{1,128})(?:\.([0-9a-f]{64}))?\.([a-z0-9]{1,10})$/;
+const MEDIA_NAME_PATTERN =
+  /^([a-zA-Z0-9_-]{1,128})(?:\.([0-9a-f]{64}))?\.([a-z0-9]{1,10})$/;
 
 export interface ControlledMediaEntry {
   readonly projectId: string;
   readonly mediaId: string;
   readonly path: string;
   readonly sizeBytes: number;
+  readonly lastModifiedMs: number;
   /**
    * Commit-time SHA-256 embedded in the filename, readable without touching
    * file bytes. Absent for files written before hash-encoding names, where
    * only the bytes know their hash.
    */
   readonly contentHash?: string;
+}
+
+export interface ControlledMediaFingerprint {
+  readonly path: string;
+  readonly sizeBytes: number;
+  readonly lastModifiedMs: number;
 }
 
 export interface ResolvedControlledMediaVersion extends ControlledMediaEntry {
@@ -81,7 +100,9 @@ export class ControlledMediaStore {
    * failures on individual files.
    */
   private async sweepAbandonedPendingWrites(): Promise<void> {
-    const projects = await readdir(this.root, { withFileTypes: true }).catch(() => []);
+    const projects = await readdir(this.root, { withFileTypes: true }).catch(
+      () => [],
+    );
     for (const project of projects) {
       if (!project.isDirectory() || !ID_PATTERN.test(project.name)) continue;
       const directory = path.join(this.root, project.name);
@@ -98,19 +119,34 @@ export class ControlledMediaStore {
     return path.join(this.root, projectId);
   }
 
-  private mediaPath(projectId: string, mediaId: string, contentHash: string, extension: string): string {
+  private mediaPath(
+    projectId: string,
+    mediaId: string,
+    contentHash: string,
+    extension: string,
+  ): string {
     assertId(mediaId, "media id");
-    if (!HASH_PATTERN.test(contentHash)) throw new Error("Invalid SHA-256 hash");
-    if (!EXTENSION_PATTERN.test(extension)) throw new Error("Invalid media extension");
-    return path.join(this.projectDirectory(projectId), `${mediaId}.${contentHash}.${extension}`);
+    if (!HASH_PATTERN.test(contentHash))
+      throw new Error("Invalid SHA-256 hash");
+    if (!EXTENSION_PATTERN.test(extension))
+      throw new Error("Invalid media extension");
+    return path.join(
+      this.projectDirectory(projectId),
+      `${mediaId}.${contentHash}.${extension}`,
+    );
   }
 
-  private async findMediaPath(projectId: string, mediaId: string): Promise<string | null> {
+  private async findMediaPath(
+    projectId: string,
+    mediaId: string,
+  ): Promise<string | null> {
     const directory = this.projectDirectory(projectId);
-    const names = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return [];
-      throw error;
-    });
+    const names = await readdir(directory).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      },
+    );
     // mediaId is dot-free (ID_PATTERN), so the `${mediaId}.` prefix can never
     // match helper names like ".pending-<uuid>"; no extra exclusion is needed.
     const prefix = `${mediaId}.`;
@@ -124,10 +160,15 @@ export class ControlledMediaStore {
     return entries.find((entry) => entry.mediaId === mediaId)?.path ?? null;
   }
 
-  private async withCommitLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+  private async withCommitLock<T>(
+    key: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
     const previous = this.commitQueues.get(key);
     let release!: () => void;
-    const current = new Promise<void>((resolve) => { release = resolve; });
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     this.commitQueues.set(key, current);
     await previous;
     try {
@@ -144,8 +185,10 @@ export class ControlledMediaStore {
     expectedHash: string;
     extension: string;
   }): Promise<string> {
-    if (!HASH_PATTERN.test(args.expectedHash)) throw new Error("Invalid SHA-256 hash");
-    if (!EXTENSION_PATTERN.test(args.extension)) throw new Error("Invalid media extension");
+    if (!HASH_PATTERN.test(args.expectedHash))
+      throw new Error("Invalid SHA-256 hash");
+    if (!EXTENSION_PATTERN.test(args.extension))
+      throw new Error("Invalid media extension");
     // No live temporary of this instance exists while the sweep runs, so the
     // sweep can never unlink a session created after it.
     await this.pendingSweep;
@@ -153,7 +196,12 @@ export class ControlledMediaStore {
     await mkdir(directory, { recursive: true });
     const sessionId = randomUUID();
     const temporaryPath = path.join(directory, `${PENDING_PREFIX}${sessionId}`);
-    const destinationPath = this.mediaPath(args.projectId, args.mediaId, args.expectedHash, args.extension);
+    const destinationPath = this.mediaPath(
+      args.projectId,
+      args.mediaId,
+      args.expectedHash,
+      args.extension,
+    );
     const file = await open(temporaryPath, "wx");
     this.writes.set(sessionId, {
       ...args,
@@ -165,12 +213,17 @@ export class ControlledMediaStore {
     return sessionId;
   }
 
-  async writeChunk(sessionId: string, data: ArrayBuffer | Uint8Array): Promise<void> {
+  async writeChunk(
+    sessionId: string,
+    data: ArrayBuffer | Uint8Array,
+  ): Promise<void> {
     const pending = this.writes.get(sessionId);
     if (!pending) throw new Error("Unknown controlled-media write session");
     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_CHUNK_BYTES) {
-      throw new Error(`Controlled-media chunks must be between 1 and ${MAX_CHUNK_BYTES} bytes`);
+      throw new Error(
+        `Controlled-media chunks must be between 1 and ${MAX_CHUNK_BYTES} bytes`,
+      );
     }
     let offset = 0;
     while (offset < bytes.byteLength) {
@@ -180,13 +233,16 @@ export class ControlledMediaStore {
         bytes.byteLength - offset,
         null,
       );
-      if (bytesWritten === 0) throw new Error("Controlled-media write made no progress");
+      if (bytesWritten === 0)
+        throw new Error("Controlled-media write made no progress");
       offset += bytesWritten;
     }
     pending.hash.update(bytes);
   }
 
-  async commitWrite(sessionId: string): Promise<{ path: string; contentHash: string; created: boolean }> {
+  async commitWrite(
+    sessionId: string,
+  ): Promise<{ path: string; contentHash: string; created: boolean }> {
     const pending = this.writes.get(sessionId);
     if (!pending) throw new Error("Unknown controlled-media write session");
     this.writes.delete(sessionId);
@@ -195,14 +251,18 @@ export class ControlledMediaStore {
       await pending.file.close();
       const contentHash = pending.hash.digest("hex");
       if (contentHash !== pending.expectedHash) {
-        throw new Error("Controlled-media bytes do not match the declared SHA-256 hash");
+        throw new Error(
+          "Controlled-media bytes do not match the declared SHA-256 hash",
+        );
       }
       return await this.withCommitLock(pending.mediaId, async () => {
         const existingPath = await this.findMediaPathAny(pending.mediaId);
         if (existingPath) {
           const existingHash = await hashFile(existingPath);
           if (existingHash !== contentHash) {
-            throw new Error(`Media version ${pending.mediaId} is immutable and already contains different bytes`);
+            throw new Error(
+              `Media version ${pending.mediaId} is immutable and already contains different bytes`,
+            );
           }
           // Logical success already happened; a transient unlink failure must
           // not surface as an error for this dedupe.
@@ -218,10 +278,12 @@ export class ControlledMediaStore {
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
           const racedPath = await this.findMediaPathAny(pending.mediaId);
-          if (!racedPath || await hashFile(racedPath) !== contentHash) {
+          if (!racedPath || (await hashFile(racedPath)) !== contentHash) {
             // Lost the race to different bytes (or the winner vanished):
             // surface the same typed immutability error as the pre-link check.
-            throw new Error(`Media version ${pending.mediaId} is immutable and already contains different bytes`);
+            throw new Error(
+              `Media version ${pending.mediaId} is immutable and already contains different bytes`,
+            );
           }
           await unlink(pending.temporaryPath).catch(() => undefined);
           return { path: racedPath, contentHash, created: false };
@@ -246,17 +308,25 @@ export class ControlledMediaStore {
     const filePath = await this.findMediaPath(projectId, mediaId);
     if (!filePath) return null;
     const bytes = await readFile(filePath);
-    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    return bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
   }
 
   async readAny(mediaId: string): Promise<ArrayBuffer | null> {
     const filePath = await this.findMediaPathAny(mediaId);
     if (!filePath) return null;
     const bytes = await readFile(filePath);
-    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    return bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
   }
 
-  async getVersion(mediaId: string): Promise<ResolvedControlledMediaVersion | null> {
+  async getVersion(
+    mediaId: string,
+  ): Promise<ResolvedControlledMediaVersion | null> {
     const filePath = await this.findMediaPathAny(mediaId);
     if (!filePath) return null;
     const statResult = await stat(filePath);
@@ -266,21 +336,84 @@ export class ControlledMediaStore {
       mediaId,
       path: filePath,
       sizeBytes: statResult.size,
+      lastModifiedMs: statResult.mtimeMs,
       contentHash: await hashFile(filePath),
     };
   }
 
-  async delete(mediaId: string): Promise<void> {
-    const entries = (await this.listAll()).filter((entry) => entry.mediaId === mediaId);
-    for (const entry of entries) await unlink(entry.path);
+  async delete(
+    mediaId: string,
+    expectedFiles?: readonly ControlledMediaFingerprint[],
+  ): Promise<void> {
+    assertId(mediaId, "media id");
+    await this.withCommitLock(mediaId, async () => {
+      const entries = (await this.listAll()).filter(
+        (entry) => entry.mediaId === mediaId,
+      );
+      if (expectedFiles) {
+        const expected = new Map(
+          expectedFiles.map((entry) => [path.resolve(entry.path), entry]),
+        );
+        if (
+          expected.size !== expectedFiles.length ||
+          entries.length !== expectedFiles.length ||
+          entries.some((entry) => {
+            const reviewed = expected.get(path.resolve(entry.path));
+            return (
+              !reviewed ||
+              reviewed.sizeBytes !== entry.sizeBytes ||
+              reviewed.lastModifiedMs !== entry.lastModifiedMs
+            );
+          })
+        )
+          throw new Error(
+            "Controlled media files changed after cleanup review",
+          );
+      }
+      if (entries.length === 0) return;
+      const rootPath = await realpath(this.root);
+      for (const entry of entries) {
+        const resolvedPath = await realpath(entry.path);
+        const relativePath = path.relative(rootPath, resolvedPath);
+        const fileStat = await lstat(entry.path);
+        if (
+          !relativePath ||
+          relativePath === ".." ||
+          relativePath.startsWith(`..${path.sep}`) ||
+          path.isAbsolute(relativePath) ||
+          fileStat.isSymbolicLink() ||
+          !fileStat.isFile()
+        ) {
+          throw new Error(
+            "Controlled media file escapes the managed storage root",
+          );
+        }
+        if (expectedFiles) {
+          const reviewed = expectedFiles.find(
+            (file) => path.resolve(file.path) === path.resolve(entry.path),
+          )!;
+          if (
+            reviewed.sizeBytes !== fileStat.size ||
+            reviewed.lastModifiedMs !== fileStat.mtimeMs
+          ) {
+            throw new Error(
+              "Controlled media file changed before cleanup deletion",
+            );
+          }
+        }
+      }
+      for (const entry of entries) await unlink(entry.path);
+    });
   }
 
   async listProject(projectId: string): Promise<ControlledMediaEntry[]> {
     const directory = this.projectDirectory(projectId);
-    const names = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return [];
-      throw error;
-    });
+    const names = await readdir(directory).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      },
+    );
     const entries: ControlledMediaEntry[] = [];
     for (const name of names) {
       const match = MEDIA_NAME_PATTERN.exec(name);
@@ -293,6 +426,7 @@ export class ControlledMediaStore {
           mediaId: match[1],
           path: filePath,
           sizeBytes: fileStat.size,
+          lastModifiedMs: fileStat.mtimeMs,
           ...(match[2] ? { contentHash: match[2] } : {}),
         });
       }
@@ -301,14 +435,16 @@ export class ControlledMediaStore {
   }
 
   async listAll(): Promise<ControlledMediaEntry[]> {
-    const projects = await readdir(this.root, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return [];
-      throw error;
-    });
+    const projects = await readdir(this.root, { withFileTypes: true }).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      },
+    );
     const entries: ControlledMediaEntry[] = [];
     for (const project of projects) {
       if (!project.isDirectory() || !ID_PATTERN.test(project.name)) continue;
-      entries.push(...await this.listProject(project.name));
+      entries.push(...(await this.listProject(project.name)));
     }
     return entries;
   }
@@ -317,7 +453,12 @@ export class ControlledMediaStore {
     await rm(this.root, { recursive: true, force: true });
   }
 
-  getPath(projectId: string, mediaId: string, contentHash: string, extension: string): string {
+  getPath(
+    projectId: string,
+    mediaId: string,
+    contentHash: string,
+    extension: string,
+  ): string {
     return this.mediaPath(projectId, mediaId, contentHash, extension);
   }
 }

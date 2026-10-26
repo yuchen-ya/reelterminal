@@ -97,6 +97,9 @@ describe("local project lifecycle", () => {
       ...previousBridge,
       projectLibrary: {
         getTaskStates: async () => ({ "interrupted-job": "error" }),
+        listCleanupCandidates: async () => ({ tasks: [], unknowns: [] }),
+        purgeFailedTaskRecords: async () => ({ actualBytes: 0, deleted: [], skipped: [], failed: [] }),
+        purgeTrackedWorkFiles: async () => ({ actualBytes: 0, deleted: [], skipped: [], failed: [] }),
       },
     } as NonNullable<typeof window.reelterminal>;
     await manager.recycleProjects([created.project.id]);

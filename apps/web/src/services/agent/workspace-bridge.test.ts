@@ -76,6 +76,28 @@ describe("workspace node query bridge", () => {
       node: { id: saved.node.id, name: "Renamed node" },
     });
   });
+
+  it("requires exact cleanup confirmation through the Agent workspace bridge", async () => {
+    const created = await workspaceManager.createProject(createEmptyProject("Cleanup bridge"));
+    const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+    const review = await handleWorkspaceLibraryRequest("media.cleanup.review", target);
+    expect(review.ok).toBe(true);
+    if (!review.ok) return;
+    expect(review.result).toMatchObject({ target, scanReady: true, nodes: [] });
+
+    const planned = await handleWorkspaceLibraryRequest("media.cleanup.plan", { ...target, action: "purge-media" });
+    expect(planned.ok).toBe(true);
+    if (!planned.ok) return;
+    const confirmation = (planned.result as { confirmation: Record<string, unknown> }).confirmation;
+    const { target: cleanupTarget, ...scope } = confirmation;
+    const flattened = { ...scope, ...(cleanupTarget as Record<string, unknown>) };
+
+    const denied = await handleWorkspaceLibraryRequest("media.cleanup.execute", { ...flattened, confirmed: false });
+    expect(denied).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
+
+    const executed = await handleWorkspaceLibraryRequest("media.cleanup.execute", { ...flattened, confirmed: true });
+    expect(executed).toMatchObject({ ok: true, result: { status: "completed", deletedMediaIds: [], reclaimedBytes: 0 } });
+  });
 });
 
 describe("failureCode classification", () => {

@@ -385,7 +385,10 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
   if (argv[0] === "status") {
     const status = await client.status();
     const { ok: _ok, ...value } = status;
-    const result = successResult(value);
+    const cleanupReview = typeof status.projectId === "string" && typeof status.workspaceId === "string"
+      ? { command: "media.cleanup.review", arguments: { projectId: status.projectId, workspaceId: status.workspaceId } }
+      : undefined;
+    const result = successResult({ ...value, ...(cleanupReview ? { cleanupReview } : {}) });
     const parsed = parseFlags(argv.slice(1));
     output(formatResult(result, {
       human: parsed.human,

@@ -9,10 +9,15 @@ import { workspaceManager, type MediaReferencePurpose } from "./workspace-manage
 import { getExportMediaReferences } from "./project-export-activity";
 import { projectManager } from "./project-manager";
 import { autoSaveManager } from "./auto-save";
+import { projectTemplateStorage } from "./project-template-storage";
+import { projectMediaIds } from "./workspace-record-transforms";
 import {
   deleteMediaBlobUnderReferenceWrite,
   getAllStoredMedia,
+  hasCompleteControlledMediaFingerprint,
+  isControlledMediaStorageAvailable,
   withMediaReferenceWrite,
+  type ControlledMediaFileFingerprint,
   type StoredMediaEntry,
 } from "./media-storage";
 
@@ -23,6 +28,7 @@ export type MediaReferenceKind =
   | "history"
   | "task"
   | "material"
+  | "template"
   | "work-asset"
   | "pending";
 
@@ -57,7 +63,7 @@ export interface MediaCleanupEntry {
   readonly idbSizeBytes: number;
   readonly controlledSizeBytes: number;
   readonly controlledPath?: string;
-  readonly controlledFiles: readonly { readonly path: string; readonly sizeBytes: number }[];
+  readonly controlledFiles: readonly { readonly path: string; readonly sizeBytes: number; readonly lastModifiedMs?: number }[];
   readonly files: readonly {
     readonly storage: "indexeddb" | "controlled-file";
     readonly path: string;
@@ -135,6 +141,11 @@ async function collectReferences(scope: MediaReferenceScope = {}): Promise<Media
   return references;
 }
 
+/** Complete provider scan used by cleanup reviews and their final recheck. */
+export async function scanMediaReferences(scope: MediaReferenceScope = {}): Promise<MediaReference[]> {
+  return collectReferences(scope);
+}
+
 function filterWorkspaceScope(
   references: readonly MediaReference[],
   workspaceId?: string,
@@ -145,6 +156,7 @@ function filterWorkspaceScope(
     reference.kind === "node" ||
     reference.kind === "task" ||
     reference.kind === "material" ||
+    reference.kind === "template" ||
     reference.kind === "pending",
   );
 }
@@ -202,7 +214,7 @@ export async function estimateProjectPurge(projectIds: readonly string[]): Promi
   // A task reference without a purpose (legacy or third-party producer) is
   // conservatively kept.
   const retained = references.filter((reference) =>
-    !projectIds.includes(reference.projectId) || reference.kind === "material" ||
+    !projectIds.includes(reference.projectId) || reference.kind === "material" || reference.kind === "template" ||
     reference.kind === "pending" ||
     (reference.kind === "task" && reference.purpose !== "task-input"),
   );
@@ -249,6 +261,9 @@ export async function createMediaCleanupPlan(
         : `${reference.kind}: ${reference.referenceId}`);
     if (uncommittedMedia.has(record.id)) {
       reasons.push("pending: Media import is not committed yet");
+    }
+    if (!hasCompleteControlledMediaFingerprint(record)) {
+      reasons.push("Controlled media storage does not provide a complete guarded-delete fingerprint.");
     }
     if (referenceScanError) {
       retained.push(cleanupEntry(record, [`Reference scan failed: ${referenceScanError}`]));
@@ -349,7 +364,20 @@ export async function executeMediaCleanupPlan(
         continue;
       }
       try {
-        await deleteMediaBlobUnderReferenceWrite(entry.mediaId);
+        if (entry.controlledFiles.some((file) => typeof file.lastModifiedMs !== "number" || !Number.isFinite(file.lastModifiedMs))) {
+          skipped.push({ entry, reason: "Controlled media storage does not provide a complete guarded-delete fingerprint" });
+          continue;
+        }
+        const expectedFiles: ControlledMediaFileFingerprint[] = entry.controlledFiles.map((file) => ({
+          path: file.path,
+          sizeBytes: file.sizeBytes,
+          lastModifiedMs: file.lastModifiedMs!,
+        }));
+        if (expectedFiles.length > 0 || isControlledMediaStorageAvailable()) {
+          await deleteMediaBlobUnderReferenceWrite(entry.mediaId, undefined, expectedFiles);
+        } else {
+          await deleteMediaBlobUnderReferenceWrite(entry.mediaId);
+        }
         deleted.push(entry);
       } catch (error) {
         skipped.push({
@@ -651,5 +679,21 @@ registerMediaReferenceProvider(async (scope) => {
       label: "Imported task result",
       purpose: "task-result",
     }];
+  });
+});
+
+// User templates outlive the source project and retain its managed media.
+registerMediaReferenceProvider(async (scope) => {
+  const templates = await projectTemplateStorage.listStoredTemplates();
+  return templates.flatMap((template): MediaReference[] => {
+    const project = template.projectSnapshot;
+    const ids = project ? projectMediaIds(project) : template.timeline.tracks.flatMap((track) => track.clips.map((clip) => clip.mediaId));
+    return [...new Set(ids)].filter((id) => !scope?.mediaId || scope.mediaId === id).map((mediaId) => ({
+      mediaId,
+      projectId: project?.id ?? "",
+      kind: "template",
+      referenceId: template.id,
+      label: template.name,
+    }));
   });
 });

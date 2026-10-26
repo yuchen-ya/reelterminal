@@ -1,5 +1,8 @@
 import type { Project } from "@reelterminal/core";
 import type { MediaReference } from "./project-media-gc";
+import { projectMediaIds } from "./workspace-record-transforms";
+import { collectArtifactPaths } from "./artifact-paths";
+import type { ArtifactPathReference } from "./workspace-manager";
 
 // Exports can outlive their React view. Keep their lifetime and media roots here.
 const exports = new Map<symbol, Project>();
@@ -27,14 +30,21 @@ export function getExportingProjectIds(): Set<string> {
   return new Set([...exports.values()].map((project) => project.id));
 }
 
+export function getExportArtifactPathReferences(): ArtifactPathReference[] {
+  return [...exports.values()].flatMap((project) => [...collectArtifactPaths(project)].map((pathKey) => ({
+    pathKey, projectId: project.id, kind: "task" as const, referenceId: "active-export",
+  })));
+}
+
 export function getExportMediaReferences(): MediaReference[] {
   return [...exports.values()].flatMap((project) =>
-    project.mediaLibrary.items.map((item) => ({
-      mediaId: item.id,
+    projectMediaIds(project).map((mediaId) => ({
+      mediaId,
       projectId: project.id,
       kind: "task" as const,
       referenceId: "active-export",
       label: "Running export",
+      purpose: "task-input" as const,
     })),
   );
 }

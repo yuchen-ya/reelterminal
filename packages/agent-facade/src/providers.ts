@@ -13,6 +13,15 @@
  * the runtime package. All types are JSON-serializable.
  */
 import type { Project } from "@reelterminal/core/types/project";
+import type { ArtifactFileRecord } from "@reelterminal/core/types/artifact-ownership";
+
+/** Concrete path a provider may create for a durable job. Register before opening it. */
+export type ProducerArtifactFile = Omit<ArtifactFileRecord, "origin">;
+
+export interface ArtifactFileTracker {
+  readonly record: (file: ProducerArtifactFile) => void;
+  readonly forget: (fileId: string) => void;
+}
 
 /* ------------------------------------------------------------------ */
 /* Shared                                                              */
@@ -266,6 +275,10 @@ export interface ExportCallbacks {
   readonly onDone: (completion: ExportCompletion) => void;
   readonly onError: (error: { readonly code: string; readonly message: string }) => void;
   readonly onCancelled: () => void;
+  /** Exact file ownership, persisted by the facade before a producer writes. */
+  readonly onArtifactFile?: (file: ProducerArtifactFile) => void;
+  /** Called only after the producer confirms the registered file was removed. */
+  readonly onArtifactFileRemoved?: (fileId: string) => void;
 }
 
 export interface ExportProvider {

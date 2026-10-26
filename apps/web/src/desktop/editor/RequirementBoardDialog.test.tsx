@@ -24,6 +24,7 @@ describe("RequirementBoardDialog", () => {
     const history = new ActionHistory();
     useProjectStore.setState({
       project: createEmptyProject("Board"),
+      workspaceId: "workspace-board",
       hasOpenProject: true,
       actionHistory: history,
       actionExecutor: new ActionExecutor(history),
@@ -149,6 +150,32 @@ describe("RequirementBoardDialog", () => {
       useProjectStore.getState().project.requirements?.items[0].status,
     ).toBe("done");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("shows the durable cleanup binding and makes a copied-workspace task read only", async () => {
+    await useProjectStore.getState().addProjectRequirement({
+      title: "Review cleanup",
+      cleanupHandoff: {
+        projectId: useProjectStore.getState().project.id,
+        workspaceId: "workspace-origin",
+        exportId: "export-a",
+        revision: 14,
+        nodeIds: ["node-a"],
+        scope: "Selected output artifacts",
+        retention: "Keep the source project and shared media",
+        phase: "awaiting_confirmation",
+      },
+    });
+    render(<RequirementBoardDialog />);
+    fireEvent.click(screen.getByRole("button", { name: /Q1 Review cleanup/ }));
+    const details = screen.getByTestId("cleanup-handoff-details");
+    expect(details).toHaveTextContent("export-a");
+    expect(details).toHaveTextContent("r14");
+    expect(details).toHaveTextContent(/Awaiting confirmation/i);
+    expect(details).toHaveTextContent("belongs to another project workspace");
+    expect(screen.getByRole("textbox", { name: "Task title" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Task status" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete requirement" })).toBeDisabled();
   });
 
   it("keeps an unsubmitted form across tabs and submits to its explicit project store", async () => {

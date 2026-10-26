@@ -17,6 +17,7 @@ import { readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises
 import { randomUUID, createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { FacadeError } from "./errors";
+import type { ArtifactFileTracker } from "./providers";
 import { prepareArtifactDir, assertContainedWrittenFile } from "./artifact-io";
 import { resolveToolFfmpeg, type FfmpegBinaries } from "./media/ffmpeg-bin";
 
@@ -186,19 +187,28 @@ async function sweepStalePartFiles(cacheDir: string): Promise<void> {
  * once and caching it (sidecar JSON carries the ffprobe preparation facts so
  * cache hits skip both ffmpeg and ffprobe).
  */
-async function prepareInspectionCopy(binaries: FfmpegBinaries, source: string, range: { startSec: number; endSec: number }, cacheDir: string, before: { size: number; mtimeMs: number }, signal: AbortSignal): Promise<{ path: string; cached: boolean; sha256: string; probe: { visual: { width: number; height: number; fps: number }; audio: { channels: number; sampleRate: number } | null; durationSec: number } }> {
+async function prepareInspectionCopy(binaries: FfmpegBinaries, source: string, range: { startSec: number; endSec: number }, cacheDir: string, before: { size: number; mtimeMs: number }, signal: AbortSignal, artifactFileTracker?: ArtifactFileTracker): Promise<{ path: string; cached: boolean; sha256: string; probe: { visual: { width: number; height: number; fps: number }; audio: { channels: number; sampleRate: number } | null; durationSec: number }; borrowedFileIds?: readonly string[] }> {
   await sweepStalePartFiles(cacheDir);
   const key = createHash("sha256").update(JSON.stringify({ v: 2, size: before.size, mtimeMs: Math.round(before.mtimeMs), startSec: range.startSec, endSec: range.endSec, recipe: PREPARATION_RECIPE })).digest("hex");
   const cachedPath = resolve(cacheDir, `${key}.mp4`);
   const sidecarPath = resolve(cacheDir, `${key}.json`);
+  const borrowedFileIds = [`video-review-borrowed-${key}`, `video-review-borrowed-sidecar-${key}`];
+  artifactFileTracker?.record({ fileId: borrowedFileIds[0]!, path: cachedPath, kind: "source", purpose: "Borrowed video review cache while this task reads and uploads it", rebuildable: false, deliveryStatus: "pending" });
+  artifactFileTracker?.record({ fileId: borrowedFileIds[1]!, path: sidecarPath, kind: "source", purpose: "Borrowed video review metadata while this task reads it", rebuildable: false, deliveryStatus: "pending" });
   const cachedStat = await stat(cachedPath).catch(() => null);
   const sidecar = cachedStat?.isFile() && cachedStat.size > 0 && cachedStat.size <= VIDEO_REVIEW_LIMITS.maxUploadBytes
     ? await readFile(sidecarPath, "utf8").then((text) => JSON.parse(text) as { sha256: string; probe: { visual: { width: number; height: number; fps: number }; audio: { channels: number; sampleRate: number } | null; durationSec: number } }).catch(() => null)
     : null;
   if (sidecar && sidecar.sha256 && sidecar.probe) {
-    return { path: cachedPath, cached: true, sha256: sidecar.sha256, probe: sidecar.probe };
+    return { path: cachedPath, cached: true, sha256: sidecar.sha256, probe: sidecar.probe, borrowedFileIds };
   }
-  const partPath = resolve(cacheDir, `.${key}.${randomUUID()}.part.mp4`);
+  for (const fileId of borrowedFileIds) artifactFileTracker?.forget(fileId);
+  const partId = randomUUID();
+  const partPath = resolve(cacheDir, `.${key}.${partId}.part.mp4`);
+  artifactFileTracker?.record({ fileId: `video-review-cache-${key}`, path: cachedPath, kind: "work", purpose: "Bounded video review inspection copy", rebuildable: true, deliveryStatus: "pending" });
+  artifactFileTracker?.record({ fileId: `video-review-sidecar-${key}`, path: sidecarPath, kind: "work", purpose: "Video review inspection metadata", rebuildable: true, deliveryStatus: "pending" });
+  const trackedPartFileId = `video-review-part-${partId}`;
+  artifactFileTracker?.record({ fileId: trackedPartFileId, path: partPath, kind: "work", purpose: "Temporary video review transcode", rebuildable: true, deliveryStatus: "pending" });
   await rm(cachedPath, { force: true });
   await rm(sidecarPath, { force: true });
   try {
@@ -219,11 +229,13 @@ async function prepareInspectionCopy(binaries: FfmpegBinaries, source: string, r
     const sha256 = createHash("sha256").update(await readFile(partPath)).digest("hex");
     const probe = { visual: { width: visual.width, height: visual.height, fps }, audio: audio ? { channels: audio.channels, sampleRate: Number(audio.sample_rate) } : null, durationSec };
     await rename(partPath, cachedPath);
+    if (trackedPartFileId) artifactFileTracker?.forget(trackedPartFileId);
     await writeFile(sidecarPath, JSON.stringify({ key, createdAt: Date.now(), recipe: PREPARATION_RECIPE, sha256, probe }), "utf8");
     await evictVideoReviewCache(cacheDir);
     return { path: cachedPath, cached: false, sha256, probe };
   } catch (error) {
     await rm(partPath, { force: true });
+    if (trackedPartFileId) artifactFileTracker?.forget(trackedPartFileId);
     throw error;
   }
 }
@@ -265,7 +277,7 @@ export async function readReviewStream(response: Response) {
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 
-export async function reviewVideo(source: string, range: { startSec: number; endSec: number }, artifactRoot: string, signal: AbortSignal, question = "", progress: (value: number) => void = () => {}) {
+export async function reviewVideo(source: string, range: { startSec: number; endSec: number }, artifactRoot: string, signal: AbortSignal, question = "", progress: (value: number) => void = () => {}, artifactFileTracker?: ArtifactFileTracker) {
   if (!Number.isFinite(range.startSec) || !Number.isFinite(range.endSec) || range.startSec < 0 || range.endSec <= range.startSec || range.endSec - range.startSec > VIDEO_REVIEW_LIMITS.maxRangeSec) throw new FacadeError("INVALID_PARAMS", "videoReview requires an explicit source range of at most 20 seconds");
   const provider = videoReviewProvider();
   const config = provider.configFromEnv(process.env);
@@ -279,12 +291,14 @@ export async function reviewVideo(source: string, range: { startSec: number; end
   // preparation problem instead of silently consuming the cloud budget.
   let phase: "preparing" | "network" = "preparing";
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let borrowedFileIds: readonly string[] = [];
   try {
     const cacheDir = resolve(artifactRoot, "video-review-cache");
     await prepareArtifactDir(cacheDir, artifactRoot, "videoReview");
     const before = await stat(source);
     timer = setTimeout(abort, VIDEO_REVIEW_LIMITS.preparationTimeoutMs);
-    const inspection = await prepareInspectionCopy(binaries, source, range, cacheDir, { size: before.size, mtimeMs: before.mtimeMs }, controller.signal);
+    const inspection = await prepareInspectionCopy(binaries, source, range, cacheDir, { size: before.size, mtimeMs: before.mtimeMs }, controller.signal, artifactFileTracker);
+    borrowedFileIds = inspection.borrowedFileIds ?? [];
     clearTimeout(timer);
     timer = undefined;
     phase = "network";
@@ -313,5 +327,10 @@ export async function reviewVideo(source: string, range: { startSec: number; end
     // fetch exceptions can embed URLs; errors from our bounded parser/preparer are safe.
     if (error instanceof TypeError) throw new Error("Provider network request failed; no automatic retry.");
     throw error;
-  } finally { if (timer !== undefined) clearTimeout(timer); signal.removeEventListener("abort", abort); running--; }
+  } finally {
+    for (const fileId of borrowedFileIds) artifactFileTracker?.forget(fileId);
+    if (timer !== undefined) clearTimeout(timer);
+    signal.removeEventListener("abort", abort);
+    running--;
+  }
 }

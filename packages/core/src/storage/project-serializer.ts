@@ -28,6 +28,7 @@ import { normalizeMotionCamera } from "../motion/motion-camera";
 import { normalizeMotionLights } from "../motion/motion-lights";
 import { normalizeMotionTracks } from "../motion/motion-tracking";
 import { normalizeCreationState } from "../creation";
+import { validProjectCleanupHandoff } from "../types/requirement";
 import {
   fullChromaKeySettings,
   syncChromaKeyEffectItem,
@@ -592,6 +593,9 @@ export function normalizeProjectStoredFields(project: Project): Project {
   for (const requirement of project.requirements?.items ?? []) {
     if (requirement.reviewRange !== undefined && !validReviewRange(requirement.reviewRange)) {
       throw new Error(`Invalid review range for ${requirement.id}`);
+    }
+    if (requirement.cleanupHandoff !== undefined && !validProjectCleanupHandoff(requirement.cleanupHandoff, project.id)) {
+      throw new Error(`Invalid cleanup handoff for ${requirement.id}`);
     }
   }
   return normalizeProjectMediaFields(

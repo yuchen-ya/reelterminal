@@ -6,7 +6,10 @@ import {
   type Project,
 } from "@reelterminal/core";
 import { t } from "../i18n";
-import { beginProjectExport, endProjectExport } from "./project-export-activity";
+import {
+  beginProjectExport,
+  endProjectExport,
+} from "./project-export-activity";
 
 export interface ExportRunnerState {
   isExporting: boolean;
@@ -52,7 +55,10 @@ export function sanitizeFilenameBase(name: string): string {
     .trim();
 }
 
-export function exportFilename(projectName: string | undefined, ext: string): string {
+export function exportFilename(
+  projectName: string | undefined,
+  ext: string,
+): string {
   const cleaned = projectName ? sanitizeFilenameBase(projectName) : "";
   const base = cleaned.length > 0 ? cleaned : "export";
   return `${base}.${ext}`;
@@ -86,7 +92,11 @@ export function progressPhaseLabel(phase: string): string {
   return phase === "complete" ? "Complete!" : `${phase}...`;
 }
 
-function triggerAnchorDownload(data: Blob, filename: string, onRelease?: () => void): void {
+function triggerAnchorDownload(
+  data: Blob,
+  filename: string,
+  onRelease?: () => void,
+): void {
   const url = URL.createObjectURL(data);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -105,17 +115,22 @@ function triggerAnchorDownload(data: Blob, filename: string, onRelease?: () => v
     onRelease?.();
   };
   window.addEventListener("pagehide", release, { once: true });
-  setTimeout(() => {
-    window.removeEventListener("pagehide", release);
-    release();
-  }, 5 * 60 * 1000);
+  setTimeout(
+    () => {
+      window.removeEventListener("pagehide", release);
+      release();
+    },
+    5 * 60 * 1000,
+  );
 }
 
 const OPFS_TMP_PREFIX = ".reelterminal-export-";
 const OPFS_TMP_TTL_MS = 60 * 60 * 1000;
 
 type OpfsWriteHandle = FileSystemFileHandle & {
-  createWritable?: (opts?: { keepExistingData?: boolean }) => Promise<FileSystemWritableFileStream>;
+  createWritable?: (opts?: {
+    keepExistingData?: boolean;
+  }) => Promise<FileSystemWritableFileStream>;
 };
 
 type OpfsDirHandle = FileSystemDirectoryHandle & {
@@ -134,14 +149,18 @@ async function getOpfsRoot(): Promise<OpfsDirHandle | null> {
   }
 }
 
-async function sweepStaleOpfsTemps(root: OpfsDirHandle, now: number): Promise<void> {
+async function sweepStaleOpfsTemps(
+  root: OpfsDirHandle,
+  now: number,
+): Promise<void> {
   if (typeof root.keys !== "function") return;
   try {
     const stale: string[] = [];
     for await (const name of root.keys()) {
       if (!name.startsWith(OPFS_TMP_PREFIX)) continue;
       const stamp = Number(name.slice(OPFS_TMP_PREFIX.length).split("-")[0]);
-      if (Number.isFinite(stamp) && now - stamp > OPFS_TMP_TTL_MS) stale.push(name);
+      if (Number.isFinite(stamp) && now - stamp > OPFS_TMP_TTL_MS)
+        stale.push(name);
     }
     for (const name of stale) {
       await root.removeEntry(name).catch(() => undefined);
@@ -164,11 +183,16 @@ async function createOpfsDownloadWritable(
   let fileHandle: OpfsWriteHandle;
   let writable: FileSystemWritableFileStream;
   try {
-    fileHandle = (await root.getFileHandle(tmpName, { create: true })) as OpfsWriteHandle;
+    fileHandle = (await root.getFileHandle(tmpName, {
+      create: true,
+    })) as OpfsWriteHandle;
     if (typeof fileHandle.createWritable !== "function") return null;
     writable = await fileHandle.createWritable({ keepExistingData: false });
   } catch (error) {
-    console.warn("[export-runner] OPFS streaming unavailable; using in-memory fallback", error);
+    console.warn(
+      "[export-runner] OPFS streaming unavailable; using in-memory fallback",
+      error,
+    );
     return null;
   }
 
@@ -234,12 +258,18 @@ function createBufferedDownloadWritable(
       if (data instanceof ArrayBuffer) {
         writeBytes(new Uint8Array(data), cursor);
       } else if (ArrayBuffer.isView(data)) {
-        writeBytes(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), cursor);
+        writeBytes(
+          new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+          cursor,
+        );
       }
       return Promise.resolve();
     },
     close() {
-      triggerAnchorDownload(new Blob([buffer.slice(0, length)], { type: mime }), filename);
+      triggerAnchorDownload(
+        new Blob([buffer.slice(0, length)], { type: mime }),
+        filename,
+      );
       return Promise.resolve();
     },
     abort() {
@@ -255,7 +285,10 @@ async function createFallbackWritable(
   filename: string,
   mime: string,
 ): Promise<FileSystemWritableFileStream> {
-  return (await createOpfsDownloadWritable(filename)) ?? createBufferedDownloadWritable(filename, mime);
+  return (
+    (await createOpfsDownloadWritable(filename)) ??
+    createBufferedDownloadWritable(filename, mime)
+  );
 }
 
 export async function createDownloadWritable(
@@ -272,7 +305,8 @@ export async function createDownloadWritable(
     if (!chosen) {
       throw new DOMException("User cancelled", "AbortError");
     }
-    (window as { __reelterminalExportPath?: string }).__reelterminalExportPath = chosen;
+    (window as { __reelterminalExportPath?: string }).__reelterminalExportPath =
+      chosen;
     const handleId = await window.reelterminal.fs.openWrite(chosen);
     let cursor = 0;
     return {
@@ -348,6 +382,7 @@ const INITIAL_STATE: ExportRunnerState = {
 interface ExportRunnerOptions {
   project: Project;
   onExported?: (settings: Partial<VideoExportSettings>) => void;
+  onStateChange?: (state: ExportRunnerState) => void;
 }
 
 export interface UseExportRunner {
@@ -357,7 +392,11 @@ export interface UseExportRunner {
     ext: string,
     writableStream: FileSystemWritableFileStream,
   ) => Promise<void>;
-  showSavePicker: (filename: string, ext: string, opts?: { streamToFile?: boolean }) => Promise<FileSystemWritableFileStream>;
+  showSavePicker: (
+    filename: string,
+    ext: string,
+    opts?: { streamToFile?: boolean },
+  ) => Promise<FileSystemWritableFileStream>;
   reportProgress: (progress01: number, phase: string) => void;
   markComplete: () => void;
   beginExport: () => void;
@@ -370,55 +409,95 @@ export interface UseExportRunner {
 export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
   const { project, onExported } = options;
   const [state, setState] = useState<ExportRunnerState>(INITIAL_STATE);
+  const stateRef = useRef(state);
+  const observer = useRef(options.onStateChange);
+  observer.current = options.onStateChange;
+  const updateState = useCallback(
+    (
+      update:
+        | ExportRunnerState
+        | ((previous: ExportRunnerState) => ExportRunnerState),
+    ) => {
+      const next =
+        typeof update === "function" ? update(stateRef.current) : update;
+      stateRef.current = next;
+      setState(next);
+      observer.current?.(next);
+    },
+    [],
+  );
   const exportOwner = useRef(Symbol("project-export"));
+  const exportSnapshot = useRef<Project | null>(null);
+  const cancellationRequested = useRef(false);
 
   const beginExport = useCallback(() => {
-    beginProjectExport(exportOwner.current, project);
-    setState({
+    const snapshot = structuredClone(project);
+    beginProjectExport(exportOwner.current, snapshot);
+    exportSnapshot.current = snapshot;
+    cancellationRequested.current = false;
+    updateState({
       isExporting: true,
       progress: 0,
       phase: "Initializing...",
       error: null,
       complete: false,
     });
-  }, [project]);
+  }, [project, updateState]);
 
-  const reportProgress = useCallback((progress01: number, phase: string) => {
-    setState((prev) => ({
-      ...prev,
-      progress: progress01 * 100,
-      phase: progressPhaseLabel(phase),
-    }));
-  }, []);
+  const reportProgress = useCallback(
+    (progress01: number, phase: string) => {
+      updateState((prev) => ({
+        ...prev,
+        progress: progress01 * 100,
+        phase: progressPhaseLabel(phase),
+      }));
+    },
+    [updateState],
+  );
 
   const markComplete = useCallback(() => {
     endProjectExport(exportOwner.current);
-    setState((prev) => ({ ...prev, complete: true, phase: "Saved!" }));
-  }, []);
+    updateState((prev) => ({
+      ...prev,
+      isExporting: false,
+      complete: true,
+      phase: "Saved!",
+    }));
+  }, [updateState]);
 
   const finishExportSoon = useCallback(() => {
     endProjectExport(exportOwner.current);
-    setTimeout(() => {
-      setState(INITIAL_STATE);
-    }, 2000);
-  }, []);
-
-  const failExport = useCallback((error: unknown) => {
-    endProjectExport(exportOwner.current);
-    if (error instanceof Error && error.name === "AbortError") {
-      setState(INITIAL_STATE);
-      return;
-    }
-    setState((prev) => ({
+    updateState((prev) => ({
       ...prev,
       isExporting: false,
-      error: error instanceof Error ? error.message : "Export failed",
+      complete: true,
+      progress: 100,
+      phase: "Saved!",
     }));
-  }, []);
+    setTimeout(() => {
+      updateState(INITIAL_STATE);
+    }, 2000);
+  }, [updateState]);
+
+  const failExport = useCallback(
+    (error: unknown) => {
+      endProjectExport(exportOwner.current);
+      if (error instanceof Error && error.name === "AbortError") {
+        updateState(INITIAL_STATE);
+        return;
+      }
+      updateState((prev) => ({
+        ...prev,
+        isExporting: false,
+        error: error instanceof Error ? error.message : "Export failed",
+      }));
+    },
+    [updateState],
+  );
 
   const resetError = useCallback(() => {
-    setState((prev) => ({ ...prev, error: null }));
-  }, []);
+    updateState((prev) => ({ ...prev, error: null }));
+  }, [updateState]);
 
   const runExport = useCallback(
     async (
@@ -430,7 +509,13 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
         const engine = getExportEngine();
         await engine.initialize();
 
-        const generator = engine.exportVideo(project, videoSettings, writableStream);
+        if (cancellationRequested.current)
+          throw new DOMException("Export cancelled", "AbortError");
+        const generator = engine.exportVideo(
+          exportSnapshot.current ?? project,
+          videoSettings,
+          writableStream,
+        );
         let finalResult: ExportResult | undefined;
 
         while (true) {
@@ -439,16 +524,23 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
             finalResult = value;
             break;
           }
-          setState((prev) => ({
+          updateState((prev) => ({
             ...prev,
             progress: value.progress * 100,
             phase: progressPhaseLabel(value.phase),
           }));
         }
 
+        if (cancellationRequested.current)
+          throw new DOMException("Export cancelled", "AbortError");
         if (finalResult?.success) {
           endProjectExport(exportOwner.current);
-          setState((prev) => ({ ...prev, complete: true, phase: "Saved!" }));
+          updateState((prev) => ({
+            ...prev,
+            isExporting: false,
+            complete: true,
+            phase: "Saved!",
+          }));
           onExported?.(videoSettings);
         } else {
           throw new Error(finalResult?.error?.message || "Export failed");
@@ -466,7 +558,7 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
         throw error;
       }
     },
-    [project, onExported],
+    [project, onExported, updateState],
   );
 
   const showSavePicker = useCallback(
@@ -485,7 +577,9 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
         if (!chosen) {
           throw new DOMException("User cancelled", "AbortError");
         }
-        (window as { __reelterminalExportPath?: string }).__reelterminalExportPath = chosen;
+        (
+          window as { __reelterminalExportPath?: string }
+        ).__reelterminalExportPath = chosen;
 
         // The WAV path and any WebCodecs export (streamToFile) mux directly to
         // disk through the fs bridge. The native ffmpeg video path writes the
@@ -504,7 +598,11 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
               } else if (data instanceof Uint8Array) {
                 bytes = data;
               } else if (ArrayBuffer.isView(data)) {
-                bytes = new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
+                bytes = new Uint8Array(
+                  data.buffer as ArrayBuffer,
+                  data.byteOffset,
+                  data.byteLength,
+                );
               } else {
                 return;
               }
@@ -534,7 +632,9 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
         try {
           const handle = await (
             window as unknown as {
-              showSaveFilePicker: (opts: unknown) => Promise<FileSystemFileHandle>;
+              showSaveFilePicker: (
+                opts: unknown,
+              ) => Promise<FileSystemFileHandle>;
             }
           ).showSaveFilePicker({
             suggestedName: filename,
@@ -564,10 +664,11 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
   );
 
   const cancel = useCallback(() => {
+    cancellationRequested.current = true;
     const engine = getExportEngine();
     engine.cancel();
-    setState(INITIAL_STATE);
-  }, []);
+    updateState(INITIAL_STATE);
+  }, [updateState]);
 
   return {
     state,

@@ -70,10 +70,14 @@ vi.mock("../../services/media-storage", () => ({
     sizeBytes: record.blob.size,
     controlledFiles: [],
   }))),
+  hasCompleteControlledMediaFingerprint: vi.fn(() => true),
+  isControlledMediaStorageAvailable: vi.fn(() => false),
   loadProjectMedia: vi.fn(async () => []),
   loadFileHandle: vi.fn(async () => null),
   loadDirectoryHandle: vi.fn(async () => null),
 }));
+
+vi.mock("../../services/project-template-storage", () => ({ projectTemplateStorage: { listStoredTemplates: async () => [] } }));
 
 vi.mock("../../services/workspace-manager", () => ({ workspaceManager: workspace }));
 vi.spyOn(projectManager, "listStoredProjects").mockResolvedValue([]);
@@ -563,5 +567,37 @@ describe("project media byte reclamation", () => {
       }),
     ]);
     expect(storedMedia.has("orphan-with-delete-error")).toBe(true);
+  });
+
+  it("refuses reviewed cleanup while a recovery slot cannot be scanned", async () => {
+    const projectId = useProjectStore.getState().project.id;
+    storedMedia.set("corrupt-slot-media", { projectId, blob: new Blob(["kept"]) });
+    // An unparsable auto-save record still occupies storage: its retained
+    // media is unknown, so the reference scan fails instead of treating the
+    // slot as empty.
+    const scan = vi.mocked(autoSaveManager.listRecoveryProjects);
+    scan.mockRejectedValue(new SyntaxError("Unexpected token in JSON"));
+    try {
+      await expect(estimateProjectPurge([projectId])).rejects.toThrow();
+
+      const plan = await createMediaCleanupPlan(projectId);
+      expect(plan.referenceScanReady).toBe(false);
+      expect(plan.candidates).toEqual([]);
+
+      const result = await executeMediaCleanupPlan(plan);
+      expect(result.deleted).toEqual([]);
+      expect(result.reclaimedBytes).toBe(0);
+      expect(storedMedia.has("corrupt-slot-media")).toBe(true);
+    } finally {
+      scan.mockResolvedValue([]);
+    }
+
+    // Once every slot is readable again the same reviewed flow deletes the
+    // now-unreferenced bytes, so the refusal above is not a blanket no-op.
+    const healthyPlan = await createMediaCleanupPlan(projectId);
+    expect(healthyPlan.referenceScanReady).toBe(true);
+    expect(healthyPlan.candidates.map((entry) => entry.mediaId)).toContain("corrupt-slot-media");
+    await executeMediaCleanupPlan(healthyPlan);
+    expect(storedMedia.has("corrupt-slot-media")).toBe(false);
   });
 });

@@ -79,14 +79,31 @@ node apps/desktop/dist/reelctl/index.js edit apply --file 'E:\external-job\proje
 
 `node.compare` 的顶层差异比较素材栏：`replaced` 只报告目标节点本次新增且声明替代旧版本的素材，已有版本谱系不会重复报告。`used` 比较时间线实际使用：同一片段 ID 前后的 `mediaId` 改变构成替换，不依赖素材谱系；相同素材对去重。两层的 `added`/`removed` 报告未归入替换的集合增减，旧素材仍被其他片段使用时不会报告完全移除。素材栏保留旧版本与时间线换源是独立事实。同节点比较两层均为空。
 
-清理保留全部节点、工作区及恢复草稿、撤销与重做、任务输入、正在登记的素材和素材库保留内容。执行命令使用 `media.cleanup.plan` 返回的 `planId`：
+清理先审查全局引用，保留节点、工作区及恢复草稿、撤销与重做、模板、素材库、正在登记的素材和活动任务输入。视频编辑器的“导出与整理”提供现在整理、发布审查任务到现有看板和复制 Agent 提示词。发布任务只授权审查；成片和外部原件保留，独立审阅工作台不在视频清理范围内。`status` 与已完成导出的 `job.status` 会返回 `cleanupReview` 命令和明确目标：
 
 ```powershell
-node apps/desktop/dist/reelctl/index.js call media.cleanup.plan --project-id PROJECT_ID
-node apps/desktop/dist/reelctl/index.js call media.cleanup.execute --project-id PROJECT_ID --plan-id PLAN_ID
+node apps/desktop/dist/reelctl/index.js call media.cleanup.review --project-id PROJECT_ID --workspace-id WORKSPACE_ID
+node apps/desktop/dist/reelctl/index.js call media.cleanup.plan --project-id PROJECT_ID --workspace-id WORKSPACE_ID --action purge-media
+node apps/desktop/dist/reelctl/index.js schema media.cleanup.execute
 ```
 
-先生成并验证独立精选素材，再决定是否处理原片的全部引用。仅缩短当前时间线不会解除旧节点对长原片的依赖。
+计划返回候选文件、理由、字节数、保留理由、不确定项与 `confirmation`。用户确认具体计划与范围后，将其 `target` 展平为命令参数，保留其余确认字段原值，再添加 `confirmed:true`，通过 `call media.cleanup.execute --file 确认文件.json` 执行。仅传 `planId` 不会执行。目标版本、运行实例、节点状态、引用或文件指纹变化时跳过或要求重新审查，不会扩大范围。执行报告逻辑存储字节、实际删除项、跳过项和失败项；IndexedDB 的物理磁盘空间由浏览器回收。
+
+动作包含 `purge-media`、`purge-cache`、`recycle-nodes`、`restore-nodes`、`purge-deleted-nodes`、`purge-work-files` 和 `purge-failed-jobs`。节点动作传明确 `nodeIds`，多选按联合引用计算；工作区基点与保留后继节点会阻止其依赖节点及祖先链的永久清除。
+
+`review.workFiles.files` 显示生产任务逐文件登记的用途、来源、是否可重建、交付状态、容量和保留引用。`source/work/project/output` 是用途，AI 是来源；未采用的音频处理或生成结果可能不可原样重建，不会默认全选。清理过程文件时，明确传入这些项的 `selectionId`（`jobId:fileId`）作为 `workFileIds`，例如：
+
+```json
+{"projectId":"PROJECT_ID","workspaceId":"WORKSPACE_ID","action":"purge-work-files","workFileIds":["JOB_ID:export-output-part"]}
+```
+
+计划的 `confirmation.workFiles` 绑定具体生产清单、文件路径、大小与完整修改时间。执行重扫工程、回收站、草稿、undo/redo、素材库历史、模板、独立审阅资源和活动任务；仍被采用或引用、已交付、正在运行的文件保留。主进程另核对受管根、无符号链接、终态、磁盘清单和其他任务引用，只逐个删除已批准文件，不递归猜删目录。没有登记的旧文件保留。
+
+失败作业记录清理只移除错误或取消任务的两份 ledger JSON（记录与固定输入快照），会失去这份重试证据；仍有产物文件时保留该任务清单，先审查过程文件，再生成新的记录清理计划。成片、正式素材和独立审阅数据保持保留。
+
+绑定看板任务时传 `cleanupTaskId`，先通过需求编辑把阶段推进到 `reviewing`、`awaiting_confirmation`，最后重新生成计划。handoff 的 source revision 记录请求来源；计划 revision 记录此次最新扫描，两者分别显示。用户具体确认后，执行器只允许自身的 `executing` 阶段更新推进一次版本；完全成功后才标记 `completed`。冲突、跳过或失败会回到 `awaiting_confirmation`，需要重新扫描与具体确认。`requirements.list/get` 可发现任务绑定，具体写入字段以 `schema edit.apply` 为准。
+
+先生成并验证独立精选素材，再决定是否处理原片的全部引用。仅缩短当前时间线不会解除旧节点对长原片的依赖；导出成功也不表示源素材可删。
 
 ## 自测
 

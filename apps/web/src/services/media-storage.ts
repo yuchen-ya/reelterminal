@@ -32,7 +32,30 @@ export interface StoredMediaEntry {
   readonly contentHash?: string;
   readonly contentUrl?: string;
   readonly sizeBytes: number;
-  readonly controlledFiles?: readonly { readonly path: string; readonly sizeBytes: number }[];
+  readonly controlledFiles?: readonly { readonly path: string; readonly sizeBytes: number; readonly lastModifiedMs?: number }[];
+}
+
+export interface ControlledMediaFileFingerprint {
+  readonly path: string;
+  readonly sizeBytes: number;
+  readonly lastModifiedMs: number;
+}
+
+export function hasCompleteControlledMediaFingerprint(record: StoredMediaEntry): boolean {
+  if (typeof window !== "undefined" && window.reelterminal?.platform === "desktop" && record.contentUrl && !desktopMediaStore()) {
+    return false;
+  }
+  return (record.controlledFiles ?? []).every((file) => Number.isFinite(file.lastModifiedMs));
+}
+
+export function isControlledMediaStorageAvailable(): boolean {
+  return desktopMediaStore() !== undefined;
+}
+
+export interface StoredCacheEntry {
+  readonly key: string;
+  readonly sizeBytes: number;
+  readonly timestamp: number;
 }
 
 let mutationQueue: Promise<void> = Promise.resolve();
@@ -430,12 +453,13 @@ export async function getAllStoredMedia(): Promise<StoredMediaEntry[]> {
   }]));
   const mediaStore = desktopMediaStore();
   if (mediaStore) {
-    const filesById = new Map<string, { path: string; sizeBytes: number }[]>();
+    const filesById = new Map<string, { path: string; sizeBytes: number; lastModifiedMs?: number }[]>();
     const projectsById = new Map<string, Set<string>>();
     for (const entry of await mediaStore.listAll()) {
       filesById.set(entry.mediaId, [...(filesById.get(entry.mediaId) ?? []), {
         path: entry.path,
         sizeBytes: entry.sizeBytes,
+        ...(typeof entry.lastModifiedMs === "number" ? { lastModifiedMs: entry.lastModifiedMs } : {}),
       }]);
       const projects = projectsById.get(entry.mediaId) ?? new Set<string>();
       projects.add(entry.projectId);
@@ -482,14 +506,40 @@ export async function getAllStoredMedia(): Promise<StoredMediaEntry[]> {
   return [...entries.values()];
 }
 
-async function deleteMediaBlobUnlocked(mediaId: string, projectId?: string): Promise<void> {
+export async function getAllStoredCache(): Promise<StoredCacheEntry[]> {
+  const records = await storage.getAllCache();
+  return records.map((record) => ({
+    key: record.key,
+    sizeBytes: record.data.byteLength,
+    timestamp: record.timestamp,
+  }));
+}
+
+export async function deleteStoredCacheIfUnchanged(entry: StoredCacheEntry): Promise<boolean> {
+  return storage.deleteCacheIfMatches({
+    key: entry.key,
+    size: entry.sizeBytes,
+    timestamp: entry.timestamp,
+  });
+}
+
+async function deleteMediaBlobUnlocked(
+  mediaId: string,
+  projectId?: string,
+  expectedFiles?: readonly ControlledMediaFileFingerprint[],
+): Promise<void> {
   const record = await storage.loadMedia(mediaId);
   if (projectId && record) {
     const owners = record.projectIds ?? [record.projectId];
     if (owners.some((owner) => owner !== projectId)) return;
   }
-  await storage.deleteMedia(mediaId);
   const mediaStore = desktopMediaStore();
+  if (expectedFiles !== undefined && mediaStore) {
+    await mediaStore.delete(mediaId, expectedFiles);
+    await storage.deleteMedia(mediaId);
+    return;
+  }
+  await storage.deleteMedia(mediaId);
   if (!mediaStore) return;
   if (projectId) {
     // The controlled store keeps one file per owning project directory and
@@ -507,8 +557,9 @@ async function deleteMediaBlobUnlocked(mediaId: string, projectId?: string): Pro
 export async function deleteMediaBlobUnderReferenceWrite(
   mediaId: string,
   projectId?: string,
+  expectedFiles?: readonly ControlledMediaFileFingerprint[],
 ): Promise<void> {
-  await deleteMediaBlobUnlocked(mediaId, projectId);
+  await deleteMediaBlobUnlocked(mediaId, projectId, expectedFiles);
 }
 
 export async function deleteMediaBlob(mediaId: string, projectId?: string): Promise<void> {

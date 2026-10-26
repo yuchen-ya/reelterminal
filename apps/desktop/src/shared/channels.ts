@@ -19,6 +19,9 @@ export const CHANNELS = {
   captionCancel: "reelterminal:caption:cancel",
   probeHardware: "reelterminal:probeHardware",
   projectTaskStates: "reelterminal:projectLibrary:taskStates",
+  projectLibraryCleanupCandidates: "reelterminal:projectLibrary:cleanupCandidates",
+  projectLibraryPurgeFailedTaskRecords: "reelterminal:projectLibrary:purgeFailedTaskRecords",
+  projectLibraryPurgeTrackedWorkFiles: "reelterminal:projectLibrary:purgeTrackedWorkFiles",
   // Menu action relay (main → renderer).
   menuAction: "reelterminal:menu:action",
   // MessagePort handoff for native export (main → renderer).

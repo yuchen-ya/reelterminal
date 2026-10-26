@@ -1,4 +1,4 @@
-import type { ProjectRequirement, ProjectRequirementStatus } from "@reelterminal/core/types/requirement";
+import type { ProjectCleanupHandoff, ProjectRequirement, ProjectRequirementStatus } from "@reelterminal/core/types/requirement";
 import { REQUIREMENT_STATUSES } from "@reelterminal/core/types/requirement";
 import { FacadeError } from "./errors";
 import { oneOf, type ObjectSchema } from "./validate";
@@ -18,6 +18,7 @@ export interface RequirementSummary {
   readonly priority: ProjectRequirement["priority"];
   readonly markerIds: readonly string[];
   readonly updatedAt: number;
+  readonly cleanupHandoff?: ProjectCleanupHandoff;
 }
 
 export interface RequirementsListResult {
@@ -63,6 +64,7 @@ export function requirementsListView(
         priority: item.priority,
         markerIds: [...item.markerIds],
         updatedAt: item.updatedAt,
+        ...(item.cleanupHandoff ? { cleanupHandoff: structuredClone(item.cleanupHandoff) } : {}),
       })),
   };
 }

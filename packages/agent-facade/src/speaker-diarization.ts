@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { FacadeError } from "./errors";
+import type { ArtifactFileTracker } from "./providers";
 import { requireAudioBinaries, runAudioSubprocess, validateAudioRange } from "./audio-analysis";
 import {
   runAudioModelTask,
@@ -150,9 +151,10 @@ async function diarizeWithPythonWorker(request: DiarizeRequest): Promise<Diarize
 }
 
 /** Decode the exact analyzed range to a 16 kHz mono PCM16 WAV for the worker. */
-async function writeDiarizationWav(path: string, range: { startSec: number; endSec: number }, directory: string, signal: AbortSignal): Promise<string> {
+async function writeDiarizationWav(path: string, range: { startSec: number; endSec: number }, directory: string, signal: AbortSignal, artifactFileTracker?: ArtifactFileTracker): Promise<string> {
   const binaries = await requireAudioBinaries(signal);
   const wavPath = join(directory, "diarization-16k.wav");
+  artifactFileTracker?.record({ fileId: "analysis-diarization-wav", path: wavPath, kind: "work", purpose: "Temporary speaker diarization analysis audio", rebuildable: true, deliveryStatus: "pending" });
   const pcm = await runAudioSubprocess(binaries.ffmpeg, [
     "-hide_banner", "-nostdin", "-v", "info",
     "-ss", String(range.startSec), "-t", String(range.endSec - range.startSec), "-i", path,
@@ -205,6 +207,7 @@ export async function analyzeSpeakerDiarization(
   modelDir: string | null,
   signal: AbortSignal,
   progress: (percent: number) => void = () => {},
+  artifactFileTracker?: ArtifactFileTracker,
 ): Promise<SpeakerDiarizationFacts> {
   validateAudioRange(range);
   if (signal.aborted) throw new Error("Cancelled");
@@ -215,7 +218,7 @@ export async function analyzeSpeakerDiarization(
   const directory = await mkdtemp(join(tmpdir(), "rt-diarization-"));
   try {
     progress(0.05);
-    const wavPath = await writeDiarizationWav(path, range, directory, signal);
+    const wavPath = await writeDiarizationWav(path, range, directory, signal, artifactFileTracker);
     if (signal.aborted) throw new Error("Cancelled");
     progress(0.15);
     const model = diarizeModelOverride ?? diarizeWithPythonWorker;
@@ -275,7 +278,12 @@ export async function analyzeSpeakerDiarization(
       ],
     };
   } finally {
-    await rm(directory, { recursive: true, force: true }).catch(() => {});
+    try {
+      await rm(directory, { recursive: true, force: true });
+      artifactFileTracker?.forget("analysis-diarization-wav");
+    } catch {
+      // The exact temporary WAV remains registered for task review.
+    }
   }
 }
 

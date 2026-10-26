@@ -29,6 +29,7 @@ export function RequirementBoardDialog({
   const runtime = store ?? getActiveProjectRuntimeStore();
   const state = useStore(runtime);
   const project = state.project;
+  const workspaceId = state.workspaceId;
   const add = state.addProjectRequirement;
   const update = state.updateProjectRequirement;
   const remove = state.removeProjectRequirement;
@@ -64,6 +65,10 @@ export function RequirementBoardDialog({
   const targets = useMemo(() => getAgentReferenceTargetsForProject(project), [project]);
   const markers = project.markers?.items ?? [];
   const selected = requirements.find(item => item.id === selectedId);
+  const cleanupHandoff = selected?.cleanupHandoff;
+  const cleanupTargetMismatch = Boolean(cleanupHandoff && (
+    cleanupHandoff.projectId !== project.id || cleanupHandoff.workspaceId !== workspaceId
+  ));
   const availableReferences = Object.values(references).map(reference => ({
     ...reference,
     ref: `A${reference.number}`
@@ -148,6 +153,9 @@ export function RequirementBoardDialog({
                     {!!item.references?.length && <p className="mt-2 truncate text-xs text-fg-2">
                         {item.references.map(reference => `${reference.ref} ${reference.label}`).join(" · ")}
                       </p>}
+                    {item.cleanupHandoff && <p className="mt-2 truncate text-xs text-fg-2">
+                      {t("requirementBoard.cleanupHandoff")} · {t(`requirementBoard.cleanupPhase.${item.cleanupHandoff.phase}`)}
+                    </p>}
                     {item.agentNote && <p className="mt-2 line-clamp-2 text-xs text-fg-2">
                         {item.agentNote}
                       </p>}
@@ -172,7 +180,7 @@ export function RequirementBoardDialog({
                 </div>
                 <label className="block space-y-1.5 text-xs text-fg-2">
                   <span>{t("requirementBoard.editTitle")}</span>
-                  <input key={`${selected.id}-title`} aria-label={t("requirementBoard.editTitle")} defaultValue={selected.title} className={fieldClass} onBlur={async event => {
+                  <input key={`${selected.id}-title`} aria-label={t("requirementBoard.editTitle")} defaultValue={selected.title} disabled={cleanupTargetMismatch} className={fieldClass} onBlur={async event => {
               const title = event.target.value.trim();
               if (!title) {
                 event.target.value = selected.title;
@@ -187,7 +195,7 @@ export function RequirementBoardDialog({
                 </label>
                 <label className="block space-y-1.5 text-xs text-fg-2">
                   <span>{t("requirementBoard.descriptionLabel")}</span>
-                  <textarea key={`${selected.id}-description`} aria-label={t("requirementBoard.details")} defaultValue={selected.description} rows={4} className={fieldClass} onBlur={async event => {
+                  <textarea key={`${selected.id}-description`} aria-label={t("requirementBoard.details")} defaultValue={selected.description} rows={4} disabled={cleanupTargetMismatch} className={fieldClass} onBlur={async event => {
               if (event.target.value === selected.description) return;
               const result = await update(selected.id, {
                 description: event.target.value
@@ -208,6 +216,17 @@ export function RequirementBoardDialog({
             }).join(" · ")}
                   </p>}
                 <p className="text-xs text-fg-2">{selected.instruction}</p>
+                {cleanupHandoff && <section data-testid="cleanup-handoff-details" className="space-y-2 rounded border border-border p-3 text-xs">
+                  <h3 className="font-semibold">{t("requirementBoard.cleanupHandoff")}</h3>
+                  <p>{t("requirementBoard.cleanupCurrentPhase")}: {t(`requirementBoard.cleanupPhase.${cleanupHandoff.phase}`)}</p>
+                  <p className="break-all">{t("requirementBoard.cleanupTarget")}: {cleanupHandoff.projectId} / {cleanupHandoff.workspaceId}</p>
+                  <p className="break-all">{t("requirementBoard.cleanupExport")}: {cleanupHandoff.exportId ?? t("requirementBoard.cleanupUnboundExport")}</p>
+                  <p>{t("requirementBoard.cleanupRevision")}: r{cleanupHandoff.revision}</p>
+                  <p className="break-all">{t("requirementBoard.cleanupNodes")}: {cleanupHandoff.nodeIds.length > 0 ? cleanupHandoff.nodeIds.join(", ") : t("requirementBoard.cleanupNoNodes")}</p>
+                  <p className="whitespace-pre-wrap">{t("requirementBoard.cleanupScope")}: {cleanupHandoff.scope}</p>
+                  <p className="whitespace-pre-wrap">{t("requirementBoard.cleanupRetention")}: {cleanupHandoff.retention}</p>
+                  {cleanupTargetMismatch && <p role="status" className="text-status-warning">{t("requirementBoard.cleanupTargetMismatch")}</p>}
+                </section>}
                 {!!selected.acceptanceCriteria?.length && <div>
                     <h3 className="mb-2 text-xs font-semibold">
                       {t("requirementBoard.acceptance")}
@@ -296,7 +315,7 @@ export function RequirementBoardDialog({
                       </div>;
             })}
                 </div>
-                <select aria-label={t("requirementBoard.taskStatus")} value={selected.status} className={fieldClass} onChange={async event => {
+                <select aria-label={t("requirementBoard.taskStatus")} value={selected.status} disabled={cleanupTargetMismatch} className={fieldClass} onChange={async event => {
             const result = await update(selected.id, {
               status: event.target.value as ProjectRequirementStatus
             });
@@ -306,7 +325,7 @@ export function RequirementBoardDialog({
                       {t(`requirementBoard.status.${status}`)}
                     </option>)}
                 </select>
-                {selected.status === "review" && <button className="w-full rounded bg-accent px-3 py-2 text-xs font-medium text-accent-fg" onClick={async () => {
+                {selected.status === "review" && <button disabled={cleanupTargetMismatch} className="w-full rounded bg-accent px-3 py-2 text-xs font-medium text-accent-fg disabled:opacity-50" onClick={async () => {
             const result = await update(selected.id, {
               status: "done"
             });
@@ -314,7 +333,7 @@ export function RequirementBoardDialog({
           }}>
                     {t("requirementBoard.accept")}
                   </button>}
-                <button aria-label={t("requirementBoard.remove")} className="flex items-center gap-1 text-xs text-fg-2 hover:text-status-error" onClick={async () => {
+                <button aria-label={t("requirementBoard.remove")} disabled={cleanupTargetMismatch} className="flex items-center gap-1 text-xs text-fg-2 hover:text-status-error disabled:opacity-50" onClick={async () => {
             const result = await remove(selected.id);
             if (result.success) setSelectedId(null);else setError(result.error?.message ?? t("requirementBoard.saveFailed"));
           }}>

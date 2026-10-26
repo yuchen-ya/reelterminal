@@ -5,11 +5,17 @@ import type {
 import type { Project } from "@reelterminal/core";
 import {
   compareNodes,
-  executeMediaCleanupById,
   getMediaReferences,
   listNodeMedia,
-  planMediaCleanup,
 } from "../project-media-gc";
+import {
+  createCleanupPlan,
+  executeCleanupPlan,
+  getCleanupReview,
+  type CleanupAction,
+  type CleanupTaskFile,
+  type CleanupTarget,
+} from "../export-cleanup";
 import { prepareProjectRenderFonts } from "../project-render-dependencies";
 import { workspaceManager, type WorkspaceTarget } from "../workspace-manager";
 import { codedError, managerErrorCode } from "./bridge-error";
@@ -33,11 +39,75 @@ function optionalString(params: Record<string, unknown>, name: string): string |
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function stringArray(params: Record<string, unknown>, name: string): string[] {
+  const value = params[name];
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string" || entry.length === 0)) {
+    throw codedError("INVALID_PARAMS", `${name} must be an array of non-empty strings`);
+  }
+  return value as string[];
+}
+
+function requiredStringArray(params: Record<string, unknown>, name: string): string[] {
+  if (!Object.prototype.hasOwnProperty.call(params, name)) {
+    throw codedError("INVALID_PARAMS", `${name} is required`);
+  }
+  return stringArray(params, name);
+}
+
+function requiredCleanupTaskFiles(params: Record<string, unknown>, name = "jobFiles"): CleanupTaskFile[] {
+  if (!Object.prototype.hasOwnProperty.call(params, name)) {
+    throw codedError("INVALID_PARAMS", `${name} is required`);
+  }
+  const value = params[name];
+  if (!Array.isArray(value)) throw codedError("INVALID_PARAMS", "jobFiles must be an array");
+  return value.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw codedError("INVALID_PARAMS", "jobFiles entries must be objects");
+    }
+    const file = entry as Record<string, unknown>;
+    if (Object.keys(file).some((key) => !["jobId", "path", "sizeBytes", "lastModifiedMs", ...(name === "workFiles" ? ["fileId"] : [])].includes(key)) ||
+      typeof file.jobId !== "string" || file.jobId.length === 0 ||
+      typeof file.path !== "string" || file.path.length === 0 ||
+      typeof file.sizeBytes !== "number" || !Number.isSafeInteger(file.sizeBytes) || file.sizeBytes < 0 ||
+      typeof file.lastModifiedMs !== "number" || !Number.isFinite(file.lastModifiedMs) || file.lastModifiedMs < 0) {
+      throw codedError("INVALID_PARAMS", "jobFiles entries must contain jobId, path, sizeBytes, and lastModifiedMs");
+    }
+    if (name === "workFiles" && (typeof file.fileId !== "string" || !file.fileId)) throw codedError("INVALID_PARAMS", "workFiles entries require fileId");
+    return { jobId: file.jobId, path: file.path, sizeBytes: file.sizeBytes, lastModifiedMs: file.lastModifiedMs, ...(name === "workFiles" ? { fileId: file.fileId as string } : {}) };
+  });
+}
+
+function cleanupAction(params: Record<string, unknown>): CleanupAction {
+  const value = requiredString(params, "action");
+  const actions: readonly CleanupAction[] = [
+    "purge-media", "purge-deleted-nodes", "recycle-nodes", "restore-nodes", "purge-cache", "purge-failed-jobs", "purge-work-files",
+  ];
+  if (!actions.includes(value as CleanupAction)) throw codedError("INVALID_PARAMS", "action is not a supported cleanup action");
+  return value as CleanupAction;
+}
+
 function targetFrom(params: Record<string, unknown>): WorkspaceTarget {
   return {
     projectId: requiredString(params, "projectId"),
     workspaceId: requiredString(params, "workspaceId"),
   };
+}
+
+function cleanupTargetFrom(params: Record<string, unknown>): CleanupTarget {
+  return {
+    ...targetFrom(params),
+    ...(optionalString(params, "exportId") ? { exportId: optionalString(params, "exportId") } : {}),
+    ...(optionalString(params, "cleanupTaskId") ? { cleanupTaskId: optionalString(params, "cleanupTaskId") } : {}),
+  };
+}
+
+function cleanupRevision(params: Record<string, unknown>): number {
+  const value = params.revision;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw codedError("INVALID_PARAMS", "revision must be a non-negative integer");
+  }
+  return value;
 }
 
 /**
@@ -232,17 +302,46 @@ export async function handleWorkspaceLibraryRequest(
             }),
           },
         };
-      case "media.cleanup.plan":
-        return { ok: true, result: await planMediaCleanup({ ...(optionalString(params, "projectId") ? { projectId: optionalString(params, "projectId") } : {}) }) };
-      case "media.cleanup.execute":
+      case "media.cleanup.review":
         return {
           ok: true,
-          result: await executeMediaCleanupById(
-            requiredString(params, "planId"),
-            optionalString(params, "projectId"),
-          ),
+          result: await getCleanupReview(cleanupTargetFrom(params), stringArray(params, "selectedNodeIds")),
         };
-      case "retainTaskInputs":
+      case "media.cleanup.plan": {
+        const action = cleanupAction(params);
+        return {
+          ok: true,
+          result: await createCleanupPlan(cleanupTargetFrom(params), action, {
+            nodeIds: stringArray(params, "nodeIds"),
+            mediaIds: stringArray(params, "mediaIds"),
+            cacheKeys: stringArray(params, "cacheKeys"),
+            jobIds: stringArray(params, "jobIds"),
+            workFileIds: stringArray(params, "workFileIds"),
+          }),
+        };
+      }
+      case "media.cleanup.execute": {
+        if (params.confirmed !== true) throw codedError("INVALID_PARAMS", "confirmed must be true after reviewing the exact cleanup scope");
+        return {
+          ok: true,
+          result: await executeCleanupPlan({
+            planId: requiredString(params, "planId"),
+            target: cleanupTargetFrom(params),
+            action: cleanupAction(params),
+            revision: cleanupRevision(params),
+            workspaceInstanceId: requiredString(params, "workspaceInstanceId"),
+            nodeIds: requiredStringArray(params, "nodeIds"),
+            mediaIds: requiredStringArray(params, "mediaIds"),
+            cacheKeys: requiredStringArray(params, "cacheKeys"),
+            cleanupTaskNodeIds: requiredStringArray(params, "cleanupTaskNodeIds"),
+            jobIds: requiredStringArray(params, "jobIds"),
+            jobFiles: requiredCleanupTaskFiles(params),
+            ...(params.workFiles !== undefined ? { workFiles: requiredCleanupTaskFiles(params, "workFiles") as import("../../../../desktop/src/shared/project-library-cleanup").ProjectLibraryTrackedWorkFingerprint[] } : {}),
+            confirmed: true,
+          }),
+        };
+      }
+      case "retainTaskInputs": {
         const inputProject = await workspaceManager.retainTaskInputs({
           jobId: requiredString(params, "jobId"),
           projectId: requiredString(params, "projectId"),
@@ -251,6 +350,7 @@ export async function handleWorkspaceLibraryRequest(
           inputProject: params.inputProject as Project,
         });
         return { ok: true, result: { retained: true, inputProject } };
+      }
       case "releaseTaskInputs":
         await workspaceManager.releaseTaskInputs(requiredString(params, "jobId"));
         return { ok: true, result: { released: true } };

@@ -19,7 +19,9 @@ import type {
   ArtifactRef,
   ExportProgressEvent,
   ExportProvider,
+  ProducerArtifactFile,
 } from "./providers";
+import { createArtifactFileRecord, type ArtifactFileRecord } from "@reelterminal/core/types/artifact-ownership";
 import { compactAnalysisFacts } from "./analysis-records";
 import type { NormalizeAudioArtifact } from "./audio-normalize";
 import type { DenoiseAudioArtifact } from "./audio-denoise";
@@ -64,6 +66,16 @@ export function compactJobStatusView(status: JobStatusView): JobStatusView {
 
 /** The public job.status view of a registry record (a fresh copy). */
 export function jobStatusView(job: JobRecord): JobStatusView {
+  const cleanupReview = job.kind === "export" && job.state === "done" && job.projectId && job.workspaceId
+    ? {
+        command: "media.cleanup.review" as const,
+        arguments: {
+          projectId: job.projectId,
+          workspaceId: job.workspaceId,
+          exportId: job.jobId,
+        },
+      }
+    : undefined;
   return compactJobStatusView({
     jobId: job.jobId,
     kind: job.kind,
@@ -82,6 +94,8 @@ export function jobStatusView(job: JobRecord): JobStatusView {
     cancelRequested: job.cancelRequested,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
+    ...(cleanupReview ? { cleanupReview } : {}),
+    ...(job.artifactFiles ? { artifactFiles: job.artifactFiles.map(file => ({ ...file })) } : {}),
   });
 }
 
@@ -101,6 +115,7 @@ export interface JobRecord {
   readonly kind: "export" | "analysis" | "audio-process";
   readonly projectId?: string;
   readonly workspaceId?: string;
+  readonly artifactFiles?: readonly ArtifactFileRecord[];
   readonly state: JobState;
   readonly progress: JobProgressView | null;
   readonly artifact: ArtifactRef | null;
@@ -133,6 +148,10 @@ export interface JobDeliveryOutcome {
 }
 
 const TERMINAL: ReadonlySet<JobState> = new Set(["done", "error", "cancelled"]);
+
+function releaseBorrowedSources(job: JobRecord): readonly ArtifactFileRecord[] {
+  return (job.artifactFiles ?? []).filter((file) => file.kind !== "source");
+}
 
 const EXPORT_CANCEL_TIMEOUT_MS = 10_000;
 
@@ -205,6 +224,7 @@ export class JobRegistry {
       kind,
       ...(target ? { projectId: target.projectId, workspaceId: target.workspaceId } : {}),
       state: "queued",
+      artifactFiles: [],
       progress: null,
       artifact: null,
       result: null,
@@ -225,13 +245,46 @@ export class JobRegistry {
   /** Restore one durable record after a desktop restart. */
   restore(status: JobStatusView, target?: { readonly projectId: string; readonly workspaceId: string }): void {
     if (this.jobs.has(status.jobId)) return;
+    const artifactFiles = Array.isArray(status.artifactFiles)
+      ? status.artifactFiles.filter((file) => !(TERMINAL.has(status.state) && file.kind === "source")).map((file) => ({ ...file }))
+      : [];
     this.jobs.set(status.jobId, {
       ...structuredClone(status),
+      artifactFiles,
       progress: status.progress
         ? { ...status.progress, phase: status.progress.phase as JobProgressView["phase"] }
         : null,
       ...(target ? { projectId: target.projectId, workspaceId: target.workspaceId } : {}),
     });
+  }
+
+  /** Persist a producer-declared file path before it is opened or written. */
+  recordArtifactFile(jobId: string, file: ProducerArtifactFile): void {
+    const record = this.jobs.get(jobId);
+    if (!record) throw new Error(`Cannot record an artifact file for unknown job ${jobId}`);
+    if (TERMINAL.has(record.state)) throw new Error(`Cannot record an artifact file for terminal job ${jobId}`);
+    const checked = createArtifactFileRecord({ ...file, origin: "agent" });
+    const artifactFiles = [
+      ...(record.artifactFiles ?? []).filter((existing) => existing.fileId !== checked.fileId),
+      checked,
+    ];
+    this.publish({ ...record, artifactFiles });
+    const updated = this.jobs.get(jobId);
+    if (!updated || updated.state !== record.state) {
+      throw new Error(updated?.error?.message ?? `Artifact file tracking failed for ${jobId}`);
+    }
+  }
+
+  /** Drop a producer record only after the producer confirms its file was removed. */
+  forgetArtifactFile(jobId: string, fileId: string): void {
+    const record = this.jobs.get(jobId);
+    if (!record || !record.artifactFiles?.some((file) => file.fileId === fileId)) return;
+    const artifactFiles = record.artifactFiles.filter((file) => file.fileId !== fileId);
+    this.publish({ ...record, artifactFiles });
+    const updated = this.jobs.get(jobId);
+    if (!updated || updated.state !== record.state) {
+      throw new Error(updated?.error?.message ?? `Artifact file tracking update failed for ${jobId}`);
+    }
   }
 
   get(jobId: string): JobRecord | null {
@@ -295,6 +348,11 @@ export class JobRegistry {
         ...job,
         state: "done" as JobState,
         artifact,
+        ...(job.artifactFiles ? {
+          artifactFiles: releaseBorrowedSources(job).map(file => file.path === artifact.path
+            ? { ...file, kind: "output" as const, deliveryStatus: delivery?.deliveredTo ? "delivered" as const : "pending" as const }
+            : file),
+        } : {}),
         route,
         upscalingRequestedButInactive,
         ...(delivery?.deliveredTo !== undefined
@@ -316,6 +374,7 @@ export class JobRegistry {
         state: "done" as JobState,
         result: structuredClone(result),
         artifact: null,
+        ...(job.artifactFiles ? { artifactFiles: releaseBorrowedSources(job) } : {}),
         route: "built-in-technical-quality",
         error: null,
       };
@@ -330,6 +389,7 @@ export class JobRegistry {
         state: "done" as JobState,
         result: structuredClone(result),
         artifact: null,
+        ...(job.artifactFiles ? { artifactFiles: releaseBorrowedSources(job) } : {}),
         route: "local-ffmpeg-loudnorm-two-pass",
         error: null,
       };
@@ -345,6 +405,7 @@ export class JobRegistry {
       state: "error",
       artifact: null,
       result: null,
+      ...(job.artifactFiles ? { artifactFiles: releaseBorrowedSources(job) } : {}),
       error: {
         code: "JOB_FAILED",
         message: job.error
@@ -357,9 +418,16 @@ export class JobRegistry {
 
   /** destinationPath copy succeeded (post-done bookkeeping only). */
   markDelivered(jobId: string, deliveredTo: string): void {
-    this.transition(jobId, (job) =>
-      job.state === "done" ? { ...job, deliveredTo, deliveryError: null } : job,
-    );
+    this.transition(jobId, (job) => job.state === "done" ? {
+      ...job,
+      deliveredTo,
+      deliveryError: null,
+      ...(job.artifactFiles ? {
+        artifactFiles: job.artifactFiles.map(file => file.kind === "output"
+          ? { ...file, deliveryStatus: "delivered" as const }
+          : file),
+      } : {}),
+    } : job);
   }
 
   /**
@@ -377,14 +445,16 @@ export class JobRegistry {
     this.transition(jobId, (job) => {
       if (TERMINAL.has(job.state)) return job;
       // A failed job never exposes an artifact, even a partial one.
-      return { ...job, state: "error" as JobState, error, artifact: null, result: null };
+      return { ...job, state: "error" as JobState, error, artifact: null, result: null,
+        ...(job.artifactFiles ? { artifactFiles: releaseBorrowedSources(job) } : {}) };
     });
   }
 
   markCancelled(jobId: string): void {
     this.transition(jobId, (job) => {
       if (TERMINAL.has(job.state)) return job;
-      return { ...job, state: "cancelled" as JobState, artifact: null, result: null };
+      return { ...job, state: "cancelled" as JobState, artifact: null, result: null,
+        ...(job.artifactFiles ? { artifactFiles: releaseBorrowedSources(job) } : {}) };
     });
   }
 

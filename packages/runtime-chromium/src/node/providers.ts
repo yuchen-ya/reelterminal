@@ -106,12 +106,20 @@ const VISUAL_MAX_PNG_BYTES = 8 * 1024 * 1024;
  * before ANY error/cancelled terminalization so a non-done job never leaves
  * a success-looking (or partial) file in its job dir.
  */
-async function sweepExportJobDir(jobDir: string): Promise<void> {
-  await Promise.all(
-    EXPORT_JOB_FILES.map((name) =>
-      rm(join(jobDir, name), { force: true }).catch(() => undefined),
-    ),
-  );
+async function sweepExportJobDir(jobDir: string, callbacks?: ExportCallbacks): Promise<void> {
+  const trackedIds: Readonly<Record<string, string>> = {
+    "output.mp4": "export-output",
+    "output.mp4.part": "export-output-part",
+  };
+  await Promise.all(EXPORT_JOB_FILES.map(async (name) => {
+    try {
+      await rm(join(jobDir, name), { force: true });
+      const fileId = trackedIds[name];
+      if (fileId) callbacks?.onArtifactFileRemoved?.(fileId);
+    } catch {
+      // A failed removal stays registered for task review.
+    }
+  }));
 }
 
 function delay(ms: number): Promise<void> {
@@ -158,6 +166,8 @@ export function guardExportCallbacks(
       terminal = "cancelled";
       callbacks.onCancelled();
     },
+    ...(callbacks.onArtifactFile ? { onArtifactFile: (file: Parameters<NonNullable<ExportCallbacks["onArtifactFile"]>>[0]) => callbacks.onArtifactFile!(file) } : {}),
+    ...(callbacks.onArtifactFileRemoved ? { onArtifactFileRemoved: (fileId: string) => callbacks.onArtifactFileRemoved!(fileId) } : {}),
   };
 }
 
@@ -474,6 +484,8 @@ export class ChromiumExportProvider implements ExportProvider {
       onDone: callbacks.onDone,
       onError: callbacks.onError,
       onCancelled: callbacks.onCancelled,
+      ...(callbacks.onArtifactFile ? { onArtifactFile: callbacks.onArtifactFile } : {}),
+      ...(callbacks.onArtifactFileRemoved ? { onArtifactFileRemoved: callbacks.onArtifactFileRemoved } : {}),
     };
     const progressAwareCallbacks: ExportCallbacks = {
       ...measuredCallbacks,
@@ -485,7 +497,7 @@ export class ChromiumExportProvider implements ExportProvider {
     const guarded = guardExportCallbacks(progressAwareCallbacks);
     try {
       if (slot.cancelRequested) {
-        await sweepExportJobDir(request.jobDir);
+        await sweepExportJobDir(request.jobDir, guarded);
         guarded.onCancelled();
         return;
       }
@@ -518,7 +530,7 @@ export class ChromiumExportProvider implements ExportProvider {
       // terminal yet and runJob's normal paths do the sweeping.
       void work.catch(() => undefined).then(() => {
         if (guarded.terminal !== null && guarded.terminal !== "done") {
-          void sweepExportJobDir(request.jobDir);
+          void sweepExportJobDir(request.jobDir, guarded);
         }
       });
       let outcome: RouteOutcome;
@@ -557,7 +569,7 @@ export class ChromiumExportProvider implements ExportProvider {
         ]);
         slot.state = "settled";
         if (guarded.terminal !== "done") {
-          await sweepExportJobDir(request.jobDir);
+          await sweepExportJobDir(request.jobDir, guarded);
         }
         guarded.onError({ code: "JOB_FAILED", message: error.message });
         return;
@@ -567,7 +579,7 @@ export class ChromiumExportProvider implements ExportProvider {
       if (outcome.kind === "done") {
         guarded.onDone(outcome.completion);
       } else {
-        await sweepExportJobDir(request.jobDir);
+        await sweepExportJobDir(request.jobDir, guarded);
         guarded.onCancelled();
       }
       return;
@@ -576,7 +588,7 @@ export class ChromiumExportProvider implements ExportProvider {
       // Error or cancel: nothing success-looking may survive. (Never sweep
       // after a done terminal — the artifact has been published already.)
       if (guarded.terminal !== "done") {
-        await sweepExportJobDir(request.jobDir);
+        await sweepExportJobDir(request.jobDir, guarded);
       }
       if (slot.cancelRequested) {
         guarded.onCancelled();
@@ -625,6 +637,8 @@ export class ChromiumExportProvider implements ExportProvider {
     slot: JobSlot,
   ): Promise<RouteOutcome> {
     const finalPath = join(request.jobDir, "output.mp4");
+    callbacks.onArtifactFile?.({ fileId: "export-output", path: finalPath, kind: "work", purpose: "Encoded video export", rebuildable: true, deliveryStatus: "pending" });
+    callbacks.onArtifactFile?.({ fileId: "export-output-part", path: `${finalPath}.part`, kind: "work", purpose: "Partial video export", rebuildable: true, deliveryStatus: "pending" });
     const writer = await withExportPerformanceSpan(slot.performanceSink, "prepare", () => PartFileWriter.open(finalPath, slot.performanceSink));
     if (slot.cancelRequested) {
       // Cancelled (or watchdog-stopped) before any page work began — no
@@ -676,6 +690,7 @@ export class ChromiumExportProvider implements ExportProvider {
         `in-page export failed (${outcome.errorCode ?? "unknown"}): ${outcome.errorMessage ?? "no message"}`,
       );
     }
+    callbacks.onArtifactFileRemoved?.("export-output-part");
     if (slot.cancelRequested) {
       // Finished encoding but a cancel landed first: the result is discarded,
       // never published — the job is cancelled, not done.
@@ -718,6 +733,8 @@ export class ChromiumExportProvider implements ExportProvider {
 
     const partPath = join(request.jobDir, "output.mp4.part");
     const finalPath = join(request.jobDir, "output.mp4");
+    callbacks.onArtifactFile?.({ fileId: "export-output", path: finalPath, kind: "work", purpose: "Encoded video export", rebuildable: true, deliveryStatus: "pending" });
+    callbacks.onArtifactFile?.({ fileId: "export-output-part", path: partPath, kind: "work", purpose: "Partial video export", rebuildable: true, deliveryStatus: "pending" });
     await rm(partPath, { force: true });
 
     const encoder = startFramesEncoder(binaries.ffmpeg, {
@@ -796,6 +813,7 @@ export class ChromiumExportProvider implements ExportProvider {
       // mirror the Route-W post-completion check (see runWebcodecsRoute).
       if (slot.cancelRequested) throw new FramesJobCancelled();
       await rename(partPath, finalPath);
+      callbacks.onArtifactFileRemoved?.("export-output-part");
       endExportPerformanceSpan(slot.performanceSink, encodeSpan, "ok");
       // The frames route renders directly at the target size — its pipeline
       // has no upscale stage at all, so a REQUESTED pass is disclosed as

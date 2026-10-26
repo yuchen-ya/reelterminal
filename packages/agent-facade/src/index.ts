@@ -216,6 +216,7 @@ export interface AgentFacade extends BundledToolBindings, ReviewFacadeBindings {
   readonly "node.media": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
   readonly "node.compare": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
   readonly "media.references": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "media.cleanup.review": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
   readonly "media.cleanup.plan": (params?: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
   readonly "media.cleanup.execute": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
   readonly "material.list": (
@@ -369,6 +370,10 @@ export type {
   WorkspaceLibraryBridgeReply,
   WorkspaceLibraryBridgeError,
   WorkspaceTargetParams,
+  MediaCleanupAction,
+  MediaCleanupReviewParams,
+  MediaCleanupPlanParams,
+  MediaCleanupExecuteParams,
   RetainTaskInputsParams,
 } from "./workspace-library";
 export { DEFAULT_AGENT_ACCESS_MODE, isAgentAccessMode, normalizeAgentAccessPreference } from "./access";

@@ -504,6 +504,8 @@ export interface LiveAgentFacade extends Omit<AgentFacade, "project.save"> {
   releaseWriterLease(): void;
   /** Internal host metadata; no capability preflights or registered tool. */
   readWriterStatus?(): boolean;
+  /** Main-process cleanup handshake; synchronizes exact deleted files into the live registry. */
+  forgetTrackedArtifactFiles(jobId: string, fileIds: readonly string[]): void;
   dispose(): Promise<void>;
 }
 
@@ -742,6 +744,10 @@ export class LiveFacadeSession {
 
   readWriterStatus(): boolean {
     return this.writer;
+  }
+
+  forgetTrackedArtifactFiles(jobId: string, fileIds: readonly string[]): void {
+    for (const fileId of fileIds) this.jobs.forgetArtifactFile(jobId, fileId);
   }
 
   private async discoveryContext(kind?: "video" | "review") {
@@ -2211,6 +2217,29 @@ export class LiveFacadeSession {
       // (a human edit landing in between is caught there, never silently
       // overwritten — Decision 3).
       const { project: snapshot, revision } = await this.config.store.getState();
+      const cleanupPhaseOps = ops.filter((op) =>
+        op.op === "requirement.update" && op.cleanupPhase !== undefined,
+      );
+      const cleanupIdentity = cleanupPhaseOps.length > 0
+        ? await this.config.store.getIdentity()
+        : null;
+      if (cleanupIdentity) {
+        for (const op of cleanupPhaseOps) {
+          if (op.op !== "requirement.update") continue;
+          const displayMatch = /^Q(\d+)$/i.exec(op.requirementId.trim());
+          const requirement = (snapshot.requirements?.items ?? []).find((item) =>
+            displayMatch ? item.number === Number(displayMatch[1]) : item.id === op.requirementId,
+          );
+          if (!requirement?.cleanupHandoff ||
+              requirement.cleanupHandoff.projectId !== cleanupIdentity.projectId ||
+              requirement.cleanupHandoff.workspaceId !== (cleanupIdentity.workspaceId ?? "default")) {
+            throw new FacadeError(
+              "CONFLICT",
+              "requirement.update: cleanup task belongs to another project workspace",
+            );
+          }
+        }
+      }
 
       // expectedRevision fail-fast against the snapshot the ops were
       // translated from (headless parity: the guard runs before any apply
@@ -2314,6 +2343,16 @@ export class LiveFacadeSession {
       let committed: LiveApplyActionsResult;
       try {
         this.gate("edit.apply");
+        if (cleanupIdentity) {
+          const currentIdentity = await this.config.store.getIdentity();
+          if (currentIdentity.projectId !== cleanupIdentity.projectId ||
+              currentIdentity.workspaceId !== cleanupIdentity.workspaceId) {
+            throw new FacadeError(
+              "CONFLICT",
+              "requirement.update: project workspace changed while advancing cleanup review",
+            );
+          }
+        }
         committed = await this.config.store.applyActions(actions, {
           groupLabel: "agent: edit.apply",
           // The renderer CAS is UNCONDITIONAL in live mode: a caller that
@@ -3294,6 +3333,8 @@ export class LiveFacadeSession {
       const callbacks: ExportCallbacks = {
         onRunning: () => this.jobs.markRunning(jobId),
         onProgress: (event) => this.jobs.markProgress(jobId, event),
+        onArtifactFile: (file) => this.jobs.recordArtifactFile(jobId, file),
+        onArtifactFileRemoved: (fileId) => this.jobs.forgetArtifactFile(jobId, fileId),
         onDone: (completion) => {
           if (!comparisonConfig || !comparisonRange) {
             void this.finalizeExport(jobId, sourceRevision, completion, delivery);
@@ -3306,6 +3347,14 @@ export class LiveFacadeSession {
             try {
               this.jobs.markProgress(jobId, { phase: "encoding", percent: 0.95 });
               const composedPath = resolvePath(jobDir, "comparison.mp4");
+              this.jobs.recordArtifactFile(jobId, {
+                fileId: "export-comparison-output",
+                path: composedPath,
+                kind: "work",
+                purpose: "Composed comparison export",
+                rebuildable: true,
+                deliveryStatus: "pending",
+              });
               const composed = await composeComparisonVideo({
                 config: comparisonConfig,
                 referencePath: referenceFilePath(
@@ -4417,6 +4466,10 @@ export class LiveFacadeSession {
     diarizationModelDir?: string | null,
   ): Promise<void> {
     let persistedRecordId: string | null = null;
+    const artifactFileTracker = {
+      record: (file: import("./providers").ProducerArtifactFile) => this.jobs.recordArtifactFile(jobId, file),
+      forget: (fileId: string) => this.jobs.forgetArtifactFile(jobId, fileId),
+    };
     try {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       if (controller.signal.aborted) {
@@ -4438,7 +4491,7 @@ export class LiveFacadeSession {
       const progressPlan = buildAnalysisProgressPlan(analysisTypes);
       this.jobs.markProgress(jobId, { phase: "preparing", percent: .1 });
       const video = analysisTypes.includes("videoReview")
-        ? await reviewVideo(sourcePath, range, this.config.artifactRoot!, controller.signal, reviewQuestion, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("videoReview", percent) })) : undefined;
+        ? await reviewVideo(sourcePath, range, this.config.artifactRoot!, controller.signal, reviewQuestion, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("videoReview", percent) }), artifactFileTracker) : undefined;
       const audio = analysisTypes.includes("audioSummary")
         ? await analyzeLocalAudio(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("audioSummary", percent) })) : undefined;
       const silence = analysisTypes.includes("silence")
@@ -4469,6 +4522,7 @@ export class LiveFacadeSession {
               phase: "rendering",
               percent: progressPlan.percent("speechTranscript", (wantsSpeechActivity ? 0 : 0.2) + (wantsSpeechActivity ? 1 : 0.8) * percent),
             }),
+            artifactFileTracker,
           ) : undefined;
       const speakerDiarization = wantsDiarization
         ? await analyzeSpeakerDiarization(
@@ -4482,6 +4536,7 @@ export class LiveFacadeSession {
               phase: "rendering",
               percent: progressPlan.percent("speakerDiarization", (wantsSpeechActivity || wantsTranscript ? 0 : 0.2) + (wantsSpeechActivity || wantsTranscript ? 1 : 0.8) * percent),
             }),
+            artifactFileTracker,
           ) : undefined;
       const syncOffset = analysisTypes.includes("syncOffset")
         ? await analyzeSyncOffset(sourcePath, range, syncReference!.path, syncOffsetParams!, syncReference!, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: progressPlan.percent("syncOffset", percent) })) : undefined;
@@ -4697,13 +4752,13 @@ export class LiveFacadeSession {
               serverSamplingFps: video.preparation?.serverSamplingFps ?? null,
             }
           : null,
-      });
+      }, artifactFileTracker);
       recordRef = { id: saved.id, recordPath: saved.recordPath, recheckOf: saved.recheckOf };
       persistedRecordId = saved.id;
       }
       if (controller.signal.aborted) {
         if (persistedRecordId && this.config.artifactRoot) {
-          await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId);
+          await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId, artifactFileTracker);
           persistedRecordId = null;
         }
         this.jobs.markCancelled(jobId);
@@ -4720,14 +4775,14 @@ export class LiveFacadeSession {
       if (this.jobs.get(jobId)?.state === "done") {
         persistedRecordId = null;
       } else if (persistedRecordId && this.config.artifactRoot) {
-        await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId);
+        await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId, artifactFileTracker);
         persistedRecordId = null;
       }
     } catch (error) {
       let failure: unknown = error;
       if (persistedRecordId && this.config.artifactRoot) {
         try {
-          await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId);
+          await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId, artifactFileTracker);
         } catch (cleanupError) {
           failure = new Error(`${error instanceof Error ? error.message : String(error)}; saved analysis record cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
         }
@@ -4958,6 +5013,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
       session.helpSearch(params as import("./gui-manual").ManualSearchParams),
     releaseWriterLease: () => session.releaseWriterLease(),
     readWriterStatus: () => session.readWriterStatus(),
+    forgetTrackedArtifactFiles: (jobId, fileIds) => session.forgetTrackedArtifactFiles(jobId, fileIds),
     dispose: () => session.dispose(),
   }, "live", (verb) => session.assertVerbAccess(verb as FacadeVerb)) as LiveAgentFacade;
 }

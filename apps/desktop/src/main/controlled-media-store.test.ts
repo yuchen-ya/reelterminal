@@ -1,5 +1,15 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+  utimes,
+  symlink,
+  unlink,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -18,7 +28,8 @@ describe("ControlledMediaStore", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+  const hash = (bytes: Buffer) =>
+    createHash("sha256").update(bytes).digest("hex");
 
   async function save(mediaId: string, bytes: Buffer, extension = "mp4") {
     const session = await store.beginWrite({
@@ -47,10 +58,68 @@ describe("ControlledMediaStore", () => {
         mediaId: "media-1",
         path: saved.path,
         sizeBytes: bytes.byteLength,
+        lastModifiedMs: expect.any(Number),
         contentHash: hash(bytes),
       },
     ]);
     expect((await store.listAll())[0]?.contentHash).toBe(hash(bytes));
+  });
+
+  it("retains a same-size file changed after the reviewed fingerprint", async () => {
+    const saved = await save("cleanup-media", Buffer.from("original"));
+    const reviewed = await store.listAll();
+    await writeFile(saved.path, Buffer.from("replaced"));
+    const changed = new Date(reviewed[0].lastModifiedMs + 2000);
+    await utimes(saved.path, changed, changed);
+    await expect(store.delete("cleanup-media", reviewed)).rejects.toThrow(
+      /changed after cleanup review/,
+    );
+    expect(await readFile(saved.path, "utf8")).toBe("replaced");
+  });
+
+  it("deletes only the exact reviewed file set and rejects a scope expansion", async () => {
+    const saved = await save("cleanup-media", Buffer.from("original"));
+    const reviewed = await store.listAll();
+    const additional = path.join(
+      path.dirname(saved.path),
+      "cleanup-media.webm",
+    );
+    await writeFile(additional, "new version");
+    await expect(store.delete("cleanup-media", reviewed)).rejects.toThrow(
+      /changed/,
+    );
+    expect(await readFile(saved.path, "utf8")).toBe("original");
+    await unlink(additional);
+    await store.delete("cleanup-media", reviewed);
+    expect(await store.listAll()).toEqual([]);
+  });
+
+  it("never follows a directory junction to delete an external original", async () => {
+    const external = await mkdtemp(
+      path.join(os.tmpdir(), "reelterminal-cleanup-external-"),
+    );
+    try {
+      const original = path.join(external, "outside-media.mp4");
+      await writeFile(original, "external original");
+      const junction = path.join(root, "external-project");
+      await symlink(
+        external,
+        junction,
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      await expect(
+        store.delete("outside-media", [
+          {
+            path: path.join(junction, "outside-media.mp4"),
+            sizeBytes: 17,
+            lastModifiedMs: 0,
+          },
+        ]),
+      ).rejects.toThrow(/changed|escapes/);
+      expect(await readFile(original, "utf8")).toBe("external original");
+    } finally {
+      await rm(external, { recursive: true, force: true });
+    }
   });
 
   it("treats identical writes as idempotent and rejects different bytes for the same id", async () => {
@@ -68,9 +137,11 @@ describe("ControlledMediaStore", () => {
     await store.writeChunk(session, Buffer.from("version-two"));
     await expect(store.commitWrite(session)).rejects.toThrow(/immutable/i);
     expect(await readFile(first.path)).toEqual(original);
-    expect((await readdir(path.dirname(first.path))).filter((name) => !name.startsWith(".pending-"))).toEqual([
-      `media-1.${hash(original)}.mp4`,
-    ]);
+    expect(
+      (await readdir(path.dirname(first.path))).filter(
+        (name) => !name.startsWith(".pending-"),
+      ),
+    ).toEqual([`media-1.${hash(original)}.mp4`]);
   });
 
   it("shares an identical immutable version across project owners", async () => {
@@ -121,12 +192,15 @@ describe("ControlledMediaStore", () => {
     await writeFile(legacyPath, bytes);
 
     const legacyEntries = await store.listProject("project-1");
-    expect(legacyEntries).toEqual([{
-      projectId: "project-1",
-      mediaId: "legacy-media",
-      path: legacyPath,
-      sizeBytes: bytes.byteLength,
-    }]);
+    expect(legacyEntries).toEqual([
+      {
+        projectId: "project-1",
+        mediaId: "legacy-media",
+        path: legacyPath,
+        sizeBytes: bytes.byteLength,
+        lastModifiedMs: expect.any(Number),
+      },
+    ]);
     expect(await store.read("project-1", "legacy-media")).toEqual(
       bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
     );
@@ -141,7 +215,11 @@ describe("ControlledMediaStore", () => {
     });
     await store.writeChunk(session, bytes);
     const replay = await store.commitWrite(session);
-    expect(replay).toEqual({ path: legacyPath, contentHash: hash(bytes), created: false });
+    expect(replay).toEqual({
+      path: legacyPath,
+      contentHash: hash(bytes),
+      created: false,
+    });
     const committed = await store.listProject("project-1");
     expect(committed).toHaveLength(1);
     expect(committed[0]?.contentHash).toBeUndefined();

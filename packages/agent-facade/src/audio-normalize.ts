@@ -16,6 +16,7 @@ import { fingerprintFile } from "./inspection-artifacts";
 import { FfmpegToolError, resolveFfmpegVersion, resolveToolFfmpeg, runToolProcess } from "./media/ffmpeg-bin";
 import { resolveContainedPathDetailed } from "./media/path-roots";
 import { computeAudioReuseKey, findReusableAudioArtifact, recordReusableAudioArtifact, stageReusableAudioWav } from "./audio-artifact-reuse";
+import type { ArtifactFileTracker } from "./providers";
 
 /**
  * AUD-11: long-material cap. The two loudnorm passes stream inside one FFmpeg
@@ -109,6 +110,7 @@ export interface ProduceNormalizedAudioParams {
   readonly artifactId: string;
   /** Optional 0–1 progress observer (AUD-11): probe→first pass→second pass→verify. */
   readonly progress?: (percent: number) => void;
+  readonly artifactFileTracker?: ArtifactFileTracker;
 }
 
 interface ProbeStream {
@@ -651,6 +653,13 @@ export async function produceNormalizedAudio(input: ProduceNormalizedAudioParams
   const stagedProvenancePath = join(stagingDir, "provenance.json");
   let publishedByThisAttempt = false;
 
+  for (const file of [
+    { fileId: "audio-output", path: join(outputDir, "normalized.wav"), purpose: "Normalized audio work output" },
+    { fileId: "audio-output-provenance", path: join(outputDir, "provenance.json"), purpose: "Normalized audio provenance" },
+    { fileId: "audio-staged-output", path: stagedWavPath, purpose: "Temporary normalized audio work" },
+    { fileId: "audio-staged-provenance", path: stagedProvenancePath, purpose: "Temporary normalization provenance" },
+  ]) input.artifactFileTracker?.record({ ...file, kind: "work", rebuildable: true, deliveryStatus: "pending" });
+
   let before: NormalizeAudioMeasurement | null = null;
   let after: NormalizeAudioMeasurement | null = null;
   let normalizationMode: LoudnormMode | null = null;
@@ -671,7 +680,7 @@ export async function produceNormalizedAudio(input: ProduceNormalizedAudioParams
     if (reuseHit !== null) {
       const reusableMeasurements = readReusableMeasurements(reuseHit.provenance, sourceFingerprint.sha256);
       if (reusableMeasurements !== null) {
-        await stageReusableAudioWav(reuseHit, stagedWavPath);
+        await stageReusableAudioWav(reuseHit, stagedWavPath, input.artifactFileTracker);
         before = reusableMeasurements.before;
         after = reusableMeasurements.after;
         normalizationMode = reusableMeasurements.normalizationMode;
@@ -785,6 +794,8 @@ export async function produceNormalizedAudio(input: ProduceNormalizedAudioParams
       try {
         await rename(stagingDir, outputDir);
         publishedByThisAttempt = true;
+        input.artifactFileTracker?.forget("audio-staged-output");
+        input.artifactFileTracker?.forget("audio-staged-provenance");
         await prepareArtifactDir(outputDir, root, VERB);
         published = {
           wavPath: await assertContainedWrittenFile(join(outputDir, "normalized.wav"), root, VERB),
@@ -797,7 +808,11 @@ export async function produceNormalizedAudio(input: ProduceNormalizedAudioParams
         published = await inspectPublishedDirectory(outputDir, root, sha256, provenanceSha256);
       }
     }
-    if (!publishedByThisAttempt) await cleanupOwnedDirectory(stagingDir, root);
+    if (!publishedByThisAttempt) {
+      await cleanupOwnedDirectory(stagingDir, root);
+      input.artifactFileTracker?.forget("audio-staged-output");
+      input.artifactFileTracker?.forget("audio-staged-provenance");
+    }
     throwIfCancelled(input.signal);
     // AUD-13: name this published artifact as the reusable result for the
     // computed key. Best-effort — an indexing failure never fails the job.
@@ -814,12 +829,16 @@ export async function produceNormalizedAudio(input: ProduceNormalizedAudioParams
     const cleanupErrors: string[] = [];
     try {
       await cleanupOwnedDirectory(stagingDir, root);
+      input.artifactFileTracker?.forget("audio-staged-output");
+      input.artifactFileTracker?.forget("audio-staged-provenance");
     } catch (cleanupError) {
       cleanupErrors.push(`pending output cleanup failed: ${ffmpegMessage(cleanupError)}`);
     }
     if (publishedByThisAttempt) {
       try {
         await cleanupOwnedDirectory(outputDir, root);
+        input.artifactFileTracker?.forget("audio-output");
+        input.artifactFileTracker?.forget("audio-output-provenance");
       } catch (cleanupError) {
         cleanupErrors.push(`published output cleanup failed: ${ffmpegMessage(cleanupError)}`);
       }

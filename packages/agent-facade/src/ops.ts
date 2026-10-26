@@ -3,6 +3,7 @@ import { EDGE_EPS, type PreparedCutSilenceFromAnalysisOp } from "./silence-cut-f
 import type { PreparedSubtitleImportTranscriptOp } from "./subtitle-import-transcript";
 import { validateMediaProduction } from "@reelterminal/core/types/media-production";
 import type { MediaSetProductionOp } from "./types";
+import { CLEANUP_HANDOFF_PHASES, type CleanupHandoffPhase, type ProjectRequirementStatus } from "@reelterminal/core/types/requirement";
 /**
  * The closed edit.apply op set: strict schema validation and translation
  * into core actions. Facade-level semantic checks that the generic core
@@ -1254,6 +1255,16 @@ export const REQUIREMENT_UPDATE_SCHEMA: ObjectSchema = {
       maxItems: 100,
       items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
     },
+  },
+  cleanupPhase: {
+    check: oneOf(CLEANUP_HANDOFF_PHASES),
+    describe: "the next persisted cleanup review phase",
+    emits: { kind: "leaf", schema: { enum: CLEANUP_HANDOFF_PHASES } },
+  },
+  confirmedExecution: {
+    check: isBoolean,
+    describe: "true only after the user confirmed the exact cleanup proposal",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
   },
 };
 
@@ -2917,9 +2928,12 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<MarkerRemoveOp>(raw, MARKER_REMOVE_SCHEMA, label);
     case "requirement.update": {
       const op = validateObject<RequirementUpdateOp>(raw, REQUIREMENT_UPDATE_SCHEMA, label);
-      if (op.status === undefined && op.agentNote === undefined && op.resultMediaIds === undefined) {
-        throw invalidParams(`${label}: at least one of status, agentNote, or resultMediaIds is required`);
+      if (op.status === undefined && op.agentNote === undefined && op.resultMediaIds === undefined && op.cleanupPhase === undefined) {
+        throw invalidParams(`${label}: at least one of status, agentNote, resultMediaIds, or cleanupPhase is required`);
       }
+      if (op.status !== undefined && op.cleanupPhase !== undefined) throw invalidParams(`${label}: status and cleanupPhase cannot be combined`);
+      if (op.confirmedExecution !== undefined && op.cleanupPhase !== "executing") throw invalidParams(`${label}: confirmedExecution is only valid with cleanupPhase executing`);
+      if (op.cleanupPhase === "executing" && op.confirmedExecution !== true) throw invalidParams(`${label}: executing requires confirmedExecution: true`);
       return op;
     }
     case "workAsset.capture": {
@@ -4561,10 +4575,40 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           );
         }
       }
+      if (op.cleanupPhase !== undefined && !requirement.cleanupHandoff) {
+        throw new FacadeError("INVALID_PARAMS", "requirement.update: cleanupPhase is only valid for a cleanup review task");
+      }
+      if (op.cleanupPhase === "executing" && op.confirmedExecution !== true) {
+        throw new FacadeError("CONFLICT", "requirement.update: user confirmation of the exact cleanup proposal is required before execution");
+      }
+      if (op.cleanupPhase !== undefined && requirement.cleanupHandoff) {
+        const phases: readonly CleanupHandoffPhase[] = [
+          "pending_review",
+          "reviewing",
+          "awaiting_confirmation",
+          "executing",
+          "completed",
+        ];
+        const currentIndex = phases.indexOf(requirement.cleanupHandoff.phase);
+        const nextIndex = phases.indexOf(op.cleanupPhase);
+        if (nextIndex < currentIndex || nextIndex > currentIndex + 1) {
+          throw new FacadeError("CONFLICT", "requirement.update: cleanupPhase must advance one stage at a time");
+        }
+      }
+      const cleanupStatus: Readonly<Record<CleanupHandoffPhase, ProjectRequirementStatus>> = {
+        pending_review: "ready",
+        reviewing: "in_progress",
+        awaiting_confirmation: "review",
+        executing: "in_progress",
+        completed: "done",
+      };
       return [makeAction("requirement/update", {
         requirementId: requirement.id,
         patch: {
-          ...(op.status === undefined ? {} : { status: op.status === "done" ? "review" : op.status }),
+          ...(op.cleanupPhase !== undefined ? { status: cleanupStatus[op.cleanupPhase] } : op.status === undefined ? {} : { status: op.status === "done" ? "review" : op.status }),
+          ...(op.cleanupPhase !== undefined && requirement.cleanupHandoff
+            ? { cleanupHandoff: { ...requirement.cleanupHandoff, phase: op.cleanupPhase } }
+            : {}),
           ...(op.agentNote === undefined ? {} : { agentNote: op.agentNote }),
           ...(op.resultMediaIds === undefined ? {} : { resultMediaIds: [...op.resultMediaIds] }),
         },

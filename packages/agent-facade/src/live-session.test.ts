@@ -1,5 +1,6 @@
 import { FACADE_VERBS } from "./types";
 import { WORKSPACE_VERBS } from "./workspace-library";
+import { REVIEW_VERBS } from "./review";
 /**
  * Live facade session tests: createLiveFacade over an
  * in-memory FakeLiveStore that owns a real Project, keeps revision and
@@ -735,6 +736,7 @@ describe("editor.get_context and visual.inspect read verbs", () => {
       timeRange: { startSeconds: 1, endSeconds: 3.5 },
       canvasPoint: { x: 0.5, y: 0.85 },
       references: {},
+      workbench: null,
       requirements: { ready: 0, inProgress: 0, ids: [] },
       collaborationInstructions: { enabledCount: 0, items: [] },
       identity: {
@@ -885,6 +887,61 @@ describe("live edit.apply", () => {
       "track/add",
       "text/create",
     ]);
+  });
+
+  it("advances cleanup handoffs only in their owning live project workspace", async () => {
+    const handoff = {
+      projectId: store.project.id,
+      workspaceId: "workspace-live-1",
+      exportId: "export-1",
+      revision: 0,
+      nodeIds: ["node-1"],
+      scope: "Selected export artifacts",
+      retention: "Keep all source media",
+      phase: "pending_review" as const,
+    };
+    store.project = { ...store.project, requirements: {
+      nextNumber: 2,
+      items: [{
+        id: "cleanup-task",
+        number: 1,
+        title: "Review cleanup",
+        description: "Review only",
+        priority: "normal",
+        status: "ready",
+        markerIds: [],
+        cleanupHandoff: handoff,
+        createdAt: 1,
+        updatedAt: 1,
+      }],
+    } };
+    const facade = liveFacade();
+    const advanced = await facade["edit.apply"]({
+      ops: [{ op: "requirement.update", requirementId: "Q1", cleanupPhase: "reviewing" }],
+      expectedRevision: 0,
+    });
+    expect(advanced.ok).toBe(true);
+    expect(store.project.requirements!.items[0]).toMatchObject({
+      status: "in_progress",
+      cleanupHandoff: { ...handoff, phase: "reviewing" },
+    });
+
+    const [cleanupTask] = store.project.requirements!.items;
+    store.project = { ...store.project, requirements: {
+      ...store.project.requirements!,
+      items: [{ ...cleanupTask!, cleanupHandoff: {
+        ...cleanupTask!.cleanupHandoff!,
+        phase: "pending_review",
+        workspaceId: "workspace-other",
+      } }],
+    } };
+    const crossWorkspace = await facade["edit.apply"]({
+      ops: [{ op: "requirement.update", requirementId: "Q1", cleanupPhase: "reviewing" }],
+      expectedRevision: 1,
+    });
+    expect(crossWorkspace.ok).toBe(false);
+    if (!crossWorkspace.ok) expect(crossWorkspace.error.code).toBe("CONFLICT");
+    expect(store.batches).toHaveLength(1);
   });
 
   it("text.create creates the missing text track in the same live undo batch", async () => {
@@ -1806,6 +1863,8 @@ describe("work mode + access gate + writer lease", () => {
       "project.create",
       "project.save",
       ...WORKSPACE_VERBS,
+      "review.context",
+      ...REVIEW_VERBS,
     ]);
     expect(res.value.mediaImport.available).toBe(false);
     expect(res.value.mediaImport.reason).toContain("media roots");
@@ -1913,6 +1972,8 @@ describe("live media.import through the canonical store bridge", () => {
       "project.create",
       "project.save",
       ...WORKSPACE_VERBS,
+      "review.context",
+      ...REVIEW_VERBS,
     ]);
 
     const res = await facade["media.import"]({

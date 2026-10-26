@@ -5,6 +5,8 @@ import { FONT_VERBS } from "./font-library";
 import { PRESET_VERBS } from "./preset-verbs";
 import { HELP_VERBS } from "./gui-manual";
 import { REVIEW_VERBS } from "./review";
+import type { CleanupHandoffPhase } from "@reelterminal/core/types/requirement";
+import type { ArtifactFileRecord, ArtifactOwnership } from "@reelterminal/core/types/artifact-ownership";
 /**
  * Public contract of the in-process agent facade.
  *
@@ -189,6 +191,7 @@ export const READ_ONLY_VERBS = [
   "node.media",
   "node.compare",
   "media.references",
+  "media.cleanup.review",
   "media.cleanup.plan",
   "media.analyze_start",
   "analysis.list",
@@ -1756,6 +1759,10 @@ export interface RequirementUpdateOp {
   readonly status?: "draft" | "ready" | "in_progress" | "blocked" | "review" | "done";
   readonly agentNote?: string;
   readonly resultMediaIds?: readonly string[];
+  /** Move a durable cleanup handoff one stage forward. */
+  readonly cleanupPhase?: CleanupHandoffPhase;
+  /** Must be true when recording that execution has been explicitly confirmed. */
+  readonly confirmedExecution?: boolean;
 }
 
 export interface SubtitleImportSrtOp {
@@ -2699,6 +2706,19 @@ export interface JobStatusView {
   /** Explicit project/workspace whose fixed input this background task uses. */
   readonly projectId?: string;
   readonly workspaceId?: string;
+  /** Available after a successful video export to discover its cleanup review entry. */
+  readonly cleanupReview?: {
+    readonly command: "media.cleanup.review";
+    readonly arguments: {
+      readonly projectId: string;
+      readonly workspaceId: string;
+      readonly exportId: string;
+    };
+  };
+  /** Ownership metadata is written by the desktop ledger for newly created tasks. */
+  readonly ownership?: ArtifactOwnership;
+  /** Exact producer-registered paths; project/workspace identity is inherited from this task. */
+  readonly artifactFiles?: readonly ArtifactFileRecord[];
   readonly state: "queued" | "running" | "done" | "error" | "cancelled";
   readonly progress: {
     readonly phase: string;

@@ -1875,6 +1875,16 @@ export class TemplateEngine {
     });
   }
 
+  async listStoredTemplates(): Promise<Template[]> {
+    if (!this.db) await this.initialize();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([TEMPLATE_STORE_NAME], "readonly");
+      const request = transaction.objectStore(TEMPLATE_STORE_NAME).getAll();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result as Template[]);
+    });
+  }
+
   async listTemplates(): Promise<TemplateSummary[]> {
     if (!this.db) await this.initialize();
 

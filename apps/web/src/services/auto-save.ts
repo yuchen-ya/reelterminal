@@ -587,6 +587,10 @@ export class AutoSaveManager {
   async listRecoveryProjects(): Promise<{ id: string; project: Project }[]> {
     await this.initialize();
     const records = await this.getAllSaves();
+    // Deliberately strict: the media-GC reference scan must fail closed. An
+    // unparsable slot still exists in storage, so the set of media it retains
+    // is unknown, not empty; skipping it would let reviewed cleanup delete
+    // bytes that slot may still reference.
     return records.map((record) => ({ id: record.id, project: JSON.parse(record.data) as Project }));
   }
 

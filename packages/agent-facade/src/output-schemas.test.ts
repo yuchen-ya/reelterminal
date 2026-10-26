@@ -68,6 +68,17 @@ describe("emitted command output schemas", () => {
     const status = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["job.status"] as unknown as Schema;
     const statusValue = (status.properties as Schema).value as Schema;
     expect((statusValue.properties as Schema).kind).toEqual({ enum: ["export", "analysis", "audio-process"] });
+    expect(statusValue.required).not.toContain("ownership");
+    const ownership = (statusValue.properties as Schema).ownership as Schema;
+    expect(ownership.required).toEqual(["kind", "purpose", "origin", "projectId", "workspaceId", "deliveryStatus"]);
+    expect((ownership.properties as Schema).kind).toEqual({ enum: ["source", "work", "project", "output"] });
+    expect((ownership.properties as Schema).origin).toEqual({ enum: ["user", "product", "agent"] });
+    expect(statusValue.required).not.toContain("artifactFiles");
+    const artifactFiles = (statusValue.properties as Schema).artifactFiles as Schema;
+    expect(artifactFiles.type).toBe("array");
+    expect((artifactFiles.items as Schema).required).toEqual([
+      "fileId", "path", "kind", "purpose", "origin", "rebuildable", "deliveryStatus",
+    ]);
     const result = (statusValue.properties as Schema).result as Schema;
     const variants = ((result.anyOf as Schema[])[0].anyOf as Schema[]);
     expect(variants).toHaveLength(2);

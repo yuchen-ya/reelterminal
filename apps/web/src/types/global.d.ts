@@ -472,14 +472,16 @@ interface ReelTerminalDesktopBridge {
           mediaId: string;
           path: string;
           sizeBytes: number;
+          lastModifiedMs: number;
           contentHash: string;
         } | null>;
-        delete(mediaId: string): Promise<void>;
+        delete(mediaId: string, expectedFiles?: readonly { path: string; sizeBytes: number; lastModifiedMs: number }[]): Promise<void>;
         listProject(projectId: string): Promise<{
           projectId: string;
           mediaId: string;
           path: string;
           sizeBytes: number;
+          lastModifiedMs: number;
           /** Commit-time hash encoded in the filename; absent on legacy files. */
           contentHash?: string;
         }[]>;
@@ -488,6 +490,7 @@ interface ReelTerminalDesktopBridge {
           mediaId: string;
           path: string;
           sizeBytes: number;
+          lastModifiedMs: number;
           /** Commit-time hash encoded in the filename; absent on legacy files. */
           contentHash?: string;
         }[]>;
@@ -508,6 +511,9 @@ interface ReelTerminalDesktopBridge {
       /** Read-only task states used by local project deletion. */
       projectLibrary?: {
         getTaskStates(jobIds: readonly string[]): Promise<Record<string, "queued" | "running" | "done" | "error" | "cancelled" | null>>;
+        listCleanupCandidates(target: import("../../../desktop/src/shared/project-library-cleanup").ProjectLibraryCleanupTarget): Promise<import("../../../desktop/src/shared/project-library-cleanup").ProjectLibraryCleanupCandidates>;
+        purgeFailedTaskRecords(args: import("../../../desktop/src/shared/project-library-cleanup").ProjectLibraryPurgeFailedTaskRecordsRequest): Promise<import("../../../desktop/src/shared/project-library-cleanup").ProjectLibraryPurgeFailedTaskRecordsResult>;
+        purgeTrackedWorkFiles(args: import("../../../desktop/src/shared/project-library-cleanup").ProjectLibraryPurgeTrackedWorkFilesRequest): Promise<import("../../../desktop/src/shared/project-library-cleanup").ProjectLibraryPurgeTrackedWorkFilesResult>;
       };
       /** Durable analysis records and explicit user-triggered rechecks. */
       production?: {

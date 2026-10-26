@@ -148,6 +148,20 @@ describe("StorageEngine media immutability and transaction semantics", () => {
     expect([...(stored?.projectIds ?? [])].sort()).toEqual(["project-a", "project-b"]);
   });
 
+  it("lists cache snapshots and deletes only the matching key, size, and timestamp", async () => {
+    const key = "project-a:clip-1:0.000";
+    await engine.saveCache({ key, data: new Uint8Array([1, 2, 3]).buffer, size: 3, timestamp: 10 });
+    expect(await engine.getAllCache()).toMatchObject([{ key, size: 3, timestamp: 10 }]);
+
+    expect(await engine.deleteCacheIfMatches({ key, size: 3, timestamp: 9 })).toBe(false);
+    await engine.saveCache({ key, data: new Uint8Array([4, 5, 6]).buffer, size: 3, timestamp: 11 });
+    expect(await engine.deleteCacheIfMatches({ key, size: 3, timestamp: 10 })).toBe(false);
+    expect(await engine.getAllCache()).toMatchObject([{ key, timestamp: 11 }]);
+
+    expect(await engine.deleteCacheIfMatches({ key, size: 3, timestamp: 11 })).toBe(true);
+    expect(await engine.getAllCache()).toEqual([]);
+  });
+
   it("rejects a different-bytes write for an existing media id", async () => {
     await engine.saveMedia(mediaRecord("media-1", "project-a", [1, 2, 3], "hash-a"));
 

@@ -451,4 +451,30 @@ describe("AutoSaveManager", () => {
     await expect(manager.initialize()).resolves.toBeUndefined();
     expect(internals(manager).openDatabase).toHaveBeenCalledTimes(2);
   });
+
+  it("fails the media-reference scan on an unparsable save record while listing healthy slots", async () => {
+    const previousIndexedDB = globalThis.indexedDB;
+    globalThis.indexedDB = new IDBFactory();
+    try {
+      const manager = new AutoSaveManager();
+      await manager.initialize();
+      await manager.forceSave({ ...project("Current"), id: "current-project" });
+      await expect(manager.listRecoveryProjects()).resolves.toHaveLength(1);
+
+      await internals(manager).saveRecord({
+        id: "broken-slot",
+        projectId: "legacy-project",
+        projectName: "Legacy",
+        timestamp: 1,
+        slot: 0,
+        data: "{not json",
+      });
+      // The record still occupies storage, so its retained media is unknown;
+      // the reference scan must reject rather than treat the slot as empty.
+      await expect(manager.listRecoveryProjects()).rejects.toBeInstanceOf(SyntaxError);
+      manager.destroy();
+    } finally {
+      globalThis.indexedDB = previousIndexedDB;
+    }
+  });
 });

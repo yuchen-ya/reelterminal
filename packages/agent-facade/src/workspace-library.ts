@@ -20,6 +20,7 @@ export const WORKSPACE_VERBS = [
   "node.media",
   "node.compare",
   "media.references",
+  "media.cleanup.review",
   "media.cleanup.plan",
   "media.cleanup.execute",
 ] as const;
@@ -103,8 +104,42 @@ export interface MediaReferencesParams {
   readonly mediaId: string;
   readonly workspaceId?: string;
 }
-export interface MediaCleanupPlanParams { readonly projectId?: string }
-export interface MediaCleanupExecuteParams { readonly projectId?: string; readonly planId: string }
+export type MediaCleanupAction = "purge-media" | "purge-deleted-nodes" | "recycle-nodes" | "restore-nodes" | "purge-cache" | "purge-failed-jobs";
+export interface MediaCleanupTaskFile {
+  readonly jobId: string;
+  readonly path: string;
+  readonly sizeBytes: number;
+  readonly lastModifiedMs: number;
+}
+export interface MediaCleanupReviewParams extends WorkspaceTargetParams {
+  readonly exportId?: string;
+  readonly cleanupTaskId?: string;
+  readonly selectedNodeIds?: readonly string[];
+}
+export interface MediaCleanupPlanParams extends WorkspaceTargetParams {
+  readonly exportId?: string;
+  readonly cleanupTaskId?: string;
+  readonly action: MediaCleanupAction;
+  readonly nodeIds?: readonly string[];
+  readonly mediaIds?: readonly string[];
+  readonly cacheKeys?: readonly string[];
+  readonly jobIds?: readonly string[];
+}
+export interface MediaCleanupExecuteParams extends WorkspaceTargetParams {
+  readonly exportId?: string;
+  readonly cleanupTaskId?: string;
+  readonly planId: string;
+  readonly action: MediaCleanupAction;
+  readonly revision: number;
+  readonly workspaceInstanceId: string;
+  readonly nodeIds: readonly string[];
+  readonly mediaIds: readonly string[];
+  readonly cacheKeys: readonly string[];
+  readonly cleanupTaskNodeIds: readonly string[];
+  readonly jobIds: readonly string[];
+  readonly jobFiles: readonly MediaCleanupTaskFile[];
+  readonly confirmed: true;
+}
 
 /** Manager pin request used before a background task can start. */
 export interface RetainTaskInputsParams {

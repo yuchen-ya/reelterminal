@@ -61,4 +61,49 @@ describe("project requirement actions", () => {
     expect(value.requirements?.items ?? []).toHaveLength(0);
   });
 
+  it("rejects cleanup handoffs bound to another project or malformed selections", async () => {
+    const value = project();
+    const executor = new ActionExecutor();
+    const validHandoff = {
+      projectId: value.id,
+      workspaceId: "workspace-1",
+      exportId: "export-1",
+      revision: 2,
+      nodeIds: ["node-1"],
+      scope: "Selected output",
+      retention: "Keep source media",
+      phase: "pending_review",
+    } as const;
+    const wrongProject = await executor.execute(action("requirement/add", {
+      requirement: { ...requirement, cleanupHandoff: { ...validHandoff, projectId: "other-project" } },
+    }), value);
+    expect(wrongProject.success).toBe(false);
+    const duplicateNodes = await executor.execute(action("requirement/add", {
+      requirement: { ...requirement, cleanupHandoff: { ...validHandoff, nodeIds: ["node-1", "node-1"] } },
+    }), value);
+    expect(duplicateNodes.success).toBe(false);
+    expect(value.requirements?.items ?? []).toHaveLength(0);
+  });
+
+  it("accepts an explicitly scoped workspace-level cleanup handoff with no selected nodes", async () => {
+    const value = project();
+    const executor = new ActionExecutor();
+    const result = await executor.execute(action("requirement/add", {
+      requirement: {
+        ...requirement,
+        cleanupHandoff: {
+          projectId: value.id,
+          workspaceId: "workspace-1",
+          revision: 0,
+          nodeIds: [],
+          scope: "Rebuildable cache in this workspace",
+          retention: "Keep source project and media",
+          phase: "pending_review",
+        },
+      },
+    }), value);
+    expect(result.success).toBe(true);
+    expect(value.requirements?.items[0]?.cleanupHandoff?.nodeIds).toEqual([]);
+  });
+
 });

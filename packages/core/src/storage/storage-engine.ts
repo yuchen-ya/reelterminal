@@ -410,6 +410,43 @@ export class StorageEngine implements IStorageEngine {
     return this.transactionGetAll<MediaRecord>(STORES.MEDIA);
   }
 
+  async getAllCache(): Promise<CacheRecord[]> {
+    return this.transactionGetAll<CacheRecord>(STORES.CACHE);
+  }
+
+  /** Delete one cache row only if it still matches the reviewed snapshot. */
+  async deleteCacheIfMatches(input: {
+    key: string;
+    size: number;
+    timestamp: number;
+  }): Promise<boolean> {
+    const db = await this.getDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORES.CACHE, "readwrite");
+      const store = tx.objectStore(STORES.CACHE);
+      const request = store.get(input.key);
+      let requestError: unknown = null;
+      let deleted = false;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+      request.onsuccess = () => {
+        const record = request.result as CacheRecord | undefined;
+        if (!record || record.data.byteLength !== input.size || record.timestamp !== input.timestamp) return;
+        deleted = true;
+        const deletion = store.delete(input.key);
+        deletion.onerror = () => {
+          requestError = deletion.error;
+        };
+      };
+      tx.oncomplete = () => resolve(deleted);
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to delete reviewed cache entry: ${(cause as Error).message}`));
+      };
+    });
+  }
+
   /**
    * Media ids stored for a project, read through the projectId index without
    * materializing any blob bytes. Use this for GC scans over large libraries.

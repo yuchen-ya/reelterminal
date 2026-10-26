@@ -24,6 +24,7 @@ import { FfmpegToolError, resolveFfmpegVersion, resolveToolFfmpeg, runToolProces
 import { resolveContainedPathDetailed } from "./media/path-roots";
 import { parseLoudnorm, probeAudioStreams, type NormalizeAudioMeasurement } from "./audio-normalize";
 import { computeAudioReuseKey, findReusableAudioArtifact, recordReusableAudioArtifact, stageReusableAudioWav } from "./audio-artifact-reuse";
+import type { ArtifactFileTracker } from "./providers";
 import { DEMUCS_MODEL, demucsCacheDir, demucsModelStatus, runAudioModelTask } from "./media/audio-models-runner";
 
 interface SeparateWorkerResult {
@@ -123,6 +124,7 @@ export interface ProduceSeparatedAudioParams {
   readonly sourceRevision: number;
   readonly signal?: AbortSignal;
   readonly artifactId: string;
+  readonly artifactFileTracker?: ArtifactFileTracker;
 }
 
 function fail(code: "INVALID_PARAMS" | "NOT_FOUND" | "JOB_FAILED" | "UNSUPPORTED" | "CONFLICT", message: string): never {
@@ -386,6 +388,19 @@ export async function produceSeparatedAudio(input: ProduceSeparatedAudioParams):
   const stagedWavPath = join(stagingDir, "separated.wav");
   const stagedProvenancePath = join(stagingDir, "provenance.json");
   let publishedByThisAttempt = false;
+
+  for (const file of [
+    { fileId: "audio-output", path: join(outputDir, "separated.wav"), purpose: "Separated audio work output" },
+    { fileId: "audio-output-provenance", path: join(outputDir, "provenance.json"), purpose: "Separated audio provenance" },
+    { fileId: "audio-staged-output", path: stagedWavPath, purpose: "Temporary separated audio work" },
+    { fileId: "audio-staged-provenance", path: stagedProvenancePath, purpose: "Temporary separation provenance" },
+    { fileId: "audio-separate-source-decode", path: join(workDir, "source-44k.wav"), purpose: "Temporary separation source decode" },
+    ...["drums", "bass", "other", "vocals"].map((stem) => ({
+      fileId: `audio-separate-stem-${stem}`,
+      path: join(workDir, "stems", `${stem}.wav`),
+      purpose: `Temporary separation ${stem} stem`,
+    })),
+  ]) input.artifactFileTracker?.record({ ...file, kind: "work", rebuildable: true, deliveryStatus: "pending" });
   let after: NormalizeAudioMeasurement | null = null;
   let processing: SeparatedAudioArtifact["processing"] | null = null;
   let reusedFrom: { cacheKey: string; artifactId: string } | null = null;
@@ -405,7 +420,7 @@ export async function produceSeparatedAudio(input: ProduceSeparatedAudioParams):
         (reuseHit.provenance.after === null || reusableMeasurement(reuseHit.provenance.after) !== null) &&
         reuseHit.provenance.sourceSha256 === sourceFingerprint.sha256;
       if (matches) {
-        await stageReusableAudioWav(reuseHit, stagedWavPath);
+        await stageReusableAudioWav(reuseHit, stagedWavPath, input.artifactFileTracker);
         after = reuseHit.provenance.after === null
           ? null
           : reusableMeasurement(reuseHit.provenance.after);
@@ -532,6 +547,8 @@ export async function produceSeparatedAudio(input: ProduceSeparatedAudioParams):
       try {
         await rename(stagingDir, outputDir);
         publishedByThisAttempt = true;
+        input.artifactFileTracker?.forget("audio-staged-output");
+        input.artifactFileTracker?.forget("audio-staged-provenance");
         await prepareArtifactDir(outputDir, root, VERB);
         published = {
           wavPath: await assertContainedWrittenFile(join(outputDir, "separated.wav"), root, VERB),
@@ -544,7 +561,11 @@ export async function produceSeparatedAudio(input: ProduceSeparatedAudioParams):
         published = await inspectPublishedDirectory(outputDir, root, sha256, provenanceSha256);
       }
     }
-    if (!publishedByThisAttempt) await cleanupOwnedDirectory(stagingDir, root);
+    if (!publishedByThisAttempt) {
+      await cleanupOwnedDirectory(stagingDir, root);
+      input.artifactFileTracker?.forget("audio-staged-output");
+      input.artifactFileTracker?.forget("audio-staged-provenance");
+    }
     throwIfCancelled(input.signal);
     // AUD-13: name this published artifact as the reusable result. Best-effort.
     await recordReusableAudioArtifact({
@@ -554,9 +575,17 @@ export async function produceSeparatedAudio(input: ProduceSeparatedAudioParams):
     return { ...artifact, path: published.wavPath, provenancePath: published.provenancePath };
   } catch (error) {
     const cleanupErrors: string[] = [];
-    try { await cleanupOwnedDirectory(stagingDir, root); } catch (cleanupError) { cleanupErrors.push(`pending output cleanup failed: ${ffmpegMessage(cleanupError)}`); }
+    try {
+      await cleanupOwnedDirectory(stagingDir, root);
+      input.artifactFileTracker?.forget("audio-staged-output");
+      input.artifactFileTracker?.forget("audio-staged-provenance");
+    } catch (cleanupError) { cleanupErrors.push(`pending output cleanup failed: ${ffmpegMessage(cleanupError)}`); }
     if (publishedByThisAttempt) {
-      try { await cleanupOwnedDirectory(outputDir, root); } catch (cleanupError) { cleanupErrors.push(`published output cleanup failed: ${ffmpegMessage(cleanupError)}`); }
+      try {
+        await cleanupOwnedDirectory(outputDir, root);
+        input.artifactFileTracker?.forget("audio-output");
+        input.artifactFileTracker?.forget("audio-output-provenance");
+      } catch (cleanupError) { cleanupErrors.push(`published output cleanup failed: ${ffmpegMessage(cleanupError)}`); }
     }
     if (cleanupErrors.length > 0) {
       const originalMessage = error instanceof Error ? error.message : String(error);
@@ -566,6 +595,13 @@ export async function produceSeparatedAudio(input: ProduceSeparatedAudioParams):
     if (input.signal?.aborted) fail("JOB_FAILED", "Cancelled");
     fail("JOB_FAILED", ffmpegMessage(error));
   } finally {
-    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    try {
+      await rm(workDir, { recursive: true, force: true });
+      input.artifactFileTracker?.forget("audio-separate-source-decode");
+      for (const stem of ["drums", "bass", "other", "vocals"]) input.artifactFileTracker?.forget(`audio-separate-stem-${stem}`);
+    } catch {
+      // Exact remaining paths stay registered for task review.
+    }
   }
+  return fail("JOB_FAILED", "separation completed without publishing an audio artifact");
 }

@@ -975,6 +975,16 @@ it("round-trips production history and review evidence and rejects malformed new
             mappings: [],
             screenshot: "data:image/jpeg;base64,YQ==",
           },
+          cleanupHandoff: {
+            projectId: "project-1",
+            workspaceId: "workspace-cleanup",
+            exportId: "export-1",
+            revision: 7,
+            nodeIds: ["node-1"],
+            scope: "Selected output",
+            retention: "Keep all source media",
+            phase: "awaiting_confirmation",
+          },
         },
       ],
     },
@@ -982,6 +992,18 @@ it("round-trips production history and review evidence and rejects malformed new
   const restored = serializer.importFromJson(serializer.exportToJson(project));
   expect(restored.mediaLibrary.items[0].production).toEqual(production);
   expect(restored.requirements).toEqual(project.requirements);
+  const malformedHandoff = {
+    ...project,
+    requirements: {
+      ...project.requirements!,
+      items: [{
+        ...project.requirements!.items[0]!,
+        cleanupHandoff: { ...project.requirements!.items[0]!.cleanupHandoff!, nodeIds: ["node-1", "node-1"] },
+      }],
+    },
+  };
+  expect(() => serializer.importFromJson(serializer.exportToJson(malformedHandoff)))
+    .toThrow(/Invalid cleanup handoff/);
   const corrupted = serializer
     .exportToJson(project)
     .replace('"pending"', '"invalid-status"');

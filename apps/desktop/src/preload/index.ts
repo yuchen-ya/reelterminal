@@ -178,8 +178,8 @@ const api = {
         sizeBytes: number;
         contentHash: string;
       } | null>,
-    delete: (mediaId: string) =>
-      ipcRenderer.invoke(CHANNELS.mediaStoreDelete, { mediaId }) as Promise<void>,
+    delete: (mediaId: string, expectedFiles?: readonly { path: string; sizeBytes: number; lastModifiedMs: number }[]) =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreDelete, { mediaId, expectedFiles }) as Promise<void>,
     listProject: (projectId: string) =>
       ipcRenderer.invoke(CHANNELS.mediaStoreListProject, { projectId }) as Promise<{
         projectId: string;
@@ -262,6 +262,14 @@ const api = {
   },
   projectLibrary: {
     getTaskStates: (jobIds: readonly string[]) => ipcRenderer.invoke(CHANNELS.projectTaskStates, { jobIds }),
+    listCleanupCandidates: (target: { projectId: string; workspaceId: string }) =>
+      ipcRenderer.invoke(CHANNELS.projectLibraryCleanupCandidates, target),
+    purgeFailedTaskRecords: (args: {
+      projectId: string; workspaceId: string; jobIds: readonly string[];
+      expectedFiles: readonly { jobId: string; path: string; sizeBytes: number; lastModifiedMs: number }[];
+    }) => ipcRenderer.invoke(CHANNELS.projectLibraryPurgeFailedTaskRecords, args),
+    purgeTrackedWorkFiles: (args: import("../shared/project-library-cleanup").ProjectLibraryPurgeTrackedWorkFilesRequest) =>
+      ipcRenderer.invoke(CHANNELS.projectLibraryPurgeTrackedWorkFiles, args),
   },
   production: {
     verifyReplacement: (args: unknown) => ipcRenderer.invoke(CHANNELS.productionVerifyReplacement, args),

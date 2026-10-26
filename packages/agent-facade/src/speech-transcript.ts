@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { FacadeError } from "./errors";
+import type { ArtifactFileTracker } from "./providers";
 import { requireAudioBinaries, runAudioSubprocess, validateAudioRange } from "./audio-analysis";
 import { runAudioModelTask, SENSEVOICE_MODEL, senseVoiceModelDir, senseVoiceModelStatus } from "./media/audio-models-runner";
 import { type SpeechActivityRegion } from "./speech-vad";
@@ -187,9 +188,10 @@ async function transcribeWithPythonWorker(request: TranscribeRequest): Promise<T
 }
 
 /** Decode the exact analyzed range to a 16 kHz mono PCM16 WAV for the worker. */
-async function writeTranscriptWav(path: string, range: { startSec: number; endSec: number }, directory: string, signal: AbortSignal): Promise<string> {
+async function writeTranscriptWav(path: string, range: { startSec: number; endSec: number }, directory: string, signal: AbortSignal, artifactFileTracker?: ArtifactFileTracker): Promise<string> {
   const binaries = await requireAudioBinaries(signal);
   const wavPath = join(directory, "transcript-16k.wav");
+  artifactFileTracker?.record({ fileId: "analysis-transcript-wav", path: wavPath, kind: "work", purpose: "Temporary speech transcript analysis audio", rebuildable: true, deliveryStatus: "pending" });
   const pcm = await runAudioSubprocess(binaries.ffmpeg, [
     "-hide_banner", "-nostdin", "-v", "info",
     "-ss", String(range.startSec), "-t", String(range.endSec - range.startSec), "-i", path,
@@ -222,6 +224,7 @@ export async function transcribeSpeechRegions(
   modelDir: string | null,
   signal: AbortSignal,
   progress: (percent: number) => void = () => {},
+  artifactFileTracker?: ArtifactFileTracker,
 ): Promise<SpeechTranscriptFacts> {
   validateAudioRange(range);
   if (signal.aborted) throw new Error("Cancelled");
@@ -238,7 +241,7 @@ export async function transcribeSpeechRegions(
   const directory = await mkdtemp(join(tmpdir(), "rt-transcript-"));
   try {
     progress(0.05);
-    const wavPath = await writeTranscriptWav(path, range, directory, signal);
+    const wavPath = await writeTranscriptWav(path, range, directory, signal, artifactFileTracker);
     if (signal.aborted) throw new Error("Cancelled");
     progress(0.15);
     const model = transcribeModelOverride ?? transcribeWithPythonWorker;
@@ -313,7 +316,12 @@ export async function transcribeSpeechRegions(
       ],
     };
   } finally {
-    await rm(directory, { recursive: true, force: true }).catch(() => {});
+    try {
+      await rm(directory, { recursive: true, force: true });
+      artifactFileTracker?.forget("analysis-transcript-wav");
+    } catch {
+      // The exact temporary WAV remains registered for task review.
+    }
   }
 }
 

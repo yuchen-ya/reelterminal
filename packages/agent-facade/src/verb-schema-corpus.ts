@@ -259,13 +259,37 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "valid media reference query", params: { projectId: "p1", mediaId: "m1", workspaceId: "w1" }, expectValid: true },
     { name: "missing mediaId", params: { projectId: "p1" }, expectValid: false },
   ],
+  "media.cleanup.review": [
+    { name: "targeted review valid", params: { projectId: "p1", workspaceId: "w1", selectedNodeIds: ["n1"] }, expectValid: true },
+    { name: "missing workspace target", params: { projectId: "p1" }, expectValid: false },
+    { name: "unknown field", params: { projectId: "p1", workspaceId: "w1", recursive: true }, expectValid: false },
+  ],
   "media.cleanup.plan": [
-    { name: "unscoped bounded plan valid", params: {}, expectValid: true },
-    { name: "project-scoped plan valid", params: { projectId: "p1" }, expectValid: true },
-    { name: "unknown field", params: { recursive: true }, expectValid: false },
+    { name: "targeted media plan valid", params: { projectId: "p1", workspaceId: "w1", action: "purge-media" }, expectValid: true },
+    { name: "deleted node plan valid", params: { projectId: "p1", workspaceId: "w1", action: "purge-deleted-nodes", nodeIds: ["n1"] }, expectValid: true },
+    { name: "failed task plan valid", params: { projectId: "p1", workspaceId: "w1", action: "purge-failed-jobs", jobIds: ["job-1"] }, expectValid: true },
+    { name: "missing action", params: { projectId: "p1", workspaceId: "w1" }, expectValid: false },
+    { name: "unknown field", params: { projectId: "p1", workspaceId: "w1", action: "purge-media", recursive: true }, expectValid: false },
   ],
   "media.cleanup.execute": [
-    { name: "valid plan execution", params: { planId: "plan-1" }, expectValid: true },
+    { name: "exact explicitly confirmed plan", params: {
+      planId: "plan-1", projectId: "p1", workspaceId: "w1", action: "purge-media", revision: 3,
+      workspaceInstanceId: "runtime-1", nodeIds: [], mediaIds: ["m1"], cacheKeys: [], confirmed: true,
+      cleanupTaskNodeIds: [], jobIds: [], jobFiles: [],
+    }, expectValid: true },
+    { name: "requires explicit confirmation", params: {
+      planId: "plan-1", projectId: "p1", workspaceId: "w1", action: "purge-media", revision: 3,
+      workspaceInstanceId: "runtime-1", nodeIds: [], mediaIds: ["m1"], cacheKeys: [], confirmed: false,
+      cleanupTaskNodeIds: [], jobIds: [], jobFiles: [],
+    }, expectValid: false },
+    { name: "exact failed-task file confirmation", params: {
+      planId: "plan-2", projectId: "p1", workspaceId: "w1", action: "purge-failed-jobs", revision: 3,
+      workspaceInstanceId: "runtime-1", nodeIds: [], mediaIds: [], cacheKeys: [], cleanupTaskNodeIds: [],
+      jobIds: ["job-1"], jobFiles: [
+        { jobId: "job-1", path: "/task-records/job-1.json", sizeBytes: 12, lastModifiedMs: 123 },
+        { jobId: "job-1", path: "/task-records/job-1.status.json", sizeBytes: 8, lastModifiedMs: 124 },
+      ], confirmed: true,
+    }, expectValid: true },
     { name: "missing planId", params: {}, expectValid: false },
   ],
   "media.import": [

@@ -30,7 +30,7 @@ import type {
   Clip,
 } from "../types";
 import { WORK_ASSET_MAX_MEMBERS } from "../types/work-asset";
-import { REQUIREMENT_PRIORITIES, REQUIREMENT_STATUSES } from "../types/requirement";
+import { REQUIREMENT_PRIORITIES, REQUIREMENT_STATUSES, validProjectCleanupHandoff } from "../types/requirement";
 import { getActionHandler } from "./registry";
 import { validateWorkbenchAction } from "./workbench-actions";
 
@@ -151,6 +151,7 @@ export class ActionValidator {
         return [{ code: "INVALID_PARAMS", message: "Requirement must be an object", path: "params.requirement" }];
       }
       if (item.reviewRange !== undefined && !validReviewRange(item.reviewRange)) errors.push({ code: "INVALID_PARAMS", message: "Invalid review frame range", path: "params.requirement.reviewRange" });
+      if (item.cleanupHandoff !== undefined && !validProjectCleanupHandoff(item.cleanupHandoff, project.id)) errors.push({ code: "INVALID_PARAMS", message: "Cleanup handoff is invalid or targets another project", path: "params.requirement.cleanupHandoff" });
       if (!item.id || typeof item.id !== "string") errors.push({ code: "INVALID_PARAMS", message: "Requirement id is required", path: "params.requirement.id" });
       if (!Number.isInteger(item.number) || item.number < 1) errors.push({ code: "INVALID_PARAMS", message: "Requirement number must be a positive integer", path: "params.requirement.number" });
       if (!item.title?.trim()) errors.push({ code: "INVALID_PARAMS", message: "Requirement title is required", path: "params.requirement.title" });
@@ -167,6 +168,7 @@ export class ActionValidator {
       if (patch.title !== undefined && !patch.title.trim()) errors.push({ code: "INVALID_PARAMS", message: "Requirement title cannot be empty", path: "params.patch.title" });
       if (patch.status !== undefined && !(REQUIREMENT_STATUSES as readonly string[]).includes(patch.status)) errors.push({ code: "INVALID_PARAMS", message: "Requirement status is invalid", path: "params.patch.status" });
       if (patch.priority !== undefined && !(REQUIREMENT_PRIORITIES as readonly string[]).includes(patch.priority)) errors.push({ code: "INVALID_PARAMS", message: "Requirement priority is invalid", path: "params.patch.priority" });
+      if (patch.cleanupHandoff !== undefined && !validProjectCleanupHandoff(patch.cleanupHandoff, project.id)) errors.push({ code: "INVALID_PARAMS", message: "Cleanup handoff is invalid or targets another project", path: "params.patch.cleanupHandoff" });
     }
     return errors;
   }

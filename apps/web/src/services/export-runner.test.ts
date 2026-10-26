@@ -1,6 +1,18 @@
-import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type MockInstance,
+} from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import type { Project, VideoExportSettings, ExportResult } from "@reelterminal/core";
+import type {
+  Project,
+  VideoExportSettings,
+  ExportResult,
+} from "@reelterminal/core";
 import { getExportingProjectIds } from "./project-export-activity";
 import {
   useExportRunner,
@@ -39,7 +51,12 @@ function fakeProject(): Project {
 }
 
 async function* successGenerator(): AsyncGenerator<
-  { phase: ExportResult extends never ? never : "rendering" | "encoding" | "complete"; progress: number },
+  {
+    phase: ExportResult extends never
+      ? never
+      : "rendering" | "encoding" | "complete";
+    progress: number;
+  },
   ExportResult
 > {
   yield { phase: "rendering", progress: 0.25 };
@@ -53,7 +70,10 @@ async function* failureGenerator(): AsyncGenerator<
   ExportResult
 > {
   yield { phase: "rendering", progress: 0.5 };
-  return { success: false, error: { message: "boom" } } as unknown as ExportResult;
+  return {
+    success: false,
+    error: { message: "boom" },
+  } as unknown as ExportResult;
 }
 
 function fakeBlob(chunks: Uint8Array[]): Blob {
@@ -111,13 +131,17 @@ describe("export-runner pure helpers", () => {
   it("strips filesystem-illegal characters from the suggested filename", () => {
     expect(exportFilename("Vlog: Ep 1", "mp4")).toBe("Vlog Ep 1.mp4");
     expect(exportFilename("6/14/2026", "mov")).toBe("6 14 2026.mov");
-    expect(exportFilename('a<b>c:"d"|e?f*g\\h', "webm")).toBe("a b c d e f g h.webm");
+    expect(exportFilename('a<b>c:"d"|e?f*g\\h', "webm")).toBe(
+      "a b c d e f g h.webm",
+    );
     expect(exportFilename("...hidden", "mp4")).toBe("hidden.mp4");
     expect(exportFilename("///", "mp4")).toBe("export.mp4");
   });
 
   it("keeps legal filename characters intact", () => {
-    expect(exportFilename("My-Video_v2 (final)", "mp4")).toBe("My-Video_v2 (final).mp4");
+    expect(exportFilename("My-Video_v2 (final)", "mp4")).toBe(
+      "My-Video_v2 (final).mp4",
+    );
     expect(sanitizeFilenameBase("café déjà-vu")).toBe("café déjà-vu");
   });
 
@@ -145,13 +169,91 @@ describe("useExportRunner", () => {
   });
 
   it("tracks export lifetime after the view unmounts and releases it on completion", () => {
-    const { result, unmount } = renderHook(() => useExportRunner({ project: fakeProject() }));
+    const onStateChange = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useExportRunner({ project: fakeProject(), onStateChange }),
+    );
     act(() => result.current.beginExport());
     const complete = result.current.markComplete;
     unmount();
     expect(getExportingProjectIds().has("export-project")).toBe(true);
     complete();
     expect(getExportingProjectIds().has("export-project")).toBe(false);
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ complete: true, isExporting: false }),
+    );
+  });
+
+  it("exports the starting snapshot while the editor changes during initialization", async () => {
+    let initialize!: () => void;
+    mockEngine.initialize.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          initialize = resolve;
+        }),
+    );
+    mockEngine.exportVideo.mockImplementation(() => successGenerator());
+    const original = fakeProject();
+    const { result, rerender } = renderHook(
+      ({ project }) => useExportRunner({ project }),
+      { initialProps: { project: original } },
+    );
+    act(() => result.current.beginExport());
+    let exporting!: Promise<void>;
+    act(() => {
+      exporting = result.current.runExport(
+        { format: "mp4" },
+        "mp4",
+        fakeStream(),
+      );
+    });
+    Object.assign(original, { name: "Changed while exporting" });
+    rerender({
+      project: {
+        ...original,
+        timeline: { ...original.timeline, duration: 30 },
+      },
+    });
+    await act(async () => {
+      initialize();
+      await exporting;
+    });
+    expect(mockEngine.exportVideo.mock.calls[0][0]).toMatchObject({
+      name: "My Movie",
+      timeline: { duration: 10 },
+    });
+  });
+
+  it("keeps input protection until a cancelled export stops and never reports delivery", async () => {
+    let initialize!: () => void;
+    mockEngine.initialize.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          initialize = resolve;
+        }),
+    );
+    const onExported = vi.fn();
+    const { result } = renderHook(() =>
+      useExportRunner({ project: fakeProject(), onExported }),
+    );
+    act(() => result.current.beginExport());
+    const writable = fakeStream();
+    let exporting!: Promise<void>;
+    act(() => {
+      exporting = result.current.runExport({}, "mp4", writable);
+    });
+    act(() => result.current.cancel());
+    expect(getExportingProjectIds().has("export-project")).toBe(true);
+    await act(async () => {
+      initialize();
+      await expect(exporting).rejects.toMatchObject({ name: "AbortError" });
+      result.current.failExport(
+        new DOMException("Export cancelled", "AbortError"),
+      );
+    });
+    expect(onExported).not.toHaveBeenCalled();
+    expect(getExportingProjectIds().has("export-project")).toBe(false);
+    expect(writable.abort).toHaveBeenCalled();
   });
 
   it("advances progress and completes on success", async () => {
@@ -169,7 +271,10 @@ describe("useExportRunner", () => {
     expect(result.current.state.isExporting).toBe(true);
     expect(result.current.state.phase).toBe("Initializing...");
 
-    const settings: Partial<VideoExportSettings> = { format: "mp4", codec: "h264" };
+    const settings: Partial<VideoExportSettings> = {
+      format: "mp4",
+      codec: "h264",
+    };
     await act(async () => {
       await result.current.runExport(settings, "mp4", fakeStream());
     });
@@ -183,7 +288,9 @@ describe("useExportRunner", () => {
 
   it("throws and surfaces error on failed result", async () => {
     mockEngine.exportVideo.mockImplementation(() => failureGenerator());
-    const { result } = renderHook(() => useExportRunner({ project: fakeProject() }));
+    const { result } = renderHook(() =>
+      useExportRunner({ project: fakeProject() }),
+    );
 
     await act(async () => {
       result.current.beginExport();
@@ -209,7 +316,9 @@ describe("useExportRunner", () => {
   });
 
   it("swallows AbortError without surfacing an error", () => {
-    const { result } = renderHook(() => useExportRunner({ project: fakeProject() }));
+    const { result } = renderHook(() =>
+      useExportRunner({ project: fakeProject() }),
+    );
     act(() => {
       result.current.beginExport();
     });
@@ -223,7 +332,9 @@ describe("useExportRunner", () => {
   });
 
   it("cancel calls engine.cancel and resets state", () => {
-    const { result } = renderHook(() => useExportRunner({ project: fakeProject() }));
+    const { result } = renderHook(() =>
+      useExportRunner({ project: fakeProject() }),
+    );
     act(() => {
       result.current.beginExport();
     });
@@ -271,7 +382,9 @@ describe("writeBlobToWritable", () => {
     } as unknown as FileSystemWritableFileStream;
 
     const blob = fakeBlob([new Uint8Array([1, 2, 3])]);
-    await expect(writeBlobToWritable(blob, writable)).rejects.toThrow("disk full");
+    await expect(writeBlobToWritable(blob, writable)).rejects.toThrow(
+      "disk full",
+    );
     expect(writable.abort).toHaveBeenCalledTimes(1);
     expect(writable.close).not.toHaveBeenCalled();
   });
@@ -328,20 +441,27 @@ describe("useExportRunner showSavePicker fallback", () => {
   });
 
   it("falls back to an in-memory download when OPFS is unavailable and the picker is blocked", async () => {
-    const picker = vi.fn().mockRejectedValue(
-      new DOMException(
-        "Failed to execute 'showSaveFilePicker' on 'Window': Cross origin sub frames aren't allowed to show a file picker.",
-        "SecurityError",
-      ),
-    );
+    const picker = vi
+      .fn()
+      .mockRejectedValue(
+        new DOMException(
+          "Failed to execute 'showSaveFilePicker' on 'Window': Cross origin sub frames aren't allowed to show a file picker.",
+          "SecurityError",
+        ),
+      );
     win.showSaveFilePicker = picker;
 
-    const { result } = renderHook(() => useExportRunner({ project: fakeProject() }));
+    const { result } = renderHook(() =>
+      useExportRunner({ project: fakeProject() }),
+    );
 
     const writable = await result.current.showSavePicker("My Movie.mp4", "mp4");
     expect(picker).toHaveBeenCalledTimes(1);
 
-    await writeBlobToWritable(fakeBlob([new Uint8Array([1, 2, 3, 4])]), writable);
+    await writeBlobToWritable(
+      fakeBlob([new Uint8Array([1, 2, 3, 4])]),
+      writable,
+    );
 
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(click).toHaveBeenCalledTimes(1);
@@ -378,13 +498,18 @@ describe("useExportRunner showSavePicker fallback", () => {
     });
     setOpfs({ getDirectory });
 
-    const { result } = renderHook(() => useExportRunner({ project: fakeProject() }));
+    const { result } = renderHook(() =>
+      useExportRunner({ project: fakeProject() }),
+    );
     const writable = await result.current.showSavePicker("Clip.mp4", "mp4");
 
     expect(getDirectory).toHaveBeenCalledTimes(1);
     expect(fileHandle.createWritable).toHaveBeenCalledTimes(1);
 
-    await writeBlobToWritable(fakeBlob([new Uint8Array([1, 2, 3, 4, 5])]), writable);
+    await writeBlobToWritable(
+      fakeBlob([new Uint8Array([1, 2, 3, 4, 5])]),
+      writable,
+    );
 
     expect(opfsWrites.reduce((sum, n) => sum + n, 0)).toBe(5);
     expect(opfsClosed).toBe(true);
@@ -399,7 +524,9 @@ describe("useExportRunner showSavePicker fallback", () => {
       .mockRejectedValue(new DOMException("User cancelled", "AbortError"));
     win.showSaveFilePicker = picker;
 
-    const { result } = renderHook(() => useExportRunner({ project: fakeProject() }));
+    const { result } = renderHook(() =>
+      useExportRunner({ project: fakeProject() }),
+    );
 
     await expect(
       result.current.showSavePicker("My Movie.mp4", "mp4"),
@@ -464,12 +591,12 @@ describe("useExportRunner showSavePicker fallback", () => {
       },
     };
 
-    const { result } = renderHook(() => useExportRunner({ project: fakeProject() }));
-    const writable = await result.current.showSavePicker(
-      "Rubik.mp4",
-      "mp4",
-      { streamToFile: true },
+    const { result } = renderHook(() =>
+      useExportRunner({ project: fakeProject() }),
     );
+    const writable = await result.current.showSavePicker("Rubik.mp4", "mp4", {
+      streamToFile: true,
+    });
     const chunk = new Uint8Array([1, 2, 3]);
 
     await writable.write(chunk);

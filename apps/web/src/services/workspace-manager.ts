@@ -8,6 +8,7 @@ import type { Action, PerfOperation, Project } from "@reelterminal/core";
 import { v4 as uuidv4 } from "uuid";
 import i18next from "i18next";
 import { recoverReviewMigration } from "./review-workspace/migration-records";
+import { collectArtifactPaths } from "./artifact-paths";
 import { useUIStore, type SelectionItem } from "../stores/ui-store";
 import { useTimelineStore } from "../stores/timeline-store";
 import { useEngineStore } from "../stores/engine-store";
@@ -252,6 +253,13 @@ export interface FontDependencyReference {
   readonly label?: string;
 }
 
+export interface ArtifactPathReference {
+  readonly pathKey: string;
+  readonly kind: DependencyProjectSnapshot["kind"] | "material" | "template" | "review";
+  readonly referenceId: string;
+  readonly projectId?: string;
+}
+
 export interface WorkspaceManagerSnapshot {
   version: number;
   activeProjectId: string | null;
@@ -283,6 +291,16 @@ export interface NodeCommandOptions {
   expectedRevision?: number;
   idempotencyKey?: string;
 }
+
+export interface CleanupNodeVersion {
+  readonly id: string;
+  readonly createdAt: number;
+  readonly parentNodeId: string | null;
+  readonly recycledAt?: number;
+  readonly mediaIds: readonly string[];
+}
+
+export type CleanupNodeLifecycleAction = "recycle" | "restore" | "purge";
 
 export interface WorkspaceActionBatchIdempotency {
   operation: string;
@@ -1170,6 +1188,26 @@ export class WorkspaceManager {
       store,
       revision: store.getState().workspaceRevision,
       instanceId: this.runtimeIds.get(target.workspaceId)!,
+    };
+  }
+
+  /** Read the live and persisted workspace revision without initializing a new runtime. */
+  async getWorkspaceRevisionGuard(target: WorkspaceTarget): Promise<{
+    projectId: string;
+    workspaceId: string;
+    revision: number;
+    persistedRevision: number;
+    instanceId: string | null;
+  }> {
+    await this.initialize();
+    const record = await this.requireWorkspace(target);
+    const runtime = this.runtimes.get(target.workspaceId);
+    return {
+      projectId: record.projectId,
+      workspaceId: record.id,
+      revision: runtime?.getState().workspaceRevision ?? record.revision,
+      persistedRevision: record.revision,
+      instanceId: this.runtimeIds.get(record.id) ?? null,
     };
   }
 
@@ -2080,6 +2118,111 @@ export class WorkspaceManager {
     this.publish();
   }
 
+  /**
+   * Apply reviewed node lifecycle changes while the caller holds
+   * withMediaReferenceWrite. This deliberately does not acquire that lock:
+   * media cleanup must remove the node references before rescanning bytes.
+   */
+  async applyCleanupNodeLifecycleUnderReferenceWrite(input: {
+    projectId: string;
+    action: CleanupNodeLifecycleAction;
+    expectedNodes: readonly CleanupNodeVersion[];
+  }): Promise<{ appliedNodeIds: string[]; skipped: Array<{ nodeId: string; reason: string }> }> {
+    const candidates: ProjectNodeRecord[] = [];
+    const skipped: Array<{ nodeId: string; reason: string }> = [];
+    for (const expected of input.expectedNodes) {
+      const node = await this.readOne<ProjectNodeRecord>(NODES, expected.id);
+      if (!node || node.projectId !== input.projectId) {
+        skipped.push({ nodeId: expected.id, reason: "Node no longer belongs to the reviewed project" });
+        continue;
+      }
+      const unchanged = node.createdAt === expected.createdAt &&
+        node.parentNodeId === expected.parentNodeId &&
+        node.recycledAt === expected.recycledAt &&
+        JSON.stringify([...node.mediaIds].sort()) === JSON.stringify([...expected.mediaIds].sort());
+      if (!unchanged) {
+        skipped.push({ nodeId: expected.id, reason: "Node state or media references changed after review" });
+        continue;
+      }
+      if (input.action === "recycle" && node.recycledAt !== undefined) {
+        skipped.push({ nodeId: expected.id, reason: "Node is already in the recycle bin" });
+        continue;
+      }
+      if ((input.action === "restore" || input.action === "purge") && node.recycledAt === undefined) {
+        skipped.push({ nodeId: expected.id, reason: "Node is no longer in the recycle bin" });
+        continue;
+      }
+      candidates.push(node);
+    }
+
+    if (input.action === "purge" && candidates.length > 0) {
+      const [allNodes, allWorkspaces] = await Promise.all([
+        this.readAll<ProjectNodeRecord>(NODES),
+        this.readAll<WorkspaceRecord>(WORKSPACES),
+      ]);
+      const candidateIds = new Set(candidates.map((node) => node.id));
+      const blocked = new Map<string, string>();
+      for (const node of candidates) {
+        if (allWorkspaces.some((workspace) => workspace.projectId === input.projectId && workspace.baseNodeId === node.id)) {
+          blocked.set(node.id, "Node is the current base of a workspace");
+          candidateIds.delete(node.id);
+        }
+      }
+      // A newly protected child protects every ancestor, regardless of candidate order.
+      let changed: boolean;
+      do {
+        changed = false;
+        for (const node of candidates) {
+          if (!candidateIds.has(node.id)) continue;
+          const child = allNodes.find((candidate) => candidate.projectId === input.projectId &&
+            candidate.parentNodeId === node.id && !candidateIds.has(candidate.id));
+          if (!child) continue;
+          blocked.set(node.id, `Node is the parent of retained node ${child.id}`);
+          candidateIds.delete(node.id);
+          changed = true;
+        }
+      } while (changed);
+      for (const [nodeId, reason] of blocked) {
+        skipped.push({ nodeId, reason });
+      }
+      if (blocked.size > 0) {
+        for (let index = candidates.length - 1; index >= 0; index -= 1) {
+          if (blocked.has(candidates[index]!.id)) candidates.splice(index, 1);
+        }
+      }
+    }
+
+    if (candidates.length === 0) return { appliedNodeIds: [], skipped };
+    const tx = this.requireDb().transaction([NODES, NODE_SUMMARIES], "readwrite");
+    const completed = transactionDone(tx);
+    const nodesStore = tx.objectStore(NODES);
+    const summariesStore = tx.objectStore(NODE_SUMMARIES);
+    const updatedRecords: ProjectNodeRecord[] = [];
+    for (const node of candidates) {
+      if (input.action === "purge") {
+        nodesStore.delete(node.id);
+        summariesStore.delete(node.id);
+      } else if (input.action === "recycle") {
+        const updated = { ...node, recycledAt: Date.now() };
+        nodesStore.put(updated);
+        summariesStore.put(nodeSummary(updated));
+        updatedRecords.push(updated);
+      } else {
+        const { recycledAt: _recycledAt, ...updated } = node;
+        nodesStore.put(updated);
+        summariesStore.put(nodeSummary(updated));
+        updatedRecords.push(updated);
+      }
+    }
+    await completed;
+    for (const node of candidates) {
+      if (input.action === "purge") this.nodes.delete(node.id);
+    }
+    for (const node of updatedRecords) this.nodes.set(node.id, nodeSummary(node));
+    this.publish();
+    return { appliedNodeIds: candidates.map((node) => node.id), skipped };
+  }
+
   async saveDraft(target: WorkspaceTarget): Promise<RecoveryDraftRecord> {
     await this.initialize();
     return this.createRecoveryDraft(target, "manual");
@@ -2374,6 +2517,38 @@ export class WorkspaceManager {
       }
     }
     return references.filter((reference) => !scope.mediaId || reference.mediaId === scope.mediaId);
+  }
+
+  /** Read file pointers without copying embedded project/font/media bytes. */
+  async getArtifactPathReferences(): Promise<ArtifactPathReference[]> {
+    await this.initialize();
+    const [nodes, workspaces, drafts, tasks] = await Promise.all([
+      this.readAll<ProjectNodeRecord>(NODES),
+      this.readAll<WorkspaceRecord>(WORKSPACES),
+      this.readAll<RecoveryDraftRecord>(DRAFTS),
+      this.readAll<PersistedTaskInput>(TASK_INPUTS),
+    ]);
+    const references: ArtifactPathReference[] = [];
+    const add = (value: unknown, projectId: string, kind: ArtifactPathReference["kind"], referenceId: string): void => {
+      for (const pathKey of collectArtifactPaths(value)) references.push({ pathKey, projectId, kind, referenceId });
+    };
+    for (const node of nodes) add(node.project, node.projectId, "node", node.id);
+    for (const workspace of workspaces) add(workspace.project, workspace.projectId, "workspace-draft", workspace.id);
+    for (const draft of drafts) add(draft.project, draft.projectId, "recovery-draft", draft.id);
+    for (const task of tasks) add(task.project, task.projectId, "task", task.jobId);
+    for (const [workspaceId, runtime] of this.runtimes) {
+      const workspace = this.workspaces.get(workspaceId);
+      if (!workspace) continue;
+      const state = runtime.getState();
+      add([
+        state.getFullProject(),
+        state.actionHistory.getHistoryEntries(),
+        state.actionHistory.getRedoEntries(),
+        state.templateUndoStack,
+        state.templateRedoStack,
+      ], workspace.projectId, "history", workspaceId);
+    }
+    return references;
   }
 
   async getDependencyProjectSnapshots(

@@ -22,6 +22,7 @@ import { readVisualImageSet } from "./artifact-images";
  * never enters this module's state, events, or logs.
  */
 import { mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   toolPresentation,
@@ -47,9 +48,18 @@ import type {
   LiveCollabStatus,
   LiveEvent,
 } from "../../shared/live";
+import type {
+  ProjectLibraryPurgeTrackedWorkFilesRequest,
+  ProjectLibraryPurgeTrackedWorkFilesResult,
+} from "../../shared/project-library-cleanup";
 import { LIVE_ACTIVITY_TIMEOUT_MS } from "../../shared/live";
 import type { LiveStoreBridge } from "./renderer-store-adapter";
-import { DurableTaskLedger } from "./task-ledger";
+import {
+  DurableTaskLedger,
+  type CleanupCandidateTarget,
+  type PurgeFailedTaskRecordsInput,
+  type PurgeFailedTaskRecordsResult,
+} from "./task-ledger";
 import {
   startLiveEndpointServer,
   type RunningLiveEndpoint,
@@ -116,6 +126,9 @@ export interface LiveSessionHost {
   disable(): Promise<LiveCollabStatus>;
   getStatus(): Promise<LiveCollabStatus>;
   getTaskStates(jobIds: readonly string[]): Record<string, JobStatusView["state"] | null>;
+  listCleanupCandidates(target: CleanupCandidateTarget): ReturnType<DurableTaskLedger["listCleanupCandidates"]>;
+  purgeFailedTaskRecords(input: PurgeFailedTaskRecordsInput): PurgeFailedTaskRecordsResult;
+  purgeTrackedWorkFiles(input: ProjectLibraryPurgeTrackedWorkFilesRequest): ProjectLibraryPurgeTrackedWorkFilesResult;
   /** Explicit authorization change. */
   setAccess(access: AgentAccessMode): Promise<LiveCollabStatus>;
   setReviewAccess(input: { access: AgentAccessMode; reviewWorkspaceId: string; instanceId: string }): Promise<import("@reelterminal/core/review/types").ReviewContext>;
@@ -168,7 +181,9 @@ export function createLiveSessionHost(
   const shownReviews = new Set<string>();
   let stagingSwept = false;
   const getTaskLedger = (): DurableTaskLedger => {
-    taskLedger ??= new DurableTaskLedger(path.join(deps.artifactRoot, "task-records"));
+    taskLedger ??= new DurableTaskLedger(path.join(deps.artifactRoot, "task-records"), {
+      artifactRoots: [deps.artifactRoot, ...(deps.mediaRoots ?? []), tmpdir()],
+    });
     // AUD-13: once per host start, remove staging directories a forced exit
     // stranded mid-job. Only `.<id>.<pid>.<uuid>.pending` directories match —
     // published artifacts, registered media and the reuse index are never
@@ -539,6 +554,23 @@ export function createLiveSessionHost(
     getTaskStates(jobIds) {
       const ledger = getTaskLedger();
       return Object.fromEntries(jobIds.map((id) => [id, ledger.getState(id)]));
+    },
+    listCleanupCandidates(target) {
+      return getTaskLedger().listCleanupCandidates(target);
+    },
+    purgeFailedTaskRecords(input) {
+      return getTaskLedger().purgeFailedTaskRecords(input);
+    },
+    purgeTrackedWorkFiles(input) {
+      const result = getTaskLedger().purgeTrackedWorkFiles(input);
+      const filesByJob = new Map<string, string[]>();
+      for (const file of result.deleted) {
+        const fileIds = filesByJob.get(file.jobId) ?? [];
+        fileIds.push(file.fileId);
+        filesByJob.set(file.jobId, fileIds);
+      }
+      for (const [jobId, fileIds] of filesByJob) externalSession?.forgetTrackedArtifactFiles(jobId, fileIds);
+      return result;
     },
     get isEnabled() {
       return enabled;

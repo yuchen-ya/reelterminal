@@ -98,6 +98,16 @@ describe("reelctl command parsing and safety", () => {
     expect(stdout[0]).toContain("reelctl status");
   });
 
+  it("advertises a review-only cleanup entry for the exact visible workspace", async () => {
+    const api = makeClient([]);
+    const stdout: string[] = [];
+    await expect(runReelctl(["status"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    expect(JSON.parse(stdout[0]!).value.cleanupReview).toEqual({
+      command: "media.cleanup.review", arguments: { projectId: "p", workspaceId: "w" },
+    });
+    expect(api.command).not.toHaveBeenCalled();
+  });
+
   it("returns stable JSON envelopes for invocation and connection errors", () => {
     expect(cliErrorEnvelope(new Error("connection refused"))).toEqual({
       ok: false, error: { code: "CONNECTION_FAILED", message: "connection refused" },

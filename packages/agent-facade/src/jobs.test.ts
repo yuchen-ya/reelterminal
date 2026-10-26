@@ -18,6 +18,22 @@ const ARTIFACT: ArtifactRef = {
 };
 
 describe("JobRegistry", () => {
+  it("exposes cleanup review context only for completed video exports", () => {
+    const registry = new JobRegistry();
+    registry.create("export-cleanup", 7, "export", { projectId: "project-1", workspaceId: "workspace-1" });
+    registry.create("analysis-cleanup", 7, "analysis", { projectId: "project-1", workspaceId: "workspace-1" });
+    registry.markDone("export-cleanup", ARTIFACT, "local-ffmpeg");
+    registry.markAnalysisDone("analysis-cleanup", { analysisTypes: ["technicalQuality"], summary: {}, artifacts: [] });
+
+    expect(jobStatusView(registry.get("export-cleanup")!)).toMatchObject({
+      cleanupReview: {
+        command: "media.cleanup.review",
+        arguments: { projectId: "project-1", workspaceId: "workspace-1", exportId: "export-cleanup" },
+      },
+    });
+    expect(jobStatusView(registry.get("analysis-cleanup")!)).not.toHaveProperty("cleanupReview");
+  });
+
   it("keeps task durability and batch checkpoints subscribed to the same job", () => {
     const registry = new JobRegistry();
     registry.create("shared-checkpoints", 2, "analysis");

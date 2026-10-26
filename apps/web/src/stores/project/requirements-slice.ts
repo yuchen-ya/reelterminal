@@ -11,6 +11,7 @@ type Get = StoreApi<ProjectState>["getState"];
 type Set = StoreApi<ProjectState>["setState"];
 
 export interface CreateProjectRequirementInput {
+  readonly cleanupHandoff?: ProjectRequirement["cleanupHandoff"];
   readonly reviewRange?: ProjectRequirement["reviewRange"];
   readonly title: string;
   readonly description?: string;
@@ -45,6 +46,7 @@ export function createProjectRequirementsSlice(
         ...(input.instruction?.trim() ? { instruction: input.instruction.trim() } : {}),
         priority: input.priority ?? "normal",
         status: input.status ?? "ready",
+        ...(input.cleanupHandoff ? { cleanupHandoff: structuredClone(input.cleanupHandoff) } : {}),
         references: structuredClone(input.references ?? []),
         ...(input.reviewRange ? { reviewRange: structuredClone(input.reviewRange) } : {}),
         markerIds: [...(input.markerIds ?? [])],
