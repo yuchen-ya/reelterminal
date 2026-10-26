@@ -32,7 +32,10 @@ describe("review issue quick actions and Agent details", () => {
     await page.getByLabel("任务名称", { exact: true }).fill("问题卡片与审阅说明");
     await page.getByTestId("review-create-node").click();
     await page.getByTestId("review-node-title").waitFor();
-    expect(await page.getByRole("button", { name: "展开审阅任务侧栏", exact: true }).count()).toBe(1);
+    await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
+    const sidebarOpener = page.getByRole("button", { name: "展开审阅任务侧栏", exact: true });
+    expect(await sidebarOpener.count()).toBe(1);
+    await sidebarOpener.click();
     await page.getByTestId("review-access-toggle").click();
     let context: ReviewContext;
     await vi.waitFor(async () => {
@@ -60,6 +63,7 @@ describe("review issue quick actions and Agent details", () => {
     const tree = page.getByTestId("workbench-tree-panel");
     await tree.getByText("测试视频", { exact: true }).click();
     await page.getByTestId("workbench-agent-details").waitFor();
+    await page.getByTitle("查看审阅重点与溯源详情", { exact: true }).click();
     expect(await page.getByTestId("workbench-review-focus").innerText()).toContain("0.4 秒和 1.2 秒");
     expect(await page.getByTestId("workbench-review-conclusion").innerText()).toContain("两处接缝");
     const player = page.locator("[data-workbench-player] video");
@@ -71,6 +75,7 @@ describe("review issue quick actions and Agent details", () => {
       await page.getByRole("button", { name: /标问题帧 @/ }).click();
       await vi.waitFor(async () => expect(await page.getByTestId("workbench-issue-card").count()).toBe(index + 1));
     }
+    await page.getByTitle("展开问题面板", { exact: true }).click();
     const rows = page.getByTestId("workbench-issue-row");
     await page.getByTestId("workbench-batch-select").focus();
     await page.mouse.move(10, 10);
@@ -85,6 +90,9 @@ describe("review issue quick actions and Agent details", () => {
     });
     await rows.nth(0).hover();
     await rows.nth(0).getByRole("button", { name: "删除问题 #1" }).click();
+    await vi.waitFor(async () => expect(await page.getByTestId("workbench-issue-card").count()).toBe(2));
+    const reopenIssues = page.getByTitle("展开问题面板", { exact: true });
+    if (await reopenIssues.isVisible()) await reopenIssues.click();
     await vi.waitFor(async () => expect(await rows.count()).toBe(2));
     expect(await page.getByTestId("workbench-issue-card").allTextContents()).toEqual([
       expect.stringContaining("1.200"), expect.stringContaining("1.600"),
@@ -104,6 +112,8 @@ describe("review issue quick actions and Agent details", () => {
     await tree.getByText("长说明条目", { exact: true }).click();
     const details = page.getByTestId("workbench-agent-details");
     await details.waitFor();
+    const openDetails = page.getByTitle("查看审阅重点与溯源详情", { exact: true });
+    if (await openDetails.isVisible()) await openDetails.click();
     for (const [width, height] of [[1000, 700], [1280, 800], [1600, 1000]]) {
       await page.setViewportSize({ width, height });
       const box = (await details.boundingBox())!;
@@ -117,6 +127,7 @@ describe("review issue quick actions and Agent details", () => {
       await page.screenshot({ path: path.join(ARTIFACTS_DIR, `review-details-${width}.png`), animations: "disabled" });
     }
     await tree.getByText("测试视频", { exact: true }).click();
+    await page.getByTitle("展开问题面板", { exact: true }).click();
     await rows.first().waitFor();
     await rows.first().hover();
   }, 90_000);

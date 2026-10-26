@@ -34,7 +34,8 @@ describe("review tasks, categories and content batches", () => {
       await vi.waitFor(async () => expect(await page.getByTestId("review-node-title").textContent()).toBe(name));
     }
     await page.getByTestId("review-node-list").getByText("角色动画审阅", { exact: true }).click();
-    await page.getByRole("button", { name: "管理分类", exact: true }).click();
+    await page.getByRole("button", { name: "撤销目录操作", exact: true }).click();
+    await page.getByRole("menuitem", { name: "管理分类", exact: true }).click();
     await page.getByLabel("新分类名称").fill("角色动画");
     await page.getByRole("button", { name: "创建", exact: true }).click();
     await page.getByRole("button", { name: "角色动画", exact: true }).waitFor();
@@ -42,6 +43,7 @@ describe("review tasks, categories and content batches", () => {
     await page.getByTestId("review-node-menu-trigger").click();
     await page.getByRole("menuitem", { name: "移到任务分类", exact: true }).hover();
     await page.getByRole("menuitem", { name: "角色动画", exact: true }).click();
+    await page.getByRole("button", { name: "搜索任务", exact: true }).click();
     await page.getByRole("button", { name: "角色动画", exact: true }).click();
     await vi.waitFor(async () => expect(await page.getByTestId("review-node-list").locator("button").count()).toBe(1));
     expect(await page.getByTestId("review-node-list").innerText()).toContain("角色动画审阅");
