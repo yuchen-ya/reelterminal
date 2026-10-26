@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { exportProject, exportArtboard, type ExportFormat, type ExportOptions } from './export-service';
-import type { Project, Artboard } from '../types/project';
+import type { Project, Artboard, GroupLayer, ShapeLayer } from '../types/project';
 
 // ── Canvas mock ──────────────────────────────────────────────────────────────
 //
@@ -22,6 +22,8 @@ function makeMockCanvas() {
     moveTo: vi.fn(),
     lineTo: vi.fn(),
     arc: vi.fn(),
+    rect: vi.fn(),
+    ellipse: vi.fn(),
     fill: vi.fn(),
     stroke: vi.fn(),
     clip: vi.fn(),
@@ -222,6 +224,38 @@ describe('export-service', () => {
 
       const mockCanvas = createElementSpy.mock.results[0].value as ReturnType<typeof makeMockCanvas>;
       expect(mockCanvas._ctx.fillRect).toHaveBeenCalled();
+    });
+
+    it('renders grouped layer children, mirroring the live canvas', async () => {
+      // GroupLayersCommand removes children from artboard.layerIds, so the
+      // artboard only references the group; the exporter must descend into
+      // childIds or grouped content silently disappears from the export.
+      const shape = {
+        id: 'sh1',
+        type: 'shape',
+        visible: true,
+        transform: { x: 10, y: 10, width: 50, height: 50, rotation: 0, scaleX: 1, scaleY: 1, opacity: 1 },
+        shapeType: 'rectangle',
+        shapeStyle: { fillType: 'solid', fill: '#ff0000', fillOpacity: 1, stroke: null },
+      } as unknown as ShapeLayer;
+      const group = {
+        id: 'g1',
+        type: 'group',
+        visible: true,
+        childIds: ['sh1'],
+        transform: { x: 100, y: 50, width: 50, height: 50, rotation: 0, scaleX: 1, scaleY: 1, opacity: 1 },
+      } as unknown as GroupLayer;
+
+      const project = makeProject();
+      project.layers = { g1: group, sh1: shape };
+      const artboard = project.artboards[0];
+      artboard.layerIds = ['g1'];
+
+      await exportArtboard(project, artboard, makeOptions({ format: 'png' }));
+
+      const mockCanvas = createElementSpy.mock.results[0].value as ReturnType<typeof makeMockCanvas>;
+      expect(mockCanvas._ctx.translate).toHaveBeenCalledWith(100, 50);
+      expect(mockCanvas._ctx.fill).toHaveBeenCalled();
     });
   });
 

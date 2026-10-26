@@ -19,6 +19,42 @@ const EXECUTABLE_BASENAME =
     ? "creation_aurora_renderer.exe"
     : "creation_aurora_renderer";
 const MAX_RESPONSE_BYTES = 256 * 1024 * 1024;
+const DEFAULT_NATIVE_AURORA_RENDER_TIMEOUT_MS = 120_000;
+
+let nativeAuroraRenderTimeoutMs = DEFAULT_NATIVE_AURORA_RENDER_TIMEOUT_MS;
+
+export function setNativeAuroraRenderTimeoutForTests(timeoutMs: number | null): void {
+  nativeAuroraRenderTimeoutMs = timeoutMs ?? DEFAULT_NATIVE_AURORA_RENDER_TIMEOUT_MS;
+}
+
+export type NativeAuroraRendererSpawn = (
+  executablePath: string,
+  args: readonly string[],
+) => ChildProcessWithoutNullStreams;
+
+let nativeAuroraRendererSpawnForTests: NativeAuroraRendererSpawn | null = null;
+
+export function setNativeAuroraRendererSpawnForTests(
+  spawnOverride: NativeAuroraRendererSpawn | null,
+): void {
+  nativeAuroraRendererSpawnForTests = spawnOverride;
+}
+
+function spawnRendererChild(
+  executablePath: string,
+  args: readonly string[],
+): ChildProcessWithoutNullStreams {
+  if (nativeAuroraRendererSpawnForTests) {
+    return nativeAuroraRendererSpawnForTests(executablePath, args);
+  }
+  return spawn(executablePath, [...args], { stdio: ["pipe", "pipe", "pipe"] });
+}
+
+function createAbortError(): Error {
+  const error = new Error("Aurora native render aborted.");
+  error.name = "AbortError";
+  return error;
+}
 
 function parseHexColor(
   value: string | undefined,
@@ -235,30 +271,60 @@ function runNativeRenderer(
   executablePath: string,
   requestPath: string,
   responsePath: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(executablePath, ["render", requestPath, responsePath], {
-      stdio: ["ignore", "ignore", "pipe"],
-    });
+    const child = spawnRendererChild(executablePath, [
+      "render",
+      requestPath,
+      responsePath,
+    ]);
     let stderr = "";
+    let settled = false;
+    const settle = (action: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      action();
+    };
+    const timer = setTimeout(() => {
+      settle(() => {
+        child.kill();
+        reject(
+          new Error(
+            `Aurora native renderer file run did not exit within ${nativeAuroraRenderTimeoutMs}ms.`,
+          ),
+        );
+      });
+    }, nativeAuroraRenderTimeoutMs);
+    const onAbort = () => {
+      settle(() => {
+        child.kill();
+        reject(createAbortError());
+      });
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
     child.stderr.on("data", (chunk: Buffer | string) => {
       stderr += chunk.toString();
       if (stderr.length > 16_384) {
         stderr = stderr.slice(-16_384);
       }
     });
-    child.once("error", reject);
+    child.once("error", (error) => settle(() => reject(error)));
     child.once("close", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(
-        new Error(
-          stderr.trim() ||
-            `Aurora native renderer exited with code ${code ?? "unknown"}.`,
-        ),
-      );
+      settle(() => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        reject(
+          new Error(
+            stderr.trim() ||
+              `Aurora native renderer exited with code ${code ?? "unknown"}.`,
+          ),
+        );
+      });
     });
   });
 }
@@ -271,19 +337,54 @@ class NativeAuroraRendererClient {
         readonly resolve: (frame: AuroraRenderedFrame) => void;
         readonly reject: (error: Error) => void;
         expectedBytes: number | null;
+        settle: () => void;
       }
     | null = null;
   private queue = Promise.resolve();
 
   constructor(private readonly executablePath: string) {}
 
-  render(mesh: Mesh, options: RayTraceOptions): Promise<AuroraRenderedFrame> {
-    const run = this.queue.then(() => this.renderOnce(mesh, options));
+  render(
+    mesh: Mesh,
+    options: RayTraceOptions,
+    signal?: AbortSignal,
+  ): Promise<AuroraRenderedFrame> {
+    if (signal?.aborted) {
+      return Promise.reject(createAbortError());
+    }
+    const run = this.queue.then(() =>
+      signal?.aborted
+        ? Promise.reject<AuroraRenderedFrame>(createAbortError())
+        : this.renderOnce(mesh, options, signal),
+    );
     this.queue = run.then(
       () => undefined,
       () => undefined,
     );
-    return run;
+    if (!signal) return run;
+    return new Promise<AuroraRenderedFrame>((resolve, reject) => {
+      let settled = false;
+      const onAbort = () => {
+        if (settled) return;
+        settled = true;
+        reject(createAbortError());
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      run.then(
+        (frame) => {
+          if (settled) return;
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          resolve(frame);
+        },
+        (error) => {
+          if (settled) return;
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          reject(error);
+        },
+      );
+    });
   }
 
   dispose(): void {
@@ -293,12 +394,20 @@ class NativeAuroraRendererClient {
     const pending = this.pending;
     this.pending = null;
     if (pending) {
+      pending.settle();
       pending.reject(new Error("Aurora native renderer client disposed"));
     }
     child?.kill();
   }
 
-  private renderOnce(mesh: Mesh, options: RayTraceOptions): Promise<AuroraRenderedFrame> {
+  private renderOnce(
+    mesh: Mesh,
+    options: RayTraceOptions,
+    signal?: AbortSignal,
+  ): Promise<AuroraRenderedFrame> {
+    if (signal?.aborted) {
+      return Promise.reject(createAbortError());
+    }
     const child = this.ensureChild();
     const payload = buildNativeRenderRequest(mesh, options);
     const message = Buffer.alloc(4 + payload.byteLength);
@@ -306,14 +415,32 @@ class NativeAuroraRendererClient {
     payload.copy(message, 4);
 
     return new Promise<AuroraRenderedFrame>((resolve, reject) => {
-      this.pending = { resolve, reject, expectedBytes: null };
+      let timer: NodeJS.Timeout | undefined;
+      const onAbort = () => {
+        if (this.pending !== pending) return;
+        this.fail(createAbortError());
+      };
+      const pending = {
+        resolve,
+        reject,
+        expectedBytes: null as number | null,
+        settle: () => {
+          if (timer !== undefined) clearTimeout(timer);
+          signal?.removeEventListener("abort", onAbort);
+        },
+      };
+      this.pending = pending;
+      signal?.addEventListener("abort", onAbort, { once: true });
+      timer = setTimeout(() => {
+        if (this.pending !== pending) return;
+        this.fail(
+          new Error(
+            `Aurora native renderer did not respond within ${nativeAuroraRenderTimeoutMs}ms.`,
+          ),
+        );
+      }, nativeAuroraRenderTimeoutMs);
       child.stdin.write(message, (error) => {
         if (!error) return;
-        const current = this.pending;
-        this.pending = null;
-        if (current) {
-          current.reject(error);
-        }
         this.fail(error);
       });
     });
@@ -324,9 +451,7 @@ class NativeAuroraRendererClient {
       return this.child;
     }
 
-    const child = spawn(this.executablePath, ["serve"], {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const child = spawnRendererChild(this.executablePath, ["serve"]);
     this.child = child;
     child.stdout.on("data", (chunk: Buffer | string) => {
       this.handleStdout(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -374,10 +499,12 @@ class NativeAuroraRendererClient {
     this.stdoutBuffer = this.stdoutBuffer.subarray(totalBytes);
     const pending = this.pending;
     this.pending = null;
+    pending.settle();
 
     try {
       pending.resolve(parseNativeRenderResponse(payload));
     } catch (error) {
+      pending.reject(error instanceof Error ? error : new Error(String(error)));
       this.fail(error);
     }
   }
@@ -389,6 +516,7 @@ class NativeAuroraRendererClient {
     this.child = null;
     this.stdoutBuffer = Buffer.alloc(0);
     if (pending) {
+      pending.settle();
       pending.reject(error instanceof Error ? error : new Error(String(error)));
     }
     if (child && !child.killed) {
@@ -433,6 +561,7 @@ async function renderMeshWithNativeAuroraRendererViaFiles(
   executablePath: string,
   mesh: Mesh,
   options: RayTraceOptions,
+  signal?: AbortSignal,
 ): Promise<AuroraRenderedFrame | null> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "reelterminal-aurora-native-"));
   const requestPath = path.join(tempDir, "request.bin");
@@ -440,7 +569,7 @@ async function renderMeshWithNativeAuroraRendererViaFiles(
 
   try {
     await writeFile(requestPath, buildNativeRenderRequest(mesh, options));
-    await runNativeRenderer(executablePath, requestPath, responsePath);
+    await runNativeRenderer(executablePath, requestPath, responsePath, signal);
     const response = await readFile(responsePath);
     return parseNativeRenderResponse(response);
   } finally {
@@ -451,6 +580,7 @@ async function renderMeshWithNativeAuroraRendererViaFiles(
 export async function renderMeshWithNativeAuroraRenderer(
   mesh: Mesh,
   options: RayTraceOptions,
+  signal?: AbortSignal,
 ): Promise<AuroraRenderedFrame | null> {
   const executablePath = findNativeAuroraRendererPath();
   if (!executablePath) {
@@ -459,13 +589,17 @@ export async function renderMeshWithNativeAuroraRenderer(
 
   try {
     const client = getNativeAuroraRendererClient(executablePath);
-    return await client.render(mesh, options);
+    return await client.render(mesh, options, signal);
   } catch (serviceError) {
+    if (signal?.aborted) {
+      throw serviceError;
+    }
     try {
       return await renderMeshWithNativeAuroraRendererViaFiles(
         executablePath,
         mesh,
         options,
+        signal,
       );
     } catch (fileError) {
       const serviceMessage =

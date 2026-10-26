@@ -48,10 +48,12 @@ describe("creation bindings", () => {
     expect(native.bounds).toEqual(cpu.bounds);
   });
 
-  it("loads the compiled native addon (when built) and matches the CPU reference", () => {
+  it("loads the compiled native addon (when built) and matches the CPU reference", (ctx) => {
     const addon = loadNativeAddon();
     if (!addon) {
-      expect(addon).toBeUndefined();
+      // No compiled .node in this checkout (MSVC build not performed): the
+      // native path is UNVERIFIED here — report it as skipped, never as pass.
+      ctx.skip();
       return;
     }
     expect(addon.orc_version()).toBe("0.1.0");
@@ -62,6 +64,40 @@ describe("creation bindings", () => {
     expect(native.vertexCount).toBe(cpu.vertexCount);
     expect(native.triangleCount).toBe(cpu.triangleCount);
     expect(native.bounds).toEqual(cpu.bounds);
+  });
+
+  it("returns zeroed RGBA when the compiled addon rejects a degenerate mesh (when built)", (ctx) => {
+    const addon = loadNativeAddon();
+    if (!addon?.orc_render_mesh) {
+      // Same as above: without the compiled addon this asserts nothing about
+      // native memory behavior, so it must not be counted as a pass.
+      ctx.skip();
+      return;
+    }
+    const backend = loadCreationBackend({ nativeModule: addon });
+    const image = backend.renderMesh(
+      {
+        positions: new Float32Array(0),
+        normals: new Float32Array(0),
+        uvs: new Float32Array(0),
+        indices: new Uint32Array(0),
+      },
+      {
+        width: 4,
+        height: 4,
+        camera: {
+          position: { x: 0, y: 0, z: 3 },
+          target: { x: 0, y: 0, z: 0 },
+          fov: 45,
+        },
+      },
+    );
+    // The engine rejects the empty mesh but still reports the frame size; the
+    // returned buffer must be fully zeroed, never uninitialized heap memory.
+    expect(image.width).toBe(4);
+    expect(image.height).toBe(4);
+    expect(image.rgba.length).toBe(4 * 4 * 4);
+    expect(image.rgba.every((value) => value === 0)).toBe(true);
   });
 
   it("instantiates and runs the WASM proof-of-concept module", async () => {

@@ -17,15 +17,18 @@ export async function runAuroraSequenceSession(
     const timeSeconds = totalFrames === 1
       ? 0
       : Math.min(frameIndex / args.frameRate, maxTime);
-    const result = await renderAuroraFrame({
-      scene: args.scene,
-      assets: args.assets,
-      width: args.width,
-      height: args.height,
-      background: args.background,
-      timeSeconds,
-      quality: args.quality ?? "final",
-    });
+    const result = await renderAuroraFrame(
+      {
+        scene: args.scene,
+        assets: args.assets,
+        width: args.width,
+        height: args.height,
+        background: args.background,
+        timeSeconds,
+        quality: args.quality ?? "final",
+      },
+      signal,
+    );
     if (signal?.aborted) return;
     emit({
       kind: "frame",

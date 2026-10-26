@@ -1,4 +1,4 @@
-import type { Project, Artboard, Layer, ImageLayer, TextLayer, ShapeLayer, Filter } from '../types/project';
+import type { Project, Artboard, Layer, ImageLayer, TextLayer, ShapeLayer, GroupLayer, Filter } from '../types/project';
 
 // Only raster formats the exporter can actually encode; the runtime guard
 // below still rejects untyped callers pushing legacy 'svg'/'pdf' strings.
@@ -126,6 +126,29 @@ async function renderLayerToContext(
   layer: Layer,
   project: Project
 ): Promise<void> {
+  // Groups replace their children in artboard.layerIds (GroupLayersCommand),
+  // so the exporter must descend into childIds like the live canvas does;
+  // skipping this branch silently dropped all grouped content from exports.
+  if (layer.type === 'group') {
+    const group = layer as GroupLayer;
+    if (!group.visible) return;
+    const { transform } = group;
+    ctx.save();
+    ctx.translate(transform.x, transform.y);
+    ctx.rotate((transform.rotation * Math.PI) / 180);
+    ctx.scale(transform.scaleX, transform.scaleY);
+    ctx.globalAlpha *= transform.opacity;
+    const sortedChildIds = [...group.childIds].reverse();
+    for (const childId of sortedChildIds) {
+      const child = project.layers[childId];
+      if (child && child.visible) {
+        await renderLayerToContext(ctx, child, project);
+      }
+    }
+    ctx.restore();
+    return;
+  }
+
   const { transform } = layer;
   const shadow = layer.shadow ?? { enabled: false, color: 'rgba(0, 0, 0, 0.5)', blur: 10, offsetX: 0, offsetY: 4 };
   const innerShadow = layer.innerShadow ?? { enabled: false, color: 'rgba(0, 0, 0, 0.5)', blur: 10, offsetX: 2, offsetY: 2 };

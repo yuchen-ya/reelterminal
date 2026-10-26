@@ -7,8 +7,10 @@
  * optional — environments without it report the analysis type unavailable
  * instead of failing the whole facade.
  *
- * Model acquisition is explicit: REELTERMINAL_VAD_MODEL points at a local
- * copy (still sha-verified so the v5 input contract cannot silently drift),
+ * Model acquisition is explicit: the audio-environment vadModel entry or
+ * REELTERMINAL_VAD_MODEL points at a local copy (the config entry wins over
+ * the env var; still sha-verified so the v5 input contract cannot silently
+ * drift),
  * otherwise the pinned file is downloaded once from the locked GitHub tag
  * into ~/.reelterminal/models/. Audio never leaves the machine: decoding is
  * the same local FFmpeg subprocess path as the other audio kernels, and only
@@ -126,7 +128,7 @@ export async function speechVadRuntimePreflight(): Promise<{ available: true } |
   };
 }
 
-/** Where the model is expected. REELTERMINAL_VAD_MODEL wins when set. */
+/** Where the model is expected. The audio-environment vadModel config wins over REELTERMINAL_VAD_MODEL. */
 export function speechVadModelPath(): string {
   const override = (readAudioEnvironment().vadModel ?? process.env.REELTERMINAL_VAD_MODEL);
   if (override) return resolve(override);
@@ -355,7 +357,7 @@ async function computeSpeechVadPreflight(
   if (!fileStat?.isFile()) {
     return {
       available: false,
-      reason: `Silero VAD ${SILERO_VAD_MODEL.version} model is not present at ${path}. The first media.analyze_start with analysisTypes ["speechActivity"] downloads it once (≈2.2 MiB, MIT) from ${SILERO_VAD_MODEL.url}; on restricted networks download that file manually and point REELTERMINAL_VAD_MODEL at it.`,
+      reason: `Silero VAD ${SILERO_VAD_MODEL.version} model is not present at ${path}. The first media.analyze_start with analysisTypes ["speechActivity"] downloads it once (≈2.2 MiB, MIT) from ${SILERO_VAD_MODEL.url}; on restricted networks download that file manually and point the audio-environment vadModel config or REELTERMINAL_VAD_MODEL at it (the config entry takes precedence).`,
       requires: `Silero VAD ${SILERO_VAD_MODEL.version} weights (${SILERO_VAD_MODEL.bytes} bytes, sha256 ${SILERO_VAD_MODEL.sha256})`,
     };
   }

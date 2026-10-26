@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <node_api.h>
 #include "creation_core.h"
@@ -238,6 +239,10 @@ static napi_value RenderMesh(napi_env env, napi_callback_info info) {
     napi_throw_error(env, NULL, "Failed to allocate RGBA buffer");
     return NULL;
   }
+  // orc_render_mesh_rgba() returns without writing pixels when it rejects the
+  // mesh; napi_create_buffer memory is uninitialized, so zero it up front to
+  // keep a rejected render from exposing heap contents to JS.
+  memset(rgba_data, 0, rgba_length);
 
   orc_render_stats stats = orc_render_mesh_rgba(positions,
                                                 (int32_t)position_count,

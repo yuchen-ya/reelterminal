@@ -240,6 +240,10 @@ describe("VideoEngine motion asset resolver", () => {
       const engine = new VideoEngine();
       await engine.initialize(bootstrapOperation);
       expect(decoder.initialize).not.toHaveBeenCalled();
+      // Default-off boundary: no decoder singleton, no worker startup.
+      await expect(engine.initializeParallelDecoding()).resolves.toBe(false);
+      expect(decoder.initialize).not.toHaveBeenCalled();
+      engine.setParallelDecoding(true);
       await engine.initializeParallelDecoding();
 
       expect(engine.isInitialized()).toBe(true);

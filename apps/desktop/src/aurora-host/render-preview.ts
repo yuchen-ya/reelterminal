@@ -131,6 +131,7 @@ function renderBlankFrame(
 
 export async function renderAuroraFrame(
   args: AuroraRenderPreviewArgs,
+  signal?: AbortSignal,
 ): Promise<AuroraRenderedFrame> {
   const issues = validateCreationState({
     version: "0.1.0",
@@ -181,7 +182,11 @@ export async function renderAuroraFrame(
   const nativeFrame = await renderMeshWithNativeAuroraRenderer(
     baked.mesh,
     renderOptions,
+    signal,
   ).catch((error) => {
+    if (signal?.aborted) {
+      throw error;
+    }
     console.warn(
       "[Aurora] native renderer executable failed, falling back to in-process backend",
       error,
@@ -209,8 +214,9 @@ export async function renderAuroraFrame(
 
 export async function renderAuroraPreview(
   args: AuroraRenderPreviewArgs,
+  signal?: AbortSignal,
 ): Promise<AuroraRenderPreviewResult> {
-  const frame = await renderAuroraFrame(args);
+  const frame = await renderAuroraFrame(args, signal);
   const png = encodePng(frame.rgba, frame.width, frame.height);
   const pngBase64 = encodeBase64(png);
   return {

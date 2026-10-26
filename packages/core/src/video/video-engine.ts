@@ -168,7 +168,10 @@ export class VideoEngine {
   private decodeCtx: OffscreenCanvasRenderingContext2D | null = null;
 
   private parallelDecoder: ParallelFrameDecoder | null = null;
-  private useParallelDecoding = true;
+  // Off by default: ParallelFrameDecoder has no wired decode entry point
+  // (nothing enqueues into its request queue), so enabled workers would decode
+  // zero frames. Opt back in with setParallelDecoding(true).
+  private useParallelDecoding = false;
   private parallelDecoderPreparation: Promise<boolean> | null = null;
   private decoderGeneration = 0;
   private videoElementCache: Map<

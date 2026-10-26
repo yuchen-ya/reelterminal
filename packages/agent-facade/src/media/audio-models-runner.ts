@@ -147,21 +147,35 @@ export interface AudioModelProbeResult {
   readonly versions: Readonly<Record<string, string | boolean | null>>;
 }
 
-interface ProbeState {
+export type AudioModelsProbeResult =
+  | { available: true; details: AudioModelProbeResult }
+  | { available: false; reason: string };
+
+/**
+ * One probe spawn per interpreter + script + qwen mode per process. The worker
+ * payload never depends on requiredPackages (it reports import availability
+ * for every package; each caller checks its own subset), so package-set and
+ * task variants reuse the cached outcome instead of respawning the same
+ * interpreter. A different interpreter string, script bytes or qwen mode is a
+ * different key and probes for real.
+ */
+interface ProbeOutcome {
   readonly key: string;
-  readonly result: { available: true; details: AudioModelProbeResult } | { available: false; reason: string };
+  readonly ok: boolean;
+  readonly result?: Record<string, unknown>;
+  readonly error?: string;
 }
-let probeCache: ProbeState | null = null;
-let probeOverride: (() => Promise<ProbeState["result"]>) | null = null;
+const candidateProbeOutcomes = new Map<string, ProbeOutcome>();
+let probeOverride: (() => Promise<AudioModelsProbeResult>) | null = null;
 
 /** Test seam: replace the interpreter/script probe without spawning Python. */
-export function setAudioModelsProbeForTests(probe: (() => Promise<ProbeState["result"]>) | null): void {
+export function setAudioModelsProbeForTests(probe: (() => Promise<AudioModelsProbeResult>) | null): void {
   probeOverride = probe;
-  probeCache = null;
+  candidateProbeOutcomes.clear();
 }
 
 export function clearAudioModelsProbeCache(): void {
-  probeCache = null;
+  candidateProbeOutcomes.clear();
 }
 
 /** Where modelscope caches weights unless the user points it elsewhere. */
@@ -485,13 +499,11 @@ export async function runAudioModelTask(
   }, options);
 }
 
-/** Probe once per process: interpreter + script + import availability. */
+/** Probe once per interpreter and script per process; package subsets are checked per call. */
 export async function probeAudioModelsRuntime(
   requiredPackages: readonly string[] = DEFAULT_AUDIO_MODEL_PACKAGES,
   task?: unknown,
-): Promise<
-  { available: true; details: AudioModelProbeResult } | { available: false; reason: string }
-> {
+): Promise<AudioModelsProbeResult> {
   if (probeOverride) return probeOverride();
   const script = await resolveAudioModelsScript();
   if (!script) {
@@ -502,33 +514,44 @@ export async function probeAudioModelsRuntime(
     return { available: false, reason: "no Python interpreter is available for optional audio models — set REELTERMINAL_AUDIO_MODELS_PYTHON to an interpreter with the required packages" };
   }
   const scriptInfo = await stat(script);
-  const key = `${requiredPackages.join(",")}|${task ?? "default"}|${candidates.map((candidate) => candidate.python).join("|")}|${script}|${scriptInfo.size}|${Math.round(scriptInfo.mtimeMs)}`;
-  if (probeCache?.key === key) return probeCache.result;
+  const qwen = task === "caption-qwen" || task === "caption-align";
   let lastReason = "no candidate interpreter could run the audio-model probe";
   for (const candidate of candidates) {
-    try {
-      const result = await runAudioModelProcess(candidate.python, script, { task: "probe", qwen: task === "caption-qwen" || task === "caption-align" }, { timeoutMs: 180_000 });
-      const packages = (result.packages ?? {}) as Record<string, boolean>;
-      const missing = requiredPackages.filter((name) => !packages[name]);
-      if (missing.length > 0) {
-        lastReason = `interpreter "${candidate.python}" cannot import the required audio-model packages (${missing.join(", ")}); install them or point REELTERMINAL_AUDIO_MODELS_PYTHON at an environment that has them`;
-        continue;
+    const key = `${candidate.python}|${script}|${scriptInfo.size}|${Math.round(scriptInfo.mtimeMs)}|${qwen}`;
+    let outcome = candidateProbeOutcomes.get(key);
+    if (!outcome) {
+      try {
+        const result = await runAudioModelProcess(candidate.python, script, { task: "probe", qwen }, { timeoutMs: 180_000 });
+        outcome = { key, ok: true, result };
+      } catch (error) {
+        outcome = {
+          key,
+          ok: false,
+          error: `interpreter "${candidate.python}" failed the audio-model probe: ${error instanceof Error ? error.message : String(error)}`,
+        };
       }
-      const details: AudioModelProbeResult = {
+      candidateProbeOutcomes.set(key, outcome);
+    }
+    if (!outcome.ok) {
+      lastReason = outcome.error!;
+      continue;
+    }
+    const packages = (outcome.result!.packages ?? {}) as Record<string, boolean>;
+    const missing = requiredPackages.filter((name) => !packages[name]);
+    if (missing.length > 0) {
+      lastReason = `interpreter "${candidate.python}" cannot import the required audio-model packages (${missing.join(", ")}); install them or point REELTERMINAL_AUDIO_MODELS_PYTHON at an environment that has them`;
+      continue;
+    }
+    return {
+      available: true as const,
+      details: {
         python: candidate.python,
-        pythonVersion: String(result.python ?? "unknown"),
+        pythonVersion: String(outcome.result!.python ?? "unknown"),
         scriptDir: dirname(script),
         packages,
-        versions: (result.versions ?? {}) as Record<string, string | boolean | null>,
-      };
-      const value = { available: true as const, details };
-      probeCache = { key, result: value };
-      return value;
-    } catch (error) {
-      lastReason = `interpreter "${candidate.python}" failed the audio-model probe: ${error instanceof Error ? error.message : String(error)}`;
-    }
+        versions: (outcome.result!.versions ?? {}) as Record<string, string | boolean | null>,
+      },
+    };
   }
-  const value = { available: false as const, reason: lastReason };
-  probeCache = { key, result: value };
-  return value;
+  return { available: false as const, reason: lastReason };
 }

@@ -308,7 +308,16 @@ export class MediaBunnyEngine {
     }
 
     const decoder = new ExportFrameDecoder(this.mediabunny!, file, width);
-    const success = await decoder.initialize();
+    let success: boolean;
+    try {
+      success = await decoder.initialize();
+    } catch (error) {
+      // initialize() self-disposes only on its false paths; a thrown parse
+      // failure must release the already-created input the same way
+      // getFrame's per-stream creation below does.
+      decoder.dispose();
+      throw error;
+    }
     if (!success) {
       return null;
     }

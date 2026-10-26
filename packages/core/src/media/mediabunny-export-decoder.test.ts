@@ -1,5 +1,33 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ExportFrameDecoder } from "./mediabunny-engine";
+import { ExportFrameDecoder, MediaBunnyEngine } from "./mediabunny-engine";
+
+// Engine-level tests drive MediaBunnyEngine.initialize()'s dynamic import.
+// Existing ExportFrameDecoder tests inject mock namespaces directly and never
+// load the module, so this file-wide mock leaves them untouched.
+const engineMediabunny = vi.hoisted(() => ({
+  getPrimaryVideoTrack: undefined as (() => Promise<unknown>) | undefined,
+  inputDispose: undefined as (() => void) | undefined,
+}));
+
+vi.mock("mediabunny", () => {
+  class Input {
+    async getPrimaryVideoTrack(): Promise<unknown> {
+      if (!engineMediabunny.getPrimaryVideoTrack) {
+        throw new Error("mock mediabunny not configured");
+      }
+      return engineMediabunny.getPrimaryVideoTrack();
+    }
+    [Symbol.dispose](): void {
+      engineMediabunny.inputDispose?.();
+    }
+  }
+  return {
+    Input,
+    ALL_FORMATS: [],
+    BlobSource: class {},
+    CanvasSink: class {},
+  };
+});
 
 function findFrameAtOrBefore(
   frames: Array<{ timestamp: number }>,
@@ -187,5 +215,47 @@ describe("ExportFrameDecoder", () => {
     await Promise.resolve();
     expect(disposed).toHaveBeenCalledTimes(2);
     expect(returned).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("MediaBunnyEngine.createExportDecoder", () => {
+  afterEach(() => {
+    engineMediabunny.getPrimaryVideoTrack = undefined;
+    engineMediabunny.inputDispose = undefined;
+  });
+
+  it("releases the input source when decoder initialization throws", async () => {
+    engineMediabunny.getPrimaryVideoTrack = () =>
+      Promise.reject(new Error("corrupt container"));
+    const inputDispose = vi.fn();
+    engineMediabunny.inputDispose = inputDispose;
+
+    const engine = new MediaBunnyEngine();
+    await engine.initialize();
+    await expect(
+      engine.createExportDecoder("m1", new Blob(["corrupt"])),
+    ).rejects.toThrow("corrupt container");
+    expect(inputDispose).toHaveBeenCalledTimes(1);
+    expect(engine.getExportDecoder("m1")).toBeNull();
+  });
+
+  it("keeps and disposes a decoder on the success path", async () => {
+    engineMediabunny.getPrimaryVideoTrack = () =>
+      Promise.resolve({
+        displayWidth: 640,
+        displayHeight: 360,
+        canDecode: async () => true,
+      });
+    const inputDispose = vi.fn();
+    engineMediabunny.inputDispose = inputDispose;
+
+    const engine = new MediaBunnyEngine();
+    await engine.initialize();
+    const decoder = await engine.createExportDecoder("m2", new Blob(["ok"]));
+    expect(decoder).not.toBeNull();
+    expect(engine.getExportDecoder("m2")).toBe(decoder);
+    expect(inputDispose).not.toHaveBeenCalled();
+    engine.disposeExportDecoder("m2");
+    expect(inputDispose).toHaveBeenCalledTimes(1);
   });
 });

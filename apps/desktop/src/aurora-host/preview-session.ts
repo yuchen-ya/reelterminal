@@ -54,12 +54,15 @@ export async function runAuroraPreviewSession(
   const passes = buildPreviewPasses(args.width, args.height);
   for (const [index, pass] of passes.entries()) {
     if (signal?.aborted) return;
-    const result = await renderAuroraPreview({
-      ...args,
-      width: pass.width,
-      height: pass.height,
-      quality: pass.stage === "final" ? args.quality : "preview",
-    });
+    const result = await renderAuroraPreview(
+      {
+        ...args,
+        width: pass.width,
+        height: pass.height,
+        quality: pass.stage === "final" ? args.quality : "preview",
+      },
+      signal,
+    );
     if (signal?.aborted) return;
     emit({
       kind: "update",
