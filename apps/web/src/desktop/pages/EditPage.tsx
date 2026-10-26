@@ -103,7 +103,10 @@ function RowHandle({
   );
 }
 
-export function EditPage(): JSX.Element {
+export function EditPage({ onImportRequested, onConnectRequested }: {
+  onImportRequested?: () => void;
+  onConnectRequested?: () => void;
+} = {}): JSX.Element {
   const { t } = useTranslation();
   useEffect(() => () => stopTour(), []);
   const mediaW = useResizable({
@@ -146,7 +149,7 @@ export function EditPage(): JSX.Element {
   return (
     <div className="grid h-full min-h-0 w-full gap-px overflow-hidden bg-border" style={gridStyle}>
       <DockRegion label={t("desktop.editor.media")} name={t("desktop.editor.media")} area="media" icon="photo.on.rectangle">
-        <AssetsPanel />
+        <AssetsPanel onImportRequested={onImportRequested} />
         <ColumnHandle edge="right" onPointerDown={mediaW.onHandlePointerDown} />
       </DockRegion>
 
@@ -164,7 +167,7 @@ export function EditPage(): JSX.Element {
       <div className="relative flex min-h-0 flex-col overflow-hidden bg-bg-1" style={{ gridArea: "lower" }}>
         <RowHandle onPointerDown={timelineH.onHandlePointerDown} />
         <div className="h-9 shrink-0">
-          <CollabStatusBar />
+          <CollabStatusBar onConnectRequested={onConnectRequested} />
         </div>
         <VersionPreviewBanner />
         <div className="min-h-0 flex-1">

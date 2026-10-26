@@ -4,6 +4,7 @@ node_modules/
 
 # Build outputs
 dist/
+apps/web/dist-showcase/
 build/
 .next/
 out/

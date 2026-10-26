@@ -11,7 +11,9 @@ import { useProjectStore } from "../../stores/project-store";
 import { toast, useNotificationStore } from "../../stores/notification-store";
 
 /** Compact status for local CLI access to the open desktop project. */
-export function CollabStatusBar(): JSX.Element {
+export function CollabStatusBar({ onConnectRequested }: {
+  onConnectRequested?: () => void;
+} = {}): JSX.Element {
 
   const { t } = useTranslation();
   const [changingAccess, setChangingAccess] = useState(false);
@@ -43,7 +45,7 @@ export function CollabStatusBar(): JSX.Element {
     >
       <button
         type="button"
-        disabled={!enabled || changingAccess}
+        disabled={!onConnectRequested && (!enabled || changingAccess)}
         aria-pressed={access === "write"}
         title={t(
           access === "read-only"
@@ -52,6 +54,10 @@ export function CollabStatusBar(): JSX.Element {
         )}
         data-testid="agent-access-toggle"
         onClick={async () => {
+          if (onConnectRequested) {
+            onConnectRequested();
+            return;
+          }
           setChangingAccess(true);
           try {
             await setAccess(access === "write" ? "read-only" : "write");
@@ -84,7 +90,7 @@ export function CollabStatusBar(): JSX.Element {
       >
         {access === "write" ? <Pencil size={12} /> : <LockKeyhole size={12} />}
         <span>
-          {t(
+          {onConnectRequested ? "Agent" : t(
             enabled
               ? "desktop.collaboration.agentReadable"
               : "desktop.collaboration.agentStarting",
@@ -92,7 +98,7 @@ export function CollabStatusBar(): JSX.Element {
         </span>
         <span aria-hidden>·</span>
         <span data-testid="agent-access-mode">
-          {t(
+          {onConnectRequested ? "未连接" : t(
             access === "write"
               ? "desktop.collaboration.writable"
               : "desktop.collaboration.readOnly",
