@@ -19,6 +19,14 @@
 - 所有写操作走 props 回调并 `await`;失败结果(WorkbenchMutationResult ok:false)必须显示错误,不得静默。
 - 未接通的能力(如无真实数据)显示"不可用/未提供",不得显示假成功。
 
+## 父节点组织与视频比较
+
+- `WorkbenchParentMode` 由 Core 正式导出。组织模式取 `item.groupMode ?? item.lineage?.groupMode`；`board` 为默认收拢的聚合画板，`category` 为默认展开的分类目录。
+- 比较基准取 `item.compareWithItemId ?? item.videoPayload?.compareWithItemId`，同时映射到视图顶层与 `VideoPayloadView`，不再对这些正式字段做临时类型断言。Core `WorkbenchVideoPayload` 只保存比较元数据，媒体与 markers 仍从 content 构建。
+- `toItemView` 当前位于 `useWorkbenchController.ts`；独立 Review 的完整条目复用它。Review 列表摘要也保留组织模式、lineage 和比较 ID；不能把 Core 的元数据 payload 当成带 media/markers 的完整视图 payload。
+- Agent 使用 `workbench.ingest`、`review.ingest` 或步骤完成的 ingest。标题和 `nodeSlotLabel` 建议 4–8 个汉字或不超过 15 字符，避免重复批次名前缀。
+- 预绑定基准条目不会建立视频时间映射；没有明确映射时按现有独立播放契约处理。
+
 ## 样式契约(Tailwind 3,宿主 token)
 
 原型是 Tailwind 4 + 自定义 CSS 变量;宿主是 Tailwind 3.4 + `tailwind.config.js` token。逐项替换:

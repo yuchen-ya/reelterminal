@@ -108,3 +108,23 @@ rapid selection, hidden RAF and bounded dual-view measurements. It runs against
 an unpacked EXE with `REELTERMINAL_E2E_APP_EXECUTABLE`. Evidence follows
 `e2e/.artifacts/review-model3d*`; synthetic measurements do not validate user
 models or arbitrary hardware. See `docs/REVIEW-3D-PREVIEW-DELIVERY.md` at repo root.
+
+## 1.3.1 packaged regression selection
+
+The local Windows package validation is recorded in
+[RELEASE-1.3.1.md](../../../docs/RELEASE-1.3.1.md).
+The selected specs use isolated profiles and the packaged executable:
+
+- whole-template-history.e2e.ts saves a local project template and creates an
+  independent project, preserving source content and pending redo.
+- review-navigation.e2e.ts creates tasks, opens category management from the
+  directory menu, uses the search/filter drawer to select a category, and
+  switches batches with both mouse and keyboard.
+- review-image-loading.e2e.ts checks consecutive image loading and reachable controls.
+- review-issue-actions.e2e.ts explicitly opens the sidebar, issue panel and review
+  details before testing their controls. After content refresh or item switches,
+  it reopens the collapsed issue panel; hidden DOM is not treated as visible UI.
+- titlebar-drag.e2e.ts verifies Windows caption hit regions and clickable controls.
+
+These checks do not exercise the installation wizard, OS drag-out receipt,
+pressure-sensitive hardware or optional model installation.

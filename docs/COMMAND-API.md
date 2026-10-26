@@ -291,8 +291,8 @@ review-to-board adoption, batch persistence boundaries and rendering details.
 ## AI material workbench
 
 The workbench (`workbench.*` verbs, shared by reelctl and the GUI project
-store) reviews batches of Agent-produced items. Four content kinds are
-first-class: `image`, `text`, `data` and `video`. Text corpora and data tables
+store) reviews batches of Agent-produced items. Five content kinds are
+first-class: `image`, `text`, `data`, `video` and `model3d`. Text corpora and data tables
 carry their own payloads — they are never disguised as media files; image and
 video items reference existing project media ids (import bytes first).
 
