@@ -1,123 +1,90 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { TemplateSummary } from "@reelterminal/core";
-import { useEngineStore } from "../../../stores/engine-store";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TemplateEngine, type Template } from "@reelterminal/core";
+import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { TemplatesTab } from "./TemplatesTab";
 
-const TEMPLATES: TemplateSummary[] = [
-  {
-    id: "tpl-youtube-intro",
-    name: "YouTube Intro",
-    category: "youtube",
-    thumbnailUrl: null,
-    placeholderCount: 2,
-    duration: 10,
-  },
-  {
-    id: "tpl-social-hook",
-    name: "Social Hook",
-    category: "social-media",
-    thumbnailUrl: "https://example.com/thumb.png",
-    placeholderCount: 1,
-    duration: 15,
-  },
-];
+const service = vi.hoisted(() => ({ listProjectTemplates: vi.fn(), loadProjectTemplate: vi.fn(), createProjectFromTemplate: vi.fn(),
+  deleteProjectTemplate: vi.fn(), inspectProjectTemplate: vi.fn(), saveProjectTemplate: vi.fn(), updateProjectTemplate: vi.fn() }));
+vi.mock("../../../services/project-templates", () => service);
 
-function stubTemplateEngine() {
-  return {
-    initialize: async () => {},
-    listTemplates: async () => TEMPLATES,
-    loadTemplate: async () => null,
-    applyTemplate: () => {
-      throw new Error("not used in these tests");
-    },
-  };
-}
+let template: Template;
+let summary: Record<string, unknown>;
+const previousBridge = window.reelterminal;
+beforeEach(() => {
+  vi.clearAllMocks();
+  const project = createEmptyProject("Source");
+  template = { ...new TemplateEngine().createFromProject(project, { name: "My template", description: "Product announcement",
+    category: "custom", tags: ["brand"], placeholders: [] }), projectSnapshot: project };
+  summary = { id: template.id, name: template.name, description: template.description, tags: template.tags,
+    thumbnailUrl: template.thumbnailUrl, createdAt: template.createdAt, modifiedAt: template.modifiedAt,
+    version: template.version, hasSnapshot: true, duration: template.timeline.duration };
+  service.listProjectTemplates.mockResolvedValue([summary]);
+  service.loadProjectTemplate.mockResolvedValue(template);
+  service.inspectProjectTemplate.mockResolvedValue([]);
+  service.createProjectFromTemplate.mockResolvedValue(undefined);
+});
+afterEach(() => { cleanup(); window.reelterminal = previousBridge; vi.restoreAllMocks(); });
 
-describe("TemplatesTab", () => {
-  const originalGetTemplateEngine =
-    useEngineStore.getState().getTemplateEngine;
-
-  beforeEach(() => {
-    useEngineStore.setState({
-      getTemplateEngine: async () =>
-        stubTemplateEngine() as unknown as Awaited<
-          ReturnType<typeof originalGetTemplateEngine>
-        >,
-    });
-  });
-
-  afterEach(() => {
-    cleanup();
-    useEngineStore.setState({ getTemplateEngine: originalGetTemplateEngine });
-  });
-
-  it("lays out template cards at content height so previews and labels stay inside the card", async () => {
+describe("personal template browser", () => {
+  it("searches descriptions and tags, then requires an explicit new-project action", async () => {
+    window.reelterminal = { platform: "desktop" } as NonNullable<Window["reelterminal"]>;
+    const hash = window.location.hash;
     render(<TemplatesTab />);
-
-    const card = await screen.findByRole("button", { name: "YouTube Intro" });
-    // Regression guard: ToolcraftButton's md size forces `h-8` (32px); the
-    // card must override it or the thumbnail/label overflow and overlap
-    // neighboring cards and the banner above (narrow-window breakage).
-    expect(card.className).toContain("h-auto");
-    expect(card.className).not.toContain("h-8");
-    expect(card.className).toContain("flex-col");
-
-    const thumb = card.querySelector(".aspect-video");
-    expect(thumb).not.toBeNull();
-    expect(thumb!.className).toContain("w-full");
-
-    const name = screen.getByText("YouTube Intro");
-    expect(name.className).toContain("truncate");
-    expect(screen.getByText("10s")).toBeInTheDocument();
+    await screen.findByRole("button", { name: template.name });
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "brand" } });
+    fireEvent.click(screen.getByRole("button", { name: template.name }));
+    await screen.findByText("Dependencies available");
+    expect(service.createProjectFromTemplate).not.toHaveBeenCalled();
+    expect(screen.getByText("Static cover preview")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /replace/i })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("New project name"), { target: { value: "New edit" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create project from template" }));
+    await waitFor(() => expect(service.createProjectFromTemplate).toHaveBeenCalledWith(template.id, "New edit", {}));
+    expect(window.location.hash).toBe(hash);
   });
 
-  it("renders thumbnail images without stretching the card grid", async () => {
+  it("blocks missing dependencies and displays old-format limitations", async () => {
+    service.listProjectTemplates.mockResolvedValue([{ ...summary, hasSnapshot: false }]);
+    service.loadProjectTemplate.mockResolvedValue({ ...template, projectSnapshot: undefined });
+    service.inspectProjectTemplate.mockResolvedValue(["missing-media"]);
     render(<TemplatesTab />);
-
-    const card = await screen.findByRole("button", { name: "Social Hook" });
-    const img = card.querySelector("img");
-    expect(img).not.toBeNull();
-    expect(img!.getAttribute("src")).toBe("https://example.com/thumb.png");
-    expect(img!.className).toContain("object-cover");
+    fireEvent.click(await screen.findByRole("button", { name: template.name }));
+    await screen.findByText(/Missing dependencies: missing-media/);
+    expect(screen.getByText(/Legacy template: the old format/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create project from template" })).toBeDisabled();
   });
 
-  it("keeps the Motion Creator banner and search controls visible above the cards", async () => {
+  it("preserves the template on delete cancellation and removes it on confirmation", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<TemplatesTab />);
-
-    const banner = await screen.findByRole("button", {
-      name: /Motion Creator/,
-    });
-    expect(banner).toBeInTheDocument();
-    expect(
-      screen.getByPlaceholderText("Search templates..."),
-    ).toBeInTheDocument();
-
-    await screen.findByRole("button", { name: "YouTube Intro" });
-    const bannerRect = banner.compareDocumentPosition(
-      screen.getByRole("button", { name: "YouTube Intro" }),
-    );
-    expect(bannerRect & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: template.name }));
+    await screen.findByText("Dependencies available");
+    fireEvent.click(screen.getByRole("button", { name: "Delete template" }));
+    expect(service.deleteProjectTemplate).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    service.deleteProjectTemplate.mockResolvedValue(undefined);
+    service.listProjectTemplates.mockResolvedValue([]);
+    fireEvent.click(screen.getByRole("button", { name: "Delete template" }));
+    await screen.findByText(/No saved project templates/);
+    expect(service.deleteProjectTemplate).toHaveBeenCalledWith(template.id);
   });
 
-  it("filters templates by the search query", async () => {
+  it("keeps the latest chosen template when detail loads resolve out of order", async () => {
+    const secondSummary = { ...summary, id: "template-b", name: "Second template" };
+    const secondDetail = { ...template, id: "template-b", name: "Second template" };
+    service.listProjectTemplates.mockResolvedValue([summary, secondSummary]);
+    service.inspectProjectTemplate.mockResolvedValue([]);
+    const pending: Array<(value: Template | null) => void> = [];
+    service.loadProjectTemplate.mockImplementation(() => new Promise((resolve) => { pending.push(resolve); }));
     render(<TemplatesTab />);
-
-    await screen.findByRole("button", { name: "YouTube Intro" });
-    const search = screen.getByPlaceholderText("Search templates...");
-    expect(search).toBeInTheDocument();
-
-    // Narrow the list down to the social template.
-    const { fireEvent } = await import("@testing-library/react");
-    fireEvent.change(search, { target: { value: "social" } });
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: "YouTube Intro" }),
-      ).not.toBeInTheDocument();
-    });
-    expect(
-      screen.getByRole("button", { name: "Social Hook" }),
-    ).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: template.name }));
+    fireEvent.click(screen.getByRole("button", { name: "Second template" }));
+    expect(pending.length).toBe(2);
+    pending[1](secondDetail);
+    await waitFor(() => expect(screen.getByRole("heading", { level: 3, name: "Second template" })).toBeInTheDocument());
+    pending[0](template);
+    await waitFor(() => expect(screen.getByRole("heading", { level: 3, name: "Second template" })).toBeInTheDocument());
+    expect(screen.queryByRole("heading", { level: 3, name: template.name })).not.toBeInTheDocument();
   });
 });

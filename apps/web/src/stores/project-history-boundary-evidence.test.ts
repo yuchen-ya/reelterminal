@@ -315,7 +315,11 @@ describe("project history boundaries", () => {
     window.indexedDB = testIndexedDB;
     const engine = new TemplateEngine();
     await engine.initialize();
-    const template = await engine.loadTemplate("builtin-tiktok-promo");
+    const base = createEmptyProject("Replacement fixture");
+    const track = store.getState().project.timeline.tracks.find((item) => item.clips.length > 0)!;
+    const template = engine.createFromProject({ ...base, timeline: { ...base.timeline,
+      tracks: [{ ...track, id: "replacement-track", clips: [{ ...track.clips[0], id: "replacement-clip", trackId: "replacement-track" }] }],
+    } }, { name: "Replacement fixture", description: "", category: "custom", placeholders: [] });
     store.getState().loadProject(engine.applyTemplate(template!, {}).project);
     const replacement = store.getState().project;
     expect(store.getState().templateUndoStack).toEqual([]);
@@ -324,11 +328,11 @@ describe("project history boundaries", () => {
     expect((await store.getState().undo()).success).toBe(false);
     expect((await store.getState().redo()).success).toBe(false);
     expect(store.getState().project).toBe(replacement);
-    expect((await store.getState().removeTrack("track-text-1")).success).toBe(true);
+    expect((await store.getState().removeTrack("replacement-track")).success).toBe(true);
     expect((await store.getState().undo()).success).toBe(true);
-    expect(store.getState().project.timeline.tracks.find(t => t.id === "track-text-1")?.clips.map(c => c.id)).toEqual(["clip-cta"]);
+    expect(store.getState().project.timeline.tracks.find(t => t.id === "replacement-track")?.clips.map(c => c.id)).toEqual(["replacement-clip"]);
     expect((await store.getState().redo()).success).toBe(true);
-    expect(store.getState().project.timeline.tracks.some(t => t.id === "track-text-1")).toBe(false);
+    expect(store.getState().project.timeline.tracks.some(t => t.id === "replacement-track")).toBe(false);
     expect((store.getState().project.textClips ?? []).some(c => c.id === overlay.id)).toBe(false);
   });
 

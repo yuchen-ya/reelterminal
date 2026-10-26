@@ -5,7 +5,6 @@ import {
   Palette,
   Music,
   Video,
-  Layers,
   ChevronRight,
   Wand2,
   FileStack,
@@ -18,11 +17,10 @@ import { ToolcraftText as Text } from "@reelterminal/ui";
 import { AutoCaptionPanel } from "./inspector/AutoCaptionPanel";
 import { FilterPresetsPanel } from "./inspector/FilterPresetsPanel";
 import { MusicLibraryPanel } from "./inspector/MusicLibraryPanel";
-import { TemplatesBrowserPanel } from "./inspector/TemplatesBrowserPanel";
 import { MultiCameraPanel } from "./inspector/MultiCameraPanel";
 import { AudioGenerationRequirementPanel } from "./AudioGenerationRequirementPanel";
 
-type FeatureId = "templates" | "captions" | "filters" | "music" | "aiAudio" | "multicam" | null;
+type FeatureId = "captions" | "filters" | "music" | "aiAudio" | "multicam" | null;
 
 interface FeatureCardProps {
   icon: React.ElementType;
@@ -119,8 +117,6 @@ export const EditingToolsTab: React.FC = () => {
 
   const renderActivePanel = () => {
     switch (activeFeature) {
-      case "templates":
-        return <TemplatesBrowserPanel />;
       case "captions":
         return <AutoCaptionPanel />;
       case "filters":
@@ -185,18 +181,6 @@ export const EditingToolsTab: React.FC = () => {
         </FeatureSection>
 
         <FeatureSection title={t("editingTools.templatesSection")} icon={FileStack}>
-          <FeatureCard
-            icon={Layers}
-            title={t("editingTools.projectTemplates")}
-            description={t("editingTools.projectTemplatesDescription")}
-            iconColor="text-green-400"
-            iconBg="bg-green-500/20"
-            activeBorder="border-green-500/50"
-            activeBg="bg-green-500/10"
-            activeRing="ring-green-500/30"
-            isActive={activeFeature === "templates"}
-            onClick={() => handleFeatureClick("templates")}
-          />
           <FeatureCard
             icon={Palette}
             title={t("editingTools.filterPresets")}

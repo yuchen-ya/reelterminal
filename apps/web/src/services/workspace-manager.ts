@@ -276,6 +276,8 @@ export interface CreateProjectOptions {
   idempotencyKey?: string;
   requestPayload?: unknown;
   loadRuntime?: boolean;
+  /** Template creation must validate retained media inside the reference lock. */
+  requireAvailableDependencies?: boolean;
 }
 
 export interface CreateWorkspaceOptions {
@@ -1069,6 +1071,12 @@ export class WorkspaceManager {
         ...project,
         name: options.name ?? project.name,
       }));
+      if (options.requireAvailableDependencies) {
+        const missing = await missingProjectDependencies(snapshot);
+        if (missing.length) {
+          throw new WorkspaceManagerError("INVALID_PARAMS", i18next.t("personalTemplates.missingDependencies", { items: missing.join(", ") }));
+        }
+      }
       workspace = {
         id: workspaceId,
         projectId: project.id,

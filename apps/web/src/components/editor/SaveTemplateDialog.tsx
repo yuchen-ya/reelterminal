@@ -1,311 +1,82 @@
-import { useState, useCallback } from "react";
-import { Upload, Cloud, HardDrive, Check, AlertCircle } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@reelterminal/ui";
-import { ToolcraftCard as Card } from "@reelterminal/ui";
-import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@reelterminal/ui";
-import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent, ToolcraftLayoutFooter as LayoutFooter } from "@reelterminal/ui";
-import { ToolcraftSelectableCard as SelectableCard } from "@reelterminal/ui";
-import { ToolcraftSelectControl as Selector } from "@reelterminal/ui";
-import { ToolcraftText as Text } from "@reelterminal/ui";
-import { ToolcraftTextAreaControl } from "@reelterminal/ui";
-import { ToolcraftTextInputControl } from "@reelterminal/ui";
-import { useProjectStore } from "../../stores/project-store";
-import { useEngineStore } from "../../stores/engine-store";
-import {
-  TEMPLATE_CATEGORIES,
-  type TemplateCategory,
-  type TemplatePlaceholder,
-  type Template,
-  type ShapeClip,
-  type SVGClip,
-  type StickerClip,
-} from "@reelterminal/core";
-import { templateCloudService } from "../../services/template-cloud-service";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-
-interface TemplateWithGraphics extends Template {
-  timeline: Template["timeline"] & {
-    graphics?: {
-      shapes: ShapeClip[];
-      svgs: SVGClip[];
-      stickers: StickerClip[];
-    };
-  };
-}
+import type { Template } from "@reelterminal/core";
+import { ToolcraftDialog, ToolcraftDialogHeader, ToolcraftLayout, ToolcraftLayoutContent, ToolcraftLayoutFooter } from "@reelterminal/ui";
+import { getActiveProjectRuntimeStore } from "../../stores/project-store";
+import { saveProjectTemplate, updateProjectTemplate } from "../../services/project-templates";
 
 interface SaveTemplateDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  onSaved?: () => void;
+  template?: Template;
 }
 
-export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
-  isOpen,
-  onClose,
-}) => {
-  const { t: tr } = useTranslation();
-  const { project } = useProjectStore();
-  const getTemplateEngine = useEngineStore((state) => state.getTemplateEngine);
-  const getGraphicsEngine = useEngineStore((state) => state.getGraphicsEngine);
-
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [category, setCategory] = useState<TemplateCategory>("custom");
-  const [tags, setTags] = useState("");
-  const [author, setAuthor] = useState("");
-  const [saveLocation, setSaveLocation] = useState<"local" | "cloud">("cloud");
-  const [isSaving, setIsSaving] = useState(false);
+export function SaveTemplateDialog({ isOpen, onClose, onSaved, template }: SaveTemplateDialogProps) {
+  const { t } = useTranslation();
+  const [sourceStore] = useState(getActiveProjectRuntimeStore);
+  const [name, setName] = useState(template?.name ?? sourceStore.getState().project.name);
+  const [description, setDescription] = useState(template?.description ?? "");
+  const [tags, setTags] = useState(template?.tags.join(", ") ?? "");
+  const [thumbnailUrl, setThumbnailUrl] = useState(template?.thumbnailUrl?.startsWith("data:image/") ? template.thumbnailUrl : null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-
-  // Read once per render: the build-time cloud opt-out cannot change at
-  // runtime. When the cloud is off, the Cloud option is disabled and any
-  // selection falls back to Local.
-  const cloudEnabled = templateCloudService.isCloudEnabled();
-  const effectiveSaveLocation = cloudEnabled ? saveLocation : "local";
-
-  const handleSave = useCallback(async () => {
-    if (!name.trim()) {
-      setError("Template name is required");
-      return;
-    }
-
-    if (!description.trim()) {
-      setError("Description is required");
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
-
-    try {
-      const templateEngine = await getTemplateEngine();
-      const graphicsEngine = getGraphicsEngine();
-
-      await templateEngine.initialize();
-
-      const tagArray = tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
-
-      const placeholders: TemplatePlaceholder[] = [];
-
-      const template = templateEngine.createFromProject(project, {
-        name: name.trim(),
-        description: description.trim(),
-        category,
-        placeholders,
-        tags: tagArray,
-      });
-
-      const templateWithMeta = {
-        ...template,
-        author: author.trim() || "Anonymous",
-      };
-
-      if (graphicsEngine) {
-        const shapes = graphicsEngine.getAllShapeClips();
-        const svgs = graphicsEngine.getAllSVGClips();
-        const stickers = graphicsEngine.getAllStickerClips();
-
-        if (shapes.length > 0 || svgs.length > 0 || stickers.length > 0) {
-          (templateWithMeta as TemplateWithGraphics).timeline.graphics = {
-            shapes,
-            svgs,
-            stickers,
-          };
-        }
-      }
-
-      // Off-build precheck: the Cloud path is disabled in the UI and any
-      // stale "cloud" selection falls back to a purely local save, so no
-      // upload request is ever constructed here.
-      if (saveLocation === "cloud" && cloudEnabled) {
-        const result =
-          await templateCloudService.uploadTemplate(templateWithMeta);
-        if (!result.success) {
-          throw new Error(result.error || "Failed to upload to cloud");
-        }
-      } else {
-        await templateEngine.saveTemplate(templateWithMeta);
-      }
-
-      setSuccess(true);
-      setTimeout(() => {
-        onClose();
-        setSuccess(false);
-        setName("");
-        setDescription("");
-        setTags("");
-        setAuthor("");
-        setCategory("custom");
-      }, 1500);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save template");
-    } finally {
-      setIsSaving(false);
-    }
-  }, [
-    name,
-    description,
-    category,
-    tags,
-    author,
-    saveLocation,
-    cloudEnabled,
-    project,
-    getTemplateEngine,
-    getGraphicsEngine,
-    onClose,
-  ]);
-
   if (!isOpen) return null;
 
-  return (
-    <Dialog
-      isOpen
-      onOpenChange={(open) => !open && onClose()}
-      width={512}
-      purpose="form"
-    >
-      <Layout
-        header={
-          <DialogHeader
-            closeLabel={tr("Close dialog")}
-            title={tr("Save as Template")}
-            onOpenChange={(open) => !open && onClose()}
-          />
-        }
-        content={
-          <LayoutContent className="max-h-[70vh] overflow-y-auto">
-        <div className="space-y-4">
-          {success && (
-            <Card variant="green" padding={3} className="flex items-center gap-2 border border-green-500/30">
-              <Check size={16} className="text-green-400" aria-hidden />
-              <Text type="supporting" className="text-green-400">
-                {tr("Template saved successfully!")}</Text>
-            </Card>
-          )}
-
-          {error && (
-            <Card variant="red" padding={3} className="flex items-center gap-2 border border-red-500/30">
-              <AlertCircle size={16} className="text-red-400" aria-hidden />
-              <Text type="supporting" className="text-red-400">{error}</Text>
-            </Card>
-          )}
-
-          <ToolcraftTextInputControl
-            label={tr("Template Name")}
-            isRequired
-            type="text"
-            value={name}
-            onChange={(nextName) => setName(nextName.slice(0, 50))}
-            placeholder={tr("My Awesome Template")}
-            width="100%"
-          />
-          <Text type="supporting" color="secondary" display="block" className="text-[10px]">
-            {name.length}{tr("/50 characters")}</Text>
-
-          <ToolcraftTextAreaControl
-            label={tr("Description")}
-            isRequired
-            value={description}
-            onChange={setDescription}
-            placeholder={tr("Describe what this template is for and how to use it...")}
-            rows={4}
-            maxLength={500}
-            width="100%"
-          />
-
-          <Selector
-            label={tr("Category")}
-            value={category}
-            onChange={(nextCategory) => setCategory(nextCategory as TemplateCategory)}
-            options={TEMPLATE_CATEGORIES.map((cat) => ({
-              value: cat.id,
-              label: tr(cat.name),
-            }))}
-            width="100%"
-          />
-
-          <ToolcraftTextInputControl
-            label={tr("Tags (comma-separated)")}
-            type="text"
-            value={tags}
-            onChange={setTags}
-            placeholder={tr("intro, animated, youtube")}
-            width="100%"
-          />
-
-          <ToolcraftTextInputControl
-            label={tr("Author Name")}
-            type="text"
-            value={author}
-            onChange={setAuthor}
-            placeholder={tr("Your name or username")}
-            width="100%"
-          />
-
-          <div className="space-y-2">
-            <Text type="supporting" color="secondary" weight="bold" display="block">
-              {tr("Save Location")}</Text>
-            <div className={cloudEnabled ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"}>
-              {cloudEnabled && <SelectableCard
-                label={tr("Cloud")}
-                isSelected={effectiveSaveLocation === "cloud"}
-                onChange={() => setSaveLocation("cloud")}
-                isDisabled={!cloudEnabled}
-                padding={3}
-                variant={effectiveSaveLocation === "cloud" ? "green" : "default"}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <Cloud size={16} aria-hidden />
-                  <Text type="label" weight="bold">{tr("Cloud")}</Text>
-                </div>
-              </SelectableCard>}
-              <SelectableCard
-                label={tr("Local")}
-                isSelected={effectiveSaveLocation === "local"}
-                onChange={() => setSaveLocation("local")}
-                padding={3}
-                variant={effectiveSaveLocation === "local" ? "green" : "default"}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <HardDrive size={16} aria-hidden />
-                  <Text type="label" weight="bold">{tr("Local")}</Text>
-                </div>
-              </SelectableCard>
-            </div>
-            <Text type="supporting" color="secondary" display="block" className="text-[10px]">
-              {effectiveSaveLocation === "cloud"
-                  ? tr("templates.cloudSaveNotice")
-                  : tr("templates.localSaveNotice")}
-            </Text>
-          </div>
-        </div>
-          </LayoutContent>
-        }
-        footer={
-          <LayoutFooter hasDivider>
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                label={tr("Cancel")}
-                variant="ghost"
-                onClick={onClose}
-                isDisabled={isSaving}
-              />
-              <Button
-                label={isSaving ? tr("Saving...") : tr("Save Template")}
-                onClick={handleSave}
-                isDisabled={isSaving || !name.trim() || !description.trim()}
-                isLoading={isSaving}
-                variant="primary"
-                icon={!isSaving ? <Upload size={16} aria-hidden /> : undefined}
-              />
-            </div>
-          </LayoutFooter>
-        }
-      />
-    </Dialog>
-  );
-};
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const details = { name, description, tags: tags.split(/[,，]/), thumbnailUrl };
+      if (template) await updateProjectTemplate(template.id, details);
+      else await saveProjectTemplate(sourceStore.getState().getFullProject(), details);
+      onSaved?.();
+      onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const close = () => { if (!busy) onClose(); };
+  const chooseCover = (file: File | undefined) => {
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      setError(t("personalTemplates.invalidCover"));
+      return;
+    }
+    setBusy(true);
+    const reader = new FileReader();
+    reader.onload = () => { setThumbnailUrl(String(reader.result)); setError(null); setBusy(false); };
+    reader.onerror = () => { setError(t("personalTemplates.invalidCover")); setBusy(false); };
+    reader.readAsDataURL(file);
+  };
+  const inputClass = "w-full mt-1 rounded-lg border border-border bg-background-secondary px-3 py-2 text-sm text-text-primary";
+  return <ToolcraftDialog isOpen onOpenChange={(open) => { if (!open) close(); }} width={512} purpose="form">
+    <form onSubmit={(event) => void save(event)}>
+      <ToolcraftLayout header={<ToolcraftDialogHeader title={t(template ? "personalTemplates.edit" : "personalTemplates.saveCurrent")}
+        closeLabel={t("Close dialog")} onOpenChange={(open) => { if (!open) close(); }} />}
+        content={<ToolcraftLayoutContent className="space-y-4">
+          {!template && <p className="text-xs leading-5 text-text-muted">{t("personalTemplates.saveNotice", { name: sourceStore.getState().project.name })}</p>}
+          {error && <p role="alert" className="text-sm text-status-error">{error}</p>}
+          <label className="block text-xs">{t("personalTemplates.name")}<input autoFocus required maxLength={100} value={name}
+            onChange={(event) => setName(event.target.value)} className={inputClass} /></label>
+          <label className="block text-xs">{t("personalTemplates.description")}<textarea rows={3} value={description}
+            onChange={(event) => setDescription(event.target.value)} className={inputClass} /></label>
+          <label className="block text-xs">{t("personalTemplates.tags")}<input value={tags}
+            onChange={(event) => setTags(event.target.value)} className={inputClass} /></label>
+          <label className="block text-xs">{t("personalTemplates.cover")}<input type="file" accept="image/png,image/jpeg,image/webp"
+            onChange={(event) => chooseCover(event.target.files?.[0])} className="block mt-2 w-full text-xs" /></label>
+          {thumbnailUrl?.startsWith("data:image/") && <img src={thumbnailUrl} alt={t("personalTemplates.coverPreview")} className="max-h-36 object-contain rounded-lg" />}
+          {thumbnailUrl && <button type="button" className="asset-browser-button" onClick={() => setThumbnailUrl(null)}>{t("personalTemplates.removeCover")}</button>}
+        </ToolcraftLayoutContent>}
+        footer={<ToolcraftLayoutFooter className="flex justify-end gap-2">
+          <button type="button" disabled={busy} onClick={close} className="asset-browser-button">{t("Cancel")}</button>
+          <button type="submit" disabled={busy || !name.trim()} className="asset-browser-button bg-primary text-white">
+            {t(busy ? "personalTemplates.saving" : "personalTemplates.save")}
+          </button>
+        </ToolcraftLayoutFooter>} />
+    </form>
+  </ToolcraftDialog>;
+}

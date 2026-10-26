@@ -1,6 +1,6 @@
 /**
- * Isolated GUI regression for whole-project template replacement while an
- * ordinary track-add action is waiting on the redo stack. All edits and
+ * Isolated GUI regression for saving and reusing a personal project template
+ * while the source project has pending redo. All edits and
  * history controls use real UI input; the live Agent channel only observes.
  */
 import { execFileSync } from "node:child_process";
@@ -17,12 +17,7 @@ import {
 } from "./harness/ui";
 
 const VIDEO_FILE_NAME = "whole-template-history-source.mp4";
-const BUILTIN_TEMPLATE_NAME = "YouTube Intro";
-const BUILTIN_TEMPLATE_ID = "builtin-youtube-intro";
-const TEMPLATE_CLIP_ID = "clip-channel-name";
-const COLLISION_TEMPLATE_NAME = "TikTok Promo";
-const COLLISION_TEMPLATE_ID = "builtin-tiktok-promo";
-const COLLISION_TEMPLATE_CLIP_ID = "clip-cta";
+const TEMPLATE_NAME = "Saved local video";
 
 function resolveFixtureFfmpegPath(): string {
   const configured = process.env.REELTERMINAL_FFMPEG_PATH;
@@ -46,25 +41,6 @@ async function pressUndoViaKeyboard(page: import("playwright-core").Page): Promi
 async function pressRedoViaKeyboard(page: import("playwright-core").Page): Promise<void> {
   await page.keyboard.press("Meta+Shift+z");
   await page.waitForTimeout(400);
-}
-
-async function clickTemplateWithConfirmation(
-  button: import("playwright-core").Locator,
-  page: import("playwright-core").Page,
-  decision: "accept" | "dismiss",
-): Promise<{ type: string; message: string }> {
-  const confirmation = new Promise<{ type: string; message: string }>((resolve) => {
-    page.once("dialog", (dialog) => {
-      const result = { type: dialog.type(), message: dialog.message() };
-      void (async () => {
-        if (decision === "accept") await dialog.accept();
-        else await dialog.dismiss();
-        resolve(result);
-      })();
-    });
-  });
-  await button.click();
-  return confirmation;
 }
 
 interface TrackView {
@@ -103,7 +79,7 @@ interface HistoryView {
   }>;
 }
 
-describe("whole-project template replacement with a pending redo", () => {
+describe("personal project template with independent history", () => {
   let launched: LaunchedApp;
   let agent: ExternalAgent;
   let evidence: EvidenceRecord;
@@ -198,236 +174,80 @@ describe("whole-project template replacement with a pending redo", () => {
       videoFileName: VIDEO_FILE_NAME,
       mediaId,
       syntheticSource: true,
-      builtinTemplateName: BUILTIN_TEMPLATE_NAME,
-      builtinTemplateId: BUILTIN_TEMPLATE_ID,
-      collisionTemplateName: COLLISION_TEMPLATE_NAME,
-      collisionTemplateId: COLLISION_TEMPLATE_ID,
     });
   }, 300_000);
 
   afterAll(async () => {
+    await evidence?.screenshot("final-state");
     evidence?.flush(observations);
     await agent?.close();
     await launched?.close();
   });
 
-  test("cancel preserves history; confirmed replacement starts a clean history", async () => {
-    const beforeTrackAdd = await observe("before-audio-track-add");
+  test("save, inspect and create a new project while preserving source content and redo", async () => {
+    const page = launched.page;
+    await page.getByRole("button", { name: "Add track", exact: true }).first().click();
+    await page.getByRole("menuitem", { name: "Audio Track", exact: true }).click();
+    await vi.waitFor(async () => expect((await readProject()).project.timeline.tracks.some((track) => track.type === "audio")).toBe(true));
+    const clip = page.getByRole("button", { name: `Select clip ${VIDEO_FILE_NAME}`, exact: true });
+    await clip.focus();
+    await pressUndoViaKeyboard(page);
+    await vi.waitFor(async () => expect((await readHistory()).canRedo).toBe(true));
+    const original = await observe("source-with-redo");
 
-    // Add a real GUI audio lane, then undo it so the only redo candidate is
-    // the newly added track while the imported clip remains in the source project.
-    await launched.page.getByRole("button", { name: "Add track", exact: true }).first().click();
-    await launched.page.getByRole("menuitem", { name: "Audio Track", exact: true }).click();
-    const afterTrackAdd = await vi.waitFor(async () => {
-      const state = await readProject();
-      expect(state.project.timeline.tracks.some((track) => track.type === "audio")).toBe(true);
-      return state;
-    }, { timeout: 15_000, interval: 100 });
-    await observe("after-audio-track-add");
+    await page.getByRole("button", { name: "Explore more resources", exact: true }).click();
+    await page.getByLabel("Resource categories").getByRole("button", { name: "Transitions", exact: true }).click();
+    const externalLink = page.getByRole("link", { name: /Visit original site/ });
+    expect(await externalLink.getAttribute("href")).toBe("https://github.com/gl-transitions/gl-transitions");
+    expect(await externalLink.getAttribute("target")).toBe("_blank");
+    await evidence.screenshot("external-resources");
 
-    await pressUndoViaKeyboard(launched.page);
-    const { state: afterTrackUndo, history: historyAfterTrackUndo } = await vi.waitFor(async () => {
-      const state = await readProject();
-      const history = await readHistory();
-      expect(state.project.timeline.tracks.some((track) => track.type === "audio")).toBe(false);
-      expect(history.canRedo).toBe(true);
-      expect(history.redoCount).toBe(1);
-      return { state, history };
-    }, { timeout: 15_000, interval: 150 });
-    await observe("after-undo-audio-track");
-    await launched.page.screenshot({ path: path.join(evidence.dir, "whole-template-history--after-undo-audio-track.png") });
+    await page.getByRole("button", { name: "Personal library", exact: true }).click();
+    await page.getByRole("button", { name: "Project templates", exact: true }).click();
+    await page.getByRole("button", { name: "Save project as template", exact: true }).click();
+    await page.getByLabel("Template name", { exact: true }).fill(TEMPLATE_NAME);
+    await page.getByLabel("Description (optional)").fill("A local synthetic video fixture");
+    await page.getByLabel("Tags (comma-separated)").fill("local, fixture");
+    await page.getByRole("button", { name: "Save template", exact: true }).click();
+    const card = page.getByRole("button", { name: TEMPLATE_NAME, exact: true });
+    await card.waitFor({ timeout: 30_000 });
+    expect((await observe("after-saving")).summary).toEqual(original.summary);
+    await card.click();
+    await page.getByText("Dependencies available", { exact: true }).waitFor({ timeout: 30_000 });
+    await evidence.screenshot("template-detail");
+    await page.getByRole("button", { name: "Back to project templates", exact: true }).click();
+    expect((await observe("after-leaving-preview")).summary).toEqual(original.summary);
 
-    // Open the actual Assets → Templates panel. Built-in templates come from
-    // TemplateEngine's GUI list; no template data is injected by the test.
-    await launched.page.getByRole("button", { name: "Project Templates", exact: true }).click();
-    const templateCard = launched.page.getByRole("button", { name: BUILTIN_TEMPLATE_NAME, exact: true });
-    await templateCard.waitFor({ timeout: 30_000 });
+    await card.click();
+    await page.getByText("Dependencies available", { exact: true }).waitFor();
+    await page.getByLabel("New project name", { exact: true }).fill("Independent template project");
+    await page.getByRole("button", { name: "Create project from template", exact: true }).click();
+    const nextTarget = await vi.waitFor(async () => {
+      const context = await agent.callCommand<{ identity: { projectId: string; workspaceId: string } }>("editor.get_context");
+      expect(context.ok, JSON.stringify(context.error)).toBe(true);
+      expect(context.value!.identity.projectId).not.toBe(target.projectId);
+      return { projectId: context.value!.identity.projectId, workspaceId: context.value!.identity.workspaceId };
+    }, { timeout: 30_000, interval: 150 });
+    const next = await agent.callCommand<ProjectView>("project.get_state", nextTarget);
+    expect(next.ok).toBe(true);
+    expect(next.value!.project.name).toBe("Independent template project");
+    expect(next.value!.project.timeline).toEqual(original.state.project.timeline);
+    expect(next.value!.project.mediaLibrary.items.map((item) => item.id)).toEqual(original.state.project.mediaLibrary.items.map((item) => item.id));
+    const nextHistory = await agent.callCommand<HistoryView>("history.get", nextTarget);
+    expect(nextHistory.value!.canUndo).toBe(false);
+    expect(nextHistory.value!.canRedo).toBe(false);
+    expect((await observe("original-after-new-project")).summary).toEqual(original.summary);
+    await clip.focus();
+    await pressRedoViaKeyboard(page);
+    expect((await agent.callCommand<HistoryView>("history.get", nextTarget)).value!.canRedo).toBe(false);
+    await evidence.screenshot("new-project");
 
-    const beforeCancel = await observe("before-cancel-replacement");
-    const cancelDialog = await clickTemplateWithConfirmation(templateCard, launched.page, "dismiss");
-    expect(cancelDialog.type).toBe("confirm");
-    evidence.record("cancel_confirmation", cancelDialog);
-    const afterCancel = await observe("after-cancel-replacement");
-    expect(afterCancel.summary).toEqual(beforeCancel.summary);
-    await launched.page.screenshot({ path: path.join(evidence.dir, "whole-template-history--after-cancel.png") });
-
-    const acceptDialog = await clickTemplateWithConfirmation(templateCard, launched.page, "accept");
-    expect(acceptDialog.type).toBe("confirm");
-
-    const { state: afterTemplateApply, history: historyAfterTemplateApply } = await vi.waitFor(async () => {
-      const state = await readProject();
-      const templateClip = state.project.timeline.tracks
-        .flatMap((track) => track.clips)
-        .find((clip) => clip.id === TEMPLATE_CLIP_ID);
-      expect(templateClip).toBeDefined();
-      return { state, history: await readHistory() };
-    }, { timeout: 20_000, interval: 150 });
-    const appliedTemplate = await observe("after-confirmed-template-replacement");
-    await launched.page.screenshot({ path: path.join(evidence.dir, "whole-template-history--after-template-replacement.png") });
-
-    // Successful replacement uses the existing loadProject history boundary.
-    expect(afterTemplateApply.project.name).toBe(`${BUILTIN_TEMPLATE_NAME} - Copy`);
-    expect(afterTemplateApply.project.timeline.tracks.flatMap((track) => track.clips).some((clip) => clip.id === TEMPLATE_CLIP_ID)).toBe(true);
-    expect(afterTemplateApply.project.timeline.tracks.flatMap((track) => track.clips).some((clip) => clip.mediaId === beforeTrackAdd.state.project.mediaLibrary.items.find((item) => item.name === VIDEO_FILE_NAME)?.id)).toBe(false);
-    expect(historyAfterTemplateApply.canRedo).toBe(false);
-    expect(historyAfterTemplateApply.canUndo).toBe(false);
-    expect(historyAfterTemplateApply.redoCount).toBe(0);
-
-    await pressRedoViaKeyboard(launched.page);
-    const afterRedo = await observe("after-redo-on-replaced-project");
-    await launched.page.screenshot({ path: path.join(evidence.dir, "whole-template-history--after-redo.png") });
-
-    await pressUndoViaKeyboard(launched.page);
-    const afterUndo = await observe("after-undo-on-replaced-project");
-    await launched.page.screenshot({ path: path.join(evidence.dir, "whole-template-history--after-undo.png") });
-
-    evidence.record("history_boundary_assertion_inputs", {
-      beforeTrackAdd: beforeTrackAdd.summary,
-      afterTrackAdd: {
-        tracks: afterTrackAdd.project.timeline.tracks.map(({ id, type, name }) => ({ id, type, name })),
-      },
-      afterTrackUndo: { revision: afterTrackUndo.revision, history: historyAfterTrackUndo },
-      afterCancel: afterCancel.summary,
-      afterTemplateApply: appliedTemplate.summary,
-      afterRedo: afterRedo.summary,
-      afterUndo: afterUndo.summary,
-    });
-
-    const templateClipExists = (state: ProjectView) => state.project.timeline.tracks
-      .flatMap((track) => track.clips)
-      .some((clip) => clip.id === TEMPLATE_CLIP_ID);
-    const originalClipExists = (state: ProjectView) => state.project.timeline.tracks
-      .flatMap((track) => track.clips)
-      .some((clip) => clip.mediaId === beforeTrackAdd.state.project.mediaLibrary.items.find((item) => item.name === VIDEO_FILE_NAME)?.id);
-
-    expect({
-      redoAddsOldAudioTrack: afterRedo.state.project.timeline.tracks.some((track) => track.type === "audio"),
-      redoRestoresOriginalClip: originalClipExists(afterRedo.state),
-      redoPreservesTemplateClip: templateClipExists(afterRedo.state),
-      undoRemovesOldAudioTrack: !afterUndo.state.project.timeline.tracks.some((track) => track.type === "audio"),
-      undoRestoresOriginalClip: originalClipExists(afterUndo.state),
-      undoPreservesTemplateClip: templateClipExists(afterUndo.state),
-    }).toEqual({
-      redoAddsOldAudioTrack: false,
-      redoRestoresOriginalClip: false,
-      redoPreservesTemplateClip: true,
-      undoRemovesOldAudioTrack: true,
-      undoRestoresOriginalClip: false,
-      undoPreservesTemplateClip: true,
-    });
-
-    // Exercise the stronger entity-ID collision using two actual built-ins:
-    // both YouTube Intro and TikTok Promo use track-text-1, while their clips
-    // are clip-channel-name and clip-cta respectively.
-    const channelNameHeader = launched.page
-      .getByTestId("timeline-track-headers-scroll")
-      .getByText("Channel Name", { exact: true });
-    await channelNameHeader.waitFor({ timeout: 15_000 });
-    await channelNameHeader.click({ button: "right" });
-    await launched.page.getByRole("menuitem", { name: "Delete Track", exact: true }).click();
-    const { state: afterDeleteChannelName, history: historyAfterDeleteChannelName } = await vi.waitFor(async () => {
-      const state = await readProject();
-      const history = await readHistory();
-      expect(state.project.timeline.tracks.some((track) => track.id === "track-text-1")).toBe(false);
-      expect(history.canUndo).toBe(true);
-      return { state, history };
-    }, { timeout: 15_000, interval: 150 });
-    await observe("after-delete-channel-name-track");
-
-    await pressUndoViaKeyboard(launched.page);
-    const { state: afterUndoDelete, history: historyAfterUndoDelete } = await vi.waitFor(async () => {
-      const state = await readProject();
-      const history = await readHistory();
-      const channelNameTrack = state.project.timeline.tracks.find((track) => track.id === "track-text-1");
-      expect(channelNameTrack?.name).toBe("Channel Name");
-      expect(channelNameTrack?.clips.some((clip) => clip.id === TEMPLATE_CLIP_ID)).toBe(true);
-      expect(history.canRedo).toBe(true);
-      expect(history.redoCount).toBe(1);
-      return { state, history };
-    }, { timeout: 15_000, interval: 150 });
-    await observe("after-undo-delete-channel-name-track");
-
-    const collisionTemplateCard = launched.page.getByRole("button", {
-      name: COLLISION_TEMPLATE_NAME,
-      exact: true,
-    });
-    await collisionTemplateCard.waitFor({ timeout: 15_000 });
-    const replaceDialog = await clickTemplateWithConfirmation(collisionTemplateCard, launched.page, "accept");
-    expect(replaceDialog.type).toBe("confirm");
-    evidence.record("collision_replacement_confirmation", {
-      type: replaceDialog.type,
-      message: replaceDialog.message,
-    });
-
-    const { state: afterTikTokApply, history: historyAfterTikTokApply } = await vi.waitFor(async () => {
-      const state = await readProject();
-      const ctaTrack = state.project.timeline.tracks.find((track) => track.id === "track-text-1");
-      expect(ctaTrack?.name).toBe("CTA Text");
-      expect(ctaTrack?.clips.some((clip) => clip.id === COLLISION_TEMPLATE_CLIP_ID)).toBe(true);
-      return { state, history: await readHistory() };
-    }, { timeout: 20_000, interval: 150 });
-    await observe("after-replace-youtube-intro-with-tiktok-promo");
-    await launched.page.screenshot({ path: path.join(evidence.dir, "whole-template-history--after-tiktok-replacement.png") });
-    expect(historyAfterTikTokApply.canRedo).toBe(false);
-    expect(historyAfterTikTokApply.canUndo).toBe(false);
-    expect(historyAfterTikTokApply.redoCount).toBe(0);
-
-    await pressRedoViaKeyboard(launched.page);
-    const afterCollisionRedo = await observe("after-blocked-old-deletion-redo");
-    await launched.page.screenshot({ path: path.join(evidence.dir, "whole-template-history--after-collision-redo.png") });
-    expect(afterCollisionRedo.state).toEqual(afterTikTokApply);
-    const ctaAfterRedo = afterCollisionRedo.state.project.timeline.tracks
-      .find((track) => track.id === "track-text-1");
-    expect(ctaAfterRedo?.name).toBe("CTA Text");
-
-    await pressUndoViaKeyboard(launched.page);
-    const afterCollisionUndo = await observe("after-blocked-old-project-undo");
-    await launched.page.screenshot({ path: path.join(evidence.dir, "whole-template-history--after-collision-undo.png") });
-    expect(afterCollisionUndo.state).toEqual(afterTikTokApply);
-    const restoredTrack = afterCollisionUndo.state.project.timeline.tracks
-      .find((track) => track.id === "track-text-1");
-    expect(restoredTrack?.name).toBe("CTA Text");
-    expect(restoredTrack?.clips.some((clip) => clip.id === TEMPLATE_CLIP_ID)).toBe(false);
-
-    evidence.record("entity_id_collision_assertion_inputs", {
-      afterDelete: { revision: afterDeleteChannelName.revision, history: historyAfterDeleteChannelName },
-      afterUndoDelete: { revision: afterUndoDelete.revision, history: historyAfterUndoDelete },
-      afterTikTokApply: {
-        projectId: afterTikTokApply.project.id,
-        projectName: afterTikTokApply.project.name,
-        track: afterTikTokApply.project.timeline.tracks.find((track) => track.id === "track-text-1"),
-        history: historyAfterTikTokApply,
-      },
-      afterRedo: afterCollisionRedo.summary,
-      afterUndo: afterCollisionUndo.summary,
-      sameTrackIdInBothBuiltins: "track-text-1",
-      newTemplateClipId: COLLISION_TEMPLATE_CLIP_ID,
-      oldTemplateClipId: TEMPLATE_CLIP_ID,
-    });
-
-    expect({
-      projectRemainsTikTokAfterRedo: afterCollisionRedo.state.project.name === `${COLLISION_TEMPLATE_NAME} - Copy`,
-      newCtaTrackAndClipSurviveRedo: afterCollisionRedo.state.project.timeline.tracks
-        .some((track) => track.id === "track-text-1" && track.clips.some((clip) => clip.id === COLLISION_TEMPLATE_CLIP_ID)),
-      oldChannelNameTrackRestoredByUndo: restoredTrack?.name === "Channel Name",
-      oldChannelNameClipRestoredByUndo: restoredTrack?.clips.some((clip) => clip.id === TEMPLATE_CLIP_ID),
-      newCtaTrackSurvivesUndo: afterCollisionUndo.state.project.timeline.tracks
-        .some((track) => track.id === "track-text-1" && track.clips.some((clip) => clip.id === COLLISION_TEMPLATE_CLIP_ID)),
-    }).toEqual({
-      projectRemainsTikTokAfterRedo: true,
-      newCtaTrackAndClipSurviveRedo: true,
-      oldChannelNameTrackRestoredByUndo: false,
-      oldChannelNameClipRestoredByUndo: false,
-      newCtaTrackSurvivesUndo: true,
-    });
-    const ctaHeader = launched.page.getByTestId("timeline-track-headers-scroll").getByText("CTA Text", { exact: true });
-    await ctaHeader.click({ button: "right" });
-    await launched.page.getByRole("menuitem", { name: "Delete Track", exact: true }).click();
-    await vi.waitFor(async () => expect((await readProject()).project.timeline.tracks.some(t => t.id === "track-text-1")).toBe(false));
-    await pressUndoViaKeyboard(launched.page);
-    expect((await readProject()).project.timeline.tracks.find(t => t.id === "track-text-1")?.name).toBe("CTA Text");
-    await pressRedoViaKeyboard(launched.page);
-    expect((await readProject()).project.timeline.tracks.some(t => t.id === "track-text-1")).toBe(false);
-    await observe("legal-new-project-delete-undo-redo");
+    await page.getByRole("button", { name: "Independent template project", exact: true }).click();
+    await page.getByRole("button", { name: "New Project", exact: true }).click();
+    await page.getByTestId("project-library").getByRole("button", { name: `Open ${original.state.project.name}`, exact: true }).click();
+    await clip.focus();
+    await pressRedoViaKeyboard(page);
+    await vi.waitFor(async () => expect((await readProject()).project.timeline.tracks.some((track) => track.type === "audio")).toBe(true));
+    await observe("source-redo-still-works");
   }, 180_000);
 });

@@ -1,5 +1,6 @@
 import type { Project, ProjectSettings } from "./project";
 import type { Timeline, Track, Clip, Subtitle } from "./timeline";
+import type { ShapeClip, SVGClip, StickerClip } from "../graphics/types";
 
 export interface Template {
   readonly id: string;
@@ -39,6 +40,8 @@ export interface TemplateTimeline extends Omit<
 > {
   readonly tracks: TemplateTrack[];
   readonly subtitles: TemplateSubtitle[];
+  /** Graphics written by the v1 SaveTemplateDialog before full snapshots. */
+  readonly graphics?: { shapes: ShapeClip[]; svgs: SVGClip[]; stickers: StickerClip[] };
 }
 
 export interface TemplateTrack extends Omit<Track, "clips"> {

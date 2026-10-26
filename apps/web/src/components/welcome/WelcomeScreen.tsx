@@ -134,7 +134,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialTab }) => {
             icon={<ArrowRight className="rotate-180" size={16} aria-hidden />}
             onClick={() => setViewMode("home")}
           />
-          <Text type="label" color="primary" weight="medium" className="text-sm text-text-primary">{t("Templates")}</Text>
+          <Text type="label" color="primary" weight="medium" className="text-sm text-text-primary">{t("personalTemplates.libraryTitle")}</Text>
           <div className="w-16" />
         </header>
         <div className="flex-1 overflow-y-auto p-6">
@@ -261,7 +261,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialTab }) => {
 
           <div className="flex items-center justify-center gap-3">
             <Button
-              label={t("Browse templates")}
+              label={t("personalTemplates.libraryTitle")}
               variant="secondary"
               icon={<Layers size={16} aria-hidden />}
               onClick={() => setViewMode("templates")}

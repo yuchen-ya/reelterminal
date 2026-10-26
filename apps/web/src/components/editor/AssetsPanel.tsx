@@ -28,7 +28,7 @@ import type { MediaItem } from "@reelterminal/core";
 import { AspectRatioMatchDialog } from "./dialogs/AspectRatioMatchDialog";
 import { EditingToolsTab } from "./EditingToolsTab";
 import { RecipesTab } from "./panels/RecipesTab";
-import { TemplatesTab } from "./panels/TemplatesTab";
+import { ExternalResourcesTab } from "./panels/ExternalResourcesTab";
 import {
   EffectsPanel,
   TransitionsPanel,
@@ -163,7 +163,7 @@ type AssetsTab =
   | "transitions"
   | "tools"
   | "recipes"
-  | "templates";
+  | "resources";
 
 const ASSETS_TABS: ReadonlyArray<{
   value: AssetsTab;
@@ -211,9 +211,9 @@ const ASSETS_TABS: ReadonlyArray<{
     descriptionKey: "assets.descriptions.recipes",
   },
   {
-    value: "templates",
-    labelKey: "assets.tabs.templates",
-    descriptionKey: "assets.descriptions.templates",
+    value: "resources",
+    labelKey: "externalResources.title",
+    descriptionKey: "externalResources.notice",
   },
 ] as const;
 
@@ -229,7 +229,7 @@ const TAB_ICONS: Record<AssetsTab, React.ElementType> = {
   transitions: Shuffle,
   tools: Wand2,
   recipes: Wand2,
-  templates: LayoutTemplate,
+  resources: LayoutTemplate,
 };
 
 const PanelIconButton: React.FC<{
@@ -713,7 +713,9 @@ const LoadingIndicator: React.FC<{ message: string }> = ({ message }) => (
   </div>
 );
 
-export const AssetsPanel: React.FC = () => {
+export const AssetsPanel: React.FC<{ onImportRequested?: () => void }> = ({
+  onImportRequested,
+}) => {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [mediaView, setMediaView] = useState<AssetView>("grid");
@@ -926,6 +928,10 @@ export const AssetsPanel: React.FC = () => {
   // Handle file import with loading state
   const handleFileImport = useCallback(
     async (files: FileList | readonly File[] | null) => {
+      if (onImportRequested) {
+        onImportRequested();
+        return;
+      }
       if (!files || files.length === 0) return;
 
       setIsImporting(true);
@@ -994,7 +1000,7 @@ export const AssetsPanel: React.FC = () => {
         setImportProgress("");
       }
     },
-    [importMedia, t],
+    [importMedia, t, onImportRequested],
   );
 
   // Handle drag and drop import — capture FileSystemFileHandle for each dropped file
@@ -1002,6 +1008,10 @@ export const AssetsPanel: React.FC = () => {
     async (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragOver(false);
+      if (onImportRequested && e.dataTransfer.files.length > 0) {
+        onImportRequested();
+        return;
+      }
 
       // Snapshot dataTransfer synchronously — it becomes inert after the first await.
       const droppedFiles = Array.from(e.dataTransfer.files);
@@ -1026,7 +1036,7 @@ export const AssetsPanel: React.FC = () => {
       await Promise.all(handlePromises);
       handleFileImport(droppedFiles);
     },
-    [handleFileImport],
+    [handleFileImport, onImportRequested],
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -1300,9 +1310,13 @@ export const AssetsPanel: React.FC = () => {
   );
 
   const triggerFileInput = useCallback(() => {
+    if (onImportRequested) {
+      onImportRequested();
+      return;
+    }
     setNodeScope(null);
     fileInputRef.current?.click();
-  }, []);
+  }, [onImportRequested]);
 
   const handleImportBackground = useCallback(
     async (preset: BackgroundPreset) => {
@@ -1831,10 +1845,10 @@ export const AssetsPanel: React.FC = () => {
             <RecipesTab />
           </div>
         );
-      case "templates":
+      case "resources":
         return (
           <div className="flex min-h-0 flex-1 flex-col border-t border-border/70 bg-background-secondary content-area-fix">
-            <TemplatesTab />
+            <ExternalResourcesTab />
           </div>
         );
       default:
@@ -1868,7 +1882,7 @@ export const AssetsPanel: React.FC = () => {
             >
               <Icon size={20} strokeWidth={isActive ? 1.8 : 1.7} />
               <span className="block max-w-full text-center leading-[11px]">
-                {t(tab.value === "media" ? "assetBrowser.railMedia" : tab.value === "library" ? "assetBrowser.railLibrary" : tab.labelKey)}
+                {t(tab.value === "media" ? "assetBrowser.railMedia" : tab.value === "library" ? "assetBrowser.railLibrary" : tab.value === "resources" ? "externalResources.rail" : tab.labelKey)}
               </span>
             </button>
           );

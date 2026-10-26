@@ -42,6 +42,7 @@ import { toast } from "../../../stores/notification-store";
 import { InstructionLibraryPicker } from "./InstructionLibraryPicker";
 import { addLibraryInstruction } from "../../../services/material-library/instructions";
 import { MaterialDetailDialog } from "./MaterialDetailDialog";
+import { TemplatesTab } from "../panels/TemplatesTab";
 
 const KIND_CHIPS: ReadonlyArray<{ value: MaterialKind | "all"; labelKey: string }> = [
   { value: "all", labelKey: "material.filter.all" },
@@ -75,6 +76,23 @@ function RecordIcon({ record }: { readonly record: MaterialRecord }) {
 }
 
 export function MaterialLibraryPanel() {
+  const { t } = useTranslation();
+  const [section, setSection] = useState<"materials" | "templates">("materials");
+  useEffect(() => {
+    const openInstructions = () => setSection("materials");
+    window.addEventListener("reelterminal:open-instruction-library", openInstructions);
+    return () => window.removeEventListener("reelterminal:open-instruction-library", openInstructions);
+  }, []);
+  return <div className="flex h-full min-h-0 flex-col">
+    <div className="asset-browser-tabs shrink-0 px-4 py-2" role="group" aria-label={t("personalTemplates.librarySections")}>
+      {(["materials", "templates"] as const).map((value) => <button key={value} type="button" aria-pressed={section === value}
+        onClick={() => setSection(value)}>{t(value === "materials" ? "personalTemplates.materials" : "personalTemplates.title")}</button>)}
+    </div>
+    {section === "materials" ? <MaterialItemsPanel /> : <TemplatesTab />}
+  </div>;
+}
+
+function MaterialItemsPanel() {
   const { t } = useTranslation();
   const store = useMaterialLibraryStore();
   const hasOpenProject = useProjectStore((s) => s.hasOpenProject);
