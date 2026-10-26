@@ -162,6 +162,13 @@ export async function pathStatus(args: {
   isFile: boolean;
   sizeBytes: number | null;
   lastModifiedMs: number | null;
+  /**
+   * True only when the OS definitively reported the path absent (ENOENT /
+   * ENOTDIR). A bare exists:false without notFound means stat itself failed
+   * (EACCES, EPERM, offline drive, transient I/O) and the path may still
+   * exist, so callers must not read it as evidence the file is gone.
+   */
+  notFound?: boolean;
 }> {
   try {
     const stat = await fs.stat(args.path);
@@ -171,8 +178,17 @@ export async function pathStatus(args: {
       sizeBytes: Number.isFinite(stat.size) ? stat.size : null,
       lastModifiedMs: Number.isFinite(stat.mtimeMs) ? Math.round(stat.mtimeMs) : null,
     };
-  } catch {
-    return { exists: false, isFile: false, sizeBytes: null, lastModifiedMs: null };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return {
+      exists: false,
+      isFile: false,
+      sizeBytes: null,
+      lastModifiedMs: null,
+      // Only these errno values prove absence; every other stat failure
+      // (permissions, offline drive, transient I/O) stays distinguishable.
+      notFound: code === "ENOENT" || code === "ENOTDIR",
+    };
   }
 }
 

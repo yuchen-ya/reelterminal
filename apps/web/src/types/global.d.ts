@@ -328,6 +328,8 @@ interface ReelTerminalDesktopBridge {
           isFile: boolean;
           sizeBytes: number | null;
           lastModifiedMs: number | null;
+          /** True only for an OS-confirmed absence (ENOENT/ENOTDIR); exists:false without it means stat itself failed. */
+          notFound?: boolean;
         }>;
         tempFilePath(ext: string): Promise<string>;
         discardTempFile(path: string): Promise<void>;

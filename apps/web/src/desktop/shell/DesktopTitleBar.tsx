@@ -42,9 +42,11 @@ export function DesktopTitleBar({
           {centerControl}
         </div>
       ) : null}
-      <div className="flex flex-1 items-center justify-end" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-        {children}
-        <WindowControls platform={platform} />
+      <div className="flex flex-1 items-center justify-end">
+        <div className="flex shrink-0 items-center" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          {children}
+          <WindowControls platform={platform} />
+        </div>
       </div>
       
     </header>

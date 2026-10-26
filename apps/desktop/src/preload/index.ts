@@ -77,6 +77,8 @@ const api = {
         isFile: boolean;
         sizeBytes: number | null;
         lastModifiedMs: number | null;
+        /** True only for an OS-confirmed absence; exists:false without it means stat itself failed. */
+        notFound?: boolean;
       }>,
     tempFilePath: (ext: string) => ipcRenderer.invoke(CHANNELS.fsTempFilePath, { ext }),
     discardTempFile: (p: string) => ipcRenderer.invoke(CHANNELS.fsDiscardTempFile, { path: p }),

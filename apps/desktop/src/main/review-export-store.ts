@@ -85,13 +85,35 @@ async function durableText(file: string, text: string): Promise<{ size: number; 
   return { size: bytes.byteLength, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
+const TRANSIENT_RENAME_ATTEMPTS = 5;
+const TRANSIENT_RENAME_DELAY_MS = 20;
+
+function isTransientRenameError(error: unknown): boolean {
+  // Replacing a file that another store instance (or an external scanner) has
+  // open can transiently fail on Windows even though both sides are correct.
+  const code = (error as NodeJS.ErrnoException)?.code;
+  return code === "EPERM" || code === "EACCES" || code === "EBUSY";
+}
+
+async function renameReplacing(temporary: string, file: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(temporary, file);
+      return;
+    } catch (error) {
+      if (attempt >= TRANSIENT_RENAME_ATTEMPTS - 1 || !isTransientRenameError(error)) throw error;
+      await new Promise(resolve => setTimeout(resolve, TRANSIENT_RENAME_DELAY_MS));
+    }
+  }
+}
+
 async function replaceText(file: string, text: string): Promise<void> {
   const temporary = file + ".tmp-" + randomUUID();
   try {
     await writeFile(temporary, text, { flag: "wx" });
     const handle = await open(temporary, "r+");
     try { await handle.sync(); } finally { await handle.close(); }
-    await rename(temporary, file);
+    await renameReplacing(temporary, file);
   } finally { await rm(temporary, { force: true }); }
 }
 

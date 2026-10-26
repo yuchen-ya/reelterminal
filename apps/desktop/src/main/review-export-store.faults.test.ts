@@ -10,10 +10,12 @@ import { ReviewExportStore } from "./review-export-store";
 
 const fault = vi.hoisted(() => ({
   directory: "",
-  mode: "" as "" | "stream-space" | "manifest-space" | "receipt-space" | "receipt-pause" | "status-space" | "status-once" | "manifest-cancel" | "cancel",
+  mode: "" as "" | "stream-space" | "manifest-space" | "receipt-space" | "receipt-pause" | "status-space" | "status-once" | "status-rename-eperm" | "manifest-cancel" | "cancel",
   written: 0,
   injected: false,
   statusWrites: 0,
+  statusRenames: 0,
+  renamePersistent: false,
   afterWrite: undefined as (() => void) | undefined,
   receiptStarted: undefined as (() => void) | undefined,
   receiptRelease: undefined as Promise<void> | undefined,
@@ -76,12 +78,23 @@ vi.mock("node:fs/promises", async importOriginal => {
       throw Object.assign(new Error("Injected ENOSPC during manifest write"), { code: "ENOSPC" });
     }
     return actual.writeFile(...args);
+  }, rename: async (...args: Parameters<typeof actual.rename>) => {
+    const target = String(args[1]);
+    if (fault.mode === "status-rename-eperm" && fault.directory && target.startsWith(fault.directory + path.sep) && path.basename(target) === "status.json") {
+      const attempt = fault.statusRenames++;
+      if (fault.renamePersistent ? true : attempt === 0) {
+        fault.injected = true;
+        throw Object.assign(new Error("Injected EPERM while replacing export status"), { code: "EPERM" });
+      }
+    }
+    return actual.rename(...args);
   } };
 });
 
 const directories: string[] = [];
 afterEach(async () => {
   fault.directory = ""; fault.mode = ""; fault.written = 0; fault.injected = false; fault.statusWrites = 0;
+  fault.statusRenames = 0; fault.renamePersistent = false;
   fault.afterWrite = undefined; fault.receiptStarted = undefined; fault.receiptRelease = undefined;
   for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
 });
@@ -124,6 +137,27 @@ describe("review export native write failures and in-flight cancellation", () =>
     expect(["queued", "preparing", "ready"]).toContain((await firstPrepare).state);
     await Promise.all([store.wait(plan.exportId), secondClient.wait(plan.exportId)]);
     expect(await secondClient.status(plan.exportId, plan.nodeId)).toMatchObject({ state: "ready", manifest: { exportId: plan.exportId } });
+  });
+
+  it("rides out a transient EPERM replacing the export status", async () => {
+    const { store, plan } = await fixture();
+    fault.directory = store.root;
+    fault.mode = "status-rename-eperm";
+    await store.prepare(plan);
+    const status = await store.wait(plan.exportId);
+    expect(fault.injected).toBe(true);
+    expect(fault.statusRenames).toBeGreaterThan(1);
+    expect(status.state).toBe("ready");
+    expect(status.manifest).toMatchObject({ exportId: plan.exportId });
+  });
+
+  it("still fails when replacing the export status stays denied", async () => {
+    const { store, plan } = await fixture();
+    fault.directory = store.root;
+    fault.mode = "status-rename-eperm";
+    fault.renamePersistent = true;
+    await expect(store.prepare(plan)).rejects.toThrow(/EPERM while replacing export status/);
+    expect(await stat(path.join(store.root, plan.exportId)).then(() => true, () => false)).toBe(false);
   });
 
   it("cleans a receipt-write failure so the same export ID can reserve again", async () => {

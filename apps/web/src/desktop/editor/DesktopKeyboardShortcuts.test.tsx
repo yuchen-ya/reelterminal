@@ -6,7 +6,7 @@
  * the defaultPrevented dedupe between the service and the desktop shell's
  * own undo/redo listener — one press must fire one action.
  */
-import { render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopKeyboardShortcuts } from "./DesktopKeyboardShortcuts";
 import { useTimelineStore } from "../../stores/timeline-store";
@@ -15,6 +15,15 @@ import { useProjectStore } from "../../stores/project-store";
 describe("DesktopKeyboardShortcuts", () => {
   beforeEach(() => {
     useProjectStore.getState().createNewProject();
+    // Frame steps run through the playback bridge, which clamps to the
+    // timeline end on the project's frame grid; an empty project (duration 0)
+    // must not step anywhere.
+    useProjectStore.setState((state) => ({
+      project: {
+        ...state.project,
+        timeline: { ...state.project.timeline, duration: 60 },
+      },
+    }));
     useTimelineStore.getState().seekTo(10);
   });
 
@@ -22,17 +31,20 @@ describe("DesktopKeyboardShortcuts", () => {
     vi.restoreAllMocks();
   });
 
-  it("mounting the desktop component dispatches window shortcuts (arrow keys seek)", () => {
+  it("mounting the desktop component dispatches window shortcuts (arrow keys seek)", async () => {
     render(<DesktopKeyboardShortcuts />);
 
     window.dispatchEvent(
       new KeyboardEvent("keydown", { key: "ArrowRight", code: "ArrowRight" }),
     );
 
-    // frameForward = 1/30s from the playhead at 10s
-    expect(useTimelineStore.getState().playheadPosition).toBeCloseTo(
-      10 + 1 / 30,
-      5,
+    // The unified seek commits through the playback bridge (master clock +
+    // store), so the store update lands asynchronously.
+    await waitFor(() =>
+      expect(useTimelineStore.getState().playheadPosition).toBeCloseTo(
+        10 + 1 / 30,
+        5,
+      ),
     );
   });
 

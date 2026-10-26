@@ -49,6 +49,10 @@ export const pathStatusResultSchema = z.object({
   isFile: z.boolean(),
   sizeBytes: z.number().nonnegative().nullable(),
   lastModifiedMs: z.number().nonnegative().nullable(),
+  // true = the OS confirmed the path absent (ENOENT/ENOTDIR); missing or false
+  // alongside exists:false = stat failed for another reason (permissions,
+  // offline drive) and existence is unknown.
+  notFound: z.boolean().optional(),
 });
 export type PathStatusResult = z.infer<typeof pathStatusResultSchema>;
 

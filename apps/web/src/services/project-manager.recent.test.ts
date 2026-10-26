@@ -140,4 +140,120 @@ describe("ProjectManager recent projects", () => {
     expect(await storedRecentRecordCount()).toBeLessThan(12);
     expect(await projectManager.getRecentProjects()).toHaveLength(10);
   });
+
+  it("keeps a recent entry whose file only failed to read transiently", async () => {
+    const project = makeProject("recent-transient-read", "Transiently locked");
+    const path = "C:/projects/locked.oreel";
+    await projectManager.addToRecent(project, { kind: "native", path });
+    const previousWindow = globalThis.window;
+    vi.stubGlobal("window", { reelterminal: { fs: {
+      readFile: vi.fn().mockRejectedValue(new Error("file is locked by another process")),
+      pathStatus: vi.fn().mockResolvedValue({ exists: true, isFile: true }),
+    } } });
+    try {
+      const recent = (await projectManager.getRecentProjects()).find((entry) => entry.id === project.id);
+      await expect(projectManager.openRecentProject(recent!)).resolves.toBeNull();
+
+      const kept = (await projectManager.getRecentProjects()).find((entry) => entry.id === project.id);
+      expect(kept).toBeDefined();
+      expect(kept?.fileHandle).toEqual({ kind: "native", path });
+    } finally {
+      vi.stubGlobal("window", previousWindow);
+    }
+  });
+
+  it("drops a recent entry only once the probe confirms the file is gone", async () => {
+    const project = makeProject("recent-missing-file", "Moved away");
+    const path = "C:/projects/moved.oreel";
+    await projectManager.addToRecent(project, { kind: "native", path });
+    const previousWindow = globalThis.window;
+    vi.stubGlobal("window", { reelterminal: { fs: {
+      readFile: vi.fn().mockRejectedValue(new Error("no such file")),
+      pathStatus: vi.fn().mockResolvedValue({
+        exists: false,
+        isFile: false,
+        sizeBytes: null,
+        lastModifiedMs: null,
+        notFound: true,
+      }),
+    } } });
+    try {
+      const recent = (await projectManager.getRecentProjects()).find((entry) => entry.id === project.id);
+      await expect(projectManager.openRecentProject(recent!)).resolves.toBeNull();
+
+      expect((await projectManager.getRecentProjects()).find((entry) => entry.id === project.id)).toBeUndefined();
+    } finally {
+      vi.stubGlobal("window", previousWindow);
+    }
+  });
+
+  // A bare exists:false from the native probe collapses "path is gone" and
+  // "stat itself failed" (EACCES, offline drive); only notFound separates them.
+  it("keeps a recent entry when exists:false carries no confirmed absence", async () => {
+    const project = makeProject("recent-stat-failure", "Unreadable location");
+    const path = "C:/projects/restricted.oreel";
+    await projectManager.addToRecent(project, { kind: "native", path });
+    const ambiguousShapes = [
+      { exists: false, isFile: false, sizeBytes: null, lastModifiedMs: null, notFound: false },
+      { exists: false, isFile: false, sizeBytes: null, lastModifiedMs: null },
+    ];
+    for (const pathStatus of ambiguousShapes) {
+      const previousWindow = globalThis.window;
+      vi.stubGlobal("window", { reelterminal: { fs: {
+        readFile: vi.fn().mockRejectedValue(new Error("EPERM: operation not permitted")),
+        pathStatus: vi.fn().mockResolvedValue(pathStatus),
+      } } });
+      try {
+        const recent = (await projectManager.getRecentProjects()).find((entry) => entry.id === project.id);
+        await expect(projectManager.openRecentProject(recent!)).resolves.toBeNull();
+
+        const kept = (await projectManager.getRecentProjects()).find((entry) => entry.id === project.id);
+        expect(kept).toBeDefined();
+        expect(kept?.fileHandle).toEqual({ kind: "native", path });
+      } finally {
+        vi.stubGlobal("window", previousWindow);
+      }
+    }
+  });
+
+  it("keeps a recent entry when the existence probe itself throws", async () => {
+    const project = makeProject("recent-probe-throws", "Probe error");
+    const path = "C:/projects/unstable.oreel";
+    await projectManager.addToRecent(project, { kind: "native", path });
+    const previousWindow = globalThis.window;
+    vi.stubGlobal("window", { reelterminal: { fs: {
+      readFile: vi.fn().mockRejectedValue(new Error("read failed")),
+      pathStatus: vi.fn().mockRejectedValue(new Error("probe failed")),
+    } } });
+    try {
+      const recent = (await projectManager.getRecentProjects()).find((entry) => entry.id === project.id);
+      await expect(projectManager.openRecentProject(recent!)).resolves.toBeNull();
+
+      const kept = (await projectManager.getRecentProjects()).find((entry) => entry.id === project.id);
+      expect(kept).toBeDefined();
+      expect(kept?.fileHandle).toEqual({ kind: "native", path });
+    } finally {
+      vi.stubGlobal("window", previousWindow);
+    }
+  });
+
+  it("keeps a recent entry when the existence probe itself is unavailable", async () => {
+    const project = makeProject("recent-probe-unavailable", "No bridge");
+    const path = "C:/projects/unprobeable.oreel";
+    await projectManager.addToRecent(project, { kind: "native", path });
+    for (const stubbedWindow of [{}, { reelterminal: {} }] as const) {
+      const previousWindow = globalThis.window;
+      vi.stubGlobal("window", stubbedWindow);
+      try {
+        const recent = (await projectManager.getRecentProjects()).find((entry) => entry.id === project.id);
+        await expect(projectManager.openRecentProject(recent!)).resolves.toBeNull();
+
+        const kept = (await projectManager.getRecentProjects()).find((entry) => entry.id === project.id);
+        expect(kept).toBeDefined();
+        expect(kept?.fileHandle).toEqual({ kind: "native", path });
+      } finally {
+        vi.stubGlobal("window", previousWindow);
+      }
+    }
+  });
 });

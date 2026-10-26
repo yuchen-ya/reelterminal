@@ -84,3 +84,40 @@ it.each(["single", "all"])("waits for the native process to stop before cleaning
   await cancelling;
   expect(existsSync(audioPath)).toBe(false);
 });
+
+const validArgs = {
+  width: 64, height: 64, frameRate: 30, codec: "h264", format: "mp4",
+  bitrateKbps: 100, outputPath: "unused.mp4",
+  totalFrames: 30, audioSampleRate: 48000, audioChannels: 2,
+};
+
+it("rejects malformed export start payloads with an explicit IPC error", async () => {
+  const wc = { postMessage() {} } as unknown as WebContents;
+  const malformed: unknown[] = [
+    { ...validArgs, width: Number.NaN },
+    { ...validArgs, height: 0 },
+    { ...validArgs, frameRate: Number.POSITIVE_INFINITY },
+    { ...validArgs, totalFrames: -1 },
+    { ...validArgs, codec: "mpeg2" },
+    { ...validArgs, encodeMode: "instant" },
+    { ...validArgs, proresProfile: "422" },
+    { ...validArgs, quality: 140 },
+    { ...validArgs, outputPath: "" },
+    { totalFrames: 30 },
+  ];
+  for (const payload of malformed) {
+    await expect(startExport(wc, payload as never)).rejects.toThrow(/\[ipc\] invalid payload for reelterminal:export:start/);
+  }
+  expect(mocks.postMessage).not.toHaveBeenCalled();
+});
+
+it("keeps accepting fractional frame rates and optional encoder knobs", async () => {
+  const { jobId } = await startExport({ postMessage() {} } as unknown as WebContents, {
+    ...validArgs,
+    frameRate: 29.97,
+    codec: "h265",
+    encodeMode: "smallest",
+    quality: 92,
+  });
+  expect(jobId).toBeTruthy();
+});

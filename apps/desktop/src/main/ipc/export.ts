@@ -4,6 +4,7 @@ import os from "node:os";
 import { promises as fs } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { ExportJob, type ExportArgs } from "../sidecar/export-job";
 import { CHANNELS } from "../../shared/channels";
 import { CfrWriter } from "../sidecar/cfr";
@@ -36,6 +37,27 @@ export interface ExportStartArgs {
   quality?: number;
   proresProfile?: "proxy" | "lt" | "standard" | "hq" | "4444" | "4444xq";
 }
+
+// The renderer sends this payload straight through ipcMain.handle, so it needs
+// the same runtime validation the shared handle()+zod IPC helpers apply. The
+// codec set mirrors sidecar/encode-args ExportCodec; dimensions, frame rate and
+// audio fields keep their full downstream support range (fractional frame rates
+// included) with no extra upper bounds.
+export const exportStartArgsSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  frameRate: z.number().finite().positive(),
+  codec: z.enum(["h264", "h265", "hevc", "av1", "prores", "vp9"]),
+  format: z.string().min(1),
+  bitrateKbps: z.number().int().positive(),
+  outputPath: z.string().min(1),
+  totalFrames: z.number().int().positive(),
+  audioSampleRate: z.number().int().positive(),
+  audioChannels: z.number().int().positive(),
+  encodeMode: z.enum(["fast", "balanced", "smallest"]).optional(),
+  quality: z.number().min(0).max(100).optional(),
+  proresProfile: z.enum(["proxy", "lt", "standard", "hq", "4444", "4444xq"]).optional(),
+});
 
 const MAX_INITIAL_CREDITS = 10;
 const MAX_IN_FLIGHT_FRAME_BYTES = 128 * 1024 * 1024;
@@ -96,6 +118,10 @@ export async function startExport(
   args: ExportStartArgs,
   perfSink?: PerfSink,
 ): Promise<{ jobId: string }> {
+  const parsed = exportStartArgsSchema.safeParse(args);
+  if (!parsed.success) {
+    throw new Error(`[ipc] invalid payload for ${CHANNELS.exportStart}: ${parsed.error.message}`);
+  }
   const jobId = randomUUID();
   let runId = `main-export-${jobId}`;
   try {
@@ -108,7 +134,7 @@ export async function startExport(
   markExportPerformance(performanceSink, "submit");
   const encoders = await probeEncoders();
   const audioWavPath = path.join(os.tmpdir(), `reelterminal-${jobId}.wav`);
-  const exportArgs = resolveExportArgs(args, process.platform, encoders, audioWavPath);
+  const exportArgs = resolveExportArgs(parsed.data, process.platform, encoders, audioWavPath);
 
   const { port1, port2 } = new MessageChannelMain();
   const entry: JobEntry = {

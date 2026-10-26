@@ -558,7 +558,7 @@ export class ProjectManager {
           return project;
         } catch (error) {
           console.error("[ProjectManager] Open recent (native) failed:", error);
-          await this.removeFromRecent(recentProject.id);
+          await this.maybeDropMissingRecent(recentProject, error);
           return null;
         }
       }
@@ -584,7 +584,7 @@ export class ProjectManager {
         return project;
       } catch (error) {
         console.error("[ProjectManager] Open recent failed:", error);
-        await this.removeFromRecent(recentProject.id);
+        await this.maybeDropMissingRecent(recentProject, error);
         return null;
       }
     }
@@ -596,6 +596,39 @@ export class ProjectManager {
       await this.updateRecentTimestamp(recentProject.id);
     }
     return project;
+  }
+
+  /**
+   * Drop a recent entry only when its source is definitively gone. A transient
+   * read failure (locked file, offline drive, unreadable content) must not
+   * destroy the persisted entry and its file-permission grant.
+   */
+  private async maybeDropMissingRecent(
+    recentProject: RecentProject,
+    error: unknown,
+  ): Promise<void> {
+    if (isNativeRef(recentProject.fileHandle)) {
+      let missing = false;
+      try {
+        // The native pathStatus never throws for a missing path; anything
+        // else (absent bridge, probe failure) is not evidence the file is
+        // gone, so the entry must survive for a later retry. A bare
+        // exists:false is still ambiguous — stat failures on an existing
+        // path (EACCES, offline drive) collapse to the same shape — so only
+        // the OS-confirmed notFound verdict may drop the entry.
+        const status = await window.reelterminal?.fs?.pathStatus?.(
+          recentProject.fileHandle.path,
+        );
+        missing = status !== undefined && !status.exists && status.notFound === true;
+      } catch {
+        // Keep the entry when the existence probe itself fails.
+      }
+      if (missing) await this.removeFromRecent(recentProject.id);
+      return;
+    }
+    if ((error as Error | undefined)?.name === "NotFoundError") {
+      await this.removeFromRecent(recentProject.id);
+    }
   }
 
   private async loadProjectFromDb(id: string): Promise<Project | null> {
