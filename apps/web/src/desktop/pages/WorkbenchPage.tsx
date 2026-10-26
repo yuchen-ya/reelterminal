@@ -2,23 +2,36 @@ import { ModelViewerWorkspace } from "../workbench/components/ModelViewerWorkspa
 import "../workbench/workbench.css";
 import type { JSX, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PanelLeftOpen } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, LayoutGrid, PanelLeftOpen } from "lucide-react";
 import type { WorkbenchDecision } from "@reelterminal/core";
 import {
-  LEGACY_LS_WORKBENCH_BOTTOM_HEIGHT,
   LEGACY_LS_WORKBENCH_ISSUE_WIDTH,
   LEGACY_LS_WORKBENCH_TREE_WIDTH,
 } from "../../services/legacy-storage-keys";
 import { useResizable } from "../editor/useResizable";
 import { CollabStatusBar } from "../editor/CollabStatusBar";
 import { useWorkbenchController } from "../workbench/useWorkbenchController";
-import type { WorkbenchController, WorkbenchItemView } from "../workbench/types";
+import type {
+  SelectModifiers,
+  WorkbenchController,
+  WorkbenchItemView,
+} from "../workbench/types";
 import { useWorkbenchUiStore } from "../../stores/workbench-ui-store";
 import { TextCorpusWorkspace } from "../workbench/components/TextCorpusWorkspace";
 import { DataCleaningWorkspace } from "../workbench/components/DataCleaningWorkspace";
 import { ImageViewerWorkspace } from "../workbench/components/ImageViewerWorkspace";
 import { VideoFrameWorkspace } from "../workbench/components/VideoFrameWorkspace";
-import type { LineageTreeFilter } from "../workbench/components/PendingLineagePanel";
+import { AdaptiveBoardWorkspace } from "../workbench/components/AdaptiveBoardWorkspace";
+import type {
+  LineageTreeFilter,
+  SelectedBoardScope,
+} from "../workbench/components/PendingLineagePanel";
+import {
+  buildWorkbenchLineageGroups,
+  collectSubtreeItems,
+  getWorkbenchTypeIcon,
+  type WorkbenchLineageNode,
+} from "../workbench/components/lineage-tree-utils";
 import { WorkbenchQueueColumn } from "../workbench/components/WorkbenchQueueColumn";
 import {
   WorkbenchStartPanel,
@@ -49,24 +62,6 @@ function ColumnHandle({
   );
 }
 
-function RowHandle({
-  onPointerDown,
-  title,
-}: {
-  onPointerDown: (event: React.PointerEvent) => void;
-  title: string;
-}): JSX.Element {
-  return (
-    <div
-      role="separator"
-      aria-orientation="horizontal"
-      title={title}
-      onPointerDown={onPointerDown}
-      className="-mt-0.5 h-1 shrink-0 cursor-row-resize select-none transition-colors hover:bg-accent/50 z-10"
-    />
-  );
-}
-
 function isTextEntry(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
   if (!element) return false;
@@ -85,6 +80,18 @@ function inReworkChain(item: WorkbenchItemView): boolean {
     item.reworkOrigin !== undefined ||
     (item.lineage?.failStreak ?? 0) > 0
   );
+}
+
+function findLineageNodeById(
+  nodes: readonly WorkbenchLineageNode[],
+  itemId: string,
+): WorkbenchLineageNode | null {
+  for (const node of nodes) {
+    if (node.item.id === itemId) return node;
+    const found = findLineageNodeById(node.children, itemId);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**
@@ -115,14 +122,16 @@ export function WorkbenchPanel({
   paginationFooter?: ReactNode;
 }): JSX.Element {
   const leftCollapsed = useWorkbenchUiStore((s) => s.leftCollapsed);
-  const bottomCollapsed = useWorkbenchUiStore((s) => s.bottomCollapsed);
   const ui = useWorkbenchUiStore.getState;
   const [treeFilter, setTreeFilter] = useState<LineageTreeFilter>("all");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [activeBoard, setActiveBoard] = useState<SelectedBoardScope | null>(null);
+  const [drilledFromBoard, setDrilledFromBoard] =
+    useState<SelectedBoardScope | null>(null);
 
   const treeW = useResizable({
-    initial: 280,
-    min: 240,
+    initial: 220,
+    min: 180,
     max: 480,
     axis: "x",
     direction: 1,
@@ -136,15 +145,6 @@ export function WorkbenchPanel({
     direction: -1,
     storageKey: LEGACY_LS_WORKBENCH_ISSUE_WIDTH,
   });
-  const bottomH = useResizable({
-    initial: 136,
-    min: 100,
-    max: 340,
-    axis: "y",
-    direction: -1,
-    storageKey: LEGACY_LS_WORKBENCH_BOTTOM_HEIGHT,
-  });
-
   const [toast, setToast] = useState<string | null>(null);
   const [createBatchOpen, setCreateBatchOpen] = useState(false);
   const createBatch = () => (onImport ? onImport() : setCreateBatchOpen(true));
@@ -180,6 +180,68 @@ export function WorkbenchPanel({
   const processedCount =
     batchItems.length - batchItems.filter((i) => i.status === "pending").length;
   const hasBatch = controller.batches.length > 0;
+
+  // Reset board state when switching batches
+  useEffect(() => {
+    setActiveBoard(null);
+    setDrilledFromBoard(null);
+  }, [controller.activeBatch?.id]);
+
+  // Build lineage groups over batchItems so we can detect if currentItem is a board parent node
+  const batchLineageGroups = useMemo(
+    () => buildWorkbenchLineageGroups(batchItems),
+    [batchItems],
+  );
+
+  const currentBoardParentScope = useMemo<SelectedBoardScope | null>(() => {
+    if (!currentItem) return null;
+    for (const group of batchLineageGroups) {
+      const node = findLineageNodeById(group.roots, currentItem.id);
+      if (node && node.children.length > 0 && node.mode !== "category") {
+        const subtree = collectSubtreeItems(node);
+        return {
+          id: `node:${currentItem.id}`,
+          title: currentItem.agentGuidance?.nodeSlotLabel ?? currentItem.title,
+          itemIds: subtree.map((i) => i.id),
+        };
+      }
+    }
+    return null;
+  }, [batchLineageGroups, currentItem]);
+
+  const effectiveBoard =
+    activeBoard ?? (drilledFromBoard ? null : currentBoardParentScope);
+
+  const effectiveBoardItems = useMemo(() => {
+    if (!effectiveBoard) return [];
+    const idSet = new Set(effectiveBoard.itemIds);
+    return batchItems.filter((item) => idSet.has(item.id));
+  }, [batchItems, effectiveBoard]);
+
+  const handleSelectItemFromTree = useCallback(
+    (itemId: string, modifiers?: SelectModifiers) => {
+      setActiveBoard(null);
+      setDrilledFromBoard(null);
+      controller.selectItem(itemId, modifiers);
+    },
+    [controller],
+  );
+
+  const handleSelectBoard = useCallback((board: SelectedBoardScope) => {
+    setDrilledFromBoard(null);
+    setActiveBoard(board);
+  }, []);
+
+  const handleDrillIntoBoardItem = useCallback(
+    (itemId: string) => {
+      if (effectiveBoard) {
+        setDrilledFromBoard(effectiveBoard);
+      }
+      setActiveBoard(null);
+      controller.selectItem(itemId);
+    },
+    [controller, effectiveBoard],
+  );
 
   // Keyboard routing: decision shortcuts only when a list/canvas area owns the focus.
   useEffect(() => {
@@ -218,9 +280,11 @@ export function WorkbenchPanel({
       } else if (key === "j" || key === "ArrowDown") {
         if (isTextEntry(target)) return;
         event.preventDefault();
+        setActiveBoard(null);
         controller.skipNext();
       } else if (key === "k" || key === "ArrowUp") {
         event.preventDefault();
+        setActiveBoard(null);
         controller.skipPrev();
       } else if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "z") {
         event.preventDefault();
@@ -240,6 +304,10 @@ export function WorkbenchPanel({
   );
   const batchImageItems = useMemo(
     () => batchItems.filter((item) => item.type === "image"),
+    [batchItems],
+  );
+  const batchVideoItems = useMemo(
+    () => batchItems.filter((item) => item.type === "video"),
     [batchItems],
   );
 
@@ -320,7 +388,10 @@ export function WorkbenchPanel({
       <div className="flex min-h-0 flex-1 overflow-hidden bg-bg">
         {/* Left: lineage tree queue column — always mounted */}
         {leftCollapsed ? (
-          <div className="flex w-10 shrink-0 flex-col items-center gap-2 border-r border-border bg-bg-1 py-2.5">
+          <div
+            className="flex w-10 shrink-0 flex-col items-center gap-1.5 border-r border-border bg-bg-1 py-2"
+            data-testid="collapsed-pending-switcher"
+          >
             <button
               type="button"
               onClick={() => ui().setLeftCollapsed(false)}
@@ -329,7 +400,80 @@ export function WorkbenchPanel({
             >
               <PanelLeftOpen className="h-4 w-4" />
             </button>
-            <span className="text-[11px] font-bold text-accent">{pendingItems.length}</span>
+            <span
+              className="font-mono text-[10px] font-bold text-accent"
+              title={`剩余待处理节点: ${pendingItems.length}`}
+            >
+              {pendingItems.length}
+            </span>
+
+            {/* Prev / Next unhandled node steppers */}
+            <div className="flex flex-col items-center gap-0.5 border-y border-border/70 py-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveBoard(null);
+                  controller.skipPrev();
+                }}
+                disabled={pendingItems.length === 0}
+                className="rounded p-1 text-fg-2 hover:bg-bg-2 hover:text-fg disabled:opacity-35"
+                title="上一个待处理节点 (K / ↑)"
+                data-testid="collapsed-prev-pending"
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveBoard(null);
+                  controller.skipNext();
+                }}
+                disabled={pendingItems.length === 0}
+                className="rounded p-1 text-fg-2 hover:bg-bg-2 hover:text-fg disabled:opacity-35"
+                title="下一个待处理节点 (J / ↓)"
+                data-testid="collapsed-next-pending"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* Compact mini-node switcher for unhandled items */}
+            <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1 py-0.5">
+              {pendingItems.map((pendingItem, idx) => {
+                const isActive =
+                  !effectiveBoard && currentItem?.id === pendingItem.id;
+                const shortLabel =
+                  pendingItem.agentGuidance?.nodeSlotLabel ?? pendingItem.title;
+                const failStreak = pendingItem.lineage?.failStreak ?? 0;
+                return (
+                  <button
+                    key={pendingItem.id}
+                    type="button"
+                    onClick={() => handleSelectItemFromTree(pendingItem.id)}
+                    className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[10px] transition-colors ${
+                      isActive
+                        ? "bg-accent/20 text-fg ring-1 ring-accent"
+                        : failStreak >= 2
+                          ? "bg-status-warning/15 text-fg-2 hover:bg-status-warning/25"
+                          : "bg-bg-2/60 text-fg-3 hover:bg-bg-2 hover:text-fg"
+                    }`}
+                    title={`${idx + 1}. ${shortLabel}`}
+                    data-testid={`collapsed-pending-node-${pendingItem.id}`}
+                  >
+                    {getWorkbenchTypeIcon(pendingItem.type)}
+                    <span
+                      className={`absolute right-0.5 bottom-0.5 h-1.5 w-1.5 rounded-full ${
+                        failStreak >= 2
+                          ? "bg-status-error"
+                          : isActive
+                            ? "bg-accent"
+                            : "bg-fg-3/60"
+                      }`}
+                    />
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ) : (
           <>
@@ -349,6 +493,9 @@ export function WorkbenchPanel({
                 onTreeFilterChange={setTreeFilter}
                 treeFilterCounts={treeFilterCounts}
                 treeItems={treeItems}
+                activeBoardId={effectiveBoard?.id ?? null}
+                onSelectBoard={handleSelectBoard}
+                onSelectItem={handleSelectItemFromTree}
                 paginationFooter={paginationFooter}
                 onRetrieveItem={(itemId) =>
                   report(controller.retrieveToPending(itemId), "已取回至待审状态")
@@ -361,6 +508,29 @@ export function WorkbenchPanel({
 
         {/* Centre/Right main workspace: viewer + bottom dock */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
+          {drilledFromBoard && !effectiveBoard && (
+            <div
+              className="flex h-7 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3 text-[11px]"
+              data-testid="board-drilldown-breadcrumb"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveBoard(drilledFromBoard);
+                  setDrilledFromBoard(null);
+                }}
+                className="inline-flex items-center gap-1.5 font-medium text-accent hover:underline"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span>返回聚合画板：{drilledFromBoard.title}</span>
+              </button>
+              <span className="text-fg-3">
+                当前单节点精修：{currentItem?.agentGuidance?.nodeSlotLabel ?? currentItem?.title}
+              </span>
+            </div>
+          )}
+
           <div className="relative min-h-0 flex-1 overflow-hidden" data-testid="workbench-content">
             {!hasBatch ? (
               emptyContent ?? (
@@ -371,6 +541,23 @@ export function WorkbenchPanel({
                   onCreateBatch={createBatch}
                 />
               )
+            ) : effectiveBoard && effectiveBoardItems.length > 0 ? (
+              <AdaptiveBoardWorkspace
+                boardTitle={effectiveBoard.title}
+                items={effectiveBoardItems}
+                currentItem={currentItem}
+                selectedIds={controller.selectedIds}
+                onSelectItem={controller.selectItem}
+                onOpenChildItem={handleDrillIntoBoardItem}
+                onCommitDecision={(decision, targetIds) =>
+                  report(
+                    controller.commitDecision(decision, targetIds),
+                    `已对画板执行决定:${decision}`,
+                  )
+                }
+                ensureItemsLoaded={controller.ensureItemsLoaded}
+                openMediaUrl={controller.openMediaUrl}
+              />
             ) : !currentItem ? (
               <WorkbenchQueueState
                 kind={filteredEmpty ? "filter-empty" : "queue-done"}
@@ -418,6 +605,9 @@ export function WorkbenchPanel({
             ) : (
               <VideoFrameWorkspace
                 item={currentItem}
+                batchVideoItems={batchVideoItems}
+                ensureItemsLoaded={controller.ensureItemsLoaded}
+                openMediaUrl={controller.openMediaUrl}
                 onUpdateVideoMarkers={controller.updateVideoMarkers}
                 issuePanelWidth={issueW.value}
                 onStartResizeIssuePanel={issueW.onHandlePointerDown}
@@ -425,19 +615,12 @@ export function WorkbenchPanel({
             )}
           </div>
 
-          {!bottomCollapsed && (
-            <RowHandle onPointerDown={bottomH.onHandlePointerDown} title="拖拽调整底部详情高度" />
-          )}
-
           <SimpleBottomDetailsTimeline
             currentItem={currentItem}
-            heightPx={bottomH.value}
-            collapsed={bottomCollapsed}
             canUndo={controller.canUndo}
             canRedo={controller.canRedo}
             selectedIds={controller.selectedIds}
-            onToggleCollapse={() => ui().setBottomCollapsed(!bottomCollapsed)}
-            onSelectItemById={(itemId) => controller.selectItem(itemId)}
+            onSelectItemById={(itemId) => handleSelectItemFromTree(itemId)}
             onCommitDecision={(decision, targetIds) =>
               report(
                 controller.commitDecision(decision, targetIds),
@@ -458,7 +641,7 @@ export function WorkbenchPanel({
         batch={controller.activeBatch}
         items={batchItems}
         currentItemId={currentItem?.id ?? null}
-        onSelectAndFocusItem={(itemId) => controller.selectItem(itemId)}
+        onSelectAndFocusItem={(itemId) => handleSelectItemFromTree(itemId)}
         onNodSingleItem={(item) =>
           item.agentGuidance
             ? report(controller.commitDecision(item.agentGuidance.nodDecision, [item.id]))

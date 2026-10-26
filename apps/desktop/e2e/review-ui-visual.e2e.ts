@@ -160,16 +160,17 @@ describe("review workbench visual baseline captures", () => {
     // -------------------------------------------------------------
     // State 1: empty-workspace (no nodes)
     // -------------------------------------------------------------
-    await page.getByText("创建一个数据节点").waitFor({ state: "visible", timeout: 20_000 });
+    await page.getByText("创建一个审阅任务").waitFor({ state: "visible", timeout: 20_000 });
     await captureScreenshot(page, "empty-workspace");
 
     // -------------------------------------------------------------
     // State 2: empty-node (node created, no items)
     // -------------------------------------------------------------
-    await page.getByLabel("新节点名称").fill("视频与全格式审阅");
+    await page.getByTestId("review-new-task").click();
+    await page.getByLabel("任务名称").fill("视频与全格式审阅");
     await page.getByTestId("review-create-node").click();
     await page.getByTestId("review-node-title").waitFor({ state: "visible", timeout: 20_000 });
-    await page.getByText("把待审内容放到这个节点").waitFor({ state: "visible", timeout: 20_000 });
+    await page.getByText("把待审内容放到这个任务").waitFor({ state: "visible", timeout: 20_000 });
     await captureScreenshot(page, "empty-node");
 
     // -------------------------------------------------------------
@@ -534,6 +535,7 @@ describe("review workbench visual baseline captures", () => {
     // -------------------------------------------------------------
     // State 11: dialog-export (export modal dialog)
     // -------------------------------------------------------------
+    await page.getByTestId("review-export-menu-trigger").click();
     await page.getByTestId("review-export-open").click();
     await page.getByTestId("review-export-dialog").waitFor({
       state: "visible",
@@ -564,7 +566,7 @@ describe("review workbench visual baseline captures", () => {
       .click();
 
     // Handoff button becomes enabled
-    const handoffBtn = page.getByRole("button", { name: /交回本轮决策/ });
+    const handoffBtn = page.getByRole("button", { name: /发布审阅结果/ });
     await vi.waitFor(
       async () => {
         expect(await handoffBtn.isEnabled()).toBe(true);

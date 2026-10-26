@@ -31,7 +31,8 @@ describe("recorded review processing and native version comparisons", () => {
     await vi.waitFor(async () => { context = value(await agent.callCommand<ReviewContext>("review.context")); }, { timeout: 15_000 });
     const page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace/i }).click();
-    await page.getByLabel("New node name").fill("Eight-stage pixel fixture");
+    await page.getByTestId("review-new-task").click();
+    await page.getByLabel("Task name").fill("Eight-stage pixel fixture");
     await page.getByTestId("review-create-node").click();
     await page.getByTestId("review-node-title").waitFor();
     await page.getByTestId("review-access-toggle").click();
@@ -172,7 +173,8 @@ describe("recorded review processing and native version comparisons", () => {
     expect(exportButton!.y).toBeGreaterThanOrEqual(0); expect(exportButton!.y + exportButton!.height).toBeLessThanOrEqual(701);
     await launched.page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-process-minimum-window.png") });
     await launched.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900));
-    await launched.page.getByLabel("New node name").fill("Final-only fixture");
+    await launched.page.getByTestId("review-new-task").click();
+    await launched.page.getByLabel("Task name").fill("Final-only fixture");
     await launched.page.getByTestId("review-create-node").click();
     await vi.waitFor(async () => expect(await launched.page.getByTestId("review-node-title").textContent()).toBe("Final-only fixture"));
     const finalNodeId = await launched.page.getByTestId("review-node-title").getAttribute("data-node-id");

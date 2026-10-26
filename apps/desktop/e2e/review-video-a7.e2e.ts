@@ -48,7 +48,8 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
     expect(Number(fixtures[2].probe.streams[0].start_time)).toBe(5);
     expect(fixtures[1].probe.streams[0].side_data_list?.some(data => Math.abs(data.rotation ?? 0) === 90)).toBe(true);
     await page.getByRole("tab", { name: /Review Workspace/i }).click();
-    await page.getByLabel("New node name").fill("A7 decoded video acceptance");
+    await page.getByTestId("review-new-task").click();
+    await page.getByLabel("Task name").fill("A7 decoded video acceptance");
     await page.getByTestId("review-create-node").click();
     await page.getByTestId("review-node-title").waitFor();
     await page.getByTestId("review-access-toggle").click();
@@ -151,7 +152,7 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
       await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "返工", exact: true }).click();
       await vi.waitFor(async () => expect((await readItem(original.id)).status).toBe("rework"));
     }
-    await page.getByRole("button", { name: /交回本轮决策/ }).click();
+    await page.getByRole("button", { name: /发布审阅结果/ }).click();
     await page.getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ }).first().click();
     await page.getByText(/等待 Agent 读取/).first().waitFor();
     await page.keyboard.press("Escape");

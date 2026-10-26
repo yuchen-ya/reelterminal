@@ -172,10 +172,9 @@ export function useImagePointerInteractions({
   );
 
   const handleStagePointerDown = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    if (e.button !== 0 || !canDraw) return;
-    capturePointer(e);
-
-    if (workMode === "navigate") {
+    if (!canDraw) return;
+    if (e.button === 1 || (e.button === 0 && workMode === "navigate")) {
+      capturePointer(e);
       panDragRef.current = {
         pointerId: e.pointerId,
         startX: e.clientX,
@@ -185,6 +184,8 @@ export function useImagePointerInteractions({
       };
       return;
     }
+    if (e.button !== 0) return;
+    capturePointer(e);
 
     const pt = toStagePoint(e.clientX, e.clientY);
     if (!pt) return;

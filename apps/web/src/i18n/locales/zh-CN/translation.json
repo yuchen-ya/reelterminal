@@ -1,5 +1,6 @@
 {
   "review": {
+    "manageGroups": "管理分类", "finishGroupManagement": "完成管理",
     "migration": {
       "title": "迁移旧项目工作台", "description": "选择已有项目工作区，先检查旧工作台和文件可用性。可读媒体会复制为独立审阅文件，原项目内容保留为只读备份。",
       "source": "源项目 / 工作区", "choose": "请选择来源…", "inspect": "预览源数据与文件状态",
@@ -56,19 +57,20 @@
       "prepare": "准备导出", "newPlan": "准备另一份导出", "copy": "复制到文件夹…", "dragFolder": "拖出文件夹", "dragFiles": "拖出文件", "handed": "已交给系统，尚未验证目标应用是否接收。", "copied": "已复制并校验：{{directory}}",
       "state": { "queued": "等待准备", "preparing": "正在准备", "ready": "可以复制或拖出", "failed": "导出失败", "cancelled": "已取消" }
     },
-    "title": "审阅工作台", "nodes": "数据节点", "newNode": "新建节点", "newNodeName": "新节点名称", "expandSidebar": "展开数据节点侧栏", "collapseSidebar": "收起侧栏", "nodeMenu": "节点菜单", "adminMenu": "管理选项", "create": "创建", "searchNodes": "搜索节点", "nodeViews": "节点视图",
-    "recent": "最近", "pinned": "置顶", "archived": "归档", "trash": "回收站", "groups": "分组", "allGroups": "所有分组", "newGroupName": "新分组名称",
-    "renameGroup": "重命名分组", "removeEmptyGroup": "删除空分组", "undoDirectory": "撤销目录操作", "redo": "重做", "noNodesInView": "此范围内还没有节点", "loadMore": "加载更多",
-    "moveToGroup": "移到分组", "ungrouped": "未分组", "rename": "重命名", "name": "名称", "save": "保存", "pin": "置顶", "unpin": "取消置顶", "archive": "归档", "unarchive": "取消归档", "restore": "还原", "moveToTrash": "移到回收站",
-    "restoreBeforeEditing": "此节点在回收站中，还原后即可继续审阅。", "emptyWorkspace": "创建一个数据节点，导入图片、视频、文字或数据表。审阅内容独立保存，无需打开视频项目。",
-    "emptyNode": "把待审内容放到这个节点", "emptyNodeDescription": "导入本地文件或粘贴文字，也可以复制接入说明，让 Agent 将结果提交到这个节点。原件和审阅记录都会保留。",
+    "title": "审阅工作台", "nodes": "审阅任务", "newNode": "新建任务", "newNodeName": "任务名称", "expandSidebar": "展开审阅任务侧栏", "collapseSidebar": "收起侧栏", "nodeMenu": "任务操作", "adminMenu": "管理选项", "create": "创建", "searchNodes": "搜索任务", "nodeViews": "任务视图",
+    "recent": "最近", "pinned": "置顶", "archived": "归档", "trash": "回收站", "groups": "任务分类", "allGroups": "全部任务", "newGroupName": "新分类名称",
+    "renameGroup": "重命名分类", "removeEmptyGroup": "删除空分类", "undoDirectory": "撤销目录操作", "redo": "重做", "noNodesInView": "此范围内还没有审阅任务", "loadMore": "加载更多",
+    "moveToGroup": "移到任务分类", "ungrouped": "不分类", "rename": "重命名", "name": "名称", "save": "保存", "pin": "置顶", "unpin": "取消置顶", "archive": "归档", "unarchive": "取消归档", "restore": "还原", "moveToTrash": "移到回收站",
+    "restoreBeforeEditing": "此任务在回收站中，还原后即可继续审阅。", "emptyWorkspace": "创建一个审阅任务，导入图片、视频、文字或数据表。审阅内容独立保存，无需打开视频项目。",
+    "emptyNode": "把待审内容放到这个任务", "emptyNodeDescription": "导入本地文件或粘贴文字，也可以复制接入说明，让 Agent 将结果提交到这个任务。原件和审阅记录都会保留。",
     "agentWrite": "Agent 可写审阅", "agentRead": "Agent 只读审阅", "copyStartup": "复制接入说明", "copied": "已复制", "retry": "重试", "loading": "正在读取…",
-    "legacyProject": "旧项目审阅：{{name}}", "backToNodes": "返回独立节点", "legacyTools": "旧数据入口", "legacyMotion": "动态图形（旧）", "openProjectFirst": "请先打开对应的视频项目",
-    "importTitle": "导入审阅内容", "importDescription": "在此节点中新建一个输入批次；已有内容会保留。", "files": "文件或文件夹", "pasteText": "粘贴文本", "batchName": "批次名称", "localFiles": "本地文件",
+    "legacyProject": "旧项目审阅：{{name}}", "backToNodes": "返回审阅任务", "legacyTools": "旧数据入口", "legacyMotion": "动态图形（旧）", "openProjectFirst": "请先打开对应的视频项目",
+    "importTitle": "导入审阅内容", "importDescription": "在此任务中新建一个内容批次；已有内容会保留。", "files": "文件或文件夹", "pasteText": "粘贴文本", "batchName": "批次名称", "localFiles": "本地文件",
     "chooseFiles": "选择文件", "chooseFolder": "选择文件夹", "fileLimits": "每次 1–64 个文件。表格最多 5000 行、64 列；CSV 首行为列名，JSON 为平铺对象数组。文本支持 UTF-8 或带 BOM 的 UTF-16。原文件字节会同时保留。",
     "textBody": "文本正文（最多 200000 字符）", "readingFiles": "正在读取并检查文件…", "importing": "正在保存原件并提交内容…", "cancel": "取消", "import": "导入", "previous": "上一页", "next": "下一页", "pageScope": "列表每页最多 100 项；选择和批量操作仅作用于当前可见范围。",
     "kind": { "model3d": "3D 模型", "image": "图片", "video": "视频", "text": "文字", "data": "数据表" },
-    "startupPrompt": "当前任务使用 ReelTerminal 独立审阅工作台。CLI 前缀：{{cli}}\n当前显式目标：{{target}}\n\n1. 运行 {{cli}} review context，重新读取本次运行的 workspace/instance 身份与权限。\n2. 运行 {{cli}} review describe 和 {{cli}} review capabilities，读取审阅命令及实际允许的媒体根目录。\n3. 通过 {{cli}} schema review.ingest 或 schema review.apply 查看精确参数。创建节点使用 review.nodes.create；所有写入带显式 review target、预期 revision 和 UUID requestId。文件在允许根内准备，媒体字节不放入 JSON。\n4. 使用 {{cli}} review call review.ingest --file <请求文件> 提交，使用 review.get / review.changes / review.versions.get 读回。review.apply 沿用 schema 中的 workbench 操作词汇，目标仍是独立 review 节点。\n\n审阅写权限由本工作台的开关单独授权；应用重启后重新发现目标。发布审阅结果须用户在界面确认。冻结文件副本使用 review.export.*，真实处理记录使用 review.steps.*，节点包恢复使用 review.package.inspect/restore；提交前读取对应 verb 的 schema。"
+    "agentAccessLabel": "允许 Agent 修改审阅", "exportMenu": "\u5bfc\u51fa",
+    "startupPrompt": "请通过 ReelTerminal 独立审阅工作台完成我的请求。\nCLI 前缀（下列子命令均接在此前缀后）：{{cli}}\n目标：{{target}}\n先运行 review context 核对身份与权限，再读 review describe、review capabilities。执行前用 schema <命令> 查参数，通过 review call <命令> --file <请求文件> 调用。写入绑定上述目标、读取时的 revision 和 UUID requestId；文件放在允许根内，JSON 不传媒体字节。节点命名与编排规范：批次/父节点承载大背景，具体条目 title 与 nodeSlotLabel 必须保持简短（4–8 字内，禁堆砌长前缀）；需同屏审阅的多张单图或图文数碎片请归入同一父节点（设为聚合画板 board），需对比的视频请绑定基准条目。重启或冲突后重新核对目标；只读时需用户开启审阅写权限，发布结果由用户在界面确认。"
   },
   "projectMediaFilters": {
     "scope": "查看范围",

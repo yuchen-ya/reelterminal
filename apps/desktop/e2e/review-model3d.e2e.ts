@@ -21,7 +21,8 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     const network: string[] = [];
     page.on("request", request => { if (/^https?:/.test(request.url())) network.push(request.url()); });
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-    await page.getByLabel(/New node name|新节点名称/).fill("GLB acceptance");
+    await page.getByTestId("review-new-task").click();
+    await page.getByLabel(/Task name|任务名称/).fill("GLB acceptance");
     await page.getByTestId("review-create-node").click(); await page.getByTestId("review-node-title").waitFor();
     await page.getByTestId("review-access-toggle").click();
     let context = value(await agent.callCommand<ReviewContext>("review.context"));
@@ -88,7 +89,7 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     await page.getByTestId("model-capture").click();await page.getByTestId("model-save-feedback").click();
     await vi.waitFor(async()=>expect((await readItem()).feedback.length).toBe(1));await ready();
     saved=(await readItem()).feedback[0];
-    await page.getByRole("button",{name:/交回本轮决策/}).click();
+    await page.getByRole("button",{name:/发布审阅结果/}).click();
     await page.getByRole("button",{name:/发布本轮交接快照|发布新修订快照/}).first().click();
     await page.getByText(/等待 Agent 读取/).first().waitFor();await page.keyboard.press("Escape");
     const changes=value(await agent.callCommand<{entries:Array<{handoffIds?:string[]}>}>("review.changes",{target,afterSequence:0}));
@@ -169,7 +170,8 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
  const evidence:Record<string,unknown>={measuredAt:new Date().toISOString()};
  const network:string[]=[];page.on("request",request=>{if(/^https?:/.test(request.url()))network.push(request.url());});
  try {
-  await page.getByRole("tab",{name:/Review Workspace|审阅工作台/i}).click();await page.getByLabel(/New node name|新节点名称/).fill("GLB budgets");await page.getByTestId("review-create-node").click();await page.getByTestId("review-node-title").waitFor();await page.getByTestId("review-access-toggle").click();
+  await page.getByRole("tab",{name:/Review Workspace|审阅工作台/i}).click();await page.getByTestId("review-new-task").click();
+    await page.getByLabel(/Task name|任务名称/).fill("GLB budgets");await page.getByTestId("review-create-node").click();await page.getByTestId("review-node-title").waitFor();await page.getByTestId("review-access-toggle").click();
   const context=value(await agent.callCommand<ReviewContext>("review.context"));const node=value(await agent.callCommand<{nodes:ReviewNode[]}>("review.nodes.list",{target:context.target})).nodes[0];const target={...context.target,nodeId:node.id};
   const base=modelFixture({animated:false});
   const fixtures=[{name:"Static PBR alpha",bytes:base.bytes},{name:"Animated",bytes:modelFixture().bytes},

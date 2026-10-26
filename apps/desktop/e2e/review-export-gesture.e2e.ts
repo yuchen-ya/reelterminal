@@ -15,7 +15,8 @@ test("a real pointer gesture on each formal handle reaches the native drag bound
   const page = launched.page;
   try {
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-    await page.getByLabel(/New node name|新节点名称/).fill("Gesture regression");
+    await page.getByTestId("review-new-task").click();
+    await page.getByLabel(/Task name|任务名称/).fill("Gesture regression");
     await page.getByTestId("review-create-node").click();
     await page.getByTestId("review-node-title").waitFor();
     await page.getByTestId("review-access-toggle").click();
@@ -25,6 +26,7 @@ test("a real pointer gesture on each formal handle reaches the native drag bound
       items: [{ id: crypto.randomUUID(), title: "single", type: "text", content: { type: "text", entryId: crypto.randomUUID(), title: "Single", speakerOrContext: "", text: "Gesture exact original" } }] }));
     await page.getByTestId("text-body").waitFor();
     await vi.waitFor(async () => expect(await page.getByTestId("review-node-editor").locator("[inert]").count()).toBe(0));
+    await page.getByTestId("review-export-menu-trigger").click();
     await page.getByTestId("review-export-open").click();
     await page.getByTestId("review-export-prepare").click();
     await vi.waitFor(async () => expect(await page.getByTestId("review-export-status").getAttribute("data-state")).toBe("ready"));

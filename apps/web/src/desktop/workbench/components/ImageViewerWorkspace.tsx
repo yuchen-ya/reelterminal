@@ -90,10 +90,11 @@ export function ImageViewerWorkspace({
   const [brushColor, setBrushColor] = useState<string>(() => readAccentColor());
 
   const [zoom, setZoom] = useState<number>(100);
+  const [loupeEnabled, setLoupeEnabled] = useState<boolean>(false);
   const [holdOriginal, setHoldOriginal] = useState<boolean>(false);
 
-  const [natural, setNatural] = useState<{ readonly w: number; readonly h: number } | null>(null);
-  const [imgError, setImgError] = useState<boolean>(false);
+  const [decodedImage, setDecodedImage] = useState<{ url: string; w: number; h: number } | null>(null);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const [areaSize, setAreaSize] = useState<{ readonly w: number; readonly h: number }>({
     w: 0,
     h: 0,
@@ -135,6 +136,10 @@ export function ImageViewerWorkspace({
       : displayMode === "repaired" && !holdOriginal && repairReady;
   const activeMedia = usingRepair ? repairedMedia : originalMedia;
   const activeUrl = activeMedia?.url ?? null;
+  // Bind decode state to its source. A passive reset on URL changes can run
+  // after a cached image's load event and leave it hidden forever.
+  const natural = decodedImage?.url === activeUrl ? decodedImage : null;
+  const imgError = activeUrl !== null && failedUrl === activeUrl;
 
   const draftKey = `${currentItem.id}:${currentItem.version}`;
   const draftStrokes = draftsByItemVersion[draftKey]?.strokes ?? EMPTY_STROKES;
@@ -170,12 +175,6 @@ export function ImageViewerWorkspace({
     setRepairNotice(null);
   }, [currentItem.id, currentItem.version, payload?.initialDisplayMode]);
 
-  // New bitmap → re-detect natural size and clear decode errors.
-  useEffect(() => {
-    setNatural(null);
-    setImgError(false);
-  }, [activeUrl]);
-
   // A missing/broken saved repair must not masquerade as the editing base.
   useEffect(() => {
     if (repair && repairedMedia?.status === "error") {
@@ -209,7 +208,7 @@ export function ImageViewerWorkspace({
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [measureArea, viewMode]);
+  }, [measureArea, viewMode, showCompareSplit, pinnedRefId]);
 
   const redrawRepairCanvas = useCallback((): void => {
     const canvas = repairCanvasRef.current;
@@ -356,6 +355,7 @@ export function ImageViewerWorkspace({
 
   const {
     pan,
+    setPan,
     draftStart,
     draftCurrent,
     handleStagePointerDown,
@@ -501,6 +501,16 @@ export function ImageViewerWorkspace({
     setZoom((prev) => clamp(prev + delta, 20, 500));
   };
 
+  const resetZoom = (): void => {
+    setZoom(100);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>): void => {
+    const delta = e.deltaY < 0 ? 20 : -20;
+    stepZoom(delta);
+  };
+
   const dimensionLabel = natural
     ? `${natural.w} × ${natural.h}`
     : payload?.naturalWidth && payload?.naturalHeight
@@ -530,8 +540,8 @@ export function ImageViewerWorkspace({
       setRepairNotice("修补结果尺寸与源图不一致，已回退原图");
       return;
     }
-    setNatural({ w: width, h: height });
-    setImgError(false);
+    setDecodedImage({ url: e.currentTarget.src, w: width, h: height });
+    setFailedUrl(null);
     measureArea();
   };
 
@@ -541,7 +551,7 @@ export function ImageViewerWorkspace({
       setRepairNotice("修补结果不可用，已回退原图");
       return;
     }
-    setImgError(true);
+    setFailedUrl(activeUrl);
   };
 
   const compareSourceUrl = (() => {
@@ -562,10 +572,8 @@ export function ImageViewerWorkspace({
         showCompareSplit && pinnedRefItem ? "" : "flex-1"
       }`}
     >
-      <div className="pointer-events-none absolute left-3 top-3 z-10">
-        <div className="rounded border border-border bg-bg-1 px-2 py-0.5 font-mono text-[11px] tabular-nums text-fg-3">
-          {dimensionLabel}
-        </div>
+      <div className="sr-only">
+        {dimensionLabel}
       </div>
       <div ref={areaRef} className="absolute inset-0 flex items-center justify-center">
         <ImageStage
@@ -582,6 +590,7 @@ export function ImageViewerWorkspace({
           display={display}
           zoom={zoom}
           pan={pan}
+          loupeEnabled={loupeEnabled}
           workMode={workMode}
           stageCursorClass={stageCursorClass}
           holdOriginal={holdOriginal}
@@ -596,6 +605,7 @@ export function ImageViewerWorkspace({
           onStagePointerMove={handleStagePointerMove}
           onStagePointerUp={handleStagePointerUp}
           onStagePointerCancel={handleStagePointerCancel}
+          onWheel={handleWheel}
         />
       </div>
     </div>
@@ -636,6 +646,9 @@ export function ImageViewerWorkspace({
         setHoldOriginal={setHoldOriginal}
         zoom={zoom}
         stepZoom={stepZoom}
+        onResetZoom={resetZoom}
+        loupeEnabled={loupeEnabled}
+        onToggleLoupe={() => setLoupeEnabled((v) => !v)}
       />
 
       {mutationError && (
@@ -741,7 +754,13 @@ export function ImageViewerWorkspace({
             itemVersion={currentItem.version}
             issues={issueEntries}
             selectedIssueId={selectedAnnotationId}
-            onSelectIssue={setSelectedAnnotationId}
+            onSelectIssue={(issueId) => {
+              setSelectedAnnotationId(issueId);
+              setZoom(100);
+              setPan({ x: 0, y: 0 });
+              setHoldOriginal(false);
+              setWorkMode("annotate");
+            }}
             onDeleteIssue={handleDeleteIssue}
             onSaveIssue={handleSaveIssue}
             provenanceTags={currentItem.provenanceTags}
@@ -759,7 +778,7 @@ export function ImageViewerWorkspace({
                 }
               : {})}
             widthPx={issuePanelWidth}
-            emptyHint="在画布上用矩形/箭头圈出问题位置后，可在此写明返工建议并引用来源标签。"
+            emptyHint="先选上方「标记问题」，在图片上拖出方框或箭头；再点选标记，在这里填写修改要求。"
           />
         </div>
       )}

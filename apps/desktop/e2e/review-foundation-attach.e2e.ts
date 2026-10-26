@@ -51,7 +51,8 @@ describe("independent review adopted project copies", () => {
     const box = Buffer.alloc(8); box.writeUInt32BE(size - originalSize); box.write("free", 4, "ascii");
     await handle.write(box, 0, box.length, originalSize); await handle.truncate(size); await handle.close();
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-    await page.getByLabel(/New node name|新节点名称/).fill("Project copy acceptance");
+    await page.getByTestId("review-new-task").click();
+    await page.getByLabel(/Task name|任务名称/).fill("Project copy acceptance");
     await page.getByTestId("review-create-node").click();
     await page.getByTestId("review-node-title").waitFor();
     await page.getByTestId("review-access-toggle").click();
@@ -75,6 +76,7 @@ describe("independent review adopted project copies", () => {
     const imageItem = contents!.items.find(item => item.title.endsWith("adopted.png"))!;
     const videoItem = contents!.items.find(item => item.title.endsWith("large.mp4"))!;
     await page.getByTestId("workbench-tree-panel").getByText("adopted.png", { exact: false }).click();
+    await page.getByTestId("review-export-menu-trigger").click();
     await page.getByTestId("review-attach-open").click();
     await page.getByTestId("review-attach-destination").selectOption(editor.identity.workspaceId);
     await page.getByTestId("review-attach-submit").click();

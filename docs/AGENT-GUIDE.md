@@ -163,3 +163,21 @@ edit returns to the source editing workspace and inserts at its saved playhead.
 The operation preserves fixed media versions and font bytes, uses fresh clip IDs
 and one undoable batch, and rejects missing dependencies or concurrent changes
 without partial insertion. It never adopts the whole save point or calls node.save.
+
+## Compact review nodes, boards and video comparison
+
+For workbench.ingest (the batch ingest command) and independent review.ingest /
+review.steps.complete ingest inputs:
+
+- Keep item titles and agentGuidance.nodeSlotLabel compact: prefer 4–8 Chinese
+  characters / ≤15 characters, without repeating the batch name prefix.
+- Set item.groupMode or lineage.groupMode to "board" for candidate images,
+  storyboard sequences or sparse text/data reviewed together on an adaptive board
+  (collapsed parent by default). Use "category" for folder-only grouping
+  (expanded by default). The item value takes precedence.
+- For rework videos or A/B comparison, set compareWithItemId to the baseline video
+  item ID in the same batch. videoPayload.compareWithItemId is also accepted.
+  Both must be non-empty strings when supplied; normalization copies the selected
+  value to both item and videoPayload, with the top-level value taking precedence.
+  These fields are also supported by independent review.ingest and
+  review.steps.complete ingest inputs through the shared schema and conversion.

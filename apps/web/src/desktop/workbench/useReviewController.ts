@@ -25,7 +25,10 @@ function outcome(error: unknown): Extract<WorkbenchMutationResult, { ok: false }
 }
 
 function summaryView(summary: ReviewItemSummary): WorkbenchItemView {
-  return { ...summary, detailsLoaded: false, subtitle: summary.subtitle ?? "", userCategoryTags: summary.userTags, feedbacks: [] };
+  const { videoPayload, ...metadata } = summary;
+  return { ...metadata, groupMode: summary.groupMode ?? summary.lineage?.groupMode,
+    compareWithItemId: summary.compareWithItemId ?? videoPayload?.compareWithItemId,
+    detailsLoaded: false, subtitle: summary.subtitle ?? "", userCategoryTags: summary.userTags, feedbacks: [] };
 }
 
 function mediaView(resource: FileResource): MediaItem {
@@ -33,7 +36,7 @@ function mediaView(resource: FileResource): MediaItem {
   if (!facts) throw reviewError("INVALID_PARAMS", "Review media has no inspected metadata");
   return { id: resource.id, name: resource.originalFileName, type: facts.type, fileHandle: null, blob: null,
     metadata: { duration: facts.durationSec, width: facts.width, height: facts.height, frameRate: facts.frameRate, codec: facts.codec, sampleRate: 0, channels: 0, fileSize: resource.size },
-    thumbnailUrl: null, waveformData: null, contentUrl: `app://reelterminal/review-media/${resource.id}`, contentHash: resource.sha256 };
+    thumbnailUrl: facts.type === "image" ? `app://reelterminal/review-media/${resource.id}` : null, waveformData: null, contentUrl: `app://reelterminal/review-media/${resource.id}`, contentHash: resource.sha256 };
 }
 
 async function openReviewMedia(id: string) {
@@ -54,6 +57,8 @@ export function useReviewController(target: Target) {
   const [previousCursors, setPreviousCursors] = useState<Array<string | undefined>>([]);
   const [loaded, setLoaded] = useState<LoadedItem | null>(null);
   const [resources, setResources] = useState<readonly FileResource[]>([]);
+  const [extraLoaded, setExtraLoaded] = useState<ReadonlyMap<string, LoadedItem>>(new Map());
+  const [extraResources, setExtraResources] = useState<ReadonlyMap<string, FileResource>>(new Map());
   const [expanded, setExpanded] = useState<WorkbenchProjectState | null>(null);
   const [handoffs, setHandoffs] = useState<readonly WorkbenchHandoff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,7 +147,19 @@ export function useReviewController(target: Target) {
   }, [target, handoffOpen, overview, refresh]);
 
   const state = useMemo<WorkbenchProjectState>(() => expanded ?? { ...EMPTY, batches: overview?.batches ?? [],
-    items: loaded && loaded.node.revision === overview?.node.revision ? [loaded.item] : [], feedback: loaded?.feedback ?? [], handoffs }, [overview, expanded, loaded, handoffs]);
+    items: [
+      ...(loaded && loaded.node.revision === overview?.node.revision ? [loaded.item] : []),
+      ...Array.from(extraLoaded.values())
+        .filter((e) => e.node.revision === overview?.node.revision && e.item.id !== loaded?.item.id)
+        .map((e) => e.item),
+    ],
+    feedback: [
+      ...(loaded?.feedback ?? []),
+      ...Array.from(extraLoaded.values())
+        .filter((e) => e.node.revision === overview?.node.revision && e.item.id !== loaded?.item.id)
+        .flatMap((e) => e.feedback),
+    ],
+    handoffs }, [overview, expanded, loaded, extraLoaded, handoffs]);
   const getWorkbench = useCallback(() => state, [state]);
 
   const runCommand = useMemo(() => {
@@ -209,7 +226,58 @@ export function useReviewController(target: Target) {
     } catch (problem) { return outcome(problem); }
   }, []);
 
-  const mediaItems = useMemo(() => resources.map(mediaView), [resources]);
+  const mediaItems = useMemo(() => {
+    const merged = new Map<string, FileResource>();
+    for (const r of resources) merged.set(r.id, r);
+    extraResources.forEach((r, id) => merged.set(id, r));
+    return Array.from(merged.values()).map(mediaView);
+  }, [resources, extraResources]);
+
+  const ensureItemsLoaded = useCallback(async (itemIds: readonly string[]): Promise<void> => {
+    if (!overview) return;
+    const rev = overview.node.revision;
+    const missing = itemIds.filter(
+      (id) =>
+        id &&
+        !(loaded?.item.id === id && loaded.node.revision === rev) &&
+        !(extraLoaded.get(id)?.node.revision === rev),
+    );
+    if (missing.length === 0) return;
+    const fetched = await Promise.all(
+      missing.map((id) => reviewService.getItem(target, id).catch(() => null)),
+    );
+    const valid = fetched.filter((entry): entry is LoadedItem => entry !== null && entry.node.revision === rev);
+    if (valid.length === 0) return;
+    const mediaIds = new Set<string>();
+    for (const entry of valid) {
+      if (entry.item.content.type === "image" || entry.item.content.type === "video") {
+        mediaIds.add(entry.item.content.mediaId);
+      }
+      const repair = [...entry.item.revisions].reverse().find((r) => r.kind === "image-repair" && r.mediaId)?.mediaId;
+      if (repair) mediaIds.add(repair);
+    }
+    const mediaList = mediaIds.size > 0 ? await reviewService.getResources(Array.from(mediaIds)) : [];
+    const native = window.reelterminal?.reviewFiles;
+    if (native) {
+      await Promise.all(
+        mediaList
+          .filter((r) => r.storage.kind !== "unavailable")
+          .map((r) => native.resolve(r.id).catch(() => null)),
+      );
+    }
+    setExtraLoaded((prev) => {
+      const next = new Map(prev);
+      for (const entry of valid) next.set(entry.item.id, entry);
+      return next;
+    });
+    if (mediaList.length > 0) {
+      setExtraResources((prev) => {
+        const next = new Map(prev);
+        for (const r of mediaList) next.set(r.id, r);
+        return next;
+      });
+    }
+  }, [overview, loaded, extraLoaded, target]);
   const summaries = useMemo(() => expanded ? undefined : page.items.map(summaryView), [expanded, page.items]);
   const batchViews = useMemo(() => overview?.batches.map(batch => ({ ...batch, totalCount: overview.counts[batch.id]?.total ?? 0, pendingCount: overview.counts[batch.id]?.pending ?? 0 })) ?? [], [overview]);
   const controller = useWorkbenchControllerSource({ scopeId: `review:${target.nodeId}`, workbench: state, mediaItems, getWorkbench,
@@ -228,7 +296,7 @@ export function useReviewController(target: Target) {
     } catch (problem) { refresh(); return outcome(problem); }
   }, [target, overview?.node.revision, mediaItems, controller, refresh]);
 
-  return { controller: { ...controller, commitBranchNod, saveModelObservation: async (input: import("../../services/review-workspace/model-feedback").SaveModelObservation): Promise<WorkbenchMutationResult> => {
+  return { controller: { ...controller, ensureItemsLoaded, commitBranchNod, saveModelObservation: async (input: import("../../services/review-workspace/model-feedback").SaveModelObservation): Promise<WorkbenchMutationResult> => {
     try { if (!overview) throw reviewError("CONFLICT", "节点未载入"); await saveModelObservation(target, overview.node.revision, input); return { ok: true }; }
     catch (problem) { refresh(); return outcome(problem); }
   } }, overview, loading: loading || detailLoading || previewLoading, error, refresh, pageNumber: previousCursors.length + 1,

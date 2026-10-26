@@ -49,7 +49,8 @@ test.skipIf(process.env.REELTERMINAL_REVIEW_NATIVE_DRAG !== "1")("manual Explore
       };
     });
     const create = async (name: string, entries: Array<{ title: string; text: string }>) => {
-      await page.getByLabel(/New node name|新节点名称/).fill(name);
+      await page.getByTestId("review-new-task").click();
+    await page.getByLabel(/Task name|任务名称/).fill(name);
       await page.getByTestId("review-create-node").click();
       await vi.waitFor(async () => expect(await page.getByTestId("review-node-title").textContent()).toBe(name));
       const node = value(await agent.callCommand<{ nodes: ReviewNode[] }>("review.nodes.list", { target: context.target })).nodes.find(node => node.name === name)!;
@@ -57,7 +58,8 @@ test.skipIf(process.env.REELTERMINAL_REVIEW_NATIVE_DRAG !== "1")("manual Explore
         items: entries.map(entry => ({ id: crypto.randomUUID(), title: entry.title, type: "text", content: { type: "text", entryId: crypto.randomUUID(), title: entry.title, speakerOrContext: "", text: entry.text } })) }));
       await page.getByTestId("text-body").waitFor();
       await vi.waitFor(async () => expect(await page.getByTestId("review-node-editor").locator("[inert]").count()).toBe(0));
-      await page.getByTestId("review-export-open").click();
+      await page.getByTestId("review-export-menu-trigger").click();
+    await page.getByTestId("review-export-open").click();
       await page.getByTestId("review-export-prepare").click();
       await vi.waitFor(async () => expect(await page.getByTestId("review-export-status").getAttribute("data-state")).toBe("ready"));
     };

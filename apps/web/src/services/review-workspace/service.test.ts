@@ -30,6 +30,25 @@ function ingest(batchId: string, itemId: string, text = "original") {
 }
 
 describe("independent review transactions", () => {
+  it("retains parent modes in stored items and list summaries", async () => {
+    const { service, target, batchId, itemId } = await setup();
+    const original = ingest(batchId, itemId);
+    const payload = { ...original, items: original.items.map(item => ({
+      ...item, groupMode: "board" as const,
+      lineage: { upstreamGroupId: "group", upstreamGroupTitle: "候选", upstreamSourceNode: "生成",
+        groupMode: "category" as const, basedOnLabel: "初版", connectorEdgeLabel: "候选", failStreak: 0, steps: [] },
+    })) };
+    await service.commit({ target, expectedNodeRevision: 0, requestId: crypto.randomUUID(),
+      actor: "agent", label: "Ingest", request: payload,
+      build: state => actions(buildWorkbenchIngestActions(state, payload)) });
+    expect((await service.getNode(target)).state.items[0]).toMatchObject({
+      groupMode: "board", lineage: { groupMode: "category" },
+    });
+    expect((await service.listItems(target, { batchId })).items[0]).toMatchObject({
+      groupMode: "board", lineage: { groupMode: "category" },
+    });
+  });
+
   it("reads and appends without loading history payloads, while archives retain undo history", async () => {
     const { service, target, batchId, itemId } = await setup();
     const original = IDBIndex.prototype.getAll;

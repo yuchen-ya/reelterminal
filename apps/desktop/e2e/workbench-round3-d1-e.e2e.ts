@@ -158,7 +158,7 @@ async function markTwoCellsRework(page: LaunchedApp["page"], firstValue: string,
 }
 
 async function publishFromDialog(page: LaunchedApp["page"], expectedCount: number): Promise<void> {
-  await page.getByRole("button", { name: /交回本轮决策/ }).click();
+  await page.getByRole("button", { name: /发布审阅结果/ }).click();
   const publish = page.getByRole("button", {
     name: new RegExp(`发布.*${expectedCount} 项`),
   });
@@ -478,7 +478,8 @@ describe("workbench round 3 D1+E: data rework and execution-level handoff", () =
         { rowId: "r1", value: "部分原值" }, { rowId: "r2", value: "剩余原值" },
       ], { proposalId: "partial-p", rowId: "r1", originalValue: "部分原值", proposedValue: "部分新值" }),
     }], "partial-accept-ingest");
-    await page.getByTestId("workbench-page").locator("select").first().selectOption("partial-accept-batch");
+    await page.getByTestId("workbench-batch-select").click();
+    await page.getByRole("menuitemradio", { name: "部分接受回归", exact: true }).click();
     await selectTreeItem(page, "部分接受数据");
     await markTwoCellsRework(page, "部分原值", "剩余原值");
     await page.getByText("部分原值", { exact: true }).first().click();
@@ -500,7 +501,8 @@ describe("workbench round 3 D1+E: data rework and execution-level handoff", () =
     expect(returned.ok).toBe(true);
     expect((await itemState(agent, identity, "partial-accept-item")).status).toBe("pending");
     evidence.record("partialAccept", { published, returned });
-    await page.getByTestId("workbench-page").locator("select").first().selectOption(BATCH_ID);
+    await page.getByTestId("workbench-batch-select").click();
+    await page.getByRole("menuitemradio", { name: "第三轮数据返工", exact: true }).click();
   }, 180_000);
 
   test("save + relaunch keeps rework results and immutable snapshots readable", async () => {

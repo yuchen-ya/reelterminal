@@ -56,7 +56,7 @@ export function ReviewPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarUserToggled, setSidebarUserToggled] = useState(false);
 
   const handleToggleSidebar = (open: boolean) => {
@@ -322,10 +322,7 @@ export function ReviewPage() {
             onSelectNode={chooseNode}
             directory={directory}
             view={view}
-            onSelectView={(v) => {
-              setView(v);
-              setGroupId("");
-            }}
+            onSelectView={setView}
             query={query}
             onQueryChange={setQuery}
             groupId={groupId}
@@ -376,8 +373,6 @@ export function ReviewPage() {
                   <ReviewNodeHeader
                     node={selected}
                     groups={directory.groups}
-                    sidebarOpen={sidebarOpen}
-                    onToggleSidebar={handleToggleSidebar}
                     onUpdateNode={update}
                     onRenameNode={() =>
                       setRename({
@@ -405,8 +400,6 @@ export function ReviewPage() {
                     <ReviewNodeHeader
                       node={selected}
                       groups={directory.groups}
-                      sidebarOpen={sidebarOpen}
-                      onToggleSidebar={handleToggleSidebar}
                       onUpdateNode={update}
                       onRenameNode={() =>
                         setRename({
@@ -431,8 +424,6 @@ export function ReviewPage() {
                 <ReviewNodeHeader
                   node={null}
                   groups={directory.groups}
-                  sidebarOpen={sidebarOpen}
-                  onToggleSidebar={handleToggleSidebar}
                   context={context}
                   busy={busy}
                   onToggleAccess={handleToggleAccess}
@@ -661,33 +652,42 @@ function ReviewNodeEditor({
             loading={state.loading}
             onImport={() => setImportOpen(true)}
               paginationFooter={
-                <div
-                  className="flex shrink-0 items-center justify-between border-t border-border pt-1.5 text-[11px]"
-                  data-testid="review-item-pagination"
-                  title={t("review.pageScope")}
-                >
-                  {state.loading && <span role="status" className="text-fg-3">{t("review.loading")}</span>}
-                  <span className="truncate text-fg-3">{t("review.pageScope")}</span>
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    <button
-                      type="button"
-                      className={wbButton.ghost}
-                      disabled={state.loading || !state.hasPrevious}
-                      onClick={state.previousPage}
-                    >
-                      {t("review.previous")}
-                    </button>
-                    <span className="px-1 font-mono font-medium text-fg">{state.pageNumber}</span>
-                    <button
-                      type="button"
-                      className={wbButton.ghost}
-                      disabled={state.loading || !state.hasNext}
-                      onClick={state.nextPage}
-                    >
-                      {t("review.next")}
-                    </button>
+                (state.hasPrevious || state.hasNext || state.loading) ? (
+                  <div
+                    className="flex shrink-0 items-center justify-between border-t border-border pt-1 text-[11px]"
+                    data-testid="review-item-pagination"
+                    title={t("review.pageScope")}
+                  >
+                    {state.loading && <span role="status" className="text-fg-3">{t("review.loading")}</span>}
+                    <span className="sr-only">{t("review.pageScope")}</span>
+                    <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                      <button
+                        type="button"
+                        className={wbButton.ghost}
+                        disabled={state.loading || !state.hasPrevious}
+                        onClick={state.previousPage}
+                        title={t("review.previous")}
+                      >
+                        ‹ <span className="sr-only">{t("review.previous")}</span>
+                      </button>
+                      <span className="px-1 font-mono text-[10px] text-fg-3">{state.pageNumber}</span>
+                      <button
+                        type="button"
+                        className={wbButton.ghost}
+                        disabled={state.loading || !state.hasNext}
+                        onClick={state.nextPage}
+                        title={t("review.next")}
+                      >
+                        › <span className="sr-only">{t("review.next")}</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="sr-only" data-testid="review-item-pagination">
+                    {state.loading && <span role="status">{t("review.loading")}</span>}
+                    <span>{t("review.pageScope")}</span>
+                  </div>
+                )
               }
             emptyContent={
               <div className="grid h-full place-items-center p-8 text-center">

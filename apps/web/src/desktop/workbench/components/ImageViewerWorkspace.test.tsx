@@ -191,15 +191,15 @@ describe("ImageViewerWorkspace repair painting", () => {
     fireEvent.pointerMove(surface, { pointerId: 2, clientX: 240, clientY: 120 });
     fireEvent.pointerUp(surface, { pointerId: 2, clientX: 240, clientY: 120 });
     fireEvent.pointerCancel(surface, { pointerId: 2 });
-    expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("像素轻修层 (0)");
+    expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("画笔修补 (0)");
 
     fireEvent.pointerMove(surface, { pointerId: 1, clientX: 60, clientY: 60 });
     fireEvent.pointerUp(surface, { pointerId: 1, clientX: 60, clientY: 60 });
     await waitFor(() =>
-      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("像素轻修层 (1)"),
+      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("画笔修补 (1)"),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /提交修补/ }));
+    fireEvent.click(screen.getByRole("button", { name: /保存修补/ }));
     await waitFor(() => expect(submittedStrokes).toHaveLength(1));
     expect(submittedStrokes?.[0]?.points.map(({ x, y }) => ({ x, y }))).toEqual([
       { x: 5, y: 5 },
@@ -226,7 +226,7 @@ describe("ImageViewerWorkspace repair painting", () => {
     fireEvent.pointerMove(surface, { pointerId: 1, clientX: 40, clientY: 40 });
     fireEvent.pointerUp(surface, { pointerId: 1, clientX: 40, clientY: 40 });
     await waitFor(() =>
-      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("像素轻修层 (1)"),
+      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("画笔修补 (1)"),
     );
 
     fireEvent.pointerDown(surface, { button: 0, pointerId: 2, clientX: 80, clientY: 20 });
@@ -236,9 +236,9 @@ describe("ImageViewerWorkspace repair painting", () => {
 
     fireEvent.pointerMove(surface, { pointerId: 2, clientX: 160, clientY: 60 });
     fireEvent.pointerUp(surface, { pointerId: 2, clientX: 160, clientY: 60 });
-    expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("像素轻修层 (1)");
+    expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("画笔修补 (1)");
 
-    fireEvent.click(screen.getByRole("button", { name: /提交修补/ }));
+    fireEvent.click(screen.getByRole("button", { name: /保存修补/ }));
     await waitFor(() => expect(submittedStrokes).toHaveLength(1));
     expect(submittedStrokes?.[0]?.points).toHaveLength(2);
   });
@@ -267,7 +267,7 @@ describe("ImageViewerWorkspace repair painting", () => {
     fireEvent.pointerMove(surface, { pointerId: 1, clientX: 40, clientY: 40 });
     fireEvent.pointerUp(surface, { pointerId: 1, clientX: 40, clientY: 40 });
     await waitFor(() =>
-      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("像素轻修层 (1)"),
+      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("画笔修补 (1)"),
     );
 
     fireEvent.click(screen.getByTitle("橡皮擦(仅擦除修补层)"));
@@ -275,7 +275,7 @@ describe("ImageViewerWorkspace repair painting", () => {
     fireEvent.pointerMove(surface, { pointerId: 2, clientX: 120, clientY: 40 });
     fireEvent.pointerUp(surface, { pointerId: 2, clientX: 120, clientY: 40 });
     await waitFor(() =>
-      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("像素轻修层 (2)"),
+      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("画笔修补 (2)"),
     );
     expect(operations.slice(-3)).toEqual([
       "clear",
@@ -285,11 +285,11 @@ describe("ImageViewerWorkspace repair painting", () => {
 
     fireEvent.click(screen.getByTitle("撤销上一笔(未提交草稿)"));
     await waitFor(() =>
-      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("像素轻修层 (1)"),
+      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("画笔修补 (1)"),
     );
     expect(operations.slice(-2)).toEqual(["clear", "stroke:source-over"]);
 
-    fireEvent.click(screen.getByRole("button", { name: /提交修补/ }));
+    fireEvent.click(screen.getByRole("button", { name: /保存修补/ }));
     await waitFor(() => expect(submittedStrokes).toHaveLength(1));
     expect(submittedStrokes?.[0]?.tool).toBe("brush");
     expect(exportedBlob).toMatchObject({ type: "image/png" });
@@ -356,11 +356,11 @@ describe("ImageViewerWorkspace repair painting", () => {
 
     expect(vi.mocked(context.clearRect)).toHaveBeenCalledTimes(baselineClearCount);
     expect(vi.mocked(context.stroke)).toHaveBeenCalledTimes(baselineStrokeCount + pointerMoves);
-    expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("像素轻修层 (0)");
+    expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("画笔修补 (0)");
 
     fireEvent.pointerUp(surface, { pointerId: 1, clientX: 180, clientY: 180 });
     await waitFor(() =>
-      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("像素轻修层 (1)"),
+      expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("画笔修补 (1)"),
     );
     expect(vi.mocked(context.clearRect)).toHaveBeenCalledTimes(baselineClearCount + 1);
   });

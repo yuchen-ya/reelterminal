@@ -162,7 +162,7 @@ describe("workbench round 3 batch F: repaired image and reopen", () => {
     const page = launched.page;
     await page.getByTestId("image-mode-repair").click();
     await drawRepairStroke(page);
-    await page.getByRole("button", { name: /提交修补/ }).click();
+    await page.getByRole("button", { name: /保存修补/ }).click();
     let item = await waitForItemVersion(agent, identity, 2);
     let revisions = repairRevisions(item);
     expect(revisions).toHaveLength(1);
@@ -191,7 +191,7 @@ describe("workbench round 3 batch F: repaired image and reopen", () => {
       "已保存修补 v2",
     );
     await drawRepairStroke(page);
-    await page.getByRole("button", { name: /提交修补/ }).click();
+    await page.getByRole("button", { name: /保存修补/ }).click();
     item = await waitForItemVersion(agent, identity, 3);
     revisions = repairRevisions(item);
     expect(revisions).toHaveLength(2);
@@ -209,7 +209,7 @@ describe("workbench round 3 batch F: repaired image and reopen", () => {
     await page.getByTestId("repair-base-toggle").click();
     expect(await page.getByTestId("repair-base-label").textContent()).toContain("原图");
     await drawRepairStroke(page);
-    await page.getByRole("button", { name: /提交修补/ }).click();
+    await page.getByRole("button", { name: /保存修补/ }).click();
     item = await waitForItemVersion(agent, identity, 4);
     revisions = repairRevisions(item);
     expect(revisions).toHaveLength(3);

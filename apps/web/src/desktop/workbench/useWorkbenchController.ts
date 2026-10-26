@@ -177,6 +177,8 @@ export function toItemView(
       strokes: [...content.strokes],
     };
   })();
+  const groupMode = item.groupMode ?? item.lineage?.groupMode;
+  const compareWithItemId = item.compareWithItemId ?? item.videoPayload?.compareWithItemId;
   const videoPayload =
     content.type === "video"
       ? {
@@ -187,6 +189,7 @@ export function toItemView(
           ...(content.durationSec !== undefined ? { durationSec: content.durationSec } : {}),
           ...(content.resolution !== undefined ? { resolution: content.resolution } : {}),
           markers: [...content.markers],
+          ...(compareWithItemId !== undefined ? { compareWithItemId } : {}),
         }
       : undefined;
   return {
@@ -214,6 +217,8 @@ export function toItemView(
     ...(imagePayload ? { imagePayload } : {}),
     ...(videoPayload ? { videoPayload } : {}),
     ...(content.type === "model3d" ? { modelPayload: { resourceId: content.resourceId } } : {}),
+    ...(groupMode !== undefined ? { groupMode } : {}),
+    ...(compareWithItemId !== undefined ? { compareWithItemId } : {}),
   };
 }
 
@@ -1149,6 +1154,7 @@ type IssueFeedbackInput = {
     saveImageRepair,
     updateVideoMarkers,
     saveFeedback,
+    openMediaUrl: openMedia,
     publishHandoff,
   };
 }

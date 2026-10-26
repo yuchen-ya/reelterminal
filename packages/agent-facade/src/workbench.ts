@@ -157,7 +157,7 @@ export const WORKBENCH_AGENT_GUIDANCE_SCHEMA: ObjectSchema = {
   },
   nodeSlotLabel: {
     check: (v) => typeof v === "string" && v.length > 0,
-    describe: "a non-empty node slot label",
+    describe: "a compact node slot label; prefer 4–8 Chinese characters / <=15 characters; do not repeat the batch name prefix",
     required: true,
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
@@ -214,7 +214,20 @@ export const WORKBENCH_LINEAGE_STEP_SCHEMA: ObjectSchema = {
   },
 };
 
+const parentModeField: ObjectSchema[string] = {
+  check: oneOf(["board", "category"]),
+  describe: '"board" for same-screen review of candidate images, storyboards or sparse text/data; "category" for folder-only grouping',
+  emits: { kind: "leaf", schema: { enum: ["board", "category"] } },
+};
+const compareWithItemIdField: ObjectSchema[string] = {
+  check: (value) => typeof value === "string" && value.trim().length > 0,
+  describe: "a non-empty baseline video item ID in the same batch; set for rework videos or A/B comparison; top-level value takes precedence",
+  emits: { kind: "leaf", schema: { type: "string", minLength: 1, pattern: "\\S" } },
+};
+const videoPayloadSchema: ObjectSchema = { compareWithItemId: compareWithItemIdField };
+
 export const WORKBENCH_LINEAGE_SCHEMA: ObjectSchema = {
+  groupMode: parentModeField,
   upstreamGroupId: {
     check: isWorkbenchId,
     describe: "a stable upstream group id",
@@ -513,6 +526,13 @@ export function isWorkbenchContentInput(value: unknown): boolean {
 /* ------------------------------------------------------------------ */
 
 export const WORKBENCH_INGEST_ITEM_SCHEMA: ObjectSchema = {
+  groupMode: parentModeField,
+  compareWithItemId: compareWithItemIdField,
+  videoPayload: {
+    check: (value) => matchesSchema(value, videoPayloadSchema),
+    describe: "optional Agent-provided video comparison metadata",
+    emits: { kind: "object", schema: videoPayloadSchema },
+  },
   id: {
     check: isWorkbenchId,
     describe: "a stable caller-minted item id (never reused across batches)",
@@ -521,7 +541,7 @@ export const WORKBENCH_INGEST_ITEM_SCHEMA: ObjectSchema = {
   },
   title: {
     check: (v) => typeof v === "string" && v.length > 0,
-    describe: "a non-empty item title",
+    describe: "a compact item title; prefer 4–8 Chinese characters / <=15 characters; do not repeat the batch name prefix",
     required: true,
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
@@ -1200,6 +1220,11 @@ export function workbenchIngestInput(
     ...(params.description !== undefined ? { description: params.description } : {}),
     items: params.items.map((item) => ({
       id: item.id,
+      groupMode: item.groupMode,
+      compareWithItemId: item.compareWithItemId ?? item.videoPayload?.compareWithItemId,
+      videoPayload: item.compareWithItemId !== undefined || item.videoPayload?.compareWithItemId !== undefined
+        ? { ...item.videoPayload, compareWithItemId: item.compareWithItemId ?? item.videoPayload?.compareWithItemId }
+        : item.videoPayload,
       title: item.title,
       ...(item.subtitle !== undefined ? { subtitle: item.subtitle } : {}),
       type: item.type,
@@ -1442,6 +1467,9 @@ function itemView(
   return {
     id: item.id,
     batchId: item.batchId,
+    ...(item.groupMode ?? item.lineage?.groupMode ? { groupMode: item.groupMode ?? item.lineage?.groupMode } : {}),
+    ...(item.compareWithItemId !== undefined ? { compareWithItemId: item.compareWithItemId } : {}),
+    ...(item.videoPayload !== undefined ? { videoPayload: { ...item.videoPayload } } : {}),
     title: item.title,
     ...(item.subtitle !== undefined ? { subtitle: item.subtitle } : {}),
     type: item.type,

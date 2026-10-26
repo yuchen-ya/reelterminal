@@ -70,6 +70,18 @@ function renderPanel(overrides: Partial<Parameters<typeof WorkbenchIssuePanel>[0
 }
 
 describe("WorkbenchIssuePanel", () => {
+  it("locates and deletes the hovered issue without clearing another issue's draft", async () => {
+    const onSelectIssue = vi.fn();
+    const { onDeleteIssue } = renderPanel({ onSelectIssue });
+    fireEvent.change(screen.getByLabelText("问题建议"), { target: { value: "保留第一条的草稿" } });
+    fireEvent.click(screen.getByRole("button", { name: "定位问题 #2" }));
+    expect(onSelectIssue).toHaveBeenCalledWith("ann-2");
+    fireEvent.click(screen.getByRole("button", { name: "删除问题 #2" }));
+    expect(await screen.findByText("已删除该问题（其他问题保持不变）")).toBeInTheDocument();
+    expect(onDeleteIssue).toHaveBeenCalledWith("ann-2");
+    expect(screen.getByLabelText("问题建议")).toHaveValue("保留第一条的草稿");
+    cleanup();
+  });
   it("keeps drafts isolated per issue id and switches back unchanged", () => {
     const { rerender } = render(
       <WorkbenchIssuePanel

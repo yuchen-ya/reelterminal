@@ -59,7 +59,7 @@ describe("legacy project review migration", () => {
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * .6, box.y + box.height * .5, { steps: 8 });
     await page.mouse.up();
-    await page.getByRole("button", { name: /提交修补/ }).click();
+    await page.getByRole("button", { name: /保存修补/ }).click();
     await vi.waitFor(async () => expect((await readProjectState(agent, identity)).project.workbench.items.find(item => item.id === "legacy-image")?.version).toBe(2));
     await page.getByTestId("image-mode-navigate").click();
     const keep = async (title: string) => {
@@ -67,7 +67,7 @@ describe("legacy project review migration", () => {
       await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "保留", exact: true }).click();
     };
     const publish = async () => {
-      await page.getByRole("button", { name: /交回本轮决策/ }).click();
+      await page.getByRole("button", { name: /发布审阅结果/ }).click();
       await page.getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ }).first().click();
       await page.getByText(/等待 Agent 读取/).first().waitFor();
       await page.keyboard.press("Escape");

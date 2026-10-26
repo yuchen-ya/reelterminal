@@ -35,7 +35,8 @@ describe("independent review GUI without a video project", () => {
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
     await page.getByTestId("review-page").waitFor({ state: "visible" });
     expect((await agent.callCommand("editor.get_context")).error?.message).toBe("No project is open");
-    await page.getByLabel(/New node name|新节点名称/).fill("Independent GUI node");
+    await page.getByTestId("review-new-task").click();
+    await page.getByLabel(/Task name|任务名称/).fill("Independent GUI node");
     await page.getByTestId("review-create-node").click();
     await vi.waitFor(async () => expect(await page.getByTestId("review-node-title").textContent()).toBe("Independent GUI node"), { timeout: 20_000 });
     expect(await page.getByTestId("review-access-toggle").isChecked()).toBe(false);
@@ -88,7 +89,7 @@ describe("independent review GUI without a video project", () => {
       expect((await readFile(result.value.path)).equals(await readFile(path.join(files, result.value.resource.originalFileName)))).toBe(true);
     }
     const folderBatch = all!.items.find(item => item.title.includes("original.png"))!.batchId;
-    await vi.waitFor(async () => expect(await page.getByLabel(/Batch name|批次名称/).inputValue()).toBe(folderBatch), { timeout: 15_000 });
+    await vi.waitFor(async () => expect(await page.getByTestId("workbench-batch-select").getAttribute("data-batch-id")).toBe(folderBatch), { timeout: 15_000 });
     await page.getByTestId("workbench-tree-panel").getByText(/original.png/).click();
     await page.getByTestId("workbench-content").locator("img").first().waitFor({ state: "visible", timeout: 15_000 });
     await page.getByTestId("image-mode-repair").click();
@@ -98,7 +99,7 @@ describe("independent review GUI without a video project", () => {
     await page.mouse.down();
     await page.mouse.move(stage!.x + stage!.width * 0.55, stage!.y + stage!.height * 0.55, { steps: 8 });
     await page.mouse.up();
-    await page.getByRole("button", { name: /提交修补/ }).click();
+    await page.getByRole("button", { name: /保存修补/ }).click();
     const imageId = imported.find(entry => entry.item.title.endsWith("original.png"))!.item.id;
     let repaired: WorkbenchItem;
     await vi.waitFor(async () => { repaired = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target, itemId: imageId })).item; expect(repaired.version).toBe(2); }, { timeout: 15_000 });
@@ -106,6 +107,7 @@ describe("independent review GUI without a video project", () => {
     await page.getByTestId("image-mode-navigate").click();
     await page.locator('img[data-display-mode="repaired"]').waitFor({ state: "visible", timeout: 15_000 });
 
+    await page.getByTestId("review-export-menu-trigger").click();
     await page.getByTestId("review-export-open").click();
     await page.getByTestId("review-export-prepare").click();
     const exportStatus = page.getByTestId("review-export-status");

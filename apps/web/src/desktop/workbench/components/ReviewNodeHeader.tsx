@@ -1,7 +1,7 @@
 import type { JSX, ReactNode } from "react";
 import type React from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, PanelLeftOpen } from "lucide-react";
+import { Bot, ChevronDown, Download, GitBranch, Layers } from "lucide-react";
 import type { ReviewContext, ReviewGroup, ReviewNode } from "@reelterminal/core/review/types";
 import type { DirectoryCommand } from "../../../services/review-workspace/directory";
 import {
@@ -19,8 +19,6 @@ import { wbButton } from "../wb-button";
 export interface ReviewNodeHeaderProps {
   node: ReviewNode | null;
   groups: readonly ReviewGroup[];
-  sidebarOpen: boolean;
-  onToggleSidebar: (open: boolean) => void;
   onUpdateNode?: (patch: Extract<DirectoryCommand, { kind: "node.update" }>["patch"]) => void;
   onRenameNode?: () => void;
   onPurgeNode?: () => void;
@@ -41,8 +39,6 @@ export interface ReviewNodeHeaderProps {
 export function ReviewNodeHeader({
   node,
   groups,
-  sidebarOpen,
-  onToggleSidebar,
   onUpdateNode,
   onRenameNode,
   onPurgeNode,
@@ -62,26 +58,13 @@ export function ReviewNodeHeader({
   const { t } = useTranslation();
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-bg-1 px-3">
-      {/* 1. 侧栏展开按钮（仅侧栏收起时显示） */}
-      {!sidebarOpen && (
-        <button
-          type="button"
-          className={wbButton.ghost}
-          onClick={() => onToggleSidebar(true)}
-          title={t("review.expandSidebar", "展开数据节点侧栏")}
-          aria-label={t("review.expandSidebar", "展开数据节点侧栏")}
-        >
-          <PanelLeftOpen className="h-4 w-4" />
-        </button>
-      )}
-
+    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-bg-1 px-2.5">
       {node ? (
         <>
-          {/* 2. 节点名 + ▾ 操作菜单 */}
-          <div className="flex min-w-0 items-center gap-1">
+          {/* 节点名 + ▾ 操作菜单 */}
+          <div className="flex min-w-0 items-center gap-0.5">
             <h1
-              className="truncate text-sm font-semibold text-fg max-w-[240px]"
+              className="truncate text-xs font-semibold text-fg max-w-[220px]"
               data-testid="review-node-title"
               data-node-id={node.id}
               title={node.name}
@@ -156,30 +139,45 @@ export function ReviewNodeHeader({
             </DropdownMenu>
           </div>
 
-          {/* 3. 「内容 | 处理过程(n)」分段控件 */}
+          {/* 「内容 | 处理过程(n)」紧凑图标切换 */}
           {view && onSelectView && (
             <div
-              className={wbButton.segmentedContainer}
+              className="inline-flex h-6 items-center gap-0.5 rounded-[5px] border border-border bg-bg-2 p-0.5"
               role="group"
               aria-label={t("review.process.title")}
             >
               <button
                 type="button"
-                className={wbButton.segmentedItem(view === "content")}
+                className={`inline-flex h-5 items-center gap-1 rounded-[4px] px-1.5 text-[11px] transition-colors ${
+                  view === "content"
+                    ? "bg-bg-3 font-medium text-fg shadow-xs"
+                    : "text-fg-3 hover:text-fg"
+                }`}
                 aria-pressed={view === "content"}
                 onClick={() => onSelectView("content")}
                 data-testid="review-content-tab"
+                title={t("review.process.content")}
               >
-                {t("review.process.content")}
+                <Layers className="h-3 w-3" />
+                <span className="sr-only">{t("review.process.content")}</span>
               </button>
               <button
                 type="button"
-                className={wbButton.segmentedItem(view === "process")}
+                className={`inline-flex h-5 items-center gap-1 rounded-[4px] px-1.5 text-[11px] transition-colors ${
+                  view === "process"
+                    ? "bg-bg-3 font-medium text-fg shadow-xs"
+                    : "text-fg-3 hover:text-fg"
+                }`}
                 aria-pressed={view === "process"}
                 onClick={() => onSelectView("process")}
                 data-testid="review-process-tab"
+                title={`${t("review.process.title")} (${stepCount})`}
               >
-                {t("review.process.title")} ({stepCount})
+                <GitBranch className="h-3 w-3" />
+                {stepCount > 0 && <span className="font-mono text-[10px]">{stepCount}</span>}
+                <span className="sr-only">
+                  {t("review.process.title")} ({stepCount})
+                </span>
               </button>
             </div>
           )}
@@ -188,39 +186,44 @@ export function ReviewNodeHeader({
         <strong className="text-xs font-semibold">{t("review.title")}</strong>
       )}
 
-      {/* 4. 弹性空白 */}
+      {/* 弹性空白 */}
       <div className="flex-1" />
 
-      {/* 5. 添加采用版本到项目 (ghost) */}
-      {node && onAttach && (
-        <button
-          type="button"
-          className={wbButton.ghost}
-          title={attachTitle}
-          disabled={!canAttach}
-          onClick={onAttach}
-          data-testid="review-attach-open"
-        >
-          {t("review.attach.title")}
-        </button>
+      {node && (onExport || onAttach) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={wbButton.ghost}
+              data-testid="review-export-menu-trigger"
+              title={t("review.exportMenu")}
+              aria-label={t("review.exportMenu")}
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span className="sr-only">{t("review.exportMenu")}</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {onExport && (
+              <DropdownMenuItem disabled={!canExport} onSelect={onExport} data-testid="review-export-open">
+                {t("review.export.title")}
+              </DropdownMenuItem>
+            )}
+            {onAttach && (
+              <DropdownMenuItem disabled={!canAttach} onSelect={onAttach} title={attachTitle} data-testid="review-attach-open">
+                {t("review.attach.title")}
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
 
-      {/* 6. 导出文件 (secondary) */}
-      {node && onExport && (
-        <button
-          type="button"
-          className={wbButton.secondary}
-          disabled={!canExport}
-          onClick={onExport}
-          data-testid="review-export-open"
-        >
-          {t("review.export.title")}
-        </button>
-      )}
-
-      {/* 7. Agent 徽章 (绿点可写 / 灰点只读) */}
+      {/* Agent 权限极简图标徽章 (绿点可写 / 灰点只读) */}
       <label
-        className={`relative inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2.5 text-xs transition-colors cursor-pointer select-none ${
+        title={`${t("review.agentAccessLabel")} · ${t(
+          context?.access === "write" ? "review.agentWrite" : "review.agentRead",
+        )}`}
+        className={`relative inline-flex h-6 items-center gap-1 rounded-[5px] px-1.5 text-xs transition-colors cursor-pointer select-none ${
           context?.access === "write"
             ? "border border-accent/60 bg-accent/10 text-accent font-medium"
             : "border border-border bg-bg-2 text-fg-3 hover:text-fg-2"
@@ -229,6 +232,7 @@ export function ReviewNodeHeader({
       >
         <input
           type="checkbox"
+          aria-label={t("review.agentAccessLabel")}
           className="absolute inset-0 opacity-0 cursor-pointer z-10"
           disabled={!context || busy}
           checked={context?.access === "write"}
@@ -240,7 +244,8 @@ export function ReviewNodeHeader({
             context?.access === "write" ? "bg-accent" : "bg-fg-3"
           }`}
         />
-        <span className="pointer-events-none">
+        <Bot className="pointer-events-none h-3.5 w-3.5" />
+        <span className="sr-only">
           {t(
             context?.access === "write"
               ? "review.agentWrite"
@@ -249,7 +254,7 @@ export function ReviewNodeHeader({
         </span>
       </label>
 
-      {/* 8. ⋯ 管理菜单 */}
+      {/* ⋯ 管理菜单 */}
       {adminMenu}
     </div>
   );

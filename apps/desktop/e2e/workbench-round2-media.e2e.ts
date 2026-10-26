@@ -154,7 +154,7 @@ describe("workbench round 2: real media repair and marker persistence", () => {
     await selectTreeItem(page, "待修补图片");
     await waitForImageStage(page);
 
-    await page.getByRole("button", { name: /像素轻修层/ }).click();
+    await page.getByRole("button", { name: /画笔修补/ }).click();
     const stage = page.getByTestId("image-stage");
     const box = await stage.boundingBox();
     expect(box).not.toBeNull();
@@ -164,7 +164,7 @@ describe("workbench round 2: real media repair and marker persistence", () => {
       steps: 10,
     });
     await page.mouse.up();
-    await page.getByRole("button", { name: /提交修补/ }).click();
+    await page.getByRole("button", { name: /保存修补/ }).click();
     await page.getByText(/修改|已修改/).first().waitFor({ state: "visible", timeout: 30_000 });
 
     const state = await readProjectState(agent, identity);
@@ -304,7 +304,7 @@ describe("workbench round 2: real media repair and marker persistence", () => {
     persistedIssueWidth = resizedWidth;
     expect(resizedWidth).toBeGreaterThan(before!.width + 20);
 
-    await page.getByRole("button", { name: /交回本轮决策/ }).click();
+    await page.getByRole("button", { name: /发布审阅结果/ }).click();
     const publish = page
       .getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ })
       .first();
@@ -435,7 +435,7 @@ describe("workbench round 2: real media repair and marker persistence", () => {
     const page = launched.page;
     await page.getByRole("button", { name: "返工", exact: true }).click();
     const publish = async () => {
-      await page.getByRole("button", { name: /交回本轮决策/ }).click();
+      await page.getByRole("button", { name: /发布审阅结果/ }).click();
       await page.getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ }).first().click();
       await page.getByRole("button", { name: "关闭窗口" }).click();
       const result = await agent.callCommand<{ handoffEvents: Array<{ handoffId: string }> }>("workbench.changes", { batchId: BATCH_ID });

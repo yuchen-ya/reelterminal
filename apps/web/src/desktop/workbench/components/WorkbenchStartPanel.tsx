@@ -10,25 +10,30 @@ import { Check, ClipboardCopy, Plus } from "lucide-react";
 export const AGENT_INGEST_INSTRUCTIONS = `1) 导入真实媒体（图片/视频需先进入本项目素材库）
    reelctl call media.import --path "<本地文件路径>" --idempotency-key "<唯一键>"
 
-2) 提交审阅批次
+2) 节点命名与组织规范（必须遵守）
+   - 保持节点命名简短：批次名 (name) 写完整上下文；条目 title 与 agentGuidance.nodeSlotLabel 必须精炼（建议 4~8 个汉字，勿重复堆砌批次前缀，如用 "普攻·H3" 而非 "赛琳妮运动连续性·普攻·H3与修订版对比"）。
+   - 父节点聚合画板 vs 分类目录：多张抽帧/套图或低信息量需同屏审阅的图文数条目，应归入同一父节点（lineage.upstreamGroupId 或 parentNodeId）并标记 groupMode: "board"（默认收拢为一个聚合画板节点）；仅用于归类的目录标记 groupMode: "category"。
+   - 视频对比预设：需与基准视频并排对比的条目，可指定 compareWithItemId: "<基准视频条目ID>"。
+
+3) 提交审阅批次
    reelctl call workbench.ingest --batchId "<批次ID>" --name "<批次名>" --items '<items JSON>'
    items JSON 形如：
    [
-     {"id":"img-1","title":"图片条目","type":"image",
+     {"id":"img-1","title":"普攻·抽帧16","type":"image",
       "content":{"type":"image","mediaId":"<media.import 返回的 mediaId>"}},
-     {"id":"vid-1","title":"视频条目","type":"video",
+     {"id":"vid-1","title":"普攻·H3","type":"video",
       "content":{"type":"video","mediaId":"<mediaId>","durationSec":12.5}},
-     {"id":"txt-1","title":"语料条目","type":"text",
-      "content":{"type":"text","entryId":"entry-1","title":"语料条目",
+     {"id":"txt-1","title":"审查结论","type":"text",
+      "content":{"type":"text","entryId":"entry-1","title":"审查结论",
                  "speakerOrContext":"旁白","text":"正文…"}},
-     {"id":"data-1","title":"数据表","type":"data",
+     {"id":"data-1","title":"帧率统计","type":"data",
       "content":{"type":"data","datasetId":"ds-1",
                  "columns":[{"columnId":"c1","title":"列"}],
                  "rows":[{"rowId":"r1","cells":{"c1":"值"}}],
                  "proposals":[]}}
    ]
 
-3) 查看批次
+4) 查看批次
    reelctl call workbench.get --batchId "<批次ID>"`;
 
 export interface WorkbenchStartPanelProps {

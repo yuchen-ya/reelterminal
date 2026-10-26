@@ -18,7 +18,8 @@ test("four independent content types complete human review, partial rework, hist
   try {
     let page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-    await page.getByLabel(/New node name|新节点名称/).fill("Four-type rework acceptance");
+    await page.getByTestId("review-new-task").click();
+    await page.getByLabel(/Task name|任务名称/).fill("Four-type rework acceptance");
     await page.getByTestId("review-create-node").click();
     await page.getByTestId("review-node-title").waitFor();
     await page.getByTestId("review-access-toggle").click();
@@ -45,7 +46,7 @@ test("four independent content types complete human review, partial rework, hist
       await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "返工", exact: true }).click();
     }
     await vi.waitFor(async () => expect((await readItem(data)).status).toBe("rework"));
-    await page.getByRole("button", { name: /交回本轮决策/ }).click();
+    await page.getByRole("button", { name: /发布审阅结果/ }).click();
     await page.getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ }).first().click();
     await page.getByText(/等待 Agent 读取/).first().waitFor();
     await page.keyboard.press("Escape");

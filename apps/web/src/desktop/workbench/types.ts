@@ -16,6 +16,7 @@ import type {
   WorkbenchDecision,
   WorkbenchDecisionStatus,
   WorkbenchLineage,
+  WorkbenchParentMode,
   WorkbenchProvenanceTag,
   WorkbenchFeedbackTarget,
   WorkbenchPixelStroke,
@@ -26,6 +27,7 @@ import type {
 
 export type { WorkbenchContentType };
 
+export type { WorkbenchParentMode } from "@reelterminal/core";
 export type MediaLoadStatus = "loading" | "ready" | "error" | "unavailable";
 
 /** Media reference handed to image/video workspaces (never raw bytes). */
@@ -132,6 +134,8 @@ export interface VideoPayloadView {
   readonly durationSec?: number;
   readonly resolution?: string;
   readonly markers: readonly WorkbenchVideoMarker[];
+  /** Optional Agent-authored reference video item id for side-by-side comparison. */
+  readonly compareWithItemId?: string;
 }
 
 export interface FeedbackView {
@@ -187,6 +191,13 @@ export interface WorkbenchItemView {
   readonly videoPayload?: VideoPayloadView;
   readonly imagePayload?: ImagePayloadView;
   readonly modelPayload?: { readonly resourceId: string };
+  /**
+   * Optional Agent-specified parent presentation mode ("board" = adaptive multi-item
+   * canvas, collapsed by default in tree; "category" = folder classification).
+   */
+  readonly groupMode?: WorkbenchParentMode;
+  /** Optional Agent-specified comparison target item id (e.g. baseline video/image). */
+  readonly compareWithItemId?: string;
 }
 
 export interface WorkbenchBatchView {
@@ -371,6 +382,12 @@ export interface WorkbenchController {
   ) => Promise<WorkbenchMutationResult>;
 
   readonly saveModelObservation?: (input: import("../../services/review-workspace/model-feedback").SaveModelObservation) => Promise<WorkbenchMutationResult>;
+  /** Resolve a playable/displayable URL for any item's mediaId on demand (used by board & video comparison). */
+  readonly openMediaUrl?: (
+    mediaId: string,
+  ) => Promise<{ url: string; release: () => void } | null>;
+  /** Ensure full payloads are loaded for a set of item ids (used by independent review board & comparison). */
+  readonly ensureItemsLoaded?: (itemIds: readonly string[]) => Promise<void>;
 
   // --- handoff ---------------------------------------------------------------
   readonly publishHandoff: (

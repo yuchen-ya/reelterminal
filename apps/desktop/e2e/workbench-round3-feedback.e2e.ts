@@ -300,7 +300,7 @@ describe("workbench round 3 batch C: feedback reliability", () => {
     expect(feedbackFor(state, IMAGE_ID)[0].text).toContain("返工建议");
 
     // One history entry: undo the whole save (annotation + feedback + rework).
-    await page.getByTitle("撤销上一次决定(宿主历史)").click();
+    await page.getByTitle("撤销上一次审阅操作").click();
     const undone = await waitForItem(agent, identity, IMAGE_ID, (item) => item.status === "pending");
     expect(imageAnnotations(undone)[0].label).toContain("第一条建议（更新）");
     state = await readProjectState(agent, identity);

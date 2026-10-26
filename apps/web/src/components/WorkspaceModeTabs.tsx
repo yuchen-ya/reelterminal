@@ -20,12 +20,14 @@ export function WorkspaceModeTabs({
   ariaLabel = "Editor workspaces",
   className = "",
   accessibleLabels,
+  availableModes,
 }: {
   activeMode: WorkspaceMode;
   onSelectMode: (mode: WorkspaceMode) => void;
   ariaLabel?: string;
   className?: string;
   accessibleLabels?: Partial<Record<WorkspaceMode, string>>;
+  availableModes?: readonly WorkspaceMode[];
 }): JSX.Element {
   const { t } = useTranslation();
   return (
@@ -34,7 +36,7 @@ export function WorkspaceModeTabs({
       aria-label={ariaLabel}
       className={`inline-flex items-center gap-0 rounded-[7px] bg-bg-3 p-[2px] ${className}`}
     >
-      {MODES.map((mode) => {
+      {MODES.filter(mode => !availableModes || availableModes.includes(mode.id)).map((mode) => {
         const isActive = activeMode === mode.id;
         return (
           <button

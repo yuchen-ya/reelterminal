@@ -39,9 +39,9 @@ export function VideoFeedbackBar({
   onDismissMutationError,
 }: VideoFeedbackBarProps): JSX.Element {
   return (
-    <div className="relative shrink-0 border-t border-border bg-bg-1 px-3 py-1.5 select-none">
+    <div className={mutationError || feedbackDraft ? "relative shrink-0 border-t border-border bg-bg-1 px-2.5 py-1 select-none" : "sr-only"}>
       {mutationError && (
-        <div className="mb-1.5 flex items-center gap-2 rounded-[6px] border border-status-error/40 bg-status-error/10 px-2.5 py-1 text-xs text-status-error">
+        <div className="flex items-center gap-2 rounded-[5px] border border-status-error/40 bg-status-error/10 px-2 py-1 text-xs text-status-error">
           <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
           <span className="min-w-0 flex-1 break-all">{mutationError}</span>
           <button
@@ -54,7 +54,7 @@ export function VideoFeedbackBar({
         </div>
       )}
 
-      <div className="flex h-7 items-center gap-2 text-xs">
+      <div className={feedbackDraft ? "flex min-h-7 flex-wrap items-center gap-2 text-xs" : "sr-only"}>
         {/* Agent guidance compact badge (if present) */}
         {guidance ? (
           <div
@@ -91,7 +91,7 @@ export function VideoFeedbackBar({
               onSubmitFeedback();
             }
           }}
-          placeholder="返工/审阅说明(与问题标记一并发送,可选)"
+          placeholder="审阅意见"
           className="h-7 min-w-0 flex-1 rounded-[4px] border border-border bg-bg-2 px-2 text-xs text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none"
         />
 

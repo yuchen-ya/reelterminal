@@ -39,7 +39,7 @@ export function WorkbenchQueueState({
             当前队列已全部处理
           </p>
           <p className="max-w-md text-xs leading-relaxed text-fg-2">
-            已处理 {processedCount} 项。可交回本轮决策，或切换到左侧「全部」查看并取回已处理节点。
+            已处理 {processedCount} 项。可发布审阅结果，或切换到左侧「全部」查看并取回已处理节点。
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -47,7 +47,7 @@ export function WorkbenchQueueState({
               onClick={onOpenHandoff}
               className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-strong"
             >
-              查看并交回本轮决策 ({processedCount})
+              查看并发布审阅结果 ({processedCount})
             </button>
             <button
               type="button"

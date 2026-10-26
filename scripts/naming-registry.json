@@ -509,6 +509,36 @@
       "pattern": "OpenReel",
       "category": 2,
       "reason": "上游归属：贡献指南标识 MIT 许可代码的来源。"
+    },
+    {
+      "files": "apps/desktop/e2e/review-image-loading.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "legacy 持久化标识：评审图片加载 e2e 在隔离档案中写入应用既有的 locale localStorage 键，须与生产读取方一致。"
+    },
+    {
+      "files": "apps/desktop/e2e/review-issue-actions.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "legacy 持久化标识：评审问题操作 e2e 在隔离档案中写入应用既有的 locale localStorage 键，须与生产读取方一致。"
+    },
+    {
+      "files": "apps/desktop/e2e/review-navigation.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "legacy 持久化标识：评审导航 e2e 在隔离档案中写入应用既有的 locale localStorage 键，须与生产读取方一致。"
+    },
+    {
+      "files": "apps/desktop/e2e/review-ui-visual.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "legacy 持久化标识：评审 UI 视觉 e2e 在隔离档案中写入应用既有的 locale localStorage 键，须与生产读取方一致。"
+    },
+    {
+      "files": "docs/REVIEW-AUDIT-REMAINING.md",
+      "pattern": "openreel",
+      "category": 4,
+      "reason": "历史证据文本：审计跟踪文档第 32 行复述既有 openreel 兼容持久化标识的核验结论，改写会歪曲历史审计记录。"
     }
   ]
 }

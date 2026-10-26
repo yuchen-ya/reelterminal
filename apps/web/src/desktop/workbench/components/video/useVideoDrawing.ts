@@ -15,7 +15,7 @@ export interface UseVideoDrawingOptions {
   readonly videoReady: boolean;
   readonly videoSize: { w: number; h: number } | null;
   readonly activeAnnotations: readonly WorkbenchSpatialAnnotation[];
-  readonly drawTool: "box" | "arrow";
+  readonly drawTool: "box" | "arrow" | "pan";
   readonly realTime: () => number;
   readonly makeId: (prefix: string) => string;
   readonly onAnnotationCreated: (
@@ -93,7 +93,7 @@ export function useVideoDrawing({
 
   const handleStagePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>): void => {
-      if (!videoReady) return;
+      if (!videoReady || drawTool === "pan" || e.button !== 0) return;
       videoRef.current?.pause();
       const pt = getNormalizedPoint(e.clientX, e.clientY);
       const hit = hitTestAnnotation(pt);
@@ -107,6 +107,7 @@ export function useVideoDrawing({
       setDraftCurrent(pt);
     },
     [
+      drawTool,
       getNormalizedPoint,
       hitTestAnnotation,
       onSelectAnchor,

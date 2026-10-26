@@ -11,6 +11,7 @@ import {
   Pin,
   Pipette,
   RotateCcw,
+  Search,
   Square,
   Trash2,
   Type,
@@ -56,6 +57,9 @@ export interface ImageViewerToolbarProps {
   readonly setHoldOriginal: (val: boolean) => void;
   readonly zoom: number;
   readonly stepZoom: (delta: number) => void;
+  readonly onResetZoom?: () => void;
+  readonly loupeEnabled?: boolean;
+  readonly onToggleLoupe?: () => void;
 }
 
 export function ImageViewerToolbar({
@@ -91,34 +95,42 @@ export function ImageViewerToolbar({
   setHoldOriginal,
   zoom,
   stepZoom,
+  onResetZoom,
+  loupeEnabled = false,
+  onToggleLoupe,
 }: ImageViewerToolbarProps): JSX.Element {
   const toolButton = (active: boolean, activeColorClass: string) =>
-    `inline-flex h-7 w-7 items-center justify-center rounded-[5px] text-xs transition-colors ${
+    `inline-flex h-6 items-center justify-center gap-1 px-1.5 whitespace-nowrap rounded-[4px] text-xs transition-colors ${
       active
         ? `${activeColorClass} font-semibold shadow-sm`
         : "text-fg-3 hover:bg-bg-2 hover:text-fg"
     }`;
 
   return (
-    <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-1 px-3">
+    <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-bg-1 px-2.5 py-1" data-testid="image-toolbar">
       {/* Left: View switcher + compare */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1">
         <div className={wbButton.segmentedContainer}>
           <button
             type="button"
             onClick={() => setViewMode("grid")}
             className={wbButton.segmentedItem(viewMode === "grid")}
+            aria-pressed={viewMode === "grid"}
+            title={`总览本批图片 (${batchImageItemsCount})，点击选择，双击放大查看`}
           >
-            <LayoutGrid className="mr-1 h-3.5 w-3.5" />
-            网格筛选 ({batchImageItemsCount})
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span className="ml-1 font-mono text-[11px]">{batchImageItemsCount}</span>
+            <span className="sr-only">图片总览 ({batchImageItemsCount})</span>
           </button>
           <button
             type="button"
             onClick={() => setViewMode("zoom")}
             className={wbButton.segmentedItem(viewMode === "zoom")}
+            aria-pressed={viewMode === "zoom"}
+            title="查看大图"
           >
-            <Maximize2 className="mr-1 h-3.5 w-3.5" />
-            画板精审
+            <Maximize2 className="h-3.5 w-3.5" />
+            <span className="sr-only">查看大图</span>
           </button>
         </div>
 
@@ -127,82 +139,96 @@ export function ImageViewerToolbar({
             <div className="mx-0.5 h-3.5 w-px bg-border" />
             <button
               type="button"
-              onClick={() => setShowCompareSplit((prev) => !prev)}
-              className={
-                showCompareSplit
-                  ? "inline-flex h-7 items-center justify-center gap-1.5 rounded-[6px] border border-accent/40 bg-accent/15 px-2.5 text-xs font-medium text-accent whitespace-nowrap transition-colors"
-                  : wbButton.secondary
-              }
-            >
-              <Columns2 className="h-3.5 w-3.5" />
-              并排参考对比
-            </button>
-            <button
-              type="button"
               onClick={() =>
                 setPinnedRefId((prev) => (prev === currentItemId ? null : currentItemId))
               }
-              className={
+              aria-pressed={pinnedRefId === currentItemId}
+              title={pinnedRefId === currentItemId ? "取消参考图" : "固定当前图片作为参考图"}
+              className={`inline-flex h-6 w-6 items-center justify-center rounded-[5px] border transition-colors ${
                 pinnedRefId === currentItemId
-                  ? "inline-flex h-7 items-center justify-center gap-1 rounded-[6px] border border-status-warning/40 bg-status-warning/15 px-2.5 text-xs font-medium text-status-warning whitespace-nowrap transition-colors"
-                  : wbButton.ghost
-              }
+                  ? "border-status-warning/40 bg-status-warning/15 text-status-warning"
+                  : "border-border bg-bg-2 text-fg-3 hover:text-fg"
+              }`}
             >
               <Pin className="h-3 w-3" />
-              {pinnedRefId === currentItemId ? "已设为参考图" : "固定为参考"}
+              <span className="sr-only">
+                {pinnedRefId === currentItemId ? "取消参考图" : "设为参考图"}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCompareSplit((prev) => !prev)}
+              disabled={!pinnedRefId}
+              aria-pressed={showCompareSplit}
+              title={pinnedRefId ? "在左侧并排对比参考图" : "先将一张图片设为参考图"}
+              className={`inline-flex h-6 w-6 items-center justify-center rounded-[5px] border transition-colors disabled:opacity-35 ${
+                showCompareSplit
+                  ? "border-accent/40 bg-accent/15 text-accent"
+                  : "border-border bg-bg-2 text-fg-3 hover:text-fg"
+              }`}
+            >
+              <Columns2 className="h-3.5 w-3.5" />
+              <span className="sr-only">对比参考图</span>
             </button>
           </>
         )}
       </div>
 
-      {/* Center: Work Mode Switcher + tool groups */}
+      {/* Center: Work Mode Switcher + tool groups (inline on the same row) */}
       {viewMode === "zoom" && (
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <div className={wbButton.segmentedContainer}>
             <button
               type="button"
               onClick={() => setWorkMode("navigate")}
               className={wbButton.segmentedItem(workMode === "navigate")}
               data-testid="image-mode-navigate"
+              aria-pressed={workMode === "navigate"}
+              title="拖动画面"
             >
-              <Move className="mr-1 h-3.5 w-3.5" />
-              平移查看
+              <Move className="h-3.5 w-3.5" />
+              <span className="sr-only">拖动画面</span>
             </button>
             <button
               type="button"
               onClick={() => setWorkMode("annotate")}
               data-testid="image-mode-annotate"
+              aria-pressed={workMode === "annotate"}
+              title={`标记问题 (${annotationsCount})`}
               className={`${wbButton.segmentedItem(workMode === "annotate")} gap-1`}
             >
               <Square className="h-3.5 w-3.5" />
-              Agent 问题圈注 ({annotationsCount})
               {annotationsCount > 0 && (
-                <span className="h-1.5 w-1.5 rounded-full bg-status-warning" />
+                <span className="font-mono text-[10px]">{annotationsCount}</span>
               )}
+              <span className="sr-only">标记问题 ({annotationsCount})</span>
             </button>
             <button
               type="button"
               onClick={() => setWorkMode("repair")}
               data-testid="image-mode-repair"
+              aria-pressed={workMode === "repair"}
+              title={`画笔修补 (${draftStrokesCount})`}
               className={`${wbButton.segmentedItem(workMode === "repair")} gap-1`}
             >
               <Brush className="h-3.5 w-3.5" />
-              像素轻修层 ({draftStrokesCount})
               {draftStrokesCount > 0 && (
-                <span className="h-1.5 w-1.5 rounded-full bg-status-info" />
+                <span className="font-mono text-[10px]">{draftStrokesCount}</span>
               )}
+              <span className="sr-only">画笔修补 ({draftStrokesCount})</span>
             </button>
           </div>
 
           {workMode === "annotate" && (
-            <div className="flex h-7 items-center gap-0.5 rounded-[6px] border border-border bg-bg-2 p-0.5">
+            <div className="flex h-6 items-center gap-0.5 rounded-[5px] border border-border bg-bg-2 p-0.5">
               <button
                 type="button"
                 onClick={() => setAnnotateTool("box")}
                 className={toolButton(annotateTool === "box", "bg-bg-3 text-fg")}
                 title="矩形框选位置"
               >
-                <Square className="h-3.5 w-3.5" />
+                <Square className="h-3 w-3" />
+                <span className="sr-only">方框</span>
               </button>
               <button
                 type="button"
@@ -210,7 +236,8 @@ export function ImageViewerToolbar({
                 className={toolButton(annotateTool === "arrow", "bg-bg-3 text-fg")}
                 title="箭头指向问题"
               >
-                <ArrowUpRight className="h-3.5 w-3.5" />
+                <ArrowUpRight className="h-3 w-3" />
+                <span className="sr-only">箭头</span>
               </button>
               <button
                 type="button"
@@ -218,22 +245,25 @@ export function ImageViewerToolbar({
                 className={toolButton(annotateTool === "text", "bg-bg-3 text-fg")}
                 title="点击锚定问题点"
               >
-                <Type className="h-3.5 w-3.5" />
+                <Type className="h-3 w-3" />
+                <span className="sr-only">标记点</span>
               </button>
-              <button
-                type="button"
-                onClick={() => void onClearAnnotations()}
-                disabled={annotationsCount === 0}
-                className="inline-flex h-6 w-6 items-center justify-center rounded p-1 text-fg-3 transition-colors hover:text-status-error disabled:opacity-30"
-                title="清空全部圈注"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              {annotationsCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void onClearAnnotations()}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded text-fg-3 transition-colors hover:text-status-error"
+                  title="清空全部圈注"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  <span className="sr-only">清空</span>
+                </button>
+              )}
             </div>
           )}
 
           {workMode === "repair" && (
-            <div className="flex h-7 items-center gap-1 rounded-[6px] border border-border bg-bg-2 px-1.5">
+            <div className="flex flex-wrap items-center gap-1 rounded-[5px] border border-border bg-bg-2 px-1.5 py-0.5">
               <span
                 className="whitespace-nowrap font-mono text-[10px] text-fg-3"
                 data-testid="repair-base-label"
@@ -260,7 +290,8 @@ export function ImageViewerToolbar({
                 className={toolButton(repairTool === "eyedropper", "bg-bg-3 text-fg")}
                 title="取色(吸取画面颜色作为画笔色)"
               >
-                <Pipette className="h-3.5 w-3.5" />
+                <Pipette className="h-3 w-3" />
+                <span className="sr-only">取色</span>
               </button>
               <button
                 type="button"
@@ -268,7 +299,8 @@ export function ImageViewerToolbar({
                 className={toolButton(repairTool === "brush", "bg-bg-3 text-fg")}
                 title="修补画笔"
               >
-                <Brush className="h-3.5 w-3.5" />
+                <Brush className="h-3 w-3" />
+                <span className="sr-only">画笔</span>
               </button>
               <button
                 type="button"
@@ -276,7 +308,8 @@ export function ImageViewerToolbar({
                 className={toolButton(repairTool === "eraser", "bg-bg-3 text-fg")}
                 title="橡皮擦(仅擦除修补层)"
               >
-                <Eraser className="h-3.5 w-3.5" />
+                <Eraser className="h-3 w-3" />
+                <span className="sr-only">橡皮擦</span>
               </button>
               <input
                 type="color"
@@ -289,26 +322,27 @@ export function ImageViewerToolbar({
                 type="button"
                 onClick={onUndoStroke}
                 disabled={draftStrokesCount === 0}
-                className="inline-flex h-6 w-6 items-center justify-center rounded text-fg-3 transition-colors hover:text-fg disabled:opacity-30"
+                className="inline-flex h-5 w-5 items-center justify-center rounded text-fg-3 transition-colors hover:text-fg disabled:opacity-30"
                 title="撤销上一笔(未提交草稿)"
               >
-                <RotateCcw className="h-3.5 w-3.5" />
+                <RotateCcw className="h-3 w-3" />
+                <span className="sr-only">撤销一笔</span>
               </button>
               <button
                 type="button"
                 onClick={() => void onSaveRepair()}
                 disabled={draftStrokesCount === 0 || savingRepair}
-                className="inline-flex h-6 items-center justify-center rounded-[4px] bg-accent px-2 text-xs font-medium text-accent-fg transition-colors hover:brightness-110 disabled:opacity-40"
+                className="inline-flex h-5 items-center justify-center rounded-[4px] bg-accent px-2 text-[11px] font-medium text-accent-fg transition-colors hover:brightness-110 disabled:opacity-40"
               >
-                {savingRepair ? "提交中…" : `提交修补(${draftStrokesCount} 笔)`}
+                {savingRepair ? "保存中…" : `保存修补(${draftStrokesCount} 笔)`}
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* Right: Hold-to-Compare & Zoom */}
-      <div className="flex items-center gap-1.5">
+      {/* Right: Hold-to-Compare, Local Magnifier Loupe & Zoom */}
+      <div className="ml-auto flex items-center gap-1">
         {viewMode === "zoom" && (
           <>
             {repair && (
@@ -319,7 +353,8 @@ export function ImageViewerToolbar({
                   className={wbButton.segmentedItem(displayMode === "original")}
                   data-testid="image-display-original"
                 >
-                  查看原图
+                  原图
+                  <span className="sr-only">查看原图</span>
                 </button>
                 <button
                   type="button"
@@ -328,39 +363,66 @@ export function ImageViewerToolbar({
                   className={wbButton.segmentedItem(displayMode === "repaired")}
                   data-testid="image-display-repaired"
                 >
-                  查看修补
+                  修补
+                  <span className="sr-only">查看修补</span>
                 </button>
               </div>
             )}
-            <button
-              type="button"
-              onPointerDown={() => setHoldOriginal(true)}
-              onPointerUp={() => setHoldOriginal(false)}
-              onPointerLeave={() => setHoldOriginal(false)}
-              onPointerCancel={() => setHoldOriginal(false)}
-              className={holdOriginal ? wbButton.primary : wbButton.secondary}
-              title={repair ? "按住临时查看真原图（无笔画/无修补）" : "暂无已保存修补，当前即原图"}
-            >
-              <Eye className="h-3.5 w-3.5" />
-              按住看原图
-            </button>
-            <div className="flex h-7 items-center rounded-[6px] border border-border bg-bg-2 px-1">
+            {repair && (
+              <button
+                type="button"
+                onPointerDown={() => setHoldOriginal(true)}
+                onPointerUp={() => setHoldOriginal(false)}
+                onPointerLeave={() => setHoldOriginal(false)}
+                onPointerCancel={() => setHoldOriginal(false)}
+                className={holdOriginal ? wbButton.primary : wbButton.ghost}
+                title="按住临时查看真原图（无笔画/无修补）"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                <span className="sr-only">按住看原图</span>
+              </button>
+            )}
+            {onToggleLoupe && (
+              <button
+                type="button"
+                onClick={onToggleLoupe}
+                aria-pressed={loupeEnabled}
+                data-testid="image-loupe-toggle"
+                title="局部放大镜 (悬停画面 3x 放大细节)"
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-[5px] border transition-colors ${
+                  loupeEnabled
+                    ? "border-accent/60 bg-accent/15 text-accent"
+                    : "border-border bg-bg-2 text-fg-3 hover:text-fg"
+                }`}
+              >
+                <Search className="h-3.5 w-3.5" />
+                <span className="sr-only">局部放大镜</span>
+              </button>
+            )}
+            <div className="flex h-6 items-center rounded-[5px] border border-border bg-bg-2 px-0.5">
               <button
                 type="button"
                 onClick={() => stepZoom(-20)}
-                className="p-1 text-fg-3 hover:text-fg"
-                title="缩小"
+                className="p-0.5 text-fg-3 hover:text-fg"
+                title="缩小 (支持滚轮缩放)"
               >
-                <ZoomOut className="h-3.5 w-3.5" />
+                <ZoomOut className="h-3 w-3" />
               </button>
-              <span className="px-1.5 font-mono text-xs tabular-nums text-fg-2">{zoom}%</span>
+              <button
+                type="button"
+                onClick={onResetZoom}
+                className="px-1 font-mono text-[11px] tabular-nums text-fg-2 hover:text-accent"
+                title="点击重置 100% (支持滚轮缩放)"
+              >
+                {zoom}%
+              </button>
               <button
                 type="button"
                 onClick={() => stepZoom(20)}
-                className="p-1 text-fg-3 hover:text-fg"
-                title="放大"
+                className="p-0.5 text-fg-3 hover:text-fg"
+                title="放大 (支持滚轮缩放)"
               >
-                <ZoomIn className="h-3.5 w-3.5" />
+                <ZoomIn className="h-3 w-3" />
               </button>
             </div>
           </>

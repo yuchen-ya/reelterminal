@@ -475,7 +475,7 @@ export function TextCorpusWorkspace({
                   </div>
 
                   {/* Row Actions */}
-                  <div className="flex shrink-0 items-center gap-1.5">
+                  <div className="flex shrink-0 items-center gap-1">
                     {item.hasManualRevision && (
                       <button
                         type="button"
@@ -483,14 +483,16 @@ export function TextCorpusWorkspace({
                           e.stopPropagation();
                           setShowDiffMap((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
                         }}
-                        className={`inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-[4px] border px-2 text-[11px] transition-colors ${
+                        title={showDiff ? "隐藏原文对比" : "查看修改前后"}
+                        aria-label={showDiff ? "隐藏原文对比" : "查看修改前后"}
+                        className={`inline-flex h-6 w-6 items-center justify-center rounded-[4px] border text-[11px] transition-colors ${
                           showDiff
                             ? "border-status-info/40 bg-status-info/15 text-status-info"
                             : "border-border bg-bg-2 text-fg-3 hover:text-fg"
                         }`}
                       >
-                        <Eye className="h-3 w-3" />
-                        {showDiff ? "隐藏原文对比" : "查看修改前后"}
+                        <Eye className="h-3.5 w-3.5" />
+                        <span className="sr-only">{showDiff ? "隐藏原文对比" : "查看修改前后"}</span>
                       </button>
                     )}
 
@@ -501,10 +503,12 @@ export function TextCorpusWorkspace({
                           e.stopPropagation();
                           startEditing(item, payload);
                         }}
-                        className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-[4px] border border-border bg-bg-2 px-2 text-[11px] text-fg-2 transition-colors hover:text-fg"
+                        title="直接改文"
+                        aria-label="直接改文"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-[4px] border border-border bg-bg-2 text-[11px] text-fg-2 transition-colors hover:text-fg"
                       >
-                        <Edit3 className="h-3 w-3" />
-                        直接改文
+                        <Edit3 className="h-3.5 w-3.5" />
+                        <span className="sr-only">直接改文</span>
                       </button>
                     )}
 
@@ -552,8 +556,8 @@ export function TextCorpusWorkspace({
                       autoFocus
                       className="w-full select-text rounded-lg border border-status-info/60 bg-bg p-3 text-sm leading-relaxed text-fg focus:border-status-info focus:outline-none"
                     />
-                    <div className="flex items-center justify-between gap-3 text-xs text-fg-3">
-                      <span>
+                    <div className="flex items-center justify-end gap-3 text-xs text-fg-3">
+                      <span className="sr-only">
                         编辑框聚焦时：退格/Delete 仅删改文字，绝不触发丢弃素材快捷键；保存后生成新版本 v
                         {payload.currentVersion + 1}，旧版批注保留在原版本。
                       </span>
@@ -563,7 +567,7 @@ export function TextCorpusWorkspace({
                           onClick={cancelEditing}
                           className="rounded bg-bg-2 px-2.5 py-1 text-fg-2 hover:text-fg"
                         >
-                          取消编辑 (不改状态)
+                          取消
                         </button>
                         <button
                           type="button"
@@ -571,7 +575,7 @@ export function TextCorpusWorkspace({
                           className="flex items-center gap-1 rounded bg-status-info px-3 py-1 font-semibold text-bg transition-opacity hover:opacity-90"
                         >
                           <Save className="h-3.5 w-3.5" />
-                          保存修改 (进入已修改)
+                          保存
                         </button>
                       </div>
                     </div>

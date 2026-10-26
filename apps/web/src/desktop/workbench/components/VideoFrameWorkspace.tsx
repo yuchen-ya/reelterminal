@@ -18,9 +18,11 @@ import type {
   WorkbenchVideoMarker,
 } from "@reelterminal/core";
 import type {
+  WorkbenchController,
   WorkbenchItemView,
   WorkbenchMutationResult,
 } from "../types";
+import { resolveItemCompareTargetId } from "./lineage-tree-utils";
 import {
   WorkbenchIssuePanel,
   type WorkbenchIssueSaveInput,
@@ -51,6 +53,9 @@ export type { VideoMarkerFeedback };
 
 export interface VideoFrameWorkspaceProps {
   readonly item: WorkbenchItemView;
+  readonly batchVideoItems?: readonly WorkbenchItemView[];
+  readonly ensureItemsLoaded?: WorkbenchController["ensureItemsLoaded"];
+  readonly openMediaUrl?: WorkbenchController["openMediaUrl"];
   readonly onUpdateVideoMarkers: (
     itemId: string,
     markers: readonly WorkbenchVideoMarker[],
@@ -64,6 +69,9 @@ export interface VideoFrameWorkspaceProps {
 
 export function VideoFrameWorkspace({
   item,
+  batchVideoItems = [],
+  ensureItemsLoaded,
+  openMediaUrl,
   onUpdateVideoMarkers,
   issuePanelWidth,
   onStartResizeIssuePanel,
@@ -72,6 +80,7 @@ export function VideoFrameWorkspace({
 
   // --- refs ---------------------------------------------------------------
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const compareVideoRef = useRef<HTMLVideoElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   /** In-memory per-item playback position; switching items restores it. */
   const timeCacheRef = useRef<Map<string, number>>(new Map());
@@ -94,7 +103,10 @@ export function VideoFrameWorkspace({
   const [videoSize, setVideoSize] = useState<{ w: number; h: number } | null>(null);
 
   // --- review UI state ------------------------------------------------------
-  const [drawTool, setDrawTool] = useState<"box" | "arrow">("box");
+  const [drawTool, setDrawTool] = useState<"box" | "arrow" | "pan">("box");
+  const [zoom, setZoom] = useState<number>(100);
+  const [pan, setPan] = useState<{ readonly x: number; readonly y: number }>({ x: 0, y: 0 });
+  const [loupeEnabled, setLoupeEnabled] = useState<boolean>(false);
   const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
   const [stepSec, setStepSec] = useState<number>(DEFAULT_STEP_SEC);
   const [inPts, setInPts] = useState<number | null>(null);
@@ -103,6 +115,69 @@ export function VideoFrameWorkspace({
   const [feedbackTagIds, setFeedbackTagIds] = useState<readonly string[]>([]);
   const [markRework, setMarkRework] = useState<boolean>(true);
   const [mutationError, setMutationError] = useState<string | null>(null);
+
+  // --- side-by-side comparison state ----------------------------------------
+  const [pinnedRefId, setPinnedRefId] = useState<string | null>(null);
+  const [manualCompareId, setManualCompareId] = useState<string | null>(null);
+  const [showCompareSplit, setShowCompareSplit] = useState<boolean>(false);
+
+  const autoCompareTargetId = useMemo(
+    () => resolveItemCompareTargetId(item, batchVideoItems),
+    [batchVideoItems, item],
+  );
+
+  const effectiveCompareId = useMemo(() => {
+    if (manualCompareId && manualCompareId !== item.id) return manualCompareId;
+    if (autoCompareTargetId && autoCompareTargetId !== item.id) return autoCompareTargetId;
+    if (pinnedRefId && pinnedRefId !== item.id) return pinnedRefId;
+    const fallback = batchVideoItems.find((candidate) => candidate.id !== item.id);
+    return fallback?.id ?? null;
+  }, [autoCompareTargetId, batchVideoItems, item.id, manualCompareId, pinnedRefId]);
+
+  const compareItem = useMemo(
+    () =>
+      effectiveCompareId
+        ? batchVideoItems.find((candidate) => candidate.id === effectiveCompareId) ?? null
+        : null,
+    [batchVideoItems, effectiveCompareId],
+  );
+
+  const compareCandidates = useMemo(
+    () =>
+      batchVideoItems
+        .filter((candidate) => candidate.id !== item.id)
+        .map((candidate) => ({
+          id: candidate.id,
+          title: `${candidate.agentGuidance?.nodeSlotLabel ?? candidate.title} (v${candidate.version})`,
+        })),
+    [batchVideoItems, item.id],
+  );
+
+  // Auto-enable comparison when Agent bound a compare target (or parent video lineage exists)
+  useEffect(() => {
+    if (autoCompareTargetId && autoCompareTargetId !== item.id) {
+      setManualCompareId(autoCompareTargetId);
+      setShowCompareSplit(true);
+    } else if (pinnedRefId && pinnedRefId !== item.id) {
+      setManualCompareId(pinnedRefId);
+    } else {
+      setManualCompareId(null);
+      setShowCompareSplit(false);
+    }
+  }, [autoCompareTargetId, item.id, pinnedRefId]);
+
+  // Ensure the reference video's payload & media URL are loaded when comparison is active
+  useEffect(() => {
+    if (!showCompareSplit || !compareItem) return;
+    if (!compareItem.videoPayload) {
+      ensureItemsLoaded?.([compareItem.id]);
+      return;
+    }
+    const media = compareItem.videoPayload.media;
+    if (media.status !== "ready" && !media.url) {
+      openMediaUrl?.(media.mediaId);
+    }
+  }, [compareItem, ensureItemsLoaded, openMediaUrl, showCompareSplit]);
 
   const markers = useMemo(
     () => sortMarkers(payload?.markers ?? []),
@@ -218,6 +293,8 @@ export function VideoFrameWorkspace({
     setVideoSize(null);
     setVideoDuration(null);
     setVideoTime(0);
+    setZoom(100);
+    setPan({ x: 0, y: 0 });
     resetDrawing();
     setSelectedAnchorId(null);
     setInPts(null);
@@ -258,7 +335,19 @@ export function VideoFrameWorkspace({
     let raf = 0;
     const tick = (): void => {
       const video = videoRef.current;
-      if (video) setVideoTime(video.currentTime);
+      if (video) {
+        setVideoTime(video.currentTime);
+        const refVideo = compareVideoRef.current;
+        if (refVideo && refVideo.readyState >= 1) {
+          if (Math.abs(refVideo.currentTime - video.currentTime) > 0.12) {
+            const refDur =
+              Number.isFinite(refVideo.duration) && refVideo.duration > 0
+                ? refVideo.duration
+                : video.currentTime;
+            refVideo.currentTime = Math.min(Math.max(0, video.currentTime), refDur);
+          }
+        }
+      }
       raf = window.requestAnimationFrame(tick);
     };
     raf = window.requestAnimationFrame(tick);
@@ -302,6 +391,17 @@ export function VideoFrameWorkspace({
       const clamped = Math.min(Math.max(0, t), dur);
       video.pause();
       video.currentTime = clamped;
+      const refVideo = compareVideoRef.current;
+      if (refVideo) {
+        refVideo.pause();
+        if (refVideo.readyState >= 1) {
+          const refDur =
+            Number.isFinite(refVideo.duration) && refVideo.duration > 0
+              ? refVideo.duration
+              : clamped;
+          refVideo.currentTime = Math.min(Math.max(0, clamped), refDur);
+        }
+      }
       setVideoTime(clamped);
     },
     [duration, videoReady],
@@ -310,7 +410,16 @@ export function VideoFrameWorkspace({
   const handleTogglePlay = useCallback((): void => {
     const video = videoRef.current;
     if (!video || !videoReady) return;
+    const refVideo = compareVideoRef.current;
     if (video.paused) {
+      if (refVideo && refVideo.readyState >= 1) {
+        const refDur =
+          Number.isFinite(refVideo.duration) && refVideo.duration > 0
+            ? refVideo.duration
+            : video.currentTime;
+        refVideo.currentTime = Math.min(Math.max(0, video.currentTime), refDur);
+        void refVideo.play().catch(() => undefined);
+      }
       video.play().catch((err: unknown) => {
         setMutationError(
           `无法开始播放: ${err instanceof Error ? err.message : String(err)}`,
@@ -318,6 +427,7 @@ export function VideoFrameWorkspace({
       });
     } else {
       video.pause();
+      refVideo?.pause();
     }
   }, [videoReady]);
 
@@ -559,6 +669,19 @@ export function VideoFrameWorkspace({
   const svgViewBox = videoSize ? `0 0 ${videoSize.w} ${videoSize.h}` : "0 0 1000 562.5";
   const canSubmitFeedback = feedbackDraft.trim().length > 0;
 
+  const stepZoom = useCallback((delta: number): void => {
+    setZoom((prev) => {
+      const next = Math.min(500, Math.max(100, prev + delta));
+      if (next === 100) setPan({ x: 0, y: 0 });
+      return next;
+    });
+  }, []);
+
+  const resetZoom = useCallback((): void => {
+    setZoom(100);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-bg">
       {/* Top toolbar */}
@@ -569,6 +692,23 @@ export function VideoFrameWorkspace({
         drawTool={drawTool}
         onSelectDrawTool={setDrawTool}
         videoReady={videoReady}
+        zoom={zoom}
+        onStepZoom={stepZoom}
+        onResetZoom={resetZoom}
+        loupeEnabled={loupeEnabled}
+        onToggleLoupe={() => setLoupeEnabled((v) => !v)}
+        isPinnedRef={pinnedRefId === item.id}
+        onTogglePinCurrent={() =>
+          setPinnedRefId((prev) => (prev === item.id ? null : item.id))
+        }
+        compareCandidates={compareCandidates}
+        compareTargetId={effectiveCompareId}
+        onSelectCompareTarget={(id) => {
+          setManualCompareId(id);
+          if (id) setShowCompareSplit(true);
+        }}
+        showCompareSplit={showCompareSplit && !!compareItem}
+        onToggleCompareSplit={() => setShowCompareSplit((v) => !v)}
       />
 
       {/* Main viewer area: Video Stage + Separator + Issue Panel */}
@@ -591,6 +731,21 @@ export function VideoFrameWorkspace({
           draftStart={draftStart}
           draftCurrent={draftCurrent}
           videoErrorMsg={videoErrorMsg}
+          drawTool={drawTool}
+          zoom={zoom}
+          pan={pan}
+          onPanChange={setPan}
+          onStepZoom={stepZoom}
+          loupeEnabled={loupeEnabled}
+          currentTitle={`${item.agentGuidance?.nodeSlotLabel ?? item.title} (v${item.version})`}
+          showCompareSplit={showCompareSplit && !!compareItem}
+          compareVideoRef={compareVideoRef}
+          compareVideoUrl={compareItem?.videoPayload?.media.url ?? null}
+          compareTitle={
+            compareItem
+              ? `${compareItem.agentGuidance?.nodeSlotLabel ?? compareItem.title} (v${compareItem.version})`
+              : undefined
+          }
           onPointerDown={handleStagePointerDown}
           onPointerMove={handleStagePointerMove}
           onPointerUp={handleStagePointerUp}

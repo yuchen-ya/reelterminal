@@ -2867,6 +2867,9 @@ export type WorkbenchContentInput =
 
 /** workbench.ingest item input (provenance/guidance/lineage mirror core). */
 export interface WorkbenchIngestItem {
+  readonly groupMode?: import("@reelterminal/core/types/workbench").WorkbenchParentMode;
+  readonly compareWithItemId?: string;
+  readonly videoPayload?: import("@reelterminal/core/types/workbench").WorkbenchVideoPayload;
   readonly id: string;
   readonly title: string;
   readonly subtitle?: string;
@@ -3018,6 +3021,9 @@ export type WorkbenchItemContentView =
     };
 
 export interface WorkbenchItemView {
+  readonly groupMode?: import("@reelterminal/core/types/workbench").WorkbenchParentMode;
+  readonly compareWithItemId?: string;
+  readonly videoPayload?: import("@reelterminal/core/types/workbench").WorkbenchVideoPayload;
   readonly id: string;
   readonly batchId: string;
   readonly title: string;

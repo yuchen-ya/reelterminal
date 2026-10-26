@@ -179,6 +179,33 @@ function textReworkResult(
 }
 
 describe("workbench actions", () => {
+  it.each([
+    { compareWithItemId: "v1" },
+    { videoPayload: { compareWithItemId: "v1" } },
+    { compareWithItemId: "v1", videoPayload: { compareWithItemId: "other" } },
+  ])("persists parent modes and normalizes video comparison: %j", async (comparison) => {
+    const project = makeProject();
+    const executor = new ActionExecutor(new ActionHistory());
+    const built = buildWorkbenchIngestActions(emptyWorkbenchState(), {
+      batchId: "videos", name: "视频",
+      items: [
+        { id: "v1", title: "基准视频", type: "video", groupMode: "category",
+          content: { type: "video", mediaId: "m-img", markers: [] } },
+        { id: "v2", title: "返工视频", type: "video", groupMode: "board", ...comparison,
+          content: { type: "video", mediaId: "m-img", markers: [] },
+          lineage: { upstreamGroupId: "videos", upstreamGroupTitle: "视频", upstreamSourceNode: "v1",
+            parentNodeId: "v1", groupMode: "category", basedOnLabel: "v1", connectorEdgeLabel: "返工", failStreak: 0, steps: [] } },
+      ],
+    });
+    const applied = await run(executor, project, okActions(built));
+    expect(applied.every(result => result.success)).toBe(true);
+    expect(project.workbench?.items[0].groupMode).toBe("category");
+    expect(project.workbench?.items[1]).toMatchObject({
+      groupMode: "board", lineage: { groupMode: "category", parentNodeId: "v1" },
+      compareWithItemId: "v1", videoPayload: { compareWithItemId: "v1" },
+    });
+  });
+
   it("ingests a batch, appends idempotently, and refuses id reuse", async () => {
     const project = makeProject();
     const executor = new ActionExecutor(new ActionHistory());

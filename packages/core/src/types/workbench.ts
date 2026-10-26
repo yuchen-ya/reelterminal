@@ -285,7 +285,17 @@ export interface WorkbenchLineageStep {
   readonly summary: string;
 }
 
+export type WorkbenchParentMode = "board" | "category";
+
+/** Agent-provided video presentation metadata; media content remains in content. */
+export interface WorkbenchVideoPayload {
+  /** 同批次内作为对比基准的另一条 video item ID。 */
+  readonly compareWithItemId?: string;
+}
+
 export interface WorkbenchLineage {
+  /** board 聚合画板（默认收拢，同屏审阅子项）；category 分类目录（默认展开）。 */
+  readonly groupMode?: WorkbenchParentMode;
   readonly upstreamGroupId: string;
   readonly upstreamGroupTitle: string;
   readonly upstreamSourceNode: string;
@@ -368,6 +378,11 @@ export interface WorkbenchDecisionEntry {
 }
 
 export interface WorkbenchItem {
+  /** 父节点或所属分组的呈现模式。 */
+  readonly groupMode?: WorkbenchParentMode;
+  /** Agent 预绑定的对比基准条目 ID。 */
+  readonly compareWithItemId?: string;
+  readonly videoPayload?: WorkbenchVideoPayload;
   /** Independent review file import retains the exact source bytes, including text/table files. */
   readonly originalResourceId?: string;
   /** Stable identity minted at ingest; never reused. */

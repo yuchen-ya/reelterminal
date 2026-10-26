@@ -842,6 +842,16 @@ function validateWorkbenchActionOrThrow(action: Action, project: WorkbenchStateH
 }
 
 function validateItemContent(item: WorkbenchItem): void {
+  for (const mode of [item.groupMode, item.lineage?.groupMode]) {
+    if (mode !== undefined && mode !== "board" && mode !== "category") {
+      throw new WorkbenchActionError("workbench: groupMode must be board or category");
+    }
+  }
+  for (const id of [item.compareWithItemId, item.videoPayload?.compareWithItemId]) {
+    if (id !== undefined && (typeof id !== "string" || id.trim().length === 0)) {
+      throw new WorkbenchActionError("workbench: compareWithItemId must be a non-empty string");
+    }
+  }
   const content = item.content;
   if (!content || typeof content !== "object") {
     throw new WorkbenchActionError(`workbench: item "${item.id}" has no content`);
@@ -1617,6 +1627,9 @@ export type WorkbenchBuilderResult =
     };
 
 export interface WorkbenchIngestItemInput {
+  readonly groupMode?: WorkbenchItem["groupMode"];
+  readonly compareWithItemId?: string;
+  readonly videoPayload?: WorkbenchItem["videoPayload"];
   readonly originalResourceId?: string;
   /** Stable id provided by the caller (Agent or fixture import). */
   readonly id: string;
@@ -1671,7 +1684,13 @@ export function buildWorkbenchIngestActions(
       continue; // idempotent re-ingest of the same identity
     }
     const version = 1;
+    const compareWithItemId = input_.compareWithItemId ?? input_.videoPayload?.compareWithItemId;
     const item: WorkbenchItem = {
+      ...(input_.groupMode !== undefined ? { groupMode: input_.groupMode } : {}),
+      ...(compareWithItemId !== undefined ? { compareWithItemId } : {}),
+      ...(input_.videoPayload !== undefined || compareWithItemId !== undefined
+        ? { videoPayload: { ...input_.videoPayload, ...(compareWithItemId !== undefined ? { compareWithItemId } : {}) } }
+        : {}),
       ...(input_.originalResourceId ? { originalResourceId: input_.originalResourceId } : {}),
       id: input_.id,
       batchId: input.batchId,

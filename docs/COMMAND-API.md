@@ -298,9 +298,21 @@ video items reference existing project media ids (import bytes first).
 
 - `workbench.ingest` — create or append a batch with stable item ids
   (`{batchId, name, items: [{id, title, type, content, provenanceTags?,
-  agentGuidance?, lineage?}]}`). Re-submitting an existing item id is an
+  agentGuidance?, lineage?, groupMode?, compareWithItemId?, videoPayload?}]}`). Re-submitting an existing item id is an
   idempotent skip; ids are never reused for different content. Supports
   `expectedRevision` and `idempotencyKey` like other writes.
+- Keep item titles and agentGuidance.nodeSlotLabel compact: prefer 4–8 Chinese
+  characters / ≤15 characters, without repeating the batch name prefix.
+- Set item.groupMode or lineage.groupMode to "board" for candidate images,
+  storyboard sequences or sparse text/data reviewed together on an adaptive board
+  (collapsed parent by default). Use "category" for folder-only grouping
+  (expanded by default). The item value takes precedence.
+- For rework videos or A/B comparison, set compareWithItemId to the baseline video
+  item ID in the same batch. videoPayload.compareWithItemId is also accepted.
+  Both must be non-empty strings when supplied; normalization copies the selected
+  value to both item and videoPayload, with the top-level value taking precedence.
+  These fields are also supported by independent review.ingest and
+  review.steps.complete ingest inputs through the shared schema and conversion.
 - Video marker legacy fields `startPtsSec`, `endPtsSec` and annotation `ptsSec`
   use the browser media timeline (`HTMLVideoElement.currentTime`). New video
   handoff items declare `videoTimeBasis: "browser-current-time"`; this also

@@ -154,6 +154,7 @@ export function WorkbenchIssuePanel({
   >(null);
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
   const prevCountRef = useRef<number>(issues.length);
+  const prevSelectedRef = useRef<string | null>(selectedIssueId);
 
   useEffect(() => {
     if (issues.length > prevCountRef.current) {
@@ -162,7 +163,14 @@ export function WorkbenchIssuePanel({
     prevCountRef.current = issues.length;
   }, [issues.length]);
 
-  const isCollapsed = collapsed ?? (userCollapsed ?? false);
+  useEffect(() => {
+    if (selectedIssueId && selectedIssueId !== prevSelectedRef.current) {
+      setUserCollapsed(false);
+    }
+    prevSelectedRef.current = selectedIssueId;
+  }, [selectedIssueId]);
+
+  const isCollapsed = collapsed ?? (userCollapsed ?? selectedIssueId === null);
 
   const selectedIssue = useMemo(
     () => issues.find((issue) => issue.id === selectedIssueId) ?? null,
@@ -265,19 +273,18 @@ export function WorkbenchIssuePanel({
     [draft, key, onSaveIssue, selectedIssue],
   );
 
-  const handleDelete = useCallback(async () => {
-    if (!selectedIssue) return;
+  const handleDelete = useCallback(async (issueId: string) => {
     setBusy("delete");
     setNotice(null);
     try {
-      const result = await onDeleteIssue(selectedIssue.id);
+      const result = await onDeleteIssue(issueId);
       if (!result.ok) {
         setNotice({ kind: "error", message: result.message });
         return;
       }
       setDrafts((prev) => {
         const copy = { ...prev };
-        delete copy[key];
+        delete copy[draftKey(itemId, itemVersion, issueId)];
         return copy;
       });
       setNotice({ kind: "ok", message: "已删除该问题（其他问题保持不变）" });
@@ -289,7 +296,7 @@ export function WorkbenchIssuePanel({
     } finally {
       setBusy(null);
     }
-  }, [key, onDeleteIssue, selectedIssue]);
+  }, [itemId, itemVersion, onDeleteIssue]);
 
   const toggleTag = useCallback(
     (tag: WorkbenchProvenanceTag) => {
@@ -310,7 +317,7 @@ export function WorkbenchIssuePanel({
     return (
       <div
         style={{ width: 36 }}
-        className="flex w-9 shrink-0 flex-col items-center border-l border-border bg-bg-1 py-2 select-none"
+        className="flex w-9 shrink-0 flex-col items-center gap-1.5 border-l border-border bg-bg-1 py-2 select-none"
         data-testid="workbench-issue-panel"
       >
         <button
@@ -324,35 +331,46 @@ export function WorkbenchIssuePanel({
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <div
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
           onClick={() => {
             if (onToggleCollapse) onToggleCollapse();
             else setUserCollapsed(false);
           }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              if (onToggleCollapse) onToggleCollapse();
-              else setUserCollapsed(false);
-            }
-          }}
-          className="mt-3 flex flex-col items-center gap-2 cursor-pointer hover:opacity-80"
-          title="展开问题面板"
+          className="flex flex-col items-center gap-1 rounded p-1 hover:bg-bg-2 transition-colors"
+          title={`问题与修改要求 (${issues.length})`}
         >
-          <MessageSquareWarning className="h-4 w-4 text-accent" />
+          <MessageSquareWarning className="h-3.5 w-3.5 text-accent" />
           <span className="rounded-full bg-bg-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-3">
             {issues.length}
           </span>
-          <span
-            className="text-[11px] text-fg-3 select-none"
-            style={{ writingMode: "vertical-rl" }}
-          >
-            问题速改
-          </span>
-        </div>
+        </button>
+        {issues.length > 0 && (
+          <div className="mt-1 flex w-full flex-col items-center gap-1 overflow-y-auto px-1">
+            {issues.map((issue) => (
+              <button
+                key={issue.id}
+                type="button"
+                data-testid="workbench-issue-card"
+                onClick={() => {
+                  onSelectIssue(issue.id);
+                  if (onToggleCollapse) onToggleCollapse();
+                  else setUserCollapsed(false);
+                }}
+                title={`#${issue.indexNumber} ${issue.coordinateLabel} ${issue.note}`}
+                className={`flex h-6 w-6 items-center justify-center rounded border font-mono text-[10px] transition-colors ${
+                  issue.id === selectedIssueId
+                    ? "border-accent bg-accent font-bold text-accent-foreground"
+                    : "border-border bg-bg-2 text-fg-3 hover:border-border-strong hover:text-fg"
+                }`}
+              >
+                #{issue.indexNumber}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="sr-only">
-          <span>选区问题速改</span>
+          <span>问题与修改要求</span>
           <span>暂无问题记录</span>
           <span>{emptyHint}</span>
         </div>
@@ -366,25 +384,23 @@ export function WorkbenchIssuePanel({
       className="flex shrink-0 flex-col overflow-hidden border-l border-border bg-bg-1"
       data-testid="workbench-issue-panel"
     >
-      <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-3 select-none">
+      <div className="flex h-8 shrink-0 items-center justify-between gap-2 border-b border-border px-2.5 select-none">
         <span className="flex items-center gap-1.5 text-xs font-semibold text-fg">
           <MessageSquareWarning className="h-3.5 w-3.5 text-accent" />
-          选区问题速改
+          <span className="font-mono text-[11px] text-fg-2">{issues.length}</span>
+          <span className="sr-only">问题与修改要求</span>
         </span>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] text-fg-3">{issues.length} 处</span>
-          <button
-            type="button"
-            onClick={() => {
-              if (onToggleCollapse) onToggleCollapse();
-              else setUserCollapsed(true);
-            }}
-            className="rounded p-1 text-fg-3 hover:bg-bg-2 hover:text-fg transition-colors"
-            title="收起问题面板"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (onToggleCollapse) onToggleCollapse();
+            else setUserCollapsed(true);
+          }}
+          className="rounded p-1 text-fg-3 hover:bg-bg-2 hover:text-fg transition-colors"
+          title="收起问题面板"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       {agentGuidance && (
@@ -397,9 +413,6 @@ export function WorkbenchIssuePanel({
           </div>
           <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-fg-2">
             {agentGuidance.whatToDoNext}
-          </p>
-          <p className="mt-0.5 text-[10px] text-fg-3">
-            建议决定「{agentGuidance.nodButtonLabel}」需在底部详情确认，面板不会自动执行。
           </p>
         </div>
       )}
@@ -491,7 +504,7 @@ export function WorkbenchIssuePanel({
                     </div>
                     <button
                       type="button"
-                      onClick={() => void handleDelete()}
+                      onClick={() => void handleDelete(selectedIssue.id)}
                       disabled={busy !== null}
                       className="shrink-0 rounded p-1 text-fg-3 transition-colors hover:text-status-error disabled:opacity-40"
                       title="删除此问题（不影响其他问题）"
@@ -536,59 +549,57 @@ export function WorkbenchIssuePanel({
                   )}
 
                   {provenanceTags.length > 0 || unresolvedTagIds.length > 0 ? (
-                    <div>
-                      <div className="mb-1 flex items-center gap-1 text-[10px] font-medium text-fg-3">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="inline-flex items-center text-[10px] text-fg-3" title="引用来源（点击插入 @ 引用并随反馈保存）">
                         <Tag className="h-2.5 w-2.5" />
-                        引用来源（点击插入 @ 引用并随反馈保存）
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {provenanceTags.map((tag) => {
-                          const active = draft?.tagIds.includes(tag.id) ?? false;
-                          return (
-                            <button
-                              key={tag.id}
-                              type="button"
-                              onClick={() => toggleTag(tag)}
-                              title={`${tagLabel(tag)} · ${tag.category} · ${tagVerificationLabel(tag)}`}
-                              className={`flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
-                                active
-                                  ? "border-accent bg-accent-soft text-accent"
-                                  : "border-border bg-bg-2 text-fg-3 hover:text-fg"
-                              }`}
-                            >
-                              {tag.verification === "unknown" ? (
-                                <CircleAlert className="h-2.5 w-2.5" />
-                              ) : (
-                                <ShieldCheck className="h-2.5 w-2.5" />
-                              )}
-                              {tagLabel(tag)}
-                            </button>
-                          );
-                        })}
-                        {unresolvedTagIds.map((id) => (
+                        <span className="sr-only">引用来源（点击插入 @ 引用并随反馈保存）</span>
+                      </span>
+                      {provenanceTags.map((tag) => {
+                        const active = draft?.tagIds.includes(tag.id) ?? false;
+                        return (
                           <button
-                            key={id}
+                            key={tag.id}
                             type="button"
-                            onClick={() =>
-                              updateDraft({
-                                text: draft?.text ?? "",
-                                tagIds: (draft?.tagIds ?? []).filter(
-                                  (candidate) => candidate !== id,
-                                ),
-                              })
-                            }
-                            title="该来源引用已失效（标签不存在或同名多版本无法确定身份）；保存时不会静默丢弃，可移除后重新选择"
-                            className="flex items-center gap-1 rounded border border-status-error/40 bg-status-error/10 px-1.5 py-0.5 font-mono text-[10px] text-status-error"
-                            data-testid="workbench-issue-unresolved-tag"
+                            onClick={() => toggleTag(tag)}
+                            title={`${tagLabel(tag)} · ${tag.category} · ${tagVerificationLabel(tag)}`}
+                            className={`flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+                              active
+                                ? "border-accent bg-accent-soft text-accent"
+                                : "border-border bg-bg-2 text-fg-3 hover:text-fg"
+                            }`}
                           >
-                            <CircleAlert className="h-2.5 w-2.5" />
-                            @{id}（引用失效）
+                            {tag.verification === "unknown" ? (
+                              <CircleAlert className="h-2.5 w-2.5" />
+                            ) : (
+                              <ShieldCheck className="h-2.5 w-2.5" />
+                            )}
+                            {tagLabel(tag)}
                           </button>
-                        ))}
-                      </div>
+                        );
+                      })}
+                      {unresolvedTagIds.map((id) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() =>
+                            updateDraft({
+                              text: draft?.text ?? "",
+                              tagIds: (draft?.tagIds ?? []).filter(
+                                (candidate) => candidate !== id,
+                              ),
+                            })
+                          }
+                          title="该来源引用已失效（标签不存在或同名多版本无法确定身份）；保存时不会静默丢弃，可移除后重新选择"
+                          className="flex items-center gap-1 rounded border border-status-error/40 bg-status-error/10 px-1.5 py-0.5 font-mono text-[10px] text-status-error"
+                          data-testid="workbench-issue-unresolved-tag"
+                        >
+                          <CircleAlert className="h-2.5 w-2.5" />
+                          @{id}（引用失效）
+                        </button>
+                      ))}
                     </div>
                   ) : (
-                    <div className="text-[10px] text-fg-3">该条目没有可引用的来源标签</div>
+                    <div className="sr-only">该条目没有可引用的来源标签</div>
                   )}
 
                   <div className="flex items-center gap-1.5 pt-0.5">
@@ -634,8 +645,8 @@ export function WorkbenchIssuePanel({
               {issues.map((issue) => {
                 const active = issue.id === selectedIssue?.id;
                 return (
+                  <div key={issue.id} className="group relative" data-testid="workbench-issue-row">
                   <button
-                    key={issue.id}
                     type="button"
                     onClick={() => onSelectIssue(issue.id)}
                     data-testid="workbench-issue-card"
@@ -645,7 +656,7 @@ export function WorkbenchIssuePanel({
                         : "border-border bg-bg hover:border-border-strong"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 text-[11px]">
+                    <div className="flex items-center gap-1.5 pr-12 text-[11px]">
                       <span className="font-mono font-semibold text-accent">
                         #{issue.indexNumber}
                       </span>
@@ -664,6 +675,28 @@ export function WorkbenchIssuePanel({
                       {issue.note || "（无说明）"}
                     </div>
                   </button>
+                  <div className="pointer-events-none absolute right-1.5 top-1.5 flex gap-1 rounded bg-bg-1 p-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => onSelectIssue(issue.id)}
+                      title={`定位问题 #${issue.indexNumber}`}
+                      aria-label={`定位问题 #${issue.indexNumber}`}
+                      className="rounded p-1 text-accent hover:bg-bg-3 focus-visible:outline focus-visible:outline-accent"
+                    >
+                      <Crosshair className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(issue.id)}
+                      disabled={busy !== null}
+                      title={`删除问题 #${issue.indexNumber}`}
+                      aria-label={`删除问题 #${issue.indexNumber}`}
+                      className="rounded p-1 text-status-error hover:bg-status-error/10 disabled:opacity-40 focus-visible:outline focus-visible:outline-status-error"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  </div>
                 );
               })}
             </div>

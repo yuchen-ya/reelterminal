@@ -77,7 +77,10 @@ function createValidationOnlyLiveFacade() {
     store,
     lease: new LiveWriterLease(),
     sessionId: "schema-corpus",
+    // gate() enforces authorization BEFORE param validation; the corpus
+    // asserts the INVALID_PARAMS boundary, so grant review write access.
     access: "write",
+    reviewAccess: () => "write",
     artifactRoot: tmpdir(),
     mediaRoots: [MEDIA_ROOT, FONT_ROOT],
   });

@@ -246,7 +246,7 @@ describe("workbench: ingest → review → handoff → rework", () => {
       .waitFor({ timeout: 15_000 });
 
     // Publish through the real handoff dialog.
-    await page.getByRole("button", { name: /交回本轮决策/ }).click();
+    await page.getByRole("button", { name: /发布审阅结果/ }).click();
     const publish = page
       .getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ })
       .first();

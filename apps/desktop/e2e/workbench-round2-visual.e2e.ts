@@ -155,11 +155,11 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     // All regions stay mounted; no developer-facing "mock data" text.
     await page.getByTestId("workbench-tree-empty").waitFor({ state: "visible" });
     await page.getByTestId("workbench-start-panel").waitFor({ state: "visible" });
-    await page.getByText("节点详情").first().waitFor({ state: "visible" });
+    await page.getByTestId("workbench-bottom-dock").waitFor({ state: "visible" });
     expect(await page.getByText(/这里不提供模拟数据入口/).count()).toBe(0);
 
     // No target ⇒ publishing / mind-map are disabled, not dead.
-    expect(await page.getByRole("button", { name: /交回本轮决策/ }).isDisabled()).toBe(true);
+    expect(await page.getByRole("button", { name: /发布审阅结果/ }).isDisabled()).toBe(true);
     expect(await page.getByRole("button", { name: /全景血缘导图/ }).isDisabled()).toBe(true);
 
     await page.getByTestId("workbench-ingest-help").click();
@@ -357,12 +357,12 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     evidence.record("imageLayout", { contentBox, panelBox, bottomBox, zoomShot });
 
     // Grid view keeps the card-level quick decisions from the prototype.
-    await page.getByRole("button", { name: /网格筛选/ }).click();
+    await page.getByRole("button", { name: /图片总览/ }).click();
     await page.getByTestId("image-card-keep").first().waitFor({ state: "visible" });
     await page.getByTestId("image-card-discard").first().waitFor({ state: "visible" });
     const gridShot = await evidence.screenshot("03-image-grid");
     evidence.record("imageGridShot", gridShot);
-    await page.getByRole("button", { name: /画板精审/ }).click();
+    await page.getByRole("button", { name: /查看大图/ }).click();
     await waitForImageStage(page);
     await waitForNoHorizontalOverflow(page);
   }, 120_000);
@@ -586,7 +586,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     // Let the decision toast clear before opening the dialog.
     await page.waitForTimeout(3400);
 
-    const handoffButton = page.getByRole("button", { name: /交回本轮决策/ });
+    const handoffButton = page.getByRole("button", { name: /发布审阅结果/ });
     expect(await handoffButton.isEnabled()).toBe(true);
     await handoffButton.click();
     const dialog = page.getByRole("dialog");
@@ -642,8 +642,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     }
     expect(after!.width).toBeGreaterThan(before!.width + 20);
 
-    // Drag the left queue divider wide and raise the bottom dock so all three
-    // useResizable values are actually persisted (not just their defaults).
+    // Drag the left queue divider to verify the persisted panel width.
     const treeHandle = page.getByTitle("拖拽调整队列宽度");
     const treeBox = await treeHandle.boundingBox();
     expect(treeBox).not.toBeNull();
@@ -652,32 +651,11 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     await page.mouse.move(treeBox!.x + 50, treeBox!.y + treeBox!.height / 2, { steps: 8 });
     await page.mouse.up();
 
-    // In Phase 4, bottom dock starts collapsed; expand it to reach the resize handle.
-    await page.getByRole("button", { name: /节点详情/ }).first().click();
-
-    const rowHandle = page.getByTitle("拖拽调整底部详情高度");
-    const rowBox = await rowHandle.boundingBox();
-    expect(rowBox).not.toBeNull();
-    await page.mouse.move(rowBox!.x + rowBox!.width / 2, rowBox!.y + rowBox!.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(rowBox!.x + rowBox!.width / 2, rowBox!.y - 40, { steps: 8 });
-    await page.mouse.up();
-    await page.waitForTimeout(200);
-
     // Left queue collapse/expand.
     await page.getByTitle("折叠侧栏").click();
     expect(await page.getByTestId("workbench-tree-panel").count()).toBe(0);
     await page.getByTitle("展开上游血缘树").click();
     await page.getByTestId("workbench-tree-panel").waitFor({ state: "visible" });
-
-    // Bottom dock collapse/expand: collapse to verify < 60, then re-expand.
-    const dock = page.getByTestId("workbench-bottom-dock");
-    await page.getByRole("button", { name: /节点详情/ }).first().click();
-    const collapsedHeight = (await dock.boundingBox())!.height;
-    expect(collapsedHeight).toBeLessThan(60);
-    await page.getByRole("button", { name: /节点详情/ }).first().click();
-    const expandedHeight = (await dock.boundingBox())!.height;
-    expect(expandedHeight).toBeGreaterThan(100);
 
     await waitForNoHorizontalOverflow(page);
 
@@ -686,11 +664,9 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     const stored = await page.evaluate(() => ({
       tree: localStorage.getItem("reelterminal-workbench-tree-w"),
       issue: localStorage.getItem("reelterminal-workbench-issue-w"),
-      bottom: localStorage.getItem("reelterminal-workbench-bottom-h"),
     }));
     expect(Number(stored.issue)).toBeGreaterThan(300);
     expect(Number(stored.tree)).toBeGreaterThan(300);
-    expect(Number(stored.bottom)).toBeGreaterThan(150);
     evidence.record("layout", { before, after, stored });
     evidence.flush();
   }, 180_000);

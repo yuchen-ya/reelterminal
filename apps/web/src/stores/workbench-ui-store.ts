@@ -70,7 +70,6 @@ export interface WorkbenchUiState {
   searchQuery: string;
   autoAdvance: boolean;
   leftCollapsed: boolean;
-  bottomCollapsed: boolean;
   mindMapModalOpen: boolean;
   handoffDialogOpen: boolean;
   cursorByBatch: Readonly<Record<string, string>>;
@@ -81,7 +80,6 @@ export interface WorkbenchUiState {
   setSearchQuery: (query: string) => void;
   setAutoAdvance: (enabled: boolean) => void;
   setLeftCollapsed: (collapsed: boolean) => void;
-  setBottomCollapsed: (collapsed: boolean) => void;
   setMindMapModalOpen: (open: boolean) => void;
   setHandoffDialogOpen: (open: boolean) => void;
   setCursor: (batchId: string, itemId: string) => void;
@@ -97,7 +95,6 @@ export const useWorkbenchUiStore = create<WorkbenchUiState>((set) => ({
   searchQuery: "",
   autoAdvance: true,
   leftCollapsed: false,
-  bottomCollapsed: true,
   mindMapModalOpen: false,
   handoffDialogOpen: false,
   cursorByBatch: {},
@@ -108,7 +105,6 @@ export const useWorkbenchUiStore = create<WorkbenchUiState>((set) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
   setAutoAdvance: (enabled) => set({ autoAdvance: enabled }),
   setLeftCollapsed: (collapsed) => set({ leftCollapsed: collapsed }),
-  setBottomCollapsed: (collapsed) => set({ bottomCollapsed: collapsed }),
   setMindMapModalOpen: (open) => set({ mindMapModalOpen: open }),
   setHandoffDialogOpen: (open) => set({ handoffDialogOpen: open }),
   setCursor: (batchId, itemId) =>
