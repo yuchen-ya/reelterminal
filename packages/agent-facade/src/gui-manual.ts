@@ -54,7 +54,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.7.4" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.7.5" as const;
 export const GUI_MANUAL_APP_VERSION = "1.3.1" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
