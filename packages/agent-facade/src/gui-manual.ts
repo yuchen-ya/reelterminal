@@ -55,7 +55,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * the manual binds to the APP, not only the facade.
  */
 export const GUI_MANUAL_CONTENT_VERSION = "1.7.4" as const;
-export const GUI_MANUAL_APP_VERSION = "1.3.0" as const;
+export const GUI_MANUAL_APP_VERSION = "1.3.1" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
 /** Agent-facing payload limits for the help verbs. */
@@ -119,6 +119,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     summary: { zh: "无需视频项目，独立保存和审阅图片、文字、数据与视频节点，查看实际处理步骤并导出精确版本。", en: "Review independent image, text, data and video nodes without a video project; inspect recorded processing and export exact versions." },
     entry: [{ zh: "点击顶栏“审阅工作台”，创建数据节点，再导入文件、文件夹、CSV/JSON 或粘贴文本。", en: "Choose Review Workspace in the top tabs, create a data node, then import files, a folder, CSV/JSON or pasted text." }],
     steps: [
+      { zh: "候选图、分镜及需同屏审阅的低密度图文可组织成父节点画板；普通分类目录只用于分组。Agent 可预绑定基准视频并排比较，播放时钟映射仍需单独提供。", en: "Group candidate images, storyboards or sparse text/data into a parent board for same-screen review; use category folders for organization. Agents can prebind a baseline video for side-by-side comparison; playback-time mappings are supplied separately." },
       { zh: "节点侧栏管理最近、置顶、单层分组、搜索、归档与回收站。节点内的批次队列、正文和处理步骤按页读取。", en: "Use the node sidebar for recents, pins, single-level groups, search, archive and recycle. Item bodies and processing steps are paged." },
       { zh: "保留、丢弃与返工可撤销。图片修补、改文和单元格修改保留版本；交回本轮决策由人工发布不可变快照，等待 Agent 真实读取与回报。", en: "Keep, discard and rework decisions are undoable. Repairs, text edits and cell changes retain versions. A human publishes an immutable decision snapshot, then waits for real Agent acknowledgement." },
       { zh: "处理过程显示真实记录的输入、方法、输出、候选与失败；可固定两个版本比较，并从步骤引用导出精确版本。缺步骤、缺文件或缺旧正文明确标记。", en: "Processing shows recorded inputs, methods, outputs, candidates and failures. Pin two versions for comparison or export an exact step reference. Missing steps, files and historical bodies remain explicit." },
@@ -633,7 +634,8 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       },
     ],
     steps: [
-      { zh: "浏览与搜索用户级素材（标题、标签、备注等）。", en: "Browse and search the user's materials (title, tags, notes, ...)." },
+      { zh: "左侧“探索更多素材”仅提供外部资源分类、搜索与原站链接。不会下载、安装或导入；兼容性和许可需在使用具体资源时核对。", en: "Explore more resources in the left rail provides categories, search and original-site links only. It does not download, install or import resources; check compatibility and the specific resource license before use." },
+      { zh: "浏览与搜索用户级素材（标题、标签、备注等）。在“项目模板”分类保存、管理本地项目快照，使用时只新建独立项目，保留当前内容和历史。", en: "Browse and search the user's materials. The Project templates category saves and manages local project snapshots; using one creates an independent project and preserves the current content and history." },
       { zh: "把项目媒体保存为素材；保存引用原文件，不移动不复制内容。", en: "Save project media as a material; saving references the original file without moving or copying it." },
       { zh: "打开素材查看明细（来源、备注、AI 摘要与用户备注是分开的字段）。", en: "Open a material for details (provenance; AI summary and user notes are separate fields)." },
     ],
@@ -643,11 +645,11 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
         en: "The library is user state, independent of the open project; it is distinct from the project's Media tab and Work Assets tab.",
       },
       {
-        zh: "连接的外部 Agent 通过 material.* 工具读写同一个库；用户备注不对 Agent 开放写入。",
-        en: "A connected external agent reads/writes the same library through the material.* tools; user notes are not agent-writable.",
+        zh: "连接的外部 Agent 通过 material.* 工具读写素材与方法；用户备注不对 Agent 开放写入。项目模板分类使用独立本地存储，不属于 material.* 记录。",
+        en: "A connected external agent reads/writes materials and methods through material.*; user notes are not agent-writable. Project templates use separate local storage and are not material.* records.",
       },
     ],
-    keywords: ["material", "library", "save to library", "素材库", "收藏", "素材"],
+    keywords: ["material", "library", "save to library", "素材库", "收藏", "素材", "项目模板"],
   },
   {
     id: "text-presets",

@@ -1,5 +1,7 @@
 # 审阅工作台：独立数据底座与执行方案
 
+> 历史设计/验收记录：下文版本、时间、未提交状态及包路径仅描述当时证据。当前 1.3.1 的提交、构建和验证状态见 [RELEASE-1.3.1.md](RELEASE-1.3.1.md)，不据此宣称旧验收已在新包重跑。
+
 日期：2026-10-23。状态：软件实现和本机已执行场景已有分项证据，不作 P0–P6 整包全部通过声明。22:23 development build 正式界面三种 Explorer 人工拖出及字节检查通过；22:45 刷新的未安装包另有 A7 视频样本与相关 GUI 回归，包内实际 Explorer 接收和主观图标检查仍待独立人工验收。ENOSPC 已做写入边界故障注入，未做物理满盘。实际能力、证据与剩余项见 [执行清单](REVIEW-WORKSPACE-FOUNDATION-TASKS.md) 和 [交付记录](REVIEW-WORKSPACE-FOUNDATION-DELIVERY.md)。本文保留设计意图；当前命令以 [COMMAND-API.md](COMMAND-API.md#independent-review-workspace) 和运行时 schema 为准。P7 未实施，设备 DPI/数位板等未测项不算通过。
 
 已冻结的实现契约：core `review/types.ts` 定义显式 video/review Target、FileResource、ReviewStep 和 manifest；`review/export.ts` 定义导出/备份计划，`review/archive.ts` 定义节点包与缺失版本正文。material DB 从生产 v1 升级到 v2，保留原 stores，新增 review、资源引用及迁移回执 stores；本轮未发布过的开发 v2 不承诺就地升级。`unavailable` 资源只有缺失原因，不伪造文件字节；缺旧正文保留明确的版本缺口。CAS、请求 UUID、错误码和分页契约由 `agent-facade/review.ts`、输出 schemas 及 ReviewService 共同验证。

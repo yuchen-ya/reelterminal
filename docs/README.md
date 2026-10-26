@@ -2,6 +2,8 @@
 
 ## Product and usage
 
+- [RELEASE-1.3.1.md](RELEASE-1.3.1.md) — current local Windows build, changes and validation limits.
+
 - [`PROJECT-ASSETS-FILTERS.md`](PROJECT-ASSETS-FILTERS.md) — project media types, save-point scope and SRT/VTT import.
 - [`../README.md`](../README.md) — product overview and quick start.
 - [`USER-GUIDE.md`](USER-GUIDE.md) — desktop onboarding, editor help, and save-versus-retain basics.

@@ -47,7 +47,11 @@ AI video models make it easier to create footage, but turning **a collection of 
 | 🌿 **Immutable version nodes & comparison** | 🔒 **Local-first media storage** |
 | Save the current workspace or retain a version node for read-only preview, comparison, and adoption. Each workspace has independent state; the creator decides whether to adopt an assistant’s trial edit. | Projects, media caches, decoding, and rendering are processed locally. Hash references and controlled storage manage media. Model/font downloads and optional online services use the network as configured; external AI assistants are chosen by the user. |
 
-### 1.2.5: local captions and audio cleanup
+### 1.3.1: review boards, video comparison and project templates
+
+The review workspace supports parent boards/categories and Agent-bound baseline video comparisons. Local project templates create independent projects; Explore more resources links to original external sites. This version also includes media decoding, recent-project, audio-probe and desktop fixes. This is a local Windows x64 build; see [1.3.1 notes](docs/RELEASE-1.3.1.md) for validation and publication status.
+
+### Local captions and audio cleanup (introduced in 1.2.5)
 
 * **Create captions on your computer:** select a video or audio clip with sound and open local captions. Qwen is the default; SenseVoice is also available, followed by Qwen word alignment. Use automatic language detection or choose Chinese explicitly. Edit the text afterward, or undo the whole generated batch.
 * **See what is missing:** the environment panel in Settings checks Python, models and audio tools, and provides setup instructions you can copy to an assistant. Python environments and models are separate requirements: the installer does not bundle models or run pip. Local captions currently use the CPU and process long clips in chunks; reverse playback and speed curves are not supported.
@@ -73,13 +77,13 @@ flowchart LR
 3. Click **“Copy startup prompt”** in the notification and send it to an AI assistant with local CLI access.
 4. The prompt includes this installation’s command paths and collaboration rules. Have the assistant confirm the intended project, workspace, and permissions before editing. Continue reviewing, adjusting, and making creative decisions in the same UI.
 
-**This 1.2.5 release provides Windows x64 installer and portable ZIP downloads only.** Extract the entire ZIP before running `ReelTerminal.exe`. Mac users can find the previous Apple Silicon builds in [v1.2.1](https://github.com/yuchen-ya/reelterminal/releases/tag/v1.2.1); those are not 1.2.5 builds. No new Mac package is provided in this release.
+**The current 1.3.1 build targets a Windows x64 installer and portable ZIP; it has not been publicly released.** Extract the entire ZIP before running `ReelTerminal.exe`. Mac users can find the previous Apple Silicon builds in [v1.2.1](https://github.com/yuchen-ya/reelterminal/releases/tag/v1.2.1); those are not 1.3.1 builds. No new Mac package is provided in this release.
 
 **Existing users: read [Windows upgrade and backup](docs/WINDOWS-UPGRADE.md#english) first.** Unsafe legacy installations cannot be upgraded in place; do not run their old uninstaller first. Back up, quit the old app, and prefer extracting the new ZIP into a fresh directory while retaining the old installation. Installer migration requires the guidance in that document. Windows builds are unsigned and may show an unknown-publisher or SmartScreen warning. Use the official downloads and verify SHA-256; do not disable system security.
 
 **Source and installed packages are maintained separately.** This page describes the current repository’s capabilities and usage. Check the corresponding Release for a download’s features, fixes, and limitations; updating source does not update an installed app.
 
-Native export replaces the target file only after success; cancellation or failure preserves an existing file. Confirming and successfully applying a whole-project template starts fresh undo/redo history; cancellation preserves the project and its history. Inspector 3D property changes are not recorded as separate undo steps; retain version nodes for important stages. Large projects and long editing sessions can use substantial memory.
+Native export replaces the target file only after success; cancellation or failure preserves an existing file. Using a project template creates an independent project and preserves the current project and its history; templates do not bundle all source media as a portable backup. Inspector 3D property changes are not recorded as separate undo steps; retain version nodes for important stages. Large projects and long editing sessions can use substantial memory.
 
 Some export, media-analysis, and frame tools need local FFmpeg/ffprobe. OpenCV tools also need Python with `cv2` and `numpy`. See [external dependencies](docs/EXTERNAL-DEPENDENCIES.md) for tool requirements and network behavior.
 

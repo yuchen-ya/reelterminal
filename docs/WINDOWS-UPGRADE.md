@@ -1,8 +1,10 @@
-# Windows 1.2.5：下载、备份与升级
+# Windows 1.3.1：下载、备份与升级
+
+1.3.1 当前为本地构建，尚未上传 Release。公开下载以实际 Release 资产为准；本地包见[构建说明](RELEASE-1.3.1.md)。 / 1.3.1 is currently a local build, not a published release; use the actual release assets when available.
 
 ## 第一次使用
 
-从项目 [v1.2.5 下载页](https://github.com/yuchen-ya/reelterminal/releases/tag/v1.2.5)
+从项目 [v1.3.1 下载页](https://github.com/yuchen-ya/reelterminal/releases)
 选择 Windows x64 安装版（EXE）或便携版（ZIP）。ZIP 必须完整解压到新目录，
 再运行 `ReelTerminal.exe`；不要直接从压缩包内启动。
 
@@ -12,7 +14,7 @@
 
 ## 已经使用旧版：先备份，不要先卸载
 
-**旧版 Windows 卸载器可能移除共享的数据位置设置。1.2.5 会阻止这类安装的直接覆盖升级；
+**旧版 Windows 卸载器可能移除共享的数据位置设置。1.3.1 会阻止这类安装的直接覆盖升级；
 不要运行旧卸载器、删除旧安装目录，或反复尝试自动更新来绕过提示。**
 
 1. 在旧应用的“设置 → 存储”确认数据文件夹，保存工程，然后完全退出应用。
@@ -34,7 +36,7 @@
 
 ## 卸载与外部工具
 
-1.2.5 默认卸载只移除程序，保留工程数据和数据位置设置，需要时自行检查后清理。
+1.3.1 默认卸载只移除程序，保留工程数据和数据位置设置，需要时自行检查后清理。
 高级命令行参数 `--delete-app-data` 是例外，会另行清理标准 Windows AppData 配置档；
 不要用它处理旧版升级问题。
 
@@ -44,13 +46,13 @@
 
 ## English
 
-Download the Windows x64 EXE or ZIP from [v1.2.5](https://github.com/yuchen-ya/reelterminal/releases/tag/v1.2.5).
+Download the Windows x64 EXE or ZIP from [v1.3.1](https://github.com/yuchen-ya/reelterminal/releases).
 Extract the entire ZIP into a fresh directory before running `ReelTerminal.exe`.
 These builds are unsigned: verify the official source and `SHA256SUMS.txt`, and do
 not disable system security. Contact your administrator if device policy blocks them.
 
 **Unsafe legacy Windows uninstallers can remove shared data-location settings.
-1.2.5 blocks direct installer upgrades from those versions. Do not run the old
+1.3.1 blocks direct installer upgrades from those versions. Do not run the old
 uninstaller, delete the old directory, or retry automatic updates to bypass this.**
 
 1. Find the data folder in Settings → Storage, save your projects and quit the app.
@@ -73,7 +75,7 @@ installing into a new directory without running the old uninstaller. The
 not a general automatic-upgrade tool. Preserve evidence on failure or uncertainty;
 do not blindly overwrite newer registration with an old export.
 
-Default 1.2.5 uninstall preserves data and shared settings. The explicit
+Default 1.3.1 uninstall preserves data and shared settings. The explicit
 `--delete-app-data` option separately removes standard Windows AppData profiles;
 it is not a migration workaround. Some export/audio tools require separately
 installed FFmpeg/ffprobe. Qwen/SenseVoice captions also need Python and models

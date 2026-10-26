@@ -93,7 +93,7 @@ store cannot be removed from the active root before the other store is ready.
 ## Uninstall
 
 For a plain-language Windows backup and upgrade walkthrough, see
-[Windows 1.2.5 upgrade](WINDOWS-UPGRADE.md#english). Copy the complete profile
+[Windows upgrade](WINDOWS-UPGRADE.md#english). Copy the complete profile
 only while the app is closed; separately preserve external source media.
 
 By default, the Windows uninstaller removes program files but preserves user-data

@@ -16,6 +16,12 @@ conversations, and context. ReelTerminal does not provide a conversational
 Agent or generate media on the Agent's behalf. Generated media can be imported
 and finished in the editor.
 
+Independent review workspaces store review nodes, batches, version-bound feedback
+and recorded processing without requiring a video project. They use explicit
+review targets and a separate Agent-write grant. Parent boards/categories organize
+review items; a baseline video binding selects a comparison item without inventing
+a time mapping. See [the command contract](COMMAND-API.md).
+
 ## Feature scope
 
 Keep a native feature when it helps import, assemble, inspect, edit, review,

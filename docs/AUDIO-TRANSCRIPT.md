@@ -1,7 +1,7 @@
 # 本地语音转写（`speechTranscript`）与记录驱动字幕导入
 
 本文描述助手调用的 `speechTranscript` 分析接口，不是桌面本地字幕面板的全部能力。
-1.2.5 的字幕面板可选 Qwen 或 SenseVoice，并使用 Qwen 做词级对齐；设置方法见
+自 1.2.5 起，字幕面板可选 Qwen 或 SenseVoice，并使用 Qwen 做词级对齐；设置方法见
 [用户帮助](USER-GUIDE.md#本地字幕与音频)。下面的 120 秒和 VAD 句级时间戳限制适用于本文接口，
 不要把它们误套到分段处理长素材的桌面字幕流程。
 

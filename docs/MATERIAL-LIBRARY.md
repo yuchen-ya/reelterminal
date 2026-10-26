@@ -16,6 +16,18 @@ them.
   Headless sessions honestly report them UNSUPPORTED —
   the library lives in the GUI renderer's persistent storage.
 
+## Project templates and external resource links
+
+The Library UI also has a Project templates category backed by separate local
+project-template storage, outside the material.* records and material undo journal.
+Templates retain complete project snapshots and create independent projects when
+used, preserving the current project/history. Required media and font dependencies
+must remain available; this is not a portable bundle of all source bytes. The
+former built-in template catalog is no longer offered.
+
+Explore more resources in the left assets rail offers searchable external-site
+links only; it does not download, install or import anything automatically.
+
 ## Not the same as project work assets
 
 The **Project assets** panel combines original media with saved clips and
