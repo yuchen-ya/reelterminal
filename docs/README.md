@@ -2,7 +2,8 @@
 
 ## Product and usage
 
-- [RELEASE-1.3.1.md](RELEASE-1.3.1.md) — current local Windows build, changes and validation limits.
+- [RELEASE-NOTES-DRAFT.md](RELEASE-NOTES-DRAFT.md) — unpublished summary of the latest pushed changes and release checks.
+- [RELEASE-1.3.6.md](RELEASE-1.3.6.md) — latest local Windows build record; [1.3.1](RELEASE-1.3.1.md), [1.3.2](RELEASE-1.3.2.md), [1.3.3](RELEASE-1.3.3.md), [1.3.4](RELEASE-1.3.4.md) and [1.3.5](RELEASE-1.3.5.md) document earlier builds and their individual validation limits.
 
 - [`PROJECT-ASSETS-FILTERS.md`](PROJECT-ASSETS-FILTERS.md) — project media types, save-point scope and SRT/VTT import.
 - [`../README.md`](../README.md) — product overview and quick start.

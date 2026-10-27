@@ -1,10 +1,14 @@
 # Desktop distribution
 
-## Version 1.3.1
+## Current local build: 1.3.6
 
-This checkout builds version 1.3.1 as an unsigned Windows x64 installer and
-portable ZIP. See [1.3.1 build notes](../../docs/RELEASE-1.3.1.md) for local validation and artifact status. Publication status and available assets are shown on Releases.
-This release targets Windows x64 only. See the user-facing [upgrade guide](../../docs/WINDOWS-UPGRADE.md) before replacing an existing installation. Legacy unsafe uninstallers are blocked; a successful one-off attended migration is not general automatic-upgrade support.
+The current application version is 1.3.6. A Windows x64 installer and portable ZIP
+were built locally; they have not been publicly released. See the [1.3.6 build
+record](../../docs/RELEASE-1.3.6.md) and [release notes draft](../../docs/RELEASE-NOTES-DRAFT.md).
+Confirm the source, signing status, checksums and packaged validation for the actual
+release artifacts before publication. See the [upgrade guide](../../docs/WINDOWS-UPGRADE.md)
+before replacing an existing installation. Legacy unsafe uninstallers are blocked;
+a successful one-off attended migration is not general automatic-upgrade support.
 
 A release build must use a clean, frozen source commit and an independent output
 directory; do not rename an older package to a new version. For example:
@@ -12,7 +16,7 @@ directory; do not rename an older package to a new version. For example:
 ```bash
 pnpm install --frozen-lockfile
 pnpm build:wasm
-pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.3.1-<short-sha>
+pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.3.6-<short-sha>
 ```
 
 Verify the packaged app version and `dist/performance-build.json` source SHA,
