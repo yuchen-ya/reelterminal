@@ -189,6 +189,7 @@ export class ReviewService {
               const recorded = branch.result ?? taskReceipt.result.result.node as ReviewNode;
               if (!workspace.result || recorded.workspaceId !== input.target.reviewWorkspaceId || recorded.branch?.taskId !== input.taskId || recorded.branch.sourceNodeId !== input.target.nodeId ||
                   recorded.branch.sourceNodeRevision !== input.expectedNodeRevision) throw reviewError("CONFLICT", "This taskId already belongs to another branch baseline");
+              if (!branch.result) throw reviewError("NOT_FOUND", "This task branch was permanently cleared; start a new task with a new taskId");
               result = { node: recorded, target: { ...input.target, nodeId: branchId }, workspaceRevision: workspace.result.revision, replayed: true };
               transaction.objectStore("reviewOperations").add({ operationId: input.requestId, requestDigest: digest, scopeId: input.target.reviewWorkspaceId,
                 sequence: workspace.result.revision, result });

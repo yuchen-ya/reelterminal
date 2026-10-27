@@ -140,9 +140,14 @@ describe("durable task branches", () => {
     await service.directory.commit({ target: context.target, expectedWorkspaceRevision: 3, requestId: crypto.randomUUID(), actor: "human", commands: [{ kind: "node.update", nodeId: branch.node.id, patch: { trashed: true } }] });
     await service.purge.clear({ target: branch.target, expectedWorkspaceRevision: 4, expectedNodeRevision: 1, requestId: crypto.randomUUID(), confirmDeleteHistory: true });
     await expect(service.getNode(branch.target)).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect(await service.createBranch({ ...create, requestId: crypto.randomUUID() })).toMatchObject({ replayed: true });
+    expect(await service.createBranch(create)).toMatchObject({ replayed: true, node: { id: branch.node.id } });
+    const newRequest = { ...create, expectedWorkspaceRevision: 5, requestId: crypto.randomUUID() };
+    await expect(service.createBranch(newRequest)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(service.getNode(branch.target)).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect((await service.getNode(restoredTarget)).state.items).toHaveLength(2);
+    const fresh = await service.createBranch({ ...newRequest, taskId: crypto.randomUUID() });
+    expect(fresh.replayed).toBe(false);
+    expect((await service.getNode(fresh.target)).state.items).toHaveLength(2);
   });
 
   it("submits inherited image/video/table replacements through the command bridge, retains resources and undoes adoption", async () => {

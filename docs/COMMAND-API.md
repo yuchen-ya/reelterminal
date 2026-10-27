@@ -22,6 +22,10 @@ branch target for `review.apply`, `review.ingest` and `review.steps.*` throughou
 the task. When a copied target already has `node.branch`, continue that branch;
 nested branch creation is rejected.
 
+After a branch is permanently cleared, replaying its original `requestId` still
+returns the historical receipt. A new request using that cleared `taskId` returns
+`NOT_FOUND`; use a new `taskId` to explicitly start a new task.
+
 For inherited images, videos or models, use `review.branches.submit` with the
 branch target/revision, `requestId` and `results: [{itemId, expectedItemVersion,
 content}]`. This appends real replacement content to the same branch item;
