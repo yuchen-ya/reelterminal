@@ -37,7 +37,7 @@ const textEntry = (element: Element | null) =>
   element instanceof HTMLTextAreaElement ||
   (element instanceof HTMLElement && element.isContentEditable);
 
-export function ReviewPage() {
+export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
   const { t } = useTranslation();
   const [context, setContext] = useState<ReviewContext | null>(null);
   const [directory, setDirectory] = useState<{
@@ -103,11 +103,11 @@ export function ReviewPage() {
     setError(null);
     const load = async () => {
       const native = window.reelterminal?.collabControl;
-      if (!native?.getReviewAccess) throw reviewError("UNSUPPORTED", "独立审阅服务不可用");
+      if (!browserDemo && !native?.getReviewAccess) throw reviewError("UNSUPPORTED", "独立审阅服务不可用");
       const identity = await getReviewContext();
       const root = {
         ...identity,
-        access: await native.getReviewAccess({
+        access: browserDemo ? identity.access : await native!.getReviewAccess!({
           reviewWorkspaceId: identity.target.reviewWorkspaceId,
           instanceId: identity.target.instanceId,
         }),
@@ -130,7 +130,7 @@ export function ReviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [view, query, groupId, generation]);
+  }, [view, query, groupId, generation, browserDemo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -268,7 +268,7 @@ export function ReviewPage() {
       .finally(() => setBusy(false));
   };
 
-  const adminMenu = (
+  const adminMenu = browserDemo ? null : (
     <ReviewAdminMenu
       contextLoaded={!!context && !busy}
       hasProject={hasProject}
@@ -332,7 +332,7 @@ export function ReviewPage() {
             nodes={nodes}
             selectedId={selectedId}
             copiedNodeId={copiedNodeId}
-            onCopyInstructions={node => copyInstructions(node).catch(problem => { report(problem); })}
+            onCopyInstructions={browserDemo ? undefined : node => copyInstructions(node).catch(problem => { report(problem); })}
             onSelectNode={chooseNode}
             onUpdateNode={(nodeId, patch) => {
               if (patch.trashed) {
@@ -340,7 +340,7 @@ export function ReviewPage() {
                 if (node && context) setTrashRequest({ node, revision: context.revision });
               } else void mutate([{ kind: "node.update", nodeId, patch }]).catch(report);
             }}
-            onBranches={node => {
+            onBranches={browserDemo ? undefined : node => {
               if (!context) return;
               const nodeTarget = { ...context.target, nodeId: node.id };
               if (node.branch) setBranchTarget(nodeTarget); else setBranchListTarget(nodeTarget);
@@ -406,6 +406,7 @@ export function ReviewPage() {
                     busy={busy}
                     onToggleAccess={handleToggleAccess}
                     adminMenu={adminMenu}
+                    browserDemo={browserDemo}
                   />
                   <div className="grid flex-1 place-items-center p-8 text-sm text-fg-2">
                     {t("review.restoreBeforeEditing")}
@@ -413,6 +414,7 @@ export function ReviewPage() {
                 </>
               ) : (
                 <ReviewNodeEditor
+                  browserDemo={browserDemo}
                   onCopyInstructions={() => void copyInstructions().catch(report)}
                   copied={copied}
                   key={selected.id}
@@ -424,7 +426,10 @@ export function ReviewPage() {
                       busy={busy}
                       onToggleAccess={handleToggleAccess}
                       adminMenu={adminMenu}
+                      browserDemo={browserDemo}
                       {...headerControls}
+                      onAttach={browserDemo ? undefined : headerControls.onAttach}
+                      onExport={browserDemo ? undefined : headerControls.onExport}
                     />
                   )}
                 />
@@ -437,6 +442,7 @@ export function ReviewPage() {
                   busy={busy}
                   onToggleAccess={handleToggleAccess}
                   adminMenu={adminMenu}
+                  browserDemo={browserDemo}
                 />
                 <div className="grid flex-1 place-items-center p-8 text-center">
                   <div>
@@ -562,11 +568,13 @@ export function ReviewPage() {
 }
 
 function ReviewNodeEditor({
+  browserDemo,
   onCopyInstructions,
   copied,
   target,
   renderHeader,
 }: {
+  browserDemo: boolean;
   target: ReviewContext["target"];
   onCopyInstructions: () => void;
   copied: boolean;
@@ -674,13 +682,14 @@ function ReviewNodeEditor({
       ) : (
         <div className="min-h-0 flex-1" inert={state.loading}>
           <WorkbenchPanel
+            browserDemo={browserDemo}
             controller={state.controller}
-            exportTarget={state.overview ? { target, revision: state.overview.node.revision } : undefined}
+            exportTarget={!browserDemo && state.overview ? { target, revision: state.overview.node.revision } : undefined}
             paginated={state.hasPrevious || state.hasNext}
             pageKey={state.pageNumber}
             independent
             loading={state.loading}
-            onImport={() => setImportOpen(true)}
+            onImport={() => browserDemo ? toast.error("请使用桌面版导入文件") : setImportOpen(true)}
               paginationFooter={
                 (state.hasPrevious || state.hasNext || state.loading) ? (
                   <div
@@ -730,12 +739,12 @@ function ReviewNodeEditor({
                     type="button"
                     className={wbButton.primary}
                     disabled={!state.overview}
-                    onClick={() => setImportOpen(true)}
+                    onClick={() => browserDemo ? toast.error("请使用桌面版导入文件") : setImportOpen(true)}
                   >
                     {t("review.importTitle")}
                   </button>
-                  <button type="button" className={`${wbButton.secondary} ml-2`} onClick={onCopyInstructions}>{t(copied ? "review.copied" : "review.copyStartup")}</button>
-                  <p className="text-xs text-fg-3">Agent 投递前，请在右上角将“Agent 只读”切换为可写。</p>
+                  {!browserDemo && <><button type="button" className={`${wbButton.secondary} ml-2`} onClick={onCopyInstructions}>{t(copied ? "review.copied" : "review.copyStartup")}</button>
+                  <p className="text-xs text-fg-3">Agent 投递前，请在右上角将“Agent 只读”切换为可写。</p></>}
                 </div>
               </div>
             }

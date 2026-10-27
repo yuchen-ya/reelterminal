@@ -3,7 +3,7 @@ import path from "node:path";
 import webConfig from "./vite.config";
 
 // The production editor UI in a static entry, without DesktopApp bootstrap,
-// native bridge, service worker, review workspace or model/export services.
+// native bridge, service worker or model/export services.
 export default mergeConfig(
   webConfig,
   defineConfig({

@@ -25,6 +25,7 @@ export interface ReviewNodeHeaderProps {
   busy: boolean;
   onToggleAccess: (event: React.ChangeEvent<HTMLInputElement>) => void;
   adminMenu: ReactNode;
+  browserDemo?: boolean;
 }
 
 export function ReviewNodeHeader({
@@ -41,6 +42,7 @@ export function ReviewNodeHeader({
   busy,
   onToggleAccess,
   adminMenu,
+  browserDemo = false,
 }: ReviewNodeHeaderProps): JSX.Element {
   const { t } = useTranslation();
 
@@ -141,7 +143,7 @@ export function ReviewNodeHeader({
       )}
 
       {/* Agent 权限极简图标徽章 (绿点可写 / 灰点只读) */}
-      <label
+      {!browserDemo && <label
         title={`${t("review.agentAccessLabel")} · ${t(
           context?.access === "write" ? "review.agentWrite" : "review.agentRead",
         )}`}
@@ -174,7 +176,7 @@ export function ReviewNodeHeader({
               : "review.agentRead",
           )}
         </span>
-      </label>
+      </label>}
 
       {/* ⋯ 管理菜单 */}
       {adminMenu}

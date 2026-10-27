@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ToolcraftButton as Button,
@@ -23,13 +23,31 @@ import { useTimelineStore } from "../stores/timeline-store";
 import { toast } from "../stores/notification-store";
 import { CircleHelp, Settings, Github } from "../icons/lucide-compat";
 import { loadSampleProject } from "./sample-project";
+import type { WorkspaceMode } from "../components/WorkspaceModeTabs";
+
+const ReviewPage = lazy(() => import("../desktop/pages/ReviewPage").then(module => ({ default: module.ReviewPage })));
 
 export function ShowcaseApp() {
   const { t } = useTranslation();
   const [helpOpen, setHelpOpen] = useState(false);
   const [notice, setNotice] = useState<"desktop" | "reset" | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [mode, setMode] = useState<WorkspaceMode>("video");
+  const [reviewReady, setReviewReady] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const reviewLoading = useRef(false);
   const desktopOnly = () => setNotice("desktop");
+
+  const selectMode = (next: WorkspaceMode) => {
+    setMode(next);
+    if (next !== "workbench" || reviewReady || reviewLoading.current) return;
+    reviewLoading.current = true;
+    setReviewError(null);
+    void import("./review-sample").then(({ ensureReviewSample }) => ensureReviewSample())
+      .then(() => setReviewReady(true))
+      .catch(error => setReviewError(error instanceof Error ? error.message : String(error)))
+      .finally(() => { reviewLoading.current = false; });
+  };
 
   useEffect(() => {
     const pause = () => useTimelineStore.getState().pause();
@@ -110,9 +128,9 @@ export function ShowcaseApp() {
           }
           centerControl={
             <WorkspaceModeTabs
-              activeMode="video"
-              availableModes={["video"]}
-              onSelectMode={() => {}}
+              activeMode={mode}
+              availableModes={["video", "workbench"]}
+              onSelectMode={selectMode}
               ariaLabel={t("desktop.workspace.ariaLabel")}
             />
           }
@@ -145,10 +163,12 @@ export function ShowcaseApp() {
           />
         </DesktopTitleBar>
         <div className="min-h-0 flex-1">
-          <EditPage
+          {mode === "video" ? <EditPage
             onImportRequested={desktopOnly}
             onConnectRequested={desktopOnly}
-          />
+          /> : reviewError ? <div role="alert" className="p-6 text-sm">审阅示例加载失败：{reviewError}<button className="ml-3 underline" onClick={() => selectMode("workbench")}>重试</button></div>
+            : !reviewReady ? <div role="status" className="p-6 text-sm">正在准备审阅示例…</div>
+            : <Suspense fallback={<div role="status" className="p-6 text-sm">正在打开审阅工作台…</div>}><ReviewPage browserDemo /></Suspense>}
         </div>
         <SettingsDialog />
         <DesktopHelpDialog open={helpOpen} onOpenChange={setHelpOpen} canTour />
