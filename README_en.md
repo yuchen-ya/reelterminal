@@ -33,9 +33,9 @@ AI video models make it easier to create footage, but turning **a collection of 
 
 **ReelTerminal brings a visual editor and an assistant-friendly timeline together.** Drag and adjust clips in the desktop app, or let your AI assistant—Cursor, Claude, Antigravity, and others—operate the same project. **You lead the creative decisions; the assistant handles repetitive and structured edits. Both work with shared project state, editing history, version archives, and player comparison.**
 
-![ReelTerminal Chinese interface showing a promotional-video project, R clip reference markers, media library, multitrack timeline, and archive tree](docs/assets/desktop-screenshot.png)
+![ReelTerminal Chinese interface showing a promotional-video project, media library, player, multitrack timeline, and archive history](docs/assets/desktop-screenshot.png)
 
-*A real promotional-video project in the Chinese interface, with R clip reference markers used for human–Agent communication, the media library, multitrack timeline, and version archive tree.*
+*A real promotional-video project in the Chinese interface, showing the media library, player, multitrack timeline, R clip reference markers, and archive history, with the review workspace accessible at the top.*
 
 ---
 
