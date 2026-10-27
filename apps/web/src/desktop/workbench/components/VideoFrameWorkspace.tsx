@@ -23,6 +23,7 @@ import type {
   WorkbenchMutationResult,
 } from "../types";
 import { resolveItemCompareTargetId } from "./lineage-tree-utils";
+import { useWorkbenchMedia } from "../useWorkbenchController";
 import {
   WorkbenchIssuePanel,
   type WorkbenchIssueSaveInput,
@@ -167,18 +168,19 @@ export function VideoFrameWorkspace({
     }
   }, [autoCompareTargetId, item.id, pinnedRefId]);
 
-  // Ensure the reference video's payload & media URL are loaded when comparison is active
+  // The media hook owns the reference handle, including results arriving after a switch.
+  const compareMedia = compareItem?.videoPayload?.media;
+  const { url: compareMediaUrl } = useWorkbenchMedia(
+    showCompareSplit && !compareMedia?.url ? compareMedia?.mediaId ?? null : null,
+    openMediaUrl,
+  );
+
+  // Summary-only references first need their payload before opening the media.
   useEffect(() => {
-    if (!showCompareSplit || !compareItem) return;
-    if (!compareItem.videoPayload) {
-      ensureItemsLoaded?.([compareItem.id]);
-      return;
+    if (showCompareSplit && compareItem && !compareItem.videoPayload) {
+      void ensureItemsLoaded?.([compareItem.id]);
     }
-    const media = compareItem.videoPayload.media;
-    if (media.status !== "ready" && !media.url) {
-      openMediaUrl?.(media.mediaId);
-    }
-  }, [compareItem, ensureItemsLoaded, openMediaUrl, showCompareSplit]);
+  }, [compareItem, ensureItemsLoaded, showCompareSplit]);
 
   const markers = useMemo(
     () => sortMarkers(payload?.markers ?? []),
@@ -740,7 +742,7 @@ export function VideoFrameWorkspace({
           currentTitle={`${item.agentGuidance?.nodeSlotLabel ?? item.title} (v${item.version})`}
           showCompareSplit={showCompareSplit && !!compareItem}
           compareVideoRef={compareVideoRef}
-          compareVideoUrl={compareItem?.videoPayload?.media.url ?? null}
+          compareVideoUrl={compareMedia?.url ?? compareMediaUrl}
           compareTitle={
             compareItem
               ? `${compareItem.agentGuidance?.nodeSlotLabel ?? compareItem.title} (v${compareItem.version})`

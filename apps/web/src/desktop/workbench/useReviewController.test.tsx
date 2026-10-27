@@ -7,12 +7,18 @@ import { reviewService } from "../../services/review-workspace/service";
 import { useReviewController } from "./useReviewController";
 import { toItemView } from "./useWorkbenchController";
 import type { WorkbenchItem } from "@reelterminal/core/types/workbench";
+import type { FileResource } from "@reelterminal/core/review/types";
+import { useWorkbenchUiStore } from "../../stores/workbench-ui-store";
 
 // Independent review nodes do not use the legacy project store or initialize its video engines.
 vi.mock("../../stores/project-store", () => ({ useProjectStore: vi.fn() }));
 
 const originalIndexedDB = globalThis.indexedDB;
-beforeEach(() => { globalThis.indexedDB = new IDBFactory(); vi.stubGlobal("IDBKeyRange", IDBKeyRange); });
+beforeEach(() => {
+  globalThis.indexedDB = new IDBFactory();
+  vi.stubGlobal("IDBKeyRange", IDBKeyRange);
+  useWorkbenchUiStore.getState().resetProjectScopedState();
+});
 afterEach(() => { cleanup(); globalThis.indexedDB = originalIndexedDB; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 it("displays a replacement image rather than a repair from an older content version", () => {
@@ -66,4 +72,97 @@ it("uses scoped planning and commits for decisions and emits a manual step only 
   expect(snapshot.steps).toMatchObject([{ state: "completed", inputs: [{ itemId: itemIds[0], version: 1 }], outputs: [{ itemId: itemIds[0], version: 2 }] }]);
   await act(async () => { expect(await result.current.controller.undoLast()).toEqual({ ok: true }); });
   expect((await reviewService.getItem(target, itemIds[0])).item).toMatchObject({ version: 1, status: "kept" });
+});
+
+async function imageBatches() {
+  const { target: workspaceTarget } = await getReviewContext();
+  const node = await reviewService.createNode({ target: workspaceTarget, name: "Detail lifetime", expectedWorkspaceRevision: 0, requestId: crypto.randomUUID() });
+  const target = { ...workspaceTarget, nodeId: node.id };
+  const batches = [];
+  for (let index = 0; index < 2; index++) {
+    const batchId = crypto.randomUUID();
+    const itemIds = [crypto.randomUUID(), crypto.randomUUID()];
+    const resources: FileResource[] = itemIds.map(() => ({ id: crypto.randomUUID(), storage: { kind: "blob", blobId: crypto.randomUUID() },
+      originalFileName: "image.png", mime: "image/png", size: 1, createdAt: 1, source: "user",
+      metadata: { type: "image", width: 100, height: 100, durationSec: 0, frameRate: 0, codec: "png" } }));
+    await reviewService.commit({ target, expectedNodeRevision: index, requestId: crypto.randomUUID(), actor: "human", label: "Seed images", request: { batchId }, resources,
+      build: state => {
+        const built = buildWorkbenchIngestActions(state, { batchId, name: `Batch ${index}`, items: itemIds.map((id, itemIndex) => ({ id, title: id, type: "image",
+          content: { type: "image", mediaId: resources[itemIndex].id, annotations: [], strokes: [] } })) });
+        if (!built.ok) throw new Error(built.message);
+        return built.actions;
+      } });
+    batches.push({ batchId, itemIds, resources });
+  }
+  return { target, batches };
+}
+
+it.each(["revision", "batch"] as const)("evicts collection details and media after a %s change, preserving reuse within the same scope", async change => {
+  const { target, batches } = await imageBatches();
+  const first = batches[0];
+  const { result } = renderHook(() => useReviewController(target));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  act(() => result.current.controller.setActiveBatchId(first.batchId));
+  await waitFor(() => expect(result.current.controller.currentItem?.id).toBe(first.itemIds[0]));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  const reads = vi.spyOn(reviewService, "getItem");
+  await act(async () => { await result.current.controller.ensureItemsLoaded([first.itemIds[1]]); });
+  expect(result.current.controller.mediaAssets.map(media => media.id)).toContain(first.resources[1].id);
+  expect(result.current.controller.batchItems.find(item => item.id === first.itemIds[1])?.detailsLoaded).toBe(true);
+  act(() => result.current.controller.focusItem(first.itemIds[1]));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  act(() => result.current.controller.focusItem(first.itemIds[0]));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  const beforeReuse = reads.mock.calls.length;
+  await act(async () => { await result.current.controller.ensureItemsLoaded([first.itemIds[1]]); });
+  expect(reads).toHaveBeenCalledTimes(beforeReuse);
+  if (change === "revision") {
+    await act(async () => { expect(await result.current.controller.commitDecision("kept", [first.itemIds[0]], { advance: false })).toEqual({ ok: true }); });
+    await waitFor(() => expect(result.current.overview?.node.revision).toBe(3));
+  } else {
+    act(() => result.current.controller.setActiveBatchId(batches[1].batchId));
+    await waitFor(() => expect(result.current.controller.currentItem?.batchId).toBe(batches[1].batchId));
+  }
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.controller.mediaAssets.map(media => media.id)).not.toContain(first.resources[1].id);
+  if (change === "revision") {
+    expect(result.current.controller.batchItems.find(item => item.id === first.itemIds[1])?.detailsLoaded).toBe(false);
+    await act(async () => { await result.current.controller.ensureItemsLoaded([first.itemIds[1]]); });
+    expect(result.current.controller.batchItems.find(item => item.id === first.itemIds[1])?.detailsLoaded).toBe(true);
+  } else {
+    reads.mockClear();
+    act(() => result.current.controller.setActiveBatchId(first.batchId));
+    await waitFor(() => expect(result.current.controller.currentItem?.id).toBe(first.itemIds[0]));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.controller.batchItems.find(item => item.id === first.itemIds[1])?.detailsLoaded).toBe(false);
+    await act(async () => { await result.current.controller.ensureItemsLoaded([first.itemIds[1]]); });
+    expect(reads).toHaveBeenCalledWith(target, first.itemIds[1]);
+  }
+});
+
+it.each(["revision", "batch"] as const)("discards collection media that finishes loading after a %s change", async change => {
+  const { target, batches } = await imageBatches();
+  const first = batches[0];
+  const { result } = renderHook(() => useReviewController(target));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  act(() => result.current.controller.setActiveBatchId(first.batchId));
+  await waitFor(() => expect(result.current.controller.currentItem?.id).toBe(first.itemIds[0]));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  let finish!: (resources: readonly FileResource[]) => void;
+  const pending = new Promise<readonly FileResource[]>(resolve => { finish = resolve; });
+  const getResources = reviewService.getResources.bind(reviewService);
+  const reads = vi.spyOn(reviewService, "getResources").mockImplementation(ids => ids.includes(first.resources[1].id) ? pending : getResources(ids));
+  let load!: Promise<void>;
+  act(() => { load = result.current.controller.ensureItemsLoaded([first.itemIds[1]]); });
+  await waitFor(() => expect(reads).toHaveBeenCalledWith([first.resources[1].id]));
+  if (change === "revision") {
+    await act(async () => { expect(await result.current.controller.commitDecision("kept", [first.itemIds[0]], { advance: false })).toEqual({ ok: true }); });
+    await waitFor(() => expect(result.current.overview?.node.revision).toBe(3));
+  } else {
+    act(() => result.current.controller.setActiveBatchId(batches[1].batchId));
+    await waitFor(() => expect(result.current.controller.currentItem?.batchId).toBe(batches[1].batchId));
+  }
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  await act(async () => { finish([first.resources[1]]); await load; });
+  expect(result.current.controller.mediaAssets.map(media => media.id)).not.toContain(first.resources[1].id);
 });

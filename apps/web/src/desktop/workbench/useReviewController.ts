@@ -97,6 +97,17 @@ export function useReviewController(target: Target) {
   const cursors = useWorkbenchUiStore(state => state.cursorByBatch);
   const handoffOpen = useWorkbenchUiStore(state => state.handoffDialogOpen);
   const refresh = useCallback(() => setGeneration(value => value + 1), []);
+  const extraLoadScope = useMemo(() => ({ target, revision: overview?.node.revision, items: page.items, activeBatchId, pageCursor, type, query }),
+    [target, overview?.node.revision, page.items, activeBatchId, pageCursor, type, query]);
+  const extraLoadScopeRef = useRef<object | null>(extraLoadScope);
+
+  // Collection details survive drill-in/back, but never outlive their revision or list scope.
+  useEffect(() => {
+    extraLoadScopeRef.current = extraLoadScope;
+    setExtraLoaded(new Map());
+    setExtraResources(new Map());
+    return () => { extraLoadScopeRef.current = null; };
+  }, [extraLoadScope]);
 
   useEffect(() => reviewService.subscribe(refresh), [refresh]);
   useEffect(() => { useWorkbenchUiStore.getState().resetProjectScopedState(); }, [target.nodeId]);
@@ -273,7 +284,7 @@ export function useReviewController(target: Target) {
       missing.map((id) => reviewService.getItem(target, id).catch(() => null)),
     );
     const valid = fetched.filter((entry): entry is LoadedItem => entry !== null && entry.node.revision === rev);
-    if (valid.length === 0) return;
+    if (extraLoadScopeRef.current !== extraLoadScope || valid.length === 0) return;
     const mediaIds = new Set<string>();
     for (const entry of valid) {
       if (entry.item.content.type === "image" || entry.item.content.type === "video") {
@@ -291,6 +302,7 @@ export function useReviewController(target: Target) {
           .map((r) => native.resolve(r.id).catch(() => null)),
       );
     }
+    if (extraLoadScopeRef.current !== extraLoadScope) return;
     setExtraLoaded((prev) => {
       const next = new Map(prev);
       for (const entry of valid) next.set(entry.item.id, entry);
@@ -303,7 +315,7 @@ export function useReviewController(target: Target) {
         return next;
       });
     }
-  }, [overview, loaded, extraLoaded, target]);
+  }, [overview, loaded, extraLoaded, target, extraLoadScope]);
   const summaries = useMemo(() => expanded ? undefined : page.items.map(summaryView), [expanded, page.items]);
   const batchViews = useMemo(() => overview?.batches.map(batch => ({ ...batch,
     isNew: (batch.incomingRevision ?? 0) > (seen[reviewSeenKey(target.nodeId!, "batch", batch.id)] ?? 0),

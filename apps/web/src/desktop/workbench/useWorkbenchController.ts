@@ -247,12 +247,12 @@ export interface WorkbenchControllerSource {
   readonly managesBatchSelection?: boolean;
 }
 
-function useWorkbenchMedia(id: string | null, open: WorkbenchControllerSource["openMedia"]): { url: string | null; status: MediaLoadStatus; error?: string } {
+export function useWorkbenchMedia(id: string | null, open: WorkbenchControllerSource["openMedia"] | undefined): { url: string | null; status: MediaLoadStatus; error?: string } {
   const [state, setState] = useState<{ id: string | null; url: string | null; status: MediaLoadStatus; error?: string }>({ id: null, url: null, status: "unavailable" });
   useEffect(() => {
     let cancelled = false;
     let release: (() => void) | undefined;
-    if (!id) { setState({ id, url: null, status: "unavailable" }); return; }
+    if (!id || !open) { setState({ id, url: null, status: "unavailable" }); return; }
     setState({ id, url: null, status: "loading" });
     open(id).then(media => {
       if (cancelled) { media?.release(); return; }
