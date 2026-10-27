@@ -3,6 +3,8 @@ import type React from "react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Copy,
+  Check,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
@@ -28,6 +30,8 @@ export interface ReviewNodeSidebarProps {
   nodes: readonly ReviewNode[];
   selectedId: string | null;
   onSelectNode: (nodeId: string) => void;
+  onCopyInstructions?: (node: ReviewNode) => Promise<void>;
+  copiedNodeId?: string | null;
   directory: {
     groups: readonly ReviewGroup[];
     canUndo: boolean;
@@ -49,6 +53,8 @@ export interface ReviewNodeSidebarProps {
   busy: boolean;
 }
 
+const compactIconButton = "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded p-1 text-fg-2 hover:bg-bg-2 hover:text-fg disabled:opacity-40";
+
 const textEntry = (element: Element | null) =>
   element instanceof HTMLInputElement ||
   element instanceof HTMLTextAreaElement ||
@@ -60,6 +66,8 @@ export function ReviewNodeSidebar({
   nodes,
   selectedId,
   onSelectNode,
+  onCopyInstructions,
+  copiedNodeId,
   directory,
   view,
   onSelectView,
@@ -187,12 +195,12 @@ export function ReviewNodeSidebar({
     >
       {/* 1. Header row (all actions iconified on one line) */}
       <div className="flex h-7 items-center justify-between px-1">
-        <span className="font-semibold text-fg truncate">{t("review.nodes")}</span>
+        <span className="shrink-0 font-semibold text-fg">{t("review.nodes")}</span>
         <div className="flex items-center gap-0.5">
           {!creatingNode && (
             <button
               type="button"
-              className={wbButton.ghost}
+              className={compactIconButton}
               data-testid="review-new-task"
               onClick={() => setCreatingNode(true)}
               title={t("review.newNode")}
@@ -204,7 +212,7 @@ export function ReviewNodeSidebar({
           )}
           <button
             type="button"
-            className={`${wbButton.ghost} ${hasActiveFilter ? "text-accent" : ""}`}
+            className={`${compactIconButton} ${hasActiveFilter ? "text-accent" : ""}`}
             onClick={() => {
               setFiltersOpen((v) => !v);
               if (!filtersOpen) setTimeout(() => searchRef.current?.focus(), 30);
@@ -219,7 +227,7 @@ export function ReviewNodeSidebar({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className={wbButton.ghost}
+                className={compactIconButton}
                 title={t("review.undoDirectory")}
                 aria-label={t("review.undoDirectory")}
               >
@@ -246,7 +254,7 @@ export function ReviewNodeSidebar({
           </DropdownMenu>
           <button
             type="button"
-            className={wbButton.ghost}
+            className={compactIconButton}
             onClick={() => onToggleOpen(false)}
             title={t("review.collapseSidebar", "收起侧栏")}
             aria-label={t("review.collapseSidebar", "收起侧栏")}
@@ -463,28 +471,40 @@ export function ReviewNodeSidebar({
           {nodes.map((node) => {
             const isCurrent = selectedId === node.id;
             return (
-              <button
-                key={node.id}
-                type="button"
-                className={`w-full flex flex-col rounded px-2 py-1.5 text-left transition-colors border-l-2 ${
-                  isCurrent
-                    ? "border-l-accent bg-bg-2 text-fg shadow-sm"
-                    : "border-l-transparent text-fg-2 hover:bg-bg-2/60"
-                }`}
-                onClick={() => onSelectNode(node.id)}
-                aria-current={isCurrent ? "true" : undefined}
-              >
-                <span
-                  className="truncate text-xs font-medium"
-                  title={node.name}
+              <div key={node.id} className="group relative">
+                <button
+                  type="button"
+                  className={`w-full flex min-w-0 flex-col rounded pl-2 pr-8 py-1.5 text-left transition-colors border-l-2 ${
+                    isCurrent
+                      ? "border-l-accent bg-bg-2 text-fg shadow-sm"
+                      : "border-l-transparent text-fg-2 hover:bg-bg-2/60"
+                  }`}
+                  onClick={() => onSelectNode(node.id)}
+                  aria-current={isCurrent ? "true" : undefined}
                 >
-                  {node.pinned ? "★ " : ""}
-                  {node.name}
-                </span>
-                <span className="text-[10px] text-fg-3">
-                  {new Date(node.updatedAt).toLocaleDateString()}
-                </span>
-              </button>
+                  <span
+                    className="max-w-full truncate text-xs font-medium"
+                    title={node.name}
+                  >
+                    {node.pinned ? "★ " : ""}
+                    {node.name}
+                  </span>
+                  <span className="text-[10px] text-fg-3">
+                    {new Date(node.updatedAt).toLocaleDateString()}
+                  </span>
+                </button>
+                {onCopyInstructions && (
+                  <button
+                    type="button"
+                    className={`${compactIconButton} absolute right-1 top-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100`}
+                    title={t(copiedNodeId === node.id ? "review.copied" : "review.copyTaskInstructions", { name: node.name })}
+                    aria-label={t("review.copyTaskInstructions", { name: node.name })}
+                    onClick={() => { void onCopyInstructions(node); }}
+                  >
+                    {copiedNodeId === node.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  </button>
+                )}
+              </div>
             );
           })}
           {!nodes.length && (

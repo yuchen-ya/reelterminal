@@ -30,6 +30,15 @@ function ingest(batchId: string, itemId: string, text = "original") {
 }
 
 describe("independent review transactions", () => {
+  it("resolves only titles owned by the requested node, including missing references", async () => {
+    const { service, target, batchId, itemId } = await setup();
+    const payload = ingest(batchId, itemId);
+    await service.commit({ target, expectedNodeRevision: 0, requestId: crypto.randomUUID(), actor: "agent",
+      label: "Ingest", request: payload, build: state => actions(buildWorkbenchIngestActions(state, payload)) });
+    expect(await service.getItemTitles(target, [itemId, itemId, crypto.randomUUID()])).toEqual({ [itemId]: "Text" });
+    const other = await service.createNode({ target, name: "Other", expectedWorkspaceRevision: 1, requestId: crypto.randomUUID() });
+    expect(await service.getItemTitles({ ...target, nodeId: other.id }, [itemId])).toEqual({});
+  });
   it("retains parent modes in stored items and list summaries", async () => {
     const { service, target, batchId, itemId } = await setup();
     const original = ingest(batchId, itemId);

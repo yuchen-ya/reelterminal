@@ -17,7 +17,7 @@ test("model observations upsert/undo atomically, retain attachments through hist
  const service=new ReviewService(),context=await getReviewContext();
  const node=await service.createNode({target:context.target,name:"Models",expectedWorkspaceRevision:0,requestId:crypto.randomUUID()});
  const target={...context.target,nodeId:node.id};const batchId=crypto.randomUUID(),itemId=crypto.randomUUID(),modelId=crypto.randomUUID(),imageA=crypto.randomUUID(),imageB=crypto.randomUUID(),observationId=crypto.randomUUID();
- const commit=(revision:number,build:Parameters<typeof service.commit>[0]["build"],resources:FileResource[]=[])=>service.commit({target,expectedNodeRevision:revision,requestId:crypto.randomUUID(),actor:"human",label:"Model test",request:{revision},build,resources});
+ const commit=(revision:number,build:Parameters<typeof service.commit>[0]["build"],resources:FileResource[]=[])=>service.commit({target,expectedNodeRevision:revision,requestId:crypto.randomUUID(),actor:"human",label:"Model test",request:{revision},build,resources,readScope:revision?{itemIds:[itemId]}:undefined});
  await commit(0,state=>{const built=buildWorkbenchIngestActions(state,{batchId,name:"Models",items:[{id:itemId,title:"Model",type:"model3d",content:{type:"model3d",resourceId:modelId}}]});if(!built.ok)throw new Error(built.message);return built.actions;},[resource(modelId,"model/gltf-binary")]);
  const id=workbenchFeedbackId(itemId,1,`model-${observationId}`);
  const feedback=(image:string):WorkbenchFeedback=>({id,itemId,itemVersion:1,text:"Silhouette",referencedTagIds:[],intent:"rework",state:"confirmed",createdAt:1,updatedAt:2,target:{kind:"model-view",observationId,resourceId:modelId,screenshotResourceId:image,observation:view}});

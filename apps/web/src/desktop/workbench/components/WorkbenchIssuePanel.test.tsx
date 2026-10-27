@@ -70,6 +70,14 @@ function renderPanel(overrides: Partial<Parameters<typeof WorkbenchIssuePanel>[0
 }
 
 describe("WorkbenchIssuePanel", () => {
+  it("keeps existing issues expanded without a selection and honors an explicit collapse", () => {
+    renderPanel({ selectedIssueId: null });
+    expect(screen.getAllByTestId("workbench-issue-card")).toHaveLength(2);
+    cleanup();
+    renderPanel({ selectedIssueId: null, collapsed: true });
+    expect(screen.getByTitle("展开问题面板")).toBeInTheDocument();
+    cleanup();
+  });
   it("locates and deletes the hovered issue without clearing another issue's draft", async () => {
     const onSelectIssue = vi.fn();
     const { onDeleteIssue } = renderPanel({ onSelectIssue });

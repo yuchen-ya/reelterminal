@@ -42,6 +42,7 @@ export interface ImageStageProps {
   readonly onImageError: () => void;
   readonly onStagePointerDown: (e: ReactPointerEvent<HTMLDivElement>) => void;
   readonly onStagePointerMove: (e: ReactPointerEvent<HTMLDivElement>) => void;
+  readonly onDeleteSelected?: () => void;
   readonly onStagePointerUp: (e: ReactPointerEvent<HTMLDivElement>) => void;
   readonly onStagePointerCancel: (e: ReactPointerEvent<HTMLDivElement>) => void;
   readonly onWheel?: (e: ReactWheelEvent<HTMLDivElement>) => void;
@@ -74,6 +75,7 @@ export function ImageStage({
   onImageError,
   onStagePointerDown,
   onStagePointerMove,
+  onDeleteSelected,
   onStagePointerUp,
   onStagePointerCancel,
   onWheel,
@@ -192,6 +194,15 @@ export function ImageStage({
               }
             }}
             onPointerLeave={() => setLoupePos(null)}
+            tabIndex={0}
+            onKeyDown={event => {
+              if (event.target !== event.currentTarget || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+              if ((event.key === "Delete" || event.key === "Backspace") && onDeleteSelected) {
+                event.preventDefault();
+                event.stopPropagation();
+                onDeleteSelected();
+              }
+            }}
             onPointerUp={onStagePointerUp}
             onPointerCancel={onStagePointerCancel}
           />

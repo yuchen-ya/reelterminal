@@ -41,21 +41,21 @@ const PROPERTY_NAME_RE = /^[A-Za-z0-9_-]{1,64}$/;
  * without metadata fails loudly here rather than silently emitting a hole —
  * a declaration that validates but cannot be emitted is a bug.
  */
-function emitFieldEmits(field: FieldEmits): JsonSchemaNode {
+function emitFieldEmits(field: FieldEmits, includeDescriptions: boolean): JsonSchemaNode {
   switch (field.kind) {
     case "leaf":
       return field.schema;
     case "object":
-      return emitObjectSchema(field.schema);
+      return emitObjectSchema(field.schema, includeDescriptions);
     case "array":
       return {
         type: "array",
-        items: emitFieldEmits(field.items),
+        items: emitFieldEmits(field.items, includeDescriptions),
         ...(field.minItems !== undefined ? { minItems: field.minItems } : {}),
         ...(field.maxItems !== undefined ? { maxItems: field.maxItems } : {}),
       };
     case "anyOfObjects":
-      return { anyOf: field.variants.map(emitObjectSchema) };
+      return { anyOf: field.variants.map((schema) => emitObjectSchema(schema, includeDescriptions)) };
   }
 }
 
@@ -67,7 +67,7 @@ function emitFieldEmits(field: FieldEmits): JsonSchemaNode {
  * empty object, matching the validator, which also allows omitting every
  * optional field).
  */
-export function emitObjectSchema(schema: ObjectSchema): JsonSchemaObject {
+export function emitObjectSchema(schema: ObjectSchema, includeDescriptions = false): JsonSchemaObject {
   const properties: Record<string, JsonSchemaNode> = {};
   const required: string[] = [];
   for (const [key, rule] of Object.entries(schema)) {
@@ -82,7 +82,8 @@ export function emitObjectSchema(schema: ObjectSchema): JsonSchemaObject {
         `jsonschema: field "${key}" has no emission metadata — every field of an emitted declaration must carry \`emits\` (Decision 4: one declaration, both consumers derived)`,
       );
     }
-    properties[key] = emitFieldEmits(rule.emits);
+    const emitted = emitFieldEmits(rule.emits, includeDescriptions);
+    properties[key] = includeDescriptions ? { ...emitted, description: rule.describe } : emitted;
   }
   return {
     type: "object",
@@ -97,7 +98,9 @@ function emitVerbSchema(verb: FacadeVerb): JsonSchemaObject {
   if (!schema) {
     throw new Error(`jsonschema: no param declaration for verb "${verb}"`);
   }
-  return emitObjectSchema(schema);
+  // Review discovery exposes the existing field guidance, including nested
+  // shared workbench declarations, without maintaining another instruction map.
+  return emitObjectSchema(schema, verb.startsWith("review."));
 }
 
 /**

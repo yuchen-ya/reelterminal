@@ -37,7 +37,7 @@ export type ObjectSchema = Record<string, FieldRule>;
  * schema consumers receive a self-contained document), keeps objects closed
  * (`additionalProperties: false`) and never places a combinator at a root.
  */
-export type JsonSchemaNode =
+export type JsonSchemaNode = (
   | { readonly type: "string"; readonly minLength?: number; readonly maxLength?: number; readonly pattern?: string }
   /**
    * Nullable string leaf (draft-2020-12 type array). Added for the workbench
@@ -84,7 +84,8 @@ export type JsonSchemaNode =
    * The one nested `anyOf` the client constraints allow: the discriminated
    * op union inside `edit.apply`'s `items` (never at a document root).
    */
-  | { readonly anyOf: readonly JsonSchemaObjectNode[] };
+  | { readonly anyOf: readonly JsonSchemaObjectNode[] }
+) & { readonly description?: string };
 
 export interface JsonSchemaObjectNode {
   readonly type: "object";

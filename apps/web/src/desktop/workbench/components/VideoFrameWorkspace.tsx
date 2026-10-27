@@ -40,6 +40,7 @@ import {
 } from "./video/video-helpers";
 import {
   buildVideoAnchors,
+  removeVideoIssue,
   buildVideoFeedbackTarget,
   buildVideoIssueEntries,
 } from "./video/video-issue-helpers";
@@ -251,7 +252,8 @@ export function VideoFrameWorkspace({
             id: makeId("vfm"),
             type: "frame" as const,
             startPtsSec: t,
-            note: `源帧 ${formatTimecode(t)} 待诊断问题`,
+            annotationContainer: true,
+            note: "",
             version: item.version,
             annotations: [annotation],
           },
@@ -467,11 +469,17 @@ export function VideoFrameWorkspace({
       (m) => m.type === "frame" && Math.abs(m.startPtsSec - t) <= FRAME_MARKER_EPSILON_SEC,
     );
     if (existing) {
+      if (existing.annotationContainer !== false) {
+        void commitMarkers(markers.map(marker => marker.id === existing.id
+          ? { ...marker, annotationContainer: false, note: marker.note || `源帧 ${formatTimecode(t)} 待诊断问题` }
+          : marker));
+      }
       setSelectedAnchorId(existing.id);
       return;
     }
     const marker: WorkbenchVideoMarker = {
       id: makeId("vfm"),
+      annotationContainer: false,
       type: "frame",
       startPtsSec: t,
       note: `源帧 ${formatTimecode(t)} 待诊断问题`,
@@ -586,19 +594,7 @@ export function VideoFrameWorkspace({
       if (!anchor) {
         return { ok: false, code: "NOT_FOUND", message: "问题锚点不存在" };
       }
-      const next =
-        anchor.kind === "marker"
-          ? markers.filter((marker) => marker.id !== anchor.markerId)
-          : markers.map((marker) =>
-              marker.id !== anchor.markerId
-                ? marker
-                : {
-                    ...marker,
-                    annotations: marker.annotations.filter(
-                      (annotation) => annotation.id !== anchor.anchorId,
-                    ),
-                  },
-            );
+      const next = removeVideoIssue(markers, anchor);
       const result = await onUpdateVideoMarkers(
         item.id,
         sortMarkers(next),
@@ -610,7 +606,11 @@ export function VideoFrameWorkspace({
         return result;
       }
       setMutationError(null);
-      setSelectedAnchorId((current) => (current === issueId ? null : current));
+      const remaining = buildVideoAnchors(next);
+      const deletedIndex = anchors.findIndex(candidate => candidate.anchorId === issueId);
+      setSelectedAnchorId(current => current === null || remaining.some(candidate => candidate.anchorId === current)
+        ? current
+        : remaining[Math.min(deletedIndex, remaining.length - 1)]?.anchorId ?? null);
       return result;
     },
     [anchors, item.id, item.version, markers, onUpdateVideoMarkers],
@@ -748,6 +748,8 @@ export function VideoFrameWorkspace({
           }
           onPointerDown={handleStagePointerDown}
           onPointerMove={handleStagePointerMove}
+          onDeleteSelected={selectedAnchorId ? () => { void handleDeleteIssue(selectedAnchorId); } : undefined}
+          onPointerCancel={resetDrawing}
           onPointerUp={handleStagePointerUp}
           onLoadedMetadata={handleLoadedMetadata}
           onDurationChange={() => {

@@ -217,6 +217,23 @@ describe("capabilities.get / session.describe", () => {
     if (timeline.ok) return;
     expect(timeline.error.code).toBe("NOT_FOUND");
   });
+
+  it("review describe discovers the workflow without a video project", async () => {
+    const result = await facade["session.describe"]({ kind: "review" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.kind).toBe("review");
+    expect(result.value.verbs).toContain("review.ingest");
+    expect(result.value.editOps).toEqual([]);
+    const notes = result.value.notes.join("\n");
+    for (const instruction of [
+      "review context", "review capabilities", "mediaImport.mediaRoots", "schema <command>",
+      "review.nodes.list", "review.get", "fixed across GUI selection changes",
+      "review.handoff.get", "review.versions.get", "review.ingest", "review.apply", "review.steps.start/complete/fail",
+    ]) expect(notes).toContain(instruction);
+    expect(notes).toContain("separately granted for this workspace/runtime");
+    expect(notes).not.toContain("review branch");
+  });
 });
 
 describe("injected render adapter", () => {

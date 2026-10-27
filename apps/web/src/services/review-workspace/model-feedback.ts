@@ -14,6 +14,7 @@ export async function saveModelObservation(target: ReviewContext["target"], expe
   const requestId = crypto.randomUUID(), screenshotResourceId = crypto.randomUUID();
   const now = Date.now();
   return reviewService.commit({ target, expectedNodeRevision, requestId, actor: "human", label: "保存模型观察反馈",
+    readScope: { itemIds: [input.itemId] },
     request: { ...input, blob: { size: input.blob.size, type: input.blob.type } },
     prepareResources: async () => [await prepareReviewBlob(input.blob, "model-observation.png", requestId, screenshotResourceId)],
     build: state => {

@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ReviewContext, ReviewStep, ReviewStepReference } from "@reelterminal/core/review/types";
-import { compareReviewData, compareReviewText, readReviewComparable, type ReviewComparable } from "../../../services/review-workspace/comparison";
+import { compareReviewData, compareReviewText, readReviewComparable, sourceComparisonData, type ReviewComparable } from "../../../services/review-workspace/comparison";
+import type { ReviewIdMapping } from "@reelterminal/core/review/archive";
 import { ModelPreview } from "./ModelPreview";
 import { ModelComparison } from "./ModelComparison";
 import { wbButton } from "../wb-button";
 
-export interface ComparisonSelection { reference: ReviewStepReference; step: ReviewStep; side: "input" | "output"; index: number }
+export interface ComparisonSelection {
+  reference: ReviewStepReference; step?: ReviewStep; side: "input" | "output"; index: number;
+  target?: ReviewContext["target"]; idMap?: readonly ReviewIdMapping[]; taskId?: string;
+}
 
 export function ReviewComparison({ target, left, right }: { target: ReviewContext["target"]; left?: ComparisonSelection; right?: ComparisonSelection }) {
   const { t } = useTranslation();
@@ -21,14 +25,18 @@ export function ReviewComparison({ target, left, right }: { target: ReviewContex
   const scrollAreas = useRef<Array<HTMLDivElement | null>>([]);
   const synchronizing = useRef(false);
   const videos = useRef<Array<HTMLVideoElement | null>>([]);
-  const mapping = left && right && left.step.id === right.step.id && left.side === "input" && right.side === "output" &&
+  const mapping = left?.step && right?.step && left.step.id === right.step.id && left.side === "input" && right.side === "output" &&
     left.step.mapping?.inputIndex === left.index && left.step.mapping.outputIndex === right.index ? left.step.mapping : undefined;
 
   useEffect(() => {
     let cancelled = false;
     setValues([]); setChangePage(0); setHeld(false);
     const selections = [left, right];
-    void Promise.allSettled(selections.map(selection => selection ? readReviewComparable(target, selection.reference) : Promise.resolve(undefined))).then(results => {
+    void Promise.allSettled(selections.map(async selection => {
+      if (!selection) return undefined;
+      const value = await readReviewComparable(selection.target ?? target, selection.reference);
+      return value.kind === "data" && selection.idMap ? { ...value, data: sourceComparisonData(value.data, selection.idMap, selection.taskId) } : value;
+    })).then(results => {
       if (!cancelled) setValues(results.map(result => result.status === "fulfilled" ? { content: result.value } : { error: result.reason instanceof Error ? result.reason.message : String(result.reason) }));
     });
     return () => { cancelled = true; };
@@ -148,7 +156,7 @@ export function ReviewComparison({ target, left, right }: { target: ReviewContex
             return (
               <section key={index} className="min-w-0 rounded-lg border border-border bg-bg-1 p-3" data-testid={`review-comparison-${index === 0 ? "left" : "right"}`}>
                 <h4 className="mb-2 break-all text-xs font-medium text-fg-2">
-                  {t(index === 0 ? "review.process.left" : "review.process.right")} · {selection?.step.label} · {selection?.reference.role}
+                  {t(index === 0 ? "review.process.left" : "review.process.right")} · {selection?.step?.label} · {selection?.reference.role}
                 </h4>
                 {error ? (
                   <p role="alert" className="text-xs text-status-error">{error}</p>

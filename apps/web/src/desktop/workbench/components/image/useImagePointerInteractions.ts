@@ -185,6 +185,7 @@ export function useImagePointerInteractions({
       return;
     }
     if (e.button !== 0) return;
+    e.currentTarget.focus();
     capturePointer(e);
 
     const pt = toStagePoint(e.clientX, e.clientY);
@@ -209,12 +210,12 @@ export function useImagePointerInteractions({
       return;
     }
 
-    const hit = findHitAnnotation(pt.normalized);
-    if (hit) {
-      setSelectedAnnotationId(hit.id);
-      return;
-    }
     if (annotateTool === "text") {
+      const hit = findHitAnnotation(pt.normalized);
+      if (hit) {
+        setSelectedAnnotationId(hit.id);
+        return;
+      }
       const ann: WorkbenchSpatialAnnotation = {
         id: nextId("ann"),
         tool: "text",
@@ -287,7 +288,10 @@ export function useImagePointerInteractions({
       setDraftCurrent(null);
       if (!nat) return;
       const dragDist = Math.hypot(current.x - start.x, current.y - start.y);
-      if (dragDist < MIN_ANNOTATION_DRAG) return;
+      if (dragDist < MIN_ANNOTATION_DRAG) {
+        setSelectedAnnotationId(findHitAnnotation(start)?.id ?? null);
+        return;
+      }
 
       if (annotateTool === "box") {
         const x = Math.min(start.x, current.x);

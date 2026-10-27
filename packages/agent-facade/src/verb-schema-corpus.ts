@@ -40,6 +40,10 @@ export interface VerbSchemaCorpusCase {
 const reviewTarget = { kind: "review", reviewWorkspaceId: "11111111-1111-4111-8111-111111111111", instanceId: "22222222-2222-4222-8222-222222222222", nodeId: "33333333-3333-4333-8333-333333333333" };
 const reviewRequest = "44444444-4444-4444-8444-444444444444";
 const reviewValid: Record<typeof REVIEW_VERBS[number], Record<string, unknown>> = {
+  "review.branches.create": { target: reviewTarget, expectedNodeRevision: 1, expectedWorkspaceRevision: 1, requestId: reviewRequest, taskId: reviewRequest, name: "Edit task" },
+  "review.branches.compare": { target: reviewTarget },
+  "review.branches.submit": { target: reviewTarget, expectedNodeRevision: 1, requestId: reviewRequest, results: [{ itemId: reviewRequest, expectedItemVersion: 1,
+    content: { type: "image", mediaId: reviewRequest } }] },
   "review.package.inspect": { target: reviewTarget, directory: "C:/allowed/backup" },
   "review.media.inspect": { target: { ...reviewTarget, nodeId: reviewRequest }, expectedNodeRevision: 0, reference: { resourceId: reviewRequest, role: "source" } },
   "review.frames.extract": { target: { ...reviewTarget, nodeId: reviewRequest }, expectedNodeRevision: 0, reference: { resourceId: reviewRequest, role: "source" }, frames: [0, 2] },

@@ -40,6 +40,8 @@ export interface VideoCanvasStageProps {
   readonly loupeEnabled?: boolean;
   readonly onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
   readonly onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
+  readonly onPointerCancel?: () => void;
+  readonly onDeleteSelected?: () => void;
   readonly onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void;
   readonly onLoadedMetadata: () => void;
   readonly onDurationChange: () => void;
@@ -87,6 +89,8 @@ export function VideoCanvasStage({
   loupeEnabled = false,
   onPointerDown,
   onPointerMove,
+  onPointerCancel,
+  onDeleteSelected,
   onPointerUp,
   onLoadedMetadata,
   onDurationChange,
@@ -351,6 +355,16 @@ export function VideoCanvasStage({
             ref={stageRef}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
+            tabIndex={0}
+            onKeyDown={event => {
+              if (event.target !== event.currentTarget || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+              if ((event.key === "Delete" || event.key === "Backspace") && onDeleteSelected) {
+                event.preventDefault();
+                event.stopPropagation();
+                onDeleteSelected();
+              }
+            }}
+            onPointerCancel={onPointerCancel}
             onPointerUp={handlePointerUp}
             style={
               zoom !== 100 || pan.x !== 0 || pan.y !== 0
@@ -491,13 +505,26 @@ export function VideoCanvasStage({
                 );
               })}
 
-              {isDrawing && draftStart && draftCurrent && (
+              {isDrawing && drawTool === "box" && draftStart && draftCurrent && (
                 <rect
+                  data-testid="video-draft-box"
                   x={Math.min(draftStart.x, draftCurrent.x) * (videoSize?.w ?? 1000)}
                   y={Math.min(draftStart.y, draftCurrent.y) * (videoSize?.h ?? 562.5)}
                   width={Math.abs(draftCurrent.x - draftStart.x) * (videoSize?.w ?? 1000)}
                   height={Math.abs(draftCurrent.y - draftStart.y) * (videoSize?.h ?? 562.5)}
                   className="fill-accent-soft stroke-accent"
+                  strokeWidth="2.5"
+                />
+              )}
+              {isDrawing && drawTool === "arrow" && draftStart && draftCurrent && (
+                <line
+                  data-testid="video-draft-arrow"
+                  x1={draftStart.x * (videoSize?.w ?? 1000)}
+                  y1={draftStart.y * (videoSize?.h ?? 562.5)}
+                  x2={draftCurrent.x * (videoSize?.w ?? 1000)}
+                  y2={draftCurrent.y * (videoSize?.h ?? 562.5)}
+                  markerEnd="url(#vfw-arrowhead)"
+                  className="stroke-status-warning"
                   strokeWidth="2.5"
                 />
               )}

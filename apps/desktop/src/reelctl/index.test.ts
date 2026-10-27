@@ -342,3 +342,35 @@ describe("reelctl schema domain filtering", () => {
       .rejects.toMatchObject({ kind: "args", exitCode: 2 });
   });
 });
+
+describe("reelctl review discovery", () => {
+  it("routes review describe to the review-scoped session workflow", async () => {
+    const result = { ok: true, value: { kind: "review", notes: ["Read review context and review capabilities, then schema <command>."] } };
+    const api = makeClient([entry("session.describe", "session_describe")], result);
+    const stdout: string[] = [];
+    expect(await runReelctl(["review", "describe"], { client: api, stdout: (line) => stdout.push(line) })).toBe(0);
+    expect(api.command).toHaveBeenCalledWith("session.describe", { kind: "review" }, expect.any(Object));
+    expect(JSON.parse(stdout[0]!)).toEqual(result);
+  });
+
+  it("preserves command and nested field guidance in schema and help", async () => {
+    const reviewEntry = {
+      ...entry("review.ingest", "review_ingest"),
+      description: "Read review.get for the revision, then organize real review items.",
+      inputSchema: {
+        type: "object",
+        properties: { items: { type: "array", items: { type: "object", properties: {
+          title: { type: "string", description: "Keep the item title compact; put background on the batch." },
+        } } } },
+      },
+    };
+    const api = makeClient([reviewEntry]);
+    const stdout: string[] = [];
+    expect(await runReelctl(["schema", "review.ingest"], { client: api, stdout: (line) => stdout.push(line) })).toBe(0);
+    expect(JSON.parse(stdout[0]!).command).toEqual(reviewEntry);
+    expect(await runReelctl(["help", "review.ingest"], { client: api, stdout: (line) => stdout.push(line) })).toBe(0);
+    expect(stdout[1]).toContain(reviewEntry.description);
+    expect(stdout[1]).toContain("Keep the item title compact");
+    expect(api.command).not.toHaveBeenCalled();
+  });
+});

@@ -148,7 +148,7 @@ export function toItemView(
     if (content.type !== "image") return undefined;
     const repairRevision = [...item.revisions]
       .reverse()
-      .find((revision) => revision.kind === "image-repair" && revision.mediaId);
+      .find((revision) => revision.kind === "image-repair" && revision.mediaId && revision.producedVersion === item.version);
     const repair = repairRevision?.mediaId
       ? {
           revisionId: repairRevision.id,
@@ -495,7 +495,7 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
     if (!target || target.content.type !== "image") return null;
     const revision = [...target.revisions]
       .reverse()
-      .find((candidate) => candidate.kind === "image-repair" && candidate.mediaId);
+      .find((candidate) => candidate.kind === "image-repair" && candidate.mediaId && candidate.producedVersion === target.version);
     return revision?.mediaId
       ? {
           revisionId: revision.id,

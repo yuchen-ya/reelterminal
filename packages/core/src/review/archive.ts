@@ -98,6 +98,7 @@ export function validateReviewNodeArchive(value: unknown): asserts value is Revi
   if (!object(value) || ![1, 2].includes(value.schemaVersion as number) || Object.keys(value).some(key => !["schemaVersion", "node", "state", "versions", "steps", "resources", "journal", "journalArchives"].includes(key))) invalid("unsupported package schema");
   json(value);
   if (!object(value.node) || !id(value.node.id) || !id(value.node.workspaceId) || !string(value.node.name) || !integer(value.node.revision) || typeof value.node.pinned !== "boolean" || !finite(value.node.createdAt) || !finite(value.node.updatedAt)) invalid("invalid node metadata");
+  if (value.node.branch !== undefined && (!object(value.node.branch) || !id(value.node.branch.taskId) || !id(value.node.branch.sourceNodeId) || !integer(value.node.branch.sourceNodeRevision))) invalid("invalid historical branch origin");
   const state = value.state;
   if (!object(state) || state.schemaVersion !== 1 || !["batches", "items", "feedback", "handoffs"].every(key => Array.isArray(state[key]) && state[key].every(object))) invalid("invalid node state");
   if (!["versions", "steps", "resources", "journal", "journalArchives"].every(key => Array.isArray(value[key]))) invalid("missing package records");
@@ -178,6 +179,7 @@ const fields: Readonly<Record<string, string>> = {
   itemId: "item", sourceItemId: "item", parentNodeId: "item", batchId: "batch", mediaId: "resource", resourceId: "resource", originalResourceId: "resource", derivedMediaId: "resource",
   entryId: "entry", datasetId: "dataset", columnId: "column", rowId: "row", proposalId: "proposal", annotationId: "annotation", markerId: "marker", feedbackId: "feedback", issueId: "issue", tagId: "tag",
   revisionId: "revision", contentRevisionId: "revision", handoffId: "handoff", supersedesHandoffId: "handoff", fromHandoffId: "handoff", runId: "run", supersedesStepId: "step",
+  provenanceTagId: "tag", compareWithItemId: "item", similarToEntryId: "entry",
 };
 const arrays: Readonly<Record<string, string>> = { itemIds: "item", returnedItemIds: "item", feedbackIds: "feedback", referencedTagIds: "tag" };
 const collections: Readonly<Record<string, string>> = { batches: "batch", items: "item", feedback: "feedback", handoffs: "handoff", revision: "revision", revisions: "revision", annotations: "annotation", imageAnnotations: "annotation", strokes: "stroke", markers: "marker", videoMarkers: "marker", provenanceTags: "tag", referencedTags: "tag", issues: "issue", steps: "step" };
@@ -191,6 +193,12 @@ export function remapReviewNodeArchive(archive: ReviewNodeArchive, restoreId: st
   return remapArchiveIdentities(archive, restoreId, destinationNodeId);
 }
 
+/** A local fork shares registered resources; packages still allocate independent resources. */
+export function forkReviewNodeArchive(archive: ReviewNodeArchive, taskId: string) {
+  validateReviewNodeArchive(archive);
+  return remapArchiveIdentities(archive, taskId, reviewRestoreId(taskId, "node", "branch"), true);
+}
+
 /** Internal legacy adapter: short source IDs become UUIDs before package validation. */
 export function normalizeLegacyReviewNodeArchive(archive: ReviewNodeArchive, namespace: string) {
   const mapped = remapArchiveIdentities(archive, namespace);
@@ -202,13 +210,13 @@ export function normalizeLegacyReviewNodeArchive(archive: ReviewNodeArchive, nam
   return { archive: normalized, idMap: mapped.idMap };
 }
 
-function remapArchiveIdentities(archive: ReviewNodeArchive, restoreId: string, destinationNodeId?: string) {
+function remapArchiveIdentities(archive: ReviewNodeArchive, restoreId: string, destinationNodeId?: string, shareResources = false) {
   if (!id(restoreId)) invalid("restore operation must be a UUID");
   const allocated = new Map<string, ReviewIdMapping>();
   const map = (kind: string, oldId: string): string => {
     const key = `${kind}:${oldId}`;
     if (!oldId) invalid("empty source identity");
-    const entry = allocated.get(key) ?? { kind, oldId, newId: kind === "node" && oldId === archive.node.id && destinationNodeId ? destinationNodeId : reviewRestoreId(restoreId, kind, oldId) };
+    const entry = allocated.get(key) ?? { kind, oldId, newId: shareResources && kind === "resource" ? oldId : kind === "node" && oldId === archive.node.id && destinationNodeId ? destinationNodeId : reviewRestoreId(restoreId, kind, oldId) };
     allocated.set(key, entry); return entry.newId;
   };
   const walk = (value: unknown, owner = "embedded"): unknown => {

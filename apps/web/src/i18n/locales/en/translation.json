@@ -39,7 +39,7 @@
     },
     "process": {
       "focusRegion": "Focus recorded region",
-      "title": "Processing", "content": "Content", "description": "Real recorded inputs → method → outputs. Each page contains at most 100 steps. Missing records are not inferred from filenames or dates.",
+      "title": "Processing records", "content": "Content review", "description": "Inspect processing steps, inputs and outputs, and compare results.",
       "steps": "Processing steps", "comparison": "Version comparison", "choosePair": "Pin an input or output on each side, or compare a recorded step.", "notRecorded": "No processing steps were recorded. Final content remains available in Content.",
       "loading": "Reading exact version…", "unselected": "No version selected", "pinMissing": "The pinned processing reference is missing", "inputOutput": "{{inputs}} inputs → {{outputs}} outputs",
       "input": "Input", "output": "Output", "left": "Left / input", "right": "Right / output", "pinLeft": "Pin left", "pinRight": "Pin right", "openItem": "Review current item", "compareStep": "Compare this step", "parameters": "Recorded parameters", "retries": "Retries step {{id}}",
@@ -70,7 +70,9 @@
     "textBody": "Text body (up to 200,000 characters)", "readingFiles": "Reading and checking files…", "importing": "Saving originals and committing content…", "cancel": "Cancel", "import": "Import", "previous": "Previous", "next": "Next", "pageScope": "Up to 100 items per page. Selection and bulk actions apply to the currently visible scope.",
     "kind": { "model3d": "3D model", "image": "Image", "video": "Video", "text": "Text", "data": "Table" },
     "agentAccessLabel": "Allow Agent to edit reviews", "exportMenu": "Export",
-    "startupPrompt": "Use the independent ReelTerminal Review Workspace for my request.\nCLI prefix (prepend it to each subcommand below): {{cli}}\nTarget: {{target}}\nFirst run review context to verify identity and access, then review describe and review capabilities. Read schema <command> before calling review call <command> --file <request-file>. Bind writes to this target, the revision read and a UUID requestId; keep files in allowed roots and media bytes out of JSON. Naming & organization rules: keep item title and nodeSlotLabel concise (<= 15 chars, do not repeat batch prefixes); group multi-image sets or small text/data fragments that belong together under a board parent node, and link baseline videos for comparison. Recheck the target after restart or conflict. Read-only access requires the user to enable review writes; the user confirms publication in the UI."
+    "copyTaskInstructions": "Copy Agent instructions for {{name}}",
+    "startupPrompt": "{{task}}Use the independent ReelTerminal Review Workspace for my request.\nCLI prefix (prepend it to each subcommand): {{cli}}\nTarget: {{target}}\nFirst run review describe for the workflow and discovery steps. Keep this task target fixed across GUI selection changes; recheck identity and the intended target after restart or conflict.\nFor a concrete edit, follow describe to create or continue one task branch; copying this prompt alone creates none.",
+    "branch": {"label": "Task branch", "listTitle": "Task branches", "compareTitle": "Compare and adopt branch results", "baseRevision": "Starting revision", "adoptHint": "Select content results to adopt. Source decisions and feedback are preserved; source changes are checked again when adopting.", "select": "Select", "loading": "Loading branch comparison…", "refresh": "Refresh comparison", "adoptSelected": "Adopt selected results", "empty": "No task branches yet. An Agent creates one when it starts a concrete edit.", "state": {"changed": "Changed", "added": "New result", "unchanged": "Unchanged", "adopted": "Already adopted", "conflict": "Source changed"}}
   },
   "projectMediaFilters": {
     "scope": "View scope",

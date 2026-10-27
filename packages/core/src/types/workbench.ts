@@ -103,6 +103,8 @@ export interface WorkbenchPixelStroke {
  */
 export interface WorkbenchVideoMarker {
   readonly id: string;
+  /** Automatically created to hold spatial annotations, not a standalone issue. */
+  readonly annotationContainer?: boolean;
   readonly type: "frame" | "interval";
   readonly startPtsSec: number;
   readonly endPtsSec?: number;

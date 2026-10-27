@@ -13,18 +13,57 @@ privately and must not print or log it.
 
 ## Independent Review Workspace
 
+Concrete edits of an existing review node use one task branch. Copying task
+instructions does not create a branch. Read `schema review.branches.create`, then
+create it from the explicit source target/revision with a stable UUID `taskId`, a
+UUID `requestId` and the current directory revision. Creation does not select the
+branch in the GUI or append to the source content history. Reuse the returned
+branch target for `review.apply`, `review.ingest` and `review.steps.*` throughout
+the task. When a copied target already has `node.branch`, continue that branch;
+nested branch creation is rejected.
+
+For inherited images, videos or models, use `review.branches.submit` with the
+branch target/revision, `requestId` and `results: [{itemId, expectedItemVersion,
+content}]`. This appends real replacement content to the same branch item;
+resources must already be retained by that branch or imported through `files` in
+the same request. It never fabricates a handoff. An optional `stepId` atomically
+completes an actual running processing step with the submitted new versions.
+
+`review.branches.compare` reports exact source/result versions and item-local
+conflicts. In the GUI, open **Task branches** from the source header (or **Compare
+and adopt branch results** from a branch), compare the results and explicitly
+select content to adopt. Existing item content and explicit new results are
+supported; deletions and branch review decisions are not propagated. Source
+changes to another item are allowed; changes to the selected item's content,
+decisions, annotations or feedback conflict. Each adoption records a checkpoint
+so later results can continue on the same branch. Adoption uses the source's human
+undo history and keeps old content versions and resource references. Undo does
+not undo external processing or file copies; retrying an old adoption request
+returns its durable receipt without reapplying an undone result. Node packages
+retain historical provenance but restoring one never activates an old branch
+relationship against existing nodes.
+
 Select **Review Workspace**, create a data node, and use **Copy connection
 instructions** for the current installation. Review editing has its own checkbox;
 video write permission does not grant review write permission. Human GUI edits
 do not require granting an external Agent access.
 
 ```powershell
+reelctl review describe
 reelctl review context
 reelctl review capabilities
-reelctl review describe
 reelctl schema review.ingest
 reelctl review call review.ingest --file review-input.json
 ```
+
+Use the CLI prefix copied by the installed app in place of `reelctl` above.
+The startup prompt keeps the task and target plus this discovery entry point.
+`review describe` explains the general workflow; `schema <command>` (or
+`help <command>`) returns that command's usage and nested field guidance from
+the same declarations used for validation. Read `review context` for identity
+and review permission, and `review capabilities` for allowed media roots before
+creating files. A workspace write grant retains its workspace/runtime scope;
+copying task instructions does not create a separate grant.
 
 `review.context` supplies `{kind:"review", reviewWorkspaceId, instanceId}`.
 Node commands additionally require `nodeId`. Resolve the target explicitly and
@@ -33,6 +72,18 @@ keep it throughout a task. Node writes require `expectedNodeRevision` and a UUID
 monotonic through undo/redo. Replaying an identical durable request returns its
 receipt, while stale instances/revisions or changed request bodies fail with
 `CONFLICT`. Do not substitute a video project ID or infer the node from selection.
+The task target stays fixed when the GUI selection changes. After restart or
+conflict, resolve the intended target again and read its current revision.
+
+For new content, read `schema review.ingest`: the batch name and lineage parent
+carry broader context, while `title` and `agentGuidance.nodeSlotLabel` stay short.
+The shared `groupMode`, `lineage.parentNodeId` and `compareWithItemId` field
+descriptions explain same-screen boards and baseline video comparisons; the
+same guidance is available under `schema review.steps.complete` for new outputs.
+For returned work, read `schema review.apply` and fetch the published handoff
+and exact retained source versions before producing a version-bound rework.
+These instructions guide use; runtime validation still enforces all target,
+permission, revision and content constraints.
 
 Available command families (query their schemas for exact arguments):
 

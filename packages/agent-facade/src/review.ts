@@ -13,6 +13,7 @@ export const REVIEW_VERBS = [
   "review.export.prepare", "review.export.status", "review.export.cancel", "review.export.copy",
   "review.steps.start", "review.steps.complete", "review.steps.fail", "review.steps.list",
   "review.package.inspect", "review.package.restore", "review.attach", "review.media.inspect", "review.frames.extract",
+  "review.branches.create", "review.branches.compare", "review.branches.submit",
 ] as const;
 export type ReviewVerb = typeof REVIEW_VERBS[number];
 export type ReviewFacadeBindings = { readonly [Verb in ReviewVerb]: (params: Record<string, unknown>) => Promise<FacadeResult<unknown>> };
@@ -26,7 +27,7 @@ function target(nodeRequired: boolean) {
     kind: { check: value => value === "review", describe: '"review"', required: true, emits: { kind: "leaf", schema: { const: "review" } } },
     reviewWorkspaceId: uuidField(), instanceId: uuidField(), nodeId: uuidField(nodeRequired),
   };
-  return { check: (value: unknown) => matchesSchema(value, schema), describe: "an explicit independent review target", required: true, emits: { kind: "object" as const, schema } };
+  return { check: (value: unknown) => matchesSchema(value, schema), describe: "the explicit review workspace/runtime from review.context plus the task's nodeId when required; keep this target fixed across GUI selection changes, and rediscover after restart or conflict", required: true, emits: { kind: "object" as const, schema } };
 }
 const page: ObjectSchema = {
   limit: { check: value => Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 500, describe: "a page size from 1 to 500", emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: 500 } } },
@@ -34,6 +35,7 @@ const page: ObjectSchema = {
 };
 const name: FieldRule = { check: (value: unknown) => typeof value === "string" && value.trim().length > 0 && value.length <= 200, describe: "a name of 1–200 characters", required: true, emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: 200 } } };
 const optionalName = { ...name, required: false };
+const batchName = { ...name, describe: "the batch's broader task/context; keep individual item titles and agentGuidance.nodeSlotLabel compact instead of repeating this background" };
 const booleanField: FieldRule = { check: value => typeof value === "boolean", describe: "a boolean", emits: { kind: "leaf", schema: { type: "boolean" } } };
 const direction: FieldRule = { check: value => value === "undo" || value === "redo", describe: '"undo" or "redo"', required: true, emits: { kind: "leaf", schema: { enum: ["undo", "redo"] } } };
 const nodePatch: ObjectSchema = { name: optionalName, pinned: booleanField, archived: booleanField, trashed: booleanField,
@@ -71,7 +73,7 @@ const applyOps: readonly ObjectSchema[] = [
 ];
 const fileSchema: ObjectSchema = {
   resourceId: uuidField(),
-  sourcePath: { check: value => typeof value === "string" && value.length > 0 && value.length <= 32768, describe: "an absolute local file inside an allowed media root", required: true, emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: 32768 } } },
+  sourcePath: { check: value => typeof value === "string" && value.length > 0 && value.length <= 32768, describe: "an absolute local file inside review capabilities mediaImport.mediaRoots; read those roots before creating files, and send paths/references rather than media bytes in JSON", required: true, emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: 32768 } } },
   mime: { check: value => typeof value === "string" && value.length <= 200 && /^[^\r\n]+\/[^\r\n]+$/.test(value), describe: "the source MIME type", required: true, emits: { kind: "leaf", schema: { type: "string", minLength: 3, maxLength: 200 } } },
 };
 const files = objectArray(fileSchema, 0, 64, "at most 64 source files copied before the atomic commit", false);
@@ -104,7 +106,7 @@ const stepBase: ObjectSchema = { runId: uuidField(), label: boundedText(200), in
 };
 const completedStepSchema: ObjectSchema = { id: uuidField(), ...stepBase, outputs: referenceArray(1), startedAt: finite(), finishedAt: finite() };
 const completedSteps = objectArray(completedStepSchema, 0, 500, "actual completed processing reports committed with their real new outputs", false);
-const ingestOutput: ObjectSchema = { batchId: uuidField(), name, items: objectArray(itemSchema, 1, 500, "new output items") };
+const ingestOutput: ObjectSchema = { batchId: uuidField(), name: batchName, items: objectArray(itemSchema, 1, 500, "new output items") };
 const exportIdentity = { target: target(true), exportId: uuidField() };
 const query: FieldRule = { check: value => typeof value === "string" && value.length <= 500, describe: "a search string of at most 500 characters", emits: { kind: "leaf", schema: { type: "string", maxLength: 500 } } };
 const typeFilter: FieldRule = { check: value => ["all", "image", "text", "data", "video", "model3d"].includes(String(value)), describe: "an optional content type filter", emits: { kind: "leaf", schema: { enum: ["all", "image", "text", "data", "video", "model3d"] } } };
@@ -113,6 +115,12 @@ const videoDestination: ObjectSchema = { kind: kind("video"), projectId: bounded
 const resourceRead: ObjectSchema = { target: target(true), expectedNodeRevision: revision,
   reference: { check: value => references.some(schema => matchesSchema(value, schema)), describe: "an exact version or resource retained by the target node", required: true, emits: { kind: "anyOfObjects", variants: references } } };
 export const REVIEW_SCHEMAS: Record<ReviewVerb, ObjectSchema> = {
+  "review.branches.submit": { ...nodeWrite, files, stepId: uuidField(false), results: objectArray({ itemId: uuidField(),
+    expectedItemVersion: { ...revision, check: value => isNonNegativeInteger(value) && Number(value) > 0, emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } } }, content }, 1, 500,
+    "exact inherited branch items and complete real replacement content; resource IDs must be retained by this branch or imported atomically through files") },
+  "review.branches.create": { ...nodeWrite, expectedWorkspaceRevision: revision, name,
+    taskId: { ...uuidField(), describe: "a stable UUID for this editing task; reuse it to resume the same branch, never generate one per command" } },
+  "review.branches.compare": { target: target(true) },
   "review.media.inspect": resourceRead,
   "review.frames.extract": { ...resourceRead, frames: { check: value => Array.isArray(value) && value.length > 0 && value.length <= 600 && value.every(frame => Number.isSafeInteger(frame) && frame >= 0),
     describe: "1–600 exact zero-based decode frame indices", required: true, emits: { kind: "array", minItems: 1, maxItems: 600, items: { kind: "leaf", schema: { type: "integer", minimum: 0 } } } } },
@@ -151,7 +159,7 @@ export const REVIEW_SCHEMAS: Record<ReviewVerb, ObjectSchema> = {
     type: { check: value => ["all", "image", "text", "data", "video", "model3d"].includes(String(value)), describe: "an optional content type filter", emits: { kind: "leaf", schema: { enum: ["all", "image", "text", "data", "video", "model3d"] } } },
     query: { check: value => typeof value === "string" && value.length <= 500, describe: "search titles, source labels and provenance names", emits: { kind: "leaf", schema: { type: "string", maxLength: 500 } } },
   },
-  "review.ingest": { ...nodeWrite, batchId: uuidField(), name, files, steps: completedSteps,
+  "review.ingest": { ...nodeWrite, batchId: uuidField(), name: batchName, files, steps: completedSteps,
     items: { check: value => Array.isArray(value) && value.length >= 1 && value.length <= 500 && value.every(item => matchesSchema(item, itemSchema)),
       describe: "1–500 real review items; mediaId identifies a registered FileResource", required: true,
       emits: { kind: "array", minItems: 1, maxItems: 500, items: { kind: "object", schema: itemSchema } } },
@@ -167,6 +175,9 @@ export const REVIEW_SCHEMAS: Record<ReviewVerb, ObjectSchema> = {
   },
 };
 export const REVIEW_DESCRIPTIONS: Record<ReviewVerb, string> = {
+  "review.branches.submit": "Submit complete real image/video/model/text/table results to exact existing branch items with node and item version guards. Files use the managed review import path; existing resources must already be retained by this branch. Atomically records new immutable branch versions without changing the source or fabricating a handoff. Optional stepId completes a real running branch processing step with these exact new outputs. Continue using this same branch target throughout the task; users adopt selected results in the GUI.",
+  "review.branches.create": "Start one persistent work branch for a concrete editing task from the explicit source node and its revision. Does not switch the GUI or modify the source history. Reuse the taskId and returned branch target for every subsequent review.apply/ingest/steps command. If the copied target is already a branch, continue it directly; nested branches are rejected. Copying instructions alone never creates a branch.",
+  "review.branches.compare": "Compare the explicit task branch against its fixed source, reporting exact result/source versions and item-local conflicts. Unrelated source edits do not block adoption. Users compare and explicitly adopt selected existing content or new results in the GUI; no automatic merge, deletion, or propagation of branch review decisions. Restored node packages do not reactivate old branch relationships.",
   "review.media.inspect": "Read verified file metadata for an exact node-owned media/resource reference. Requires no video project; does not add feedback or process records.",
   "review.frames.extract": "Use the existing local FFmpeg frame processor on an exact node-owned resource. Returns real source PTS and lossless PNG candidates under review jobs, pinned to the original target/revision. Does not create review items or feedback; record actual processing explicitly with review.steps.*.",
   "review.attach": "Add the exact human-adopted image/video version as independent project media in an explicit video workspace. Requires both review and video write access. Durable retries return the same media ID; does not insert a timeline clip or resurrect an undone import.",
@@ -181,15 +192,15 @@ export const REVIEW_DESCRIPTIONS: Record<ReviewVerb, string> = {
   "review.export.cancel": "Cancel a queued or preparing export. A cancelled export cannot be dragged or copied as complete.",
   "review.export.copy": "Copy a ready frozen export into a new directory under an allowed media root, preserving existing files and verifying each exported byte stream.",
   "review.nodes.list": "List a bounded page of independent review nodes for an explicit review workspace. Does not use a video project or current page selection.",
-  "review.nodes.create": "Create a persistent independent review node with directory CAS and a durable UUID request receipt.",
+  "review.nodes.create": "Create a persistent independent review node with directory CAS and a durable UUID request receipt. Read review.directory.get for expectedWorkspaceRevision first; use an existing task node when one is specified.",
   "review.directory.get": "Read the independent directory revision and groups in one transaction.",
   "review.directory.apply": "Atomically create or update node/group metadata with directory CAS. Display renames do not rename original files. Trash is reversible.",
   "review.directory.history.control": "Undo or redo directory metadata without rolling back node content revisions. External commits form a history boundary.",
   "review.get": "Read a bounded page of review item summaries; pass an exact itemId to read its content and version-bound feedback. Does not load media bytes into JSON.",
-  "review.ingest": "Atomically ingest review text/data or already registered resource references into an explicit node with node CAS and durable requestId. Uses the existing workbench core semantics.",
-  "review.apply": "Apply version-bound feedback, decisions, text/data revisions, handoff acknowledgement or rework atomically to an explicit review node. Reuses the legacy workbench operation vocabulary and semantics; cannot publish human handoffs.",
+  "review.ingest": "Atomically ingest review content into an explicit node with expectedNodeRevision from review.get and a durable UUID requestId. Read review context for identity/access and review capabilities for allowed media roots first. Use batch name and lineage parent context for background; follow the nested title/nodeSlotLabel, groupMode/parentNodeId and compareWithItemId descriptions to organize items for review. Files are copied into managed storage before the atomic commit.",
+  "review.apply": "Apply version-bound feedback, decisions, content revisions, handoff acknowledgement or rework atomically to an explicit review node. Read review.get for the node revision and current item versions; for rework read review.handoff.get and review.versions.get for the published source version/decision revision and exact feedback before producing results. Use workbench.rework with the handoffId and previousVersion rather than ingesting unrelated replacement items. Stale or historical handoffs cannot resume tasks; publication remains human-only.",
   "review.changes": "Read bounded journal event summaries after a monotonic sequence, without loading item bodies or hidden UI selections.",
-  "review.handoff.get": "Read an exact immutable published handoff from its owning review node.",
-  "review.versions.get": "Read an exact retained content version, including versions retained after undo or branching.",
+  "review.handoff.get": "Read an exact immutable published handoff from its owning review node. Discover handoffIds through review.changes, inspect delivery/historical state, and bind rework to its recorded item versions, decision revisions and feedback; do not substitute current GUI selection or silently use the latest content.",
+  "review.versions.get": "Read an exact retained content version, including versions retained after undo or branching. Use the itemId/version from a handoff or processing reference to inspect its actual source body before rework or comparison.",
   "review.history.control": "Undo or redo the explicit review node's persisted history with monotonic revision guards. External content commits form a history boundary.",
 };

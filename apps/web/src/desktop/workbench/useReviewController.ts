@@ -4,7 +4,7 @@ import type { MediaItem, WorkbenchHandoff, WorkbenchProjectState } from "@reelte
 import { emptyWorkbenchState } from "@reelterminal/core";
 import type { FileResource, ReviewContext } from "@reelterminal/core/review/types";
 import { FACADE_ERROR_CODES } from "@reelterminal/agent-facade/errors";
-import { reviewService, type ReviewItemSummary, type ReviewOverview } from "../../services/review-workspace/service";
+import { reviewService, type ReviewItemSummary, type ReviewOverview, type ReviewReadScope } from "../../services/review-workspace/service";
 import { reviewError } from "../../services/review-workspace/guards";
 import { manualReviewSteps } from "../../services/review-workspace/manual-steps";
 import { prepareReviewBlob } from "../../services/review-workspace/files";
@@ -16,6 +16,27 @@ import type { WorkbenchItemView, WorkbenchMutationResult } from "./types";
 type Target = ReviewContext["target"];
 type LoadedItem = Awaited<ReturnType<typeof reviewService.getItem>>;
 const EMPTY = emptyWorkbenchState();
+
+function commandReadScope(name: keyof WorkbenchSlice, args: unknown[]): ReviewReadScope | undefined {
+  switch (name) {
+    case "decideWorkbenchItems": return { itemIds: (args[1] as { itemId: string }[]).map(entry => entry.itemId) };
+    case "revertWorkbenchItems": return { itemIds: args[0] as string[] };
+    case "saveWorkbenchFeedback":
+    case "markWorkbenchDataRework": return { itemIds: [(args[0] as { itemId: string }).itemId] };
+    case "saveWorkbenchTextRevision":
+    case "saveWorkbenchDataPatches":
+    case "commitWorkbenchImageRepair":
+    case "setWorkbenchAnnotations":
+    case "saveWorkbenchIssueFeedback":
+    case "clearWorkbenchDataRework":
+    case "setWorkbenchUserTags":
+    case "dismissWorkbenchDuplicate": return { itemIds: [args[0] as string] };
+    case "ingestWorkbenchBatch":
+    case "publishWorkbenchHandoff":
+    case "ackWorkbenchHandoff":
+    case "ingestWorkbenchRework": return undefined;
+  }
+}
 
 function outcome(error: unknown): Extract<WorkbenchMutationResult, { ok: false }> {
   const code = (error as { code?: unknown })?.code;
@@ -116,7 +137,7 @@ export function useReviewController(target: Target) {
       const item = await reviewService.getItem(target, requestedId);
       if (item.node.revision !== overview.node.revision) { if (!cancelled) refresh(); return; }
       const ids = item.item.content.type === "image" || item.item.content.type === "video" ? [item.item.content.mediaId] : [];
-      const repair = [...item.item.revisions].reverse().find(revision => revision.kind === "image-repair" && revision.mediaId)?.mediaId;
+      const repair = [...item.item.revisions].reverse().find(revision => revision.kind === "image-repair" && revision.mediaId && revision.producedVersion === item.item.version)?.mediaId;
       if (repair) ids.push(repair);
       const media = await reviewService.getResources(ids);
       if (!cancelled) { setLoaded(item); setResources(media); setDetailLoading(false); }
@@ -169,14 +190,16 @@ export function useReviewController(target: Target) {
       const expected = ownRevision;
       if (expected === undefined) return { ok: false, code: "CONFLICT", message: "审阅节点尚未载入" };
       try {
-        const snapshot = await reviewService.getNode(target);
+        const readScope = commandReadScope(name, args);
+        const snapshot = await reviewService.getNode(target, readScope);
         if (snapshot.node.revision !== expected) throw reviewError("CONFLICT", "审阅节点已更新，请刷新后重试");
         const repairResource = name === "commitWorkbenchImageRepair" ? prepared.current.get(args[1] as string) : undefined;
         const commands = createWorkbenchCommands(() => snapshot.state, async (actions, label, actor) => {
           if (!actions.length) return { ok: true };
           const result = await reviewService.commit({ target, expectedNodeRevision: expected, requestId: crypto.randomUUID(), actor, label,
-            request: { label, actions }, build: () => actions, resources: repairResource ? [repairResource] : [],
-            buildSteps: actor === "human" ? (before, after) => manualReviewSteps(target.nodeId!, before, after) : undefined });
+            request: { label, actions }, readScope, build: () => actions, resources: repairResource ? [repairResource] : [],
+            buildSteps: actor === "human" && actions.some(action => action.type === "workbench/content.update")
+              ? (before, after) => manualReviewSteps(target.nodeId!, before, after) : undefined });
           ownRevision = result.revision;
           if (repairResource) prepared.current.delete(repairResource.id);
           return { ok: true };
@@ -253,7 +276,7 @@ export function useReviewController(target: Target) {
       if (entry.item.content.type === "image" || entry.item.content.type === "video") {
         mediaIds.add(entry.item.content.mediaId);
       }
-      const repair = [...entry.item.revisions].reverse().find((r) => r.kind === "image-repair" && r.mediaId)?.mediaId;
+      const repair = [...entry.item.revisions].reverse().find((r) => r.kind === "image-repair" && r.mediaId && r.producedVersion === entry.item.version)?.mediaId;
       if (repair) mediaIds.add(repair);
     }
     const mediaList = mediaIds.size > 0 ? await reviewService.getResources(Array.from(mediaIds)) : [];

@@ -96,6 +96,19 @@ export function ReviewProcessView({ target, onReviewItem }: { target: ReviewCont
 
   const references = useMemo(() => selected ? ([...selected.inputs.map((reference, index) => ({ reference, side: "input" as const, index })), ...selected.outputs.map((reference, index) => ({ reference, side: "output" as const, index }))]) : [], [selected]);
 
+  const [itemTitles, setItemTitles] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    setItemTitles({});
+    const ids = references.flatMap(({ reference }) => "itemId" in reference ? [reference.itemId] : []);
+    if (ids.length) {
+      void reviewService.getItemTitles(target, ids)
+        .then(titles => { if (!cancelled) setItemTitles(titles); })
+        .catch(problem => { if (!cancelled) setError(problem instanceof Error ? problem.message : String(problem)); });
+    }
+    return () => { cancelled = true; };
+  }, [target, references, generation]);
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden" data-testid="review-process-view">
       {exportSelection && (
@@ -183,9 +196,9 @@ export function ReviewProcessView({ target, onReviewItem }: { target: ReviewCont
                 <ul className="space-y-2">
                   {references.map(({ reference, side, index }) => (
                     <li key={`${side}:${index}`} className="flex flex-wrap items-center gap-2 rounded border border-border bg-bg-2/30 p-2 text-xs">
-                      <span className="font-medium text-fg">{t(side === "input" ? "review.process.input" : "review.process.output")} · {reference.role}</span>
-                      <span className="min-w-0 flex-1 break-all text-fg-3">
-                        {"resourceId" in reference ? reference.resourceId : `${reference.itemId} · v${reference.version}`}
+                      <span className="font-medium text-fg">{t(side === "input" ? "review.process.input" : "review.process.output")}:</span>
+                      <span className="min-w-0 flex-1 break-words text-fg-2" title={`${reference.role} · ${"resourceId" in reference ? reference.resourceId : reference.itemId}`}>
+                        {"resourceId" in reference ? `#${reference.resourceId.slice(-8)}` : `${itemTitles[reference.itemId] ?? `#${reference.itemId.slice(-8)}`} · v${reference.version}`}
                         {reference.region ? ` · ${reference.region.x},${reference.region.y} ${reference.region.width}×${reference.region.height}` : ""}
                         {reference.range ? ` · ${reference.range.startSec}–${reference.range.endSec} s` : ""}
                       </span>

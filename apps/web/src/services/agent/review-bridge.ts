@@ -8,7 +8,7 @@ import type { ReviewContext, ReviewStep } from "@reelterminal/core/review/types"
 import type { WorkbenchProjectState } from "@reelterminal/core/types/workbench";
 import { reduceReviewActions } from "@reelterminal/core/review/reducer";
 import type { Action } from "@reelterminal/core/types/actions";
-import { reviewError, reviewService } from "../review-workspace/service";
+import { reviewError, reviewService, type ReviewReadScope } from "../review-workspace/service";
 import { prepareReviewFiles, type ReviewSourceFile } from "../review-workspace/files";
 import { prepareReviewExport, reviewExportStatus, cancelReviewExport, copyReviewExport } from "../review-workspace/export";
 import { inspectReviewPackage, restoreReviewPackage } from "../review-workspace/package";
@@ -26,6 +26,21 @@ function reviewOps(ops: readonly WorkbenchAgentOp[], state: WorkbenchProjectStat
   return actions;
 }
 
+function reviewOpsReadScope(ops: readonly WorkbenchAgentOp[]): ReviewReadScope | undefined {
+  const itemIds = new Set<string>();
+  for (const op of ops) {
+    switch (op.op) {
+      case "workbench.decide": for (const decision of op.decisions) itemIds.add(decision.itemId); break;
+      case "workbench.feedback.save": itemIds.add(op.feedback.itemId); break;
+      case "workbench.content.update": itemIds.add(op.itemId); break;
+      // These builders inspect handoffs and global publication state.
+      case "workbench.handoff.ack":
+      case "workbench.rework": return undefined;
+    }
+  }
+  return { itemIds: [...itemIds] };
+}
+
 function completedReports(valid: Record<string, unknown>, nodeId: string): ReviewStep[] {
   return ((valid.steps ?? []) as Extract<ReviewStep, { state: "completed" }>[]).map(step => ({ ...step, parameters: step.parameters ?? {}, nodeId, state: "completed", actor: "agent", method: { ...step.method, verification: "declared" } }));
 }
@@ -34,6 +49,19 @@ export async function handleReviewCommand(verb: ReviewVerb, params: Record<strin
   const valid = validateObject<Record<string, unknown>>(params, REVIEW_SCHEMAS[verb], `${verb} params`);
   const target = valid.target as ReviewContext["target"];
   switch (verb) {
+    case "review.branches.create": return reviewService.createBranch(valid as unknown as Parameters<typeof reviewService.createBranch>[0]);
+    case "review.branches.compare": return reviewService.compareBranch(target);
+    case "review.branches.submit": {
+      const results = valid.results as Array<{ itemId: string; expectedItemVersion: number; content: ReviewIngestItem["content"] }>;
+      // Reuse the existing validated content conversion without ingesting a synthetic batch.
+      const normalized = reviewIngestInput({ batchId: valid.requestId as string, name: "Branch results", items: results.map(result => ({
+        id: result.itemId, title: "Result", type: result.content.type, content: result.content,
+      })) }, Date.now());
+      const files = valid.files as ReviewSourceFile[] | undefined;
+      return reviewService.submitBranch({ target, expectedNodeRevision: valid.expectedNodeRevision as number, requestId: valid.requestId as string,
+        request: { kind: "branch.submit", results, files: valid.files, stepId: valid.stepId }, results: results.map((result, index) => ({ itemId: result.itemId, expectedItemVersion: result.expectedItemVersion, content: normalized.items[index].content })),
+        stepId: valid.stepId as string | undefined, ...(files?.length ? { prepareResources: () => prepareReviewFiles(files, valid.requestId as string, "agent") } : {}) });
+    }
     case "review.media.inspect":
     case "review.frames.extract": {
       const plan = await reviewService.freezeExport({ target, expectedNodeRevision: valid.expectedNodeRevision as number, exportId: crypto.randomUUID(),
@@ -53,7 +81,7 @@ export async function handleReviewCommand(verb: ReviewVerb, params: Record<strin
         inputs: inputs as ReviewStep["inputs"], parameters: (parameters ?? {}) as ReviewStep["parameters"], ...(supersedesStepId ? { supersedesStepId: supersedesStepId as string } : {}),
         ...(mapping ? { mapping: mapping as NonNullable<ReviewStep["mapping"]> } : {}), method: { ...method as ReviewStep["method"], verification: "declared" }, actor: "agent", state: "running", startedAt: Date.now(), outputs: [] };
       return reviewService.commit({ target, expectedNodeRevision: valid.expectedNodeRevision as number, requestId: valid.requestId as string,
-        actor: "agent", label: "Start review processing", request: valid, build: () => [], steps: [step] });
+        actor: "agent", label: "Start review processing", request: valid, readScope: { itemIds: [] }, build: () => [], steps: [step] });
     }
     case "review.steps.complete":
     case "review.steps.fail": {
@@ -62,6 +90,7 @@ export async function handleReviewCommand(verb: ReviewVerb, params: Record<strin
       const ingest = valid.ingest ? reviewIngestInput(valid.ingest as Parameters<typeof reviewIngestInput>[0], Date.now()) : undefined;
       return reviewService.commit({ target, expectedNodeRevision: valid.expectedNodeRevision as number, requestId: valid.requestId as string,
         actor: "agent", label: verb === "review.steps.complete" ? "Complete review processing" : "Record processing failure", request: valid,
+        readScope: ingest ? undefined : reviewOpsReadScope((valid.ops ?? []) as WorkbenchAgentOp[]),
         ...(files?.length ? { prepareResources: () => prepareReviewFiles(files, valid.requestId as string, "agent") } : {}),
         build: state => {
           if (ingest) {
@@ -107,6 +136,7 @@ export async function handleReviewCommand(verb: ReviewVerb, params: Record<strin
       const files = valid.files as ReviewSourceFile[] | undefined;
       return reviewService.commit({ target, expectedNodeRevision: valid.expectedNodeRevision as number, requestId: valid.requestId as string,
         actor: "agent", label: "Agent review changes", request: { ops, files },
+        readScope: reviewOpsReadScope(ops),
         ...(files?.length ? { prepareResources: () => prepareReviewFiles(files, valid.requestId as string, "agent") } : {}),
         build: state => reviewOps(ops, state),
       });

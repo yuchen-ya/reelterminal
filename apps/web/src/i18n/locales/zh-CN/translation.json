@@ -39,7 +39,7 @@
     },
     "process": {
       "focusRegion": "放大记录区域",
-      "title": "处理过程", "content": "内容", "description": "按真实记录查看输入 → 方法 → 输出，每页最多 100 个步骤。缺失记录不会从文件名或时间推测补齐。",
+      "title": "处理记录", "content": "内容审阅", "description": "查看处理步骤、输入与输出，选择结果进行比较。",
       "steps": "处理步骤", "comparison": "版本对比", "choosePair": "将输入或输出固定到左右两侧，或直接比较一个已记录步骤。", "notRecorded": "来源步骤未记录；最终内容仍可在“内容”中审阅。",
       "loading": "正在读取精确版本…", "unselected": "尚未选择版本", "pinMissing": "固定的步骤引用已缺失", "inputOutput": "{{inputs}} 个输入 → {{outputs}} 个输出",
       "input": "输入", "output": "输出", "left": "左侧／输入", "right": "右侧／输出", "pinLeft": "固定左侧", "pinRight": "固定右侧", "openItem": "审阅此项当前版本", "compareStep": "比较此步骤", "parameters": "已记录参数", "retries": "重新尝试步骤 {{id}}",
@@ -70,7 +70,9 @@
     "textBody": "文本正文（最多 200000 字符）", "readingFiles": "正在读取并检查文件…", "importing": "正在保存原件并提交内容…", "cancel": "取消", "import": "导入", "previous": "上一页", "next": "下一页", "pageScope": "列表每页最多 100 项；选择和批量操作仅作用于当前可见范围。",
     "kind": { "model3d": "3D 模型", "image": "图片", "video": "视频", "text": "文字", "data": "数据表" },
     "agentAccessLabel": "允许 Agent 修改审阅", "exportMenu": "\u5bfc\u51fa",
-    "startupPrompt": "请通过 ReelTerminal 独立审阅工作台完成我的请求。\nCLI 前缀（下列子命令均接在此前缀后）：{{cli}}\n目标：{{target}}\n先运行 review context 核对身份与权限，再读 review describe、review capabilities。执行前用 schema <命令> 查参数，通过 review call <命令> --file <请求文件> 调用。写入绑定上述目标、读取时的 revision 和 UUID requestId；文件放在允许根内，JSON 不传媒体字节。节点命名与编排规范：批次/父节点承载大背景，具体条目 title 与 nodeSlotLabel 必须保持简短（4–8 字内，禁堆砌长前缀）；需同屏审阅的多张单图或图文数碎片请归入同一父节点（设为聚合画板 board），需对比的视频请绑定基准条目。重启或冲突后重新核对目标；只读时需用户开启审阅写权限，发布结果由用户在界面确认。"
+    "copyTaskInstructions": "复制「{{name}}」的 Agent 启动提示词",
+    "startupPrompt": "请通过 ReelTerminal 独立审阅工作台完成我的请求。\nCLI 前缀（所有子命令均接在此前缀后）：{{cli}}\n{{task}}目标：{{target}}\n先运行 review describe 获取操作流程与发现入口。固定此任务目标，不随 GUI 选择切换；重启或冲突后重新核对身份和原任务目标。\n收到具体编辑任务后按 describe 创建或继续同一任务分支；仅复制此提示词不创建分支。",
+    "branch": {"label": "任务分支", "listTitle": "任务分支", "compareTitle": "比较并采纳分支结果", "baseRevision": "起点修订", "adoptHint": "选择要采纳的内容结果。保留源条目的决定与反馈，采纳时会再次检查源条目是否变化。", "select": "选择", "loading": "正在载入分支比较…", "refresh": "刷新比较", "adoptSelected": "采纳所选结果", "empty": "暂无任务分支。Agent 开始具体编辑任务时创建分支。", "state": {"changed": "内容已修改", "added": "新增结果", "unchanged": "未修改", "adopted": "已采纳", "conflict": "源条目已变化"}}
   },
   "projectMediaFilters": {
     "scope": "查看范围",

@@ -473,7 +473,10 @@ export function ImageViewerWorkspace({
         return result;
       }
       setMutationError(null);
-      if (selectedAnnotationId === issueId) setSelectedAnnotationId(null);
+      const deletedIndex = annotations.findIndex(annotation => annotation.id === issueId);
+      setSelectedAnnotationId(current => current === issueId
+        ? remaining[Math.min(deletedIndex, remaining.length - 1)]?.id ?? null
+        : current);
       return result;
     },
     [annotations, currentItem.id, currentItem.version, onUpdateImageAnnotations, selectedAnnotationId],
@@ -603,6 +606,7 @@ export function ImageViewerWorkspace({
           onImageError={handleImageError}
           onStagePointerDown={handleStagePointerDown}
           onStagePointerMove={handleStagePointerMove}
+          onDeleteSelected={workMode === "annotate" && selectedAnnotationId ? () => { void handleDeleteIssue(selectedAnnotationId); } : undefined}
           onStagePointerUp={handleStagePointerUp}
           onStagePointerCancel={handleStagePointerCancel}
           onWheel={handleWheel}

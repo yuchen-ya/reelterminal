@@ -22,6 +22,7 @@ export interface ReviewNodeHeaderProps {
   onUpdateNode?: (patch: Extract<DirectoryCommand, { kind: "node.update" }>["patch"]) => void;
   onRenameNode?: () => void;
   onPurgeNode?: () => void;
+  onBranches?: () => void;
   view?: "content" | "process";
   stepCount?: number;
   onSelectView?: (view: "content" | "process") => void;
@@ -42,6 +43,7 @@ export function ReviewNodeHeader({
   onUpdateNode,
   onRenameNode,
   onPurgeNode,
+  onBranches,
   view,
   stepCount = 0,
   onSelectView,
@@ -139,6 +141,14 @@ export function ReviewNodeHeader({
             </DropdownMenu>
           </div>
 
+          {node.branch && <span className="max-w-32 truncate text-[11px] text-fg-3" title={`${node.branch.sourceNodeId} · r${node.branch.sourceNodeRevision}`} data-testid="review-branch-origin">
+            {t("review.branch.label", "Task branch")} · r{node.branch.sourceNodeRevision}
+          </span>}
+          {onBranches && <button type="button" className={wbButton.ghost} onClick={onBranches} disabled={busy} data-testid="review-branches-open">
+            <GitBranch className="h-3.5 w-3.5" />
+            {t(node.branch ? "review.branch.compareTitle" : "review.branch.listTitle", node.branch ? "Compare and adopt branch results" : "Task branches")}
+          </button>}
+
           {/* 「内容 | 处理过程(n)」紧凑图标切换 */}
           {view && onSelectView && (
             <div
@@ -159,7 +169,7 @@ export function ReviewNodeHeader({
                 title={t("review.process.content")}
               >
                 <Layers className="h-3 w-3" />
-                <span className="sr-only">{t("review.process.content")}</span>
+                <span>{t("review.process.content")}</span>
               </button>
               <button
                 type="button"
@@ -174,8 +184,7 @@ export function ReviewNodeHeader({
                 title={`${t("review.process.title")} (${stepCount})`}
               >
                 <GitBranch className="h-3 w-3" />
-                {stepCount > 0 && <span className="font-mono text-[10px]">{stepCount}</span>}
-                <span className="sr-only">
+                <span>
                   {t("review.process.title")} ({stepCount})
                 </span>
               </button>

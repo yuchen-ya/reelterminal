@@ -10,6 +10,13 @@ export interface ReviewWorkspace {
   readonly history?: { readonly undoActor?: "human" | "agent"; readonly redoActor?: "human" | "agent" };
 }
 
+/** A task keeps this identity across all subsequent commands and GUI selections. */
+export interface ReviewBranchOrigin {
+  readonly taskId: string;
+  readonly sourceNodeId: string;
+  readonly sourceNodeRevision: number;
+}
+
 export interface ReviewNode {
   readonly id: string;
   readonly workspaceId: string;
@@ -21,6 +28,7 @@ export interface ReviewNode {
   readonly revision: number;
   readonly createdAt: number;
   readonly updatedAt: number;
+  readonly branch?: ReviewBranchOrigin;
   readonly history?: { readonly undoActor?: "human" | "agent"; readonly redoActor?: "human" | "agent" };
 }
 

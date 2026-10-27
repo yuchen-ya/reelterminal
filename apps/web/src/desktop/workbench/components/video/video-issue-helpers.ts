@@ -3,7 +3,20 @@ import type {
   WorkbenchVideoMarker,
 } from "@reelterminal/core";
 import type { WorkbenchIssueEntry } from "../WorkbenchIssuePanel";
-import type { MarkerAnchorView } from "./video-helpers";
+import { formatTimecode, type MarkerAnchorView } from "./video-helpers";
+
+export function isAnnotationContainer(marker: WorkbenchVideoMarker): boolean {
+  return marker.type === "frame" && marker.annotationContainer === true && !marker.note.trim();
+}
+
+export function removeVideoIssue(markers: readonly WorkbenchVideoMarker[], anchor: MarkerAnchorView): WorkbenchVideoMarker[] {
+  return markers.flatMap(marker => {
+    if (marker.id !== anchor.markerId) return [marker];
+    if (anchor.kind === "marker") return [];
+    const annotations = marker.annotations.filter(annotation => annotation.id !== anchor.anchorId);
+    return annotations.length === 0 && isAnnotationContainer(marker) ? [] : [{ ...marker, annotations }];
+  });
+}
 
 export function buildVideoAnchors(
   markers: readonly WorkbenchVideoMarker[],
@@ -17,7 +30,11 @@ export function buildVideoAnchors(
       m.type === "frame"
         ? `帧标记 @ ${m.startPtsSec.toFixed(3)}s${frameLabel}`
         : `区间 [${m.startPtsSec.toFixed(3)}s, ${(m.endPtsSec ?? m.startPtsSec).toFixed(3)}s)`;
-    list.push({
+    // Older automatic containers share their note with old manual markers.
+    // Hide the redundant row while it has children, but never delete it by guessing.
+    const legacyContainer = m.annotationContainer === undefined && m.type === "frame"
+      && m.annotations.length > 0 && m.note === `源帧 ${formatTimecode(m.startPtsSec)} 待诊断问题`;
+    if (!isAnnotationContainer(m) && !legacyContainer) list.push({
       anchorId: m.id,
       markerId: m.id,
       kind: "marker",

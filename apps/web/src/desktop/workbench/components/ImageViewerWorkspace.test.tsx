@@ -365,3 +365,39 @@ describe("ImageViewerWorkspace repair painting", () => {
     expect(vi.mocked(context.clearRect)).toHaveBeenCalledTimes(baselineClearCount + 1);
   });
 });
+
+it("draws inside an existing box, selects on click and deletes to the adjacent issue", async () => {
+  const { context } = recordingCanvasContext();
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => context as never);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 400, 200));
+  const base = imageItem();
+  const item = { ...base, imagePayload: { ...base.imagePayload!, annotations: [
+    { id: "large", color: "#f43f5e", tool: "box" as const, x: 0.1, y: 0.1, w: 0.8, h: 0.8, label: "大框" },
+    { id: "next", color: "#f43f5e", tool: "box" as const, x: 0.7, y: 0.7, w: 0.1, h: 0.1, label: "相邻问题" },
+  ] } };
+  const onUpdate = vi.fn(async () => ({ ok: true as const }));
+  render(<ImageViewerWorkspace currentItem={item} batchImageItems={[item]} selectedIds={[]}
+    onSelectItem={vi.fn()} onUpdateImageAnnotations={onUpdate}
+    onSaveImageRepair={vi.fn(async () => ({ ok: true as const }))}
+    onCommitDecision={vi.fn(async () => ({ ok: true as const }))} issuePanelWidth={300} />);
+  const image = screen.getByAltText("test.png");
+  Object.defineProperty(image, "naturalWidth", { value: 100 });
+  Object.defineProperty(image, "naturalHeight", { value: 50 });
+  fireEvent.load(image);
+  const surface = await screen.findByTestId("image-stage-pointer-surface");
+  fireEvent.pointerDown(surface, { button: 0, pointerId: 1, clientX: 80, clientY: 40 });
+  fireEvent.pointerMove(surface, { pointerId: 1, clientX: 160, clientY: 80 });
+  fireEvent.pointerUp(surface, { pointerId: 1, clientX: 160, clientY: 80 });
+  await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1));
+  expect(onUpdate.mock.calls[0]).toEqual(expect.arrayContaining([expect.arrayContaining([
+    expect.objectContaining({ tool: "box", x: 0.2, y: 0.2, w: 0.2, h: 0.2 }),
+  ])]));
+  fireEvent.pointerDown(surface, { button: 0, pointerId: 2, clientX: 80, clientY: 40 });
+  fireEvent.pointerUp(surface, { pointerId: 2, clientX: 80, clientY: 40 });
+  expect(screen.getByLabelText("问题建议")).toHaveValue("大框");
+  fireEvent.keyDown(screen.getByLabelText("问题建议"), { key: "Backspace" });
+  expect(onUpdate).toHaveBeenCalledTimes(1);
+  fireEvent.keyDown(surface, { key: "Delete" });
+  await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.getByLabelText("问题建议")).toHaveValue("相邻问题"));
+});

@@ -167,6 +167,7 @@ export const READ_ONLY_VERBS = [
   "session.describe",
   "review.context",
   "review.nodes.list",
+  "review.branches.compare",
   "review.export.status",
   "review.steps.list",
   "review.package.inspect",

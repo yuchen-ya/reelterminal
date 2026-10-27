@@ -398,6 +398,9 @@ Long synchronous commands (frames extract, patch apply, ...) accept
 30 s or REELTERMINAL_REQUEST_TIMEOUT_MS. For 'job wait' the same flag sets
 the wait deadline instead.
 Use reelctl schema <command> or reelctl help <command> for exact arguments.
+For independent reviews, start with reelctl review describe for the workflow,
+then review context and review capabilities for identity, access and file roots.
+Review command schemas include usage guidance from the shared field declarations.
 reelctl schema --domain <domain> filters the command index by the command's
 leading name segment (audio, media, edit, ...); results come from the same
 catalog and unknown domains are rejected with the available domain list.

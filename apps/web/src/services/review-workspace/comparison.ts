@@ -2,9 +2,11 @@ import { workbenchContentResourceId } from "@reelterminal/core/types/workbench";
 import { diffLines } from "diff";
 import type { ReviewContext, ReviewStepReference } from "@reelterminal/core/review/types";
 import type { WorkbenchDataContent } from "@reelterminal/core/types/workbench";
+import type { ReviewIdMapping } from "@reelterminal/core/review/archive";
 import { reviewError, reviewService } from "./service";
 import { decodeReviewText } from "./table-import";
 import { exportValue } from "./export";
+import { v5 as uuidv5 } from "uuid";
 
 export type ReviewComparable =
   | { kind: "text"; text: string }
@@ -51,6 +53,13 @@ export interface ReviewCellDifference {
   rowId: string; columnId: string; columnTitle: string;
   kind: "added" | "removed" | "changed";
   before: string | null | undefined; after: string | null | undefined;
+}
+/** Branch tables use private identities; compare their known rows/columns against the source. */
+export function sourceComparisonData(data: WorkbenchDataContent, idMap: readonly ReviewIdMapping[], taskId?: string): WorkbenchDataContent {
+  const sourceId = (kind: string, id: string) => idMap.find(entry => entry.kind === kind && entry.newId === id)?.oldId
+    ?? (taskId ? uuidv5(`adopt:${kind}:${id}`, taskId) : id);
+  return { ...data, columns: data.columns.map(column => ({ ...column, columnId: sourceId("column", column.columnId) })),
+    rows: data.rows.map(row => ({ rowId: sourceId("row", row.rowId), cells: Object.fromEntries(Object.entries(row.cells).map(([id, value]) => [sourceId("column", id), value])) })) };
 }
 /** Stable IDs, never displayed row positions or duplicate column titles, join the two tables. */
 export function compareReviewData(before: WorkbenchDataContent, after: WorkbenchDataContent): ReviewCellDifference[] {

@@ -26,6 +26,8 @@ import { wbButton } from "../workbench/wb-button";
 import { ReviewNodeHeader } from "../workbench/components/ReviewNodeHeader";
 import { ReviewNodeSidebar, type DirectoryView } from "../workbench/components/ReviewNodeSidebar";
 import { ReviewAdminMenu } from "../workbench/components/ReviewAdminMenu";
+import { ReviewBranchDialog } from "../workbench/components/ReviewBranchDialog";
+import { ReviewBranchListDialog } from "../workbench/components/ReviewBranchListDialog";
 import "../workbench/workbench.css";
 
 const input = "min-w-0 rounded-md border border-border bg-bg-2 px-2.5 py-1.5 text-xs text-fg";
@@ -76,7 +78,18 @@ export function ReviewPage() {
     revision: number;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!copiedNodeId) return;
+    const timer = window.setTimeout(() => setCopiedNodeId(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copiedNodeId]);
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const [branchListTarget, setBranchListTarget] = useState<ReviewContext["target"] | null>(null);
+  const [branchTarget, setBranchTarget] = useState<ReviewContext["target"] | null>(null);
+  const loadBranchComparison = useCallback(() => reviewService.compareBranch(branchTarget!), [branchTarget]);
+  const adoptBranch = useCallback((input: Omit<Parameters<typeof reviewService.adoptBranch>[0], "target">) =>
+    reviewService.adoptBranch({ ...input, target: branchTarget! }), [branchTarget]);
 
   const hasProject = useProjectStore((state) => state.hasOpenProject);
   const projectName = useProjectStore((state) => state.project.name);
@@ -214,17 +227,19 @@ export function ReviewPage() {
     return () => window.removeEventListener("reelterminal:review-history", listener);
   }, [legacy, directoryHistory]);
 
-  const copyInstructions = async () => {
+  const copyInstructions = async (node?: ReviewNode) => {
     if (!context) throw reviewError("CONFLICT", "审阅服务尚未载入");
     const info = await window.reelterminal!.collabControl!.getStartupInfo();
     await navigator.clipboard.writeText(
       t("review.startupPrompt", {
         cli: info.cliCommand,
-        target: JSON.stringify(target ?? context.target),
+        task: node ? `${node.name}\n` : "",
+        target: JSON.stringify(node ? { ...context.target, nodeId: node.id } : context.target),
         interpolation: { escapeValue: false },
       })
     );
-    setCopied(true);
+    if (node) setCopiedNodeId(node.id);
+    else setCopied(true);
   };
 
   const update = (patch: Extract<DirectoryCommand, { kind: "node.update" }>["patch"]) => {
@@ -319,6 +334,8 @@ export function ReviewPage() {
             onToggleOpen={handleToggleSidebar}
             nodes={nodes}
             selectedId={selectedId}
+            copiedNodeId={copiedNodeId}
+            onCopyInstructions={node => copyInstructions(node).catch(problem => { report(problem); })}
             onSelectNode={chooseNode}
             directory={directory}
             view={view}
@@ -410,6 +427,7 @@ export function ReviewPage() {
                         })
                       }
                       onPurgeNode={() => setPurgeOpen(true)}
+                      onBranches={() => selected.branch ? setBranchTarget(target) : setBranchListTarget(target)}
                       context={context}
                       busy={busy}
                       onToggleAccess={handleToggleAccess}
@@ -443,6 +461,11 @@ export function ReviewPage() {
         </div>
       )}
 
+      {branchListTarget && <ReviewBranchListDialog target={branchListTarget} onClose={() => setBranchListTarget(null)} onCompare={nodeId => {
+        setBranchTarget({ ...branchListTarget, nodeId });
+        setBranchListTarget(null);
+      }} />}
+      {branchTarget && <ReviewBranchDialog target={branchTarget} load={loadBranchComparison} adopt={adoptBranch} onClose={() => setBranchTarget(null)} />}
       {backupOpen && context && (
         <ReviewBackupDialog target={context.target} onClose={() => setBackupOpen(false)} />
       )}
@@ -552,15 +575,8 @@ function ReviewNodeEditor({
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [attachItem, setAttachItem] = useState<string | null>(null);
-  const [view, setView] = useState<"content" | "process">(() =>
-    localStorage.getItem(`reelterminal.review.view:${target.nodeId}`) === "process"
-      ? "process"
-      : "content"
-  );
-  const chooseView = (next: "content" | "process") => {
-    setView(next);
-    localStorage.setItem(`reelterminal.review.view:${target.nodeId}`, next);
-  };
+  const [view, chooseView] = useState<"content" | "process">("content");
+  useEffect(() => chooseView("content"), [target.nodeId]);
 
   useEffect(() => {
     const listener = (event: Event) => {

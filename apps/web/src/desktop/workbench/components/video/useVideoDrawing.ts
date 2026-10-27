@@ -96,11 +96,7 @@ export function useVideoDrawing({
       if (!videoReady || drawTool === "pan" || e.button !== 0) return;
       videoRef.current?.pause();
       const pt = getNormalizedPoint(e.clientX, e.clientY);
-      const hit = hitTestAnnotation(pt);
-      if (hit) {
-        onSelectAnchor(hit.id);
-        return;
-      }
+      e.currentTarget.focus();
       e.currentTarget.setPointerCapture(e.pointerId);
       setIsDrawing(true);
       setDraftStart(pt);
@@ -109,8 +105,6 @@ export function useVideoDrawing({
     [
       drawTool,
       getNormalizedPoint,
-      hitTestAnnotation,
-      onSelectAnchor,
       videoReady,
       videoRef,
     ],
@@ -138,7 +132,11 @@ export function useVideoDrawing({
       );
       setDraftStart(null);
       setDraftCurrent(null);
-      if (dragDist < DRAW_MIN_DRAG) return;
+      if (dragDist < DRAW_MIN_DRAG) {
+        const hit = hitTestAnnotation(draftStart);
+        if (hit) onSelectAnchor(hit.id);
+        return;
+      }
 
       const t = Number(realTime().toFixed(3));
       const defaultNote = `播放时间 ${t.toFixed(3)}s 局部异常`;
@@ -174,6 +172,8 @@ export function useVideoDrawing({
       draftStart,
       drawTool,
       isDrawing,
+      hitTestAnnotation,
+      onSelectAnchor,
       makeId,
       onAnnotationCreated,
       realTime,

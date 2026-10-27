@@ -80,6 +80,7 @@ const reviewNode = (): OutputSchemaNode => objectSchema({
   id: stringSchema(), workspaceId: stringSchema(), name: stringSchema(), groupId: stringSchema(), pinned: booleanSchema(),
   archivedAt: numberSchema(0), trashedAt: numberSchema(0), revision: integerSchema(0), createdAt: numberSchema(0), updatedAt: numberSchema(0),
   history: objectSchema({ undoActor: enumSchema(["human", "agent"]), redoActor: enumSchema(["human", "agent"]) }),
+  branch: objectSchema({ taskId: stringSchema(), sourceNodeId: stringSchema(), sourceNodeRevision: integerSchema(0) }, ["taskId", "sourceNodeId", "sourceNodeRevision"]),
 }, ["id", "workspaceId", "name", "pinned", "revision", "createdAt", "updatedAt"]);
 const reviewCommit = (): OutputSchemaNode => objectSchema({ nodeId: stringSchema(), revision: integerSchema(0), sequence: integerSchema(0), replayed: booleanSchema() }, ["nodeId", "revision", "sequence", "replayed"]);
 const reviewExportStatus = (): OutputSchemaNode => objectSchema({ exportId: stringSchema(), nodeId: stringSchema(), nodeRevision: integerSchema(0),
@@ -1056,6 +1057,9 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   }, ["target", "revision", "access", "ready"]),
   "review.nodes.list": objectSchema({ nodes: arraySchema(reviewNode(), { maxItems: 500 }), cursor: stringSchema() }, ["nodes"]),
   "review.nodes.create": reviewNode(),
+  "review.branches.create": objectSchema({ node: reviewNode(), target: openObject(), workspaceRevision: integerSchema(0), replayed: booleanSchema() }, ["node", "target", "workspaceRevision", "replayed"]),
+  "review.branches.compare": objectSchema({ branch: reviewNode(), source: reviewNode(), items: arraySchema(openObject()), idMap: arraySchema(openObject()) }, ["branch", "source", "items", "idMap"]),
+  "review.branches.submit": reviewCommit(),
   "review.directory.get": objectSchema({ revision: integerSchema(0), groups: arraySchema(reviewGroup()), canUndo: booleanSchema(), canRedo: booleanSchema() }, ["revision", "groups", "canUndo", "canRedo"]),
   "review.directory.apply": reviewDirectoryCommit(),
   "review.directory.history.control": reviewDirectoryCommit(),
