@@ -7,6 +7,7 @@
  *   opens all child items together on the AdaptiveBoardWorkspace.
  * - "category" (分类父节点): expanded by default as a directory folder.
  */
+import { CollectionActions } from "./CollectionActions";
 import { Fragment, useMemo, useState } from "react";
 import {
   ArchiveRestore,
@@ -45,6 +46,9 @@ export interface PendingLineagePanelProps {
    * Items visible under the controller's current filter + search. The tree
    * renders exactly this set — it never applies filter semantics of its own.
    */
+  readonly allItems?: readonly WorkbenchItemView[];
+  readonly paginated?: boolean;
+  readonly filtered?: boolean;
   readonly items: readonly WorkbenchItemView[];
   readonly currentItem: WorkbenchItemView | null;
   readonly selectedIds: readonly string[];
@@ -74,7 +78,7 @@ interface TreeGroup extends WorkbenchLineageGroup {
 }
 
 const UNGROUPED_GROUP_ID = "__ungrouped__";
-const UNGROUPED_LABEL = "本批内容";
+const UNGROUPED_LABEL = "未分组";
 
 function buildTreeGroups(items: readonly WorkbenchItemView[]): TreeGroup[] {
   const countSubtree = (entry: WorkbenchLineageNode): number =>
@@ -90,6 +94,9 @@ function buildTreeGroups(items: readonly WorkbenchItemView[]): TreeGroup[] {
 
 export function PendingLineagePanel({
   items,
+  allItems = items,
+  paginated = false,
+  filtered = false,
   currentItem,
   selectedIds,
   contextOnlyIds,
@@ -112,6 +119,12 @@ export function PendingLineagePanel({
     [contextOnlyIds],
   );
   const sourceTrees = useMemo(() => buildTreeGroups(items), [items]);
+  const fullTrees = useMemo(() => buildTreeGroups(allItems), [allItems]);
+  const scopeTitle = (title: string) => `${paginated ? "本页 · " : ""}${filtered ? "筛选结果 · " : ""}${title}`;
+  const fullNode = (id: string, nodes: readonly WorkbenchLineageNode[]): WorkbenchLineageNode | undefined => {
+    for (const node of nodes) { if (node.item.id === id) return node; const found = fullNode(id, node.children); if (found) return found; }
+    return undefined;
+  };
 
   const handleRetrieve = (itemId: string): void => {
     setRetrievingId(itemId);
@@ -156,7 +169,7 @@ export function PendingLineagePanel({
     const statusView = getWorkbenchStatusView(item.status);
     const label = item.agentGuidance?.nodeSlotLabel ?? item.title;
     const triageGroup = item.agentGuidance?.triageGroup;
-    const subtreeItems = hasChildren ? collectSubtreeItems(node) : [item];
+    const subtreeItems = collectSubtreeItems(fullNode(item.id, fullTrees.flatMap(group => group.roots)) ?? node).filter(entry => !contextOnlySet.has(entry.id));
 
     const rowTone = isCurrent
       ? "bg-accent/12 text-fg font-medium ring-1 ring-accent/35"
@@ -182,12 +195,13 @@ export function PendingLineagePanel({
         )}
 
         <div className={`py-px ${item.lineage ? "pl-3" : ""}`}>
+          <CollectionActions scope={{ title: scopeTitle(label), items: subtreeItems, folder: hasChildren }}>
           <div
             onClick={
               isContextOnly
                 ? undefined
                 : (e) => {
-                    if (hasChildren && isBoardParent && onSelectBoard && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                    if (hasChildren && onSelectBoard && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
                       onSelectBoard({
                         id: boardScopeId,
                         title: label,
@@ -250,7 +264,10 @@ export function PendingLineagePanel({
               ) : (
                 getWorkbenchTypeIcon(item.type)
               )}
-              <span className="truncate font-medium">{label}</span>
+              <div className="min-w-0">
+                <span className="flex items-center gap-1.5 font-medium"><span className="truncate">{label}</span>{item.isNew && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-label="有未查看的新内容" />}</span>
+                {item.subtitle.trim() && <span className="block truncate text-[10px] font-normal text-fg-3" title={item.subtitle}>{item.subtitle}</span>}
+              </div>
               {hasChildren && (
                 <span className="shrink-0 rounded bg-bg-3 px-1 font-mono text-[9px] leading-3.5 text-fg-3">
                   {subtreeItems.length}
@@ -336,6 +353,7 @@ export function PendingLineagePanel({
             </div>
           </div>
 
+          </CollectionActions>
           {/* Nested downstream children */}
           {hasChildren && !isParentCollapsed && (
             <div className="relative ml-1 mt-px">
@@ -382,13 +400,14 @@ export function PendingLineagePanel({
             collapsedBases[group.id] ?? (isBoardGroup ? true : false);
           const groupScopeId = `group:${group.id}`;
           const isGroupBoardActive = activeBoardId === groupScopeId;
-          const groupItems = collectGroupItems(group);
+          const groupItems = collectGroupItems(fullTrees.find(full => full.id === group.id) ?? group).filter(item => !contextOnlySet.has(item.id));
           const pendingGroupCount = groupItems.filter(
             (i) => i.status === "pending",
           ).length;
 
           return (
             <div key={group.id} className="space-y-px">
+              <CollectionActions scope={{ title: scopeTitle(group.baseName), items: groupItems, folder: true }}>
               <div
                 className={`group flex min-h-[24px] w-full items-center justify-between gap-1 rounded-[5px] px-1.5 py-0.5 text-[11px] font-semibold transition-colors ${
                   isGroupBoardActive
@@ -401,7 +420,7 @@ export function PendingLineagePanel({
                 <button
                   type="button"
                   onClick={() => {
-                    if (isBoardGroup && onSelectBoard) {
+                    if (onSelectBoard) {
                       onSelectBoard({
                         id: groupScopeId,
                         title: group.baseName,
@@ -493,6 +512,7 @@ export function PendingLineagePanel({
                 </div>
               </div>
 
+              </CollectionActions>
               {!isCollapsed && (
                 <div className="relative ml-1">
                   {group.roots.map((rootNode, idx) =>

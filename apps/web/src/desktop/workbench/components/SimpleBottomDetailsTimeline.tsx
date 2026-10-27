@@ -117,12 +117,12 @@ export function SimpleBottomDetailsTimeline({
   // Single and batch commits share onCommitDecision; multi-selection commits
   // carry explicit target ids so the controller cannot guess the scope.
   const targetIds: readonly string[] =
-    selectedIds && selectedIds.length > 1
+    selectedIds !== undefined
       ? selectedIds
       : currentItem
         ? [currentItem.id]
         : [];
-  const targetLabel = targetIds.length > 1 ? `选中 ${targetIds.length} 项` : "当前项";
+  const targetLabel = selectedIds !== undefined ? `选中 ${targetIds.length} 项` : "当前项";
 
   const runMutation = useCallback(
     async (action: () => Promise<WorkbenchMutationResult>) => {
@@ -233,7 +233,7 @@ export function SimpleBottomDetailsTimeline({
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <button
             type="button"
-            disabled={busy || !currentItem}
+            disabled={busy || targetIds.length === 0}
             onClick={() => handleCommit("kept", targetIds)}
             title={`采用${targetLabel}的当前版本 (快捷键: 1)`}
             className={`h-7 px-3 rounded-md text-xs font-semibold transition-colors disabled:opacity-40 inline-flex items-center justify-center select-none ${
@@ -246,7 +246,7 @@ export function SimpleBottomDetailsTimeline({
           </button>
           <button
             type="button"
-            disabled={busy || !currentItem}
+            disabled={busy || targetIds.length === 0}
             onClick={() => handleCommit("rework", targetIds)}
             title={`标记${targetLabel}需要修改；在问题栏填写具体要求 (快捷键: 3)`}
             className={`h-7 px-3 rounded-md text-xs font-semibold transition-colors disabled:opacity-40 inline-flex items-center justify-center select-none ${
@@ -259,7 +259,7 @@ export function SimpleBottomDetailsTimeline({
           </button>
           <button
             type="button"
-            disabled={busy || !currentItem}
+            disabled={busy || targetIds.length === 0}
             onClick={() => handleCommit("discarded", targetIds)}
             title={`不采用${targetLabel}，保留原件与历史，可撤销 (快捷键: 4)`}
             className={`h-7 px-3 rounded-md text-xs font-semibold transition-colors disabled:opacity-40 inline-flex items-center justify-center select-none ${
@@ -403,7 +403,7 @@ export function SimpleBottomDetailsTimeline({
               )}
             </>
           ) : (
-            <span className="text-xs text-fg-3 select-none">未选择条目</span>
+            <span className="text-xs text-fg-3 select-none">{targetIds.length ? `已选 ${targetIds.length} 项` : "未选择条目"}</span>
           )}
         </div>
 

@@ -62,7 +62,7 @@ export interface ReviewBranchCreateResult { node: ReviewNode; target: Target; wo
 type JournalSummary = Pick<JournalRow, "scopeId" | "sequence" | "actor" | "kind" | "relatedSequence">;
 interface OperationRow { operationId: string; requestDigest: string; scopeId: string; sequence: number; result: CommitResult }
 export interface ReviewNodeSnapshot { node: ReviewNode; state: WorkbenchProjectState; steps: readonly ReviewStep[] }
-export type ReviewItemSummary = Pick<WorkbenchItem, "id" | "batchId" | "title" | "subtitle" | "type" | "version" | "status" | "orderIndex" | "provenanceTags" | "userTags" | "agentGuidance" | "lineage" | "reworkOrigin" | "groupMode" | "compareWithItemId" | "videoPayload"> & { readonly hasManualRevision: boolean };
+export type ReviewItemSummary = Pick<WorkbenchItem, "id" | "batchId" | "title" | "subtitle" | "updatedAt" | "incomingRevision" | "type" | "version" | "status" | "orderIndex" | "provenanceTags" | "userTags" | "agentGuidance" | "lineage" | "reworkOrigin" | "groupMode" | "compareWithItemId" | "videoPayload"> & { readonly hasManualRevision: boolean };
 export interface ReviewOverview {
   node: ReviewNode; batches: readonly WorkbenchBatch[];
   counts: Readonly<Record<string, { total: number; pending: number }>>;
@@ -87,7 +87,7 @@ export interface ReviewCommit {
   history?: "undo" | "redo";
   /** Internal human adoption. Validated against the branch inside this commit's transaction. */
   branchAdoption?: ReviewBranchAdoption;
-  branchOnly?: true;
+  validateResourceOwnership?: true;
   /** Internal legacy import; historical bodies and the source receipt commit together. */
   legacyImport?: { record: ReviewMigrationRecord; versions: readonly ReviewArchivedVersion[]; journalArchives: ReviewNodeArchive["journalArchives"] };
 }
@@ -297,16 +297,14 @@ export class ReviewService {
       branchAdoption: input, build: () => [] });
   }
 
-  async submitBranch(input: { target: Target; expectedNodeRevision: number; requestId: string; results: readonly ReviewBranchResult[];
+  async submitResults(input: { target: Target; expectedNodeRevision: number; requestId: string; results: readonly ReviewBranchResult[];
     request: unknown; stepId?: string; prepareResources?: ReviewCommit["prepareResources"] }): Promise<CommitResult> {
-    const node = await this.getNodeMetadata(input.target);
-    if (!node.branch) throw reviewError("INVALID_PARAMS", "Full results may only be submitted to a task branch");
     return this.commit({ target: input.target, expectedNodeRevision: input.expectedNodeRevision, requestId: input.requestId,
-      actor: "agent", label: "Submit task branch results", request: input.request, branchOnly: true, prepareResources: input.prepareResources,
+      actor: "agent", label: "Submit task results", request: input.request, validateResourceOwnership: true, prepareResources: input.prepareResources,
       build: state => planReviewBranchResults(state, input.results, input.requestId, Date.now()),
       ...(input.stepId ? { buildSteps: (_before: WorkbenchProjectState, after: WorkbenchProjectState, _resources: readonly FileResource[], steps: readonly ReviewStep[]) => {
         const step = steps.find(step => step.id === input.stepId);
-        if (!step || step.state !== "running") throw reviewError("CONFLICT", "Complete an existing running branch processing step");
+        if (!step || step.state !== "running") throw reviewError("CONFLICT", "Complete an existing running processing step");
         const outputs = input.results.map(result => ({ nodeId: input.target.nodeId!, itemId: result.itemId,
           version: after.items.find(item => item.id === result.itemId)!.version, role: "result" }));
         return [{ ...step, state: "completed" as const, finishedAt: Math.max(Date.now(), step.startedAt), outputs: outputs as [ReviewStepReference, ...ReviewStepReference[]] }];
@@ -641,7 +639,7 @@ export class ReviewService {
     } finally { database.close(); }
   }
 
-  freezeExport(input: { target: Target; expectedNodeRevision: number; exportId: string; mode: "original" | "adopted" | "version";
+  freezeExport(input: { target: Target; expectedNodeRevision: number; exportId: string; mode: "original" | "current" | "adopted" | "version";
     scope: "node" | "filtered" | "selected"; reference?: ReviewStepReference; itemIds?: readonly string[]; filter?: { batchId?: string; type?: "all" | "image" | "text" | "data" | "video" | "model3d"; query?: string } }): Promise<ReviewExportPlan> {
     if (!UUID.test(input.exportId) || (input.itemIds && (input.itemIds.length > 10000 || input.itemIds.some(id => !UUID.test(id))))) throw reviewError("INVALID_PARAMS", "Export identities must be UUIDs");
     return this.nodeTransaction(input.target, false, (snapshot, transaction, versions, abort) => {
@@ -685,7 +683,7 @@ export class ReviewService {
       for (const item of [...items].sort((a, b) => a.orderIndex - b.orderIndex || a.id.localeCompare(b.id))) {
         const position = index++;
         const decision = item.decisionLog.at(-1);
-        const version = input.mode === "original" ? 1 : decision!.baseVersion;
+        const version = input.mode === "original" ? 1 : input.mode === "current" ? item.version : decision!.baseVersion;
         const row = versions.find(row => row.itemId === item.id && row.version === version);
         if (!row) throw reviewError("NOT_FOUND", "The exact export version is unavailable");
         const resourceId = input.mode === "original" && row.originalResourceId ? row.originalResourceId :
@@ -882,7 +880,10 @@ export class ReviewService {
           if (!filterVisibleWorkbenchItems([row], options.type ?? "all", options.query ?? "").length) { cursor.continue(); return; }
           if (items.length === limit) { hasMore = true; return; }
           const { id, batchId, title, subtitle, type, version, status, orderIndex, provenanceTags, userTags, agentGuidance, lineage, reworkOrigin } = row;
-          items.push({ id, batchId, title, subtitle, type, version, status, orderIndex, provenanceTags, userTags, agentGuidance, lineage, reworkOrigin, groupMode: row.groupMode, compareWithItemId: row.compareWithItemId, videoPayload: row.videoPayload, hasManualRevision: row.revisionIds.length > 0 });
+          items.push({ id, batchId, title, subtitle, type, version, status, orderIndex, provenanceTags, userTags, agentGuidance, lineage, reworkOrigin,
+            incomingRevision: row.incomingRevision,
+            updatedAt: row.updatedAt ?? Math.max(row.createdAt, ...row.decisionLog.map(decision => decision.decidedAt)),
+            groupMode: row.groupMode, compareWithItemId: row.compareWithItemId, videoPayload: row.videoPayload, hasManualRevision: row.revisionIds.length > 0 });
           lastKey = cursor.key;
           cursor.continue();
         };
@@ -943,7 +944,6 @@ export class ReviewService {
             return;
           }
           if (!input.branchAdoption && before.node.revision !== input.expectedNodeRevision) throw reviewError("CONFLICT", `Review node is at revision ${before.node.revision}`);
-          if (input.branchOnly && !before.node.branch) throw reviewError("INVALID_PARAMS", "Full results require a task branch");
           if (before.node.trashedAt) throw reviewError("CONFLICT", "Restore this review node from the recycle bin before changing its content");
           let actions: readonly Action[];
           let relatedSequence: number | undefined;
@@ -987,13 +987,13 @@ export class ReviewService {
           const persist = () => {
             try {
               this.persistState(transaction, before.node, before.state, reduced.state, retainedVersions,
-                reduced.contentVersions, reduced.changedItemIds, reduced.contentIntegrityItemIds, abort);
-              if (input.branchOnly) for (const item of reduced.contentVersions) {
+                reduced.contentVersions, reduced.changedItemIds, reduced.contentIntegrityItemIds, abort, input.actor === "agent" && !input.history);
+              if (input.validateResourceOwnership) for (const item of reduced.contentVersions) {
                 const resourceId = workbenchContentResourceId(item.content);
                 if (!resourceId || resources?.some(resource => resource.id === resourceId)) continue;
                 const references = transaction.objectStore("resourceRefs").index("resource").getAll(resourceId) as IDBRequest<Array<{ nodeId: string }>>;
                 references.onsuccess = () => {
-                  if (!references.result.some(reference => reference.nodeId === before.node.id)) abort(reviewError("CONFLICT", "Branch output resource is not retained by this branch; import it explicitly with files"));
+                  if (!references.result.some(reference => reference.nodeId === before.node.id)) abort(reviewError("CONFLICT", "Output resource is not retained by this task; import it explicitly with files"));
                 };
               }
               for (const resource of resources ?? []) transaction.objectStore("fileResources").add(resource);
@@ -1034,7 +1034,10 @@ export class ReviewService {
                     return { undoActor: stacks.undo.at(-1)?.actor, redoActor: stacks.redo.at(-1)?.actor };
                   })()
                 : actions.length ? { undoActor: input.actor } : before.node.history;
-              transaction.objectStore("reviewNodes").put({ ...before.node, revision: result.revision, updatedAt: Date.now(), history: {
+              const incoming = input.actor === "agent" && !input.history && (
+                reduced.contentVersions.some(item => !retainedVersions.some(row => row.itemId === item.id && row.version === item.version)) ||
+                reduced.state.batches.some(batch => !before.state.batches.some(previous => previous.id === batch.id)));
+              transaction.objectStore("reviewNodes").put({ ...before.node, incomingRevision: incoming ? result.revision : before.node.incomingRevision, revision: result.revision, updatedAt: Date.now(), history: {
                 undoActor: history?.undoActor, redoActor: history?.redoActor,
               } });
               transaction.objectStore("reviewJournal").add(entry);
@@ -1151,7 +1154,12 @@ export class ReviewService {
 
   private persistState(transaction: IDBTransaction, node: ReviewNode, before: WorkbenchProjectState,
     after: WorkbenchProjectState, versions: readonly VersionRow[], contentVersions: readonly WorkbenchItem[],
-    changedItemIds: ReadonlySet<string>, contentIntegrityItemIds: ReadonlySet<string>, abort: (error: unknown) => void): void {
+    changedItemIds: ReadonlySet<string>, contentIntegrityItemIds: ReadonlySet<string>, abort: (error: unknown) => void, incoming = false): void {
+    const freshItems = contentVersions.filter(item => !versions.some(row => row.itemId === item.id && row.version === item.version));
+    const changedBatches = new Set(freshItems.map(item => item.batchId));
+    for (const batch of after.batches) if (!before.batches.some(previous => previous.id === batch.id)) changedBatches.add(batch.id);
+    const incomingItems = new Set(incoming ? freshItems.map(item => item.id) : []);
+    const activityTime = Date.now();
     const checkOwner = (storeName: string, id: string, feedback?: WorkbenchProjectState["feedback"][number]) => {
       const existing = transaction.objectStore(storeName).get(id);
       existing.onsuccess = () => {
@@ -1171,7 +1179,18 @@ export class ReviewService {
         store.put({ ...row, nodeId: node.id });
       }
     };
-    sync("reviewBatches", before.batches, after.batches);
+    // Preserve notification watermarks across undo/redo; they are not content history.
+    const batchStore = transaction.objectStore("reviewBatches");
+    for (const batch of before.batches) if (!after.batches.some(next => next.id === batch.id)) batchStore.delete(batch.id);
+    for (const batch of after.batches) {
+      const current = batchStore.get(batch.id);
+      current.onsuccess = () => {
+        if (current.result && current.result.nodeId !== node.id) { abort(reviewError("CONFLICT", "Review batch belongs to another node")); return; }
+        batchStore.put({ ...batch, nodeId: node.id,
+          contentUpdatedAt: changedBatches.has(batch.id) ? activityTime : current.result?.contentUpdatedAt,
+          incomingRevision: incoming && changedBatches.has(batch.id) ? node.revision + 1 : current.result?.incomingRevision });
+      };
+    }
     sync("reviewFeedback", before.feedback, after.feedback);
     // Handoff identity is handoffId in the reused core model.
     const handoffs = transaction.objectStore("reviewHandoffs");
@@ -1182,16 +1201,25 @@ export class ReviewService {
     const handoffIds = new Set(after.handoffs.map(row => row.handoffId));
     for (const row of before.handoffs) if (!handoffIds.has(row.handoffId)) handoffs.delete(row.handoffId);
     const items = transaction.objectStore("reviewItems");
+    const feedbackChanged = new Set<string>();
+    const previousFeedback = new Map(before.feedback.map(feedback => [feedback.id, feedback]));
+    const nextFeedback = new Map(after.feedback.map(feedback => [feedback.id, feedback]));
+    for (const feedback of [...before.feedback, ...after.feedback]) {
+      if (!same(previousFeedback.get(feedback.id), nextFeedback.get(feedback.id))) feedbackChanged.add(feedback.itemId);
+    }
+    const updatedAt = Date.now();
     const beforeItems = new Map(before.items.map(item => [item.id, item]));
     const afterIds = new Set(after.items.map(item => item.id));
     for (const item of before.items) if (!afterIds.has(item.id)) items.delete(item.id);
     for (const item of after.items) {
-      if (!changedItemIds.has(item.id)) continue;
+      if (!changedItemIds.has(item.id) && !feedbackChanged.has(item.id)) continue;
       const previous = beforeItems.get(item.id);
       const nextRow = persistedItemState(item);
-      if (!same(previous && persistedItemState(previous), nextRow)) {
+      if (feedbackChanged.has(item.id) || !same(previous && persistedItemState(previous), nextRow)) {
         checkOwner("reviewItems", item.id);
-        items.put({ ...nextRow, nodeId: node.id });
+        const current = items.get(item.id);
+        current.onsuccess = () => items.put({ ...nextRow, updatedAt, nodeId: node.id,
+          incomingRevision: incomingItems.has(item.id) ? node.revision + 1 : current.result?.incomingRevision });
       }
     }
     const retained = new Map(versions.map(row => [JSON.stringify([row.itemId, row.version]), row]));

@@ -85,7 +85,7 @@ const reviewNode = (): OutputSchemaNode => objectSchema({
 const reviewCommit = (): OutputSchemaNode => objectSchema({ nodeId: stringSchema(), revision: integerSchema(0), sequence: integerSchema(0), replayed: booleanSchema() }, ["nodeId", "revision", "sequence", "replayed"]);
 const reviewExportStatus = (): OutputSchemaNode => objectSchema({ exportId: stringSchema(), nodeId: stringSchema(), nodeRevision: integerSchema(0),
   state: enumSchema(["queued", "preparing", "ready", "failed", "cancelled"]), completedFiles: integerSchema(0), totalFiles: integerSchema(1),
-  manifest: objectSchema({ schemaVersion: enumSchema([1]), exportId: stringSchema(), nodeId: stringSchema(), nodeRevision: integerSchema(0), mode: enumSchema(["original", "adopted", "node-package", "version"]), scope: enumSchema(["node", "filtered", "selected"]), createdAt: numberSchema(0),
+  manifest: objectSchema({ schemaVersion: enumSchema([1]), exportId: stringSchema(), nodeId: stringSchema(), nodeRevision: integerSchema(0), mode: enumSchema(["original", "current", "adopted", "node-package", "version"]), scope: enumSchema(["node", "filtered", "selected"]), createdAt: numberSchema(0),
     entries: arraySchema(objectSchema({ itemId: stringSchema(), itemVersion: integerSchema(1), resourceId: stringSchema(), relativePath: stringSchema(), size: integerSchema(0), sha256: stringSchema(), serialization: enumSchema(["utf8-text", "lossless-json"]) }, ["relativePath", "size", "sha256"])),
     archive: objectSchema({ relativePath: stringSchema(), size: integerSchema(0), sha256: stringSchema() }, ["relativePath", "size", "sha256"]),
   }, ["schemaVersion", "exportId", "nodeId", "nodeRevision", "mode", "scope", "createdAt", "entries"]),
@@ -1059,6 +1059,7 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "review.nodes.create": reviewNode(),
   "review.branches.create": objectSchema({ node: reviewNode(), target: openObject(), workspaceRevision: integerSchema(0), replayed: booleanSchema() }, ["node", "target", "workspaceRevision", "replayed"]),
   "review.branches.compare": objectSchema({ branch: reviewNode(), source: reviewNode(), items: arraySchema(openObject()), idMap: arraySchema(openObject()) }, ["branch", "source", "items", "idMap"]),
+  "review.items.submit": reviewCommit(),
   "review.branches.submit": reviewCommit(),
   "review.directory.get": objectSchema({ revision: integerSchema(0), groups: arraySchema(reviewGroup()), canUndo: booleanSchema(), canRedo: booleanSchema() }, ["revision", "groups", "canUndo", "canRedo"]),
   "review.directory.apply": reviewDirectoryCommit(),
@@ -1066,7 +1067,7 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "review.get": objectSchema({ node: reviewNode(), item: openObject(), feedback: arraySchema(openObject()), items: arraySchema(objectSchema({
     id: stringSchema(), batchId: stringSchema(), title: stringSchema(), subtitle: stringSchema(), type: enumSchema(["image", "text", "data", "video", "model3d"]),
     version: integerSchema(1), status: enumSchema(["pending", "kept", "discarded", "modified", "rework"]), orderIndex: integerSchema(0),
-    provenanceTags: arraySchema(openObject()), userTags: arraySchema(stringSchema()), agentGuidance: openObject(), lineage: openObject(), reworkOrigin: openObject(), hasManualRevision: booleanSchema(),
+    provenanceTags: arraySchema(openObject()), userTags: arraySchema(stringSchema()), agentGuidance: openObject(), lineage: openObject(), reworkOrigin: openObject(), updatedAt: numberSchema(0), hasManualRevision: booleanSchema(),
   }, ["id", "batchId", "title", "type", "version", "status", "orderIndex"]), { maxItems: 500 }), cursor: stringSchema() }, ["node"]),
   "review.ingest": reviewCommit(),
   "review.export.prepare": reviewExportStatus(),

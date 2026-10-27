@@ -325,6 +325,7 @@ describe("workbench round 3 batch C: feedback reliability", () => {
   test("text range uses the second repeated phrase, tag ids, and keeps its version", async () => {
     const page = launched.page;
     await selectTreeItem(page, "反馈语料");
+    await page.getByRole("button", { name: "原文与批注", exact: true }).click();
     const body = page.locator(`[data-testid='text-body'][data-item-id='${TEXT_ID}']`);
     await body.waitFor({ timeout: 15_000 });
 

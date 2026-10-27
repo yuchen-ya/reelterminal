@@ -10,8 +10,8 @@ export function exportValue<T>(reply: { ok: true; value: T } | { ok: false; erro
   if (!reply.ok) throw Object.assign(reviewError(reply.error.code, reply.error.message), { details: { reason: reply.error.reason } });
   return reply.value;
 }
-export type ReviewExportRequest = Omit<Parameters<typeof reviewService.freezeExport>[0], "mode"> & { mode: "original" | "adopted" | "node-package" | "version" };
-export async function prepareReviewExport(input: ReviewExportRequest): Promise<ReviewExportStatus> {
+export type ReviewExportRequest = Omit<Parameters<typeof reviewService.freezeExport>[0], "mode"> & { mode: "original" | "current" | "adopted" | "node-package" | "version" };
+export async function prepareReviewExport(input: ReviewExportRequest & { name?: string }): Promise<ReviewExportStatus> {
   if (input.mode === "node-package") {
     if (input.scope !== "node") throw reviewError("INVALID_PARAMS", "A node package always includes the entire node and retained history");
     const archive = await reviewService.archiveNode(input.target, input.expectedNodeRevision);
@@ -21,7 +21,7 @@ export async function prepareReviewExport(input: ReviewExportRequest): Promise<R
     }));
   }
   const plan = await reviewService.freezeExport({ ...input, mode: input.mode });
-  return exportValue(await native().prepare(plan));
+  return exportValue(await native().prepare({ ...plan, name: input.name ?? plan.name }));
 }
 export async function reviewExportStatus(exportId: string, nodeId: string): Promise<ReviewExportStatus> {
   return exportValue(await native().status({ exportId, nodeId }));

@@ -1,0 +1,30 @@
+.review-markdown .wmde-markdown,
+.review-markdown .w-md-editor {
+  --color-fg-default: var(--fg);
+  --color-fg-muted: var(--fg-3);
+  --color-canvas-default: var(--bg);
+  --color-canvas-subtle: var(--bg-2);
+  --color-border-default: var(--border);
+  --color-border-muted: var(--border);
+  --color-accent-fg: var(--accent);
+  --md-editor-font-family: inherit;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+.review-markdown .wmde-markdown {
+  font-size: 14px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.review-markdown .wmde-markdown :is(h1, h2, h3, h4, h5, h6, p) { color: inherit; }
+.review-markdown .wmde-markdown blockquote { color: var(--fg-2); }
+
+.review-markdown .wmde-markdown ul { list-style: disc; }
+.review-markdown .wmde-markdown ol { list-style: decimal; }
+.review-markdown .wmde-markdown pre { overflow-x: auto; }
+.review-markdown .wmde-markdown table { max-width: 100%; overflow-x: auto; }
+.review-markdown .wmde-markdown img { max-width: 100%; }
+.review-markdown .w-md-editor-toolbar { background: var(--bg-2); }
+.review-markdown .w-md-editor-toolbar li > button { color: var(--fg-2); }

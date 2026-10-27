@@ -11,7 +11,7 @@
  * UTF-16 code-unit lengths accumulated, so whitespace, newlines, emoji and
  * repeated phrases all resolve to the real half-open interval [start, end).
  */
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import type { JSX } from "react";
 import type React from "react";
 import {
@@ -33,6 +33,7 @@ import type {
   WorkbenchMutationResult,
 } from "../types";
 import { selectionOffsetsInRange } from "../text-range-offset";
+const ReviewMarkdown = lazy(() => import("./ReviewMarkdown"));
 
 export interface TextCorpusWorkspaceProps {
   readonly currentItem: WorkbenchItemView;
@@ -112,6 +113,7 @@ export function TextCorpusWorkspace({
   const [rangeSuggestionInput, setRangeSuggestionInput] = useState<string>("");
   const [rangeTagIds, setRangeTagIds] = useState<readonly string[]>([]);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [readingMode, setReadingMode] = useState<"markdown" | "source">("markdown");
 
   const runMutation = async (
     label: string,
@@ -236,10 +238,17 @@ export function TextCorpusWorkspace({
       {/* Top Sub-bar */}
       <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-border bg-bg-1 px-3">
         <div className="flex items-center gap-2 text-xs text-fg-2">
-          <span className="font-semibold text-fg">语料多行联审视图 ({batchTextItems.length} 条)</span>
+          <span className="font-semibold text-fg">文本审阅 ({batchTextItems.length} 条)</span>
+          <div className="flex gap-1" role="group" aria-label="文本显示方式">
+            {(["markdown", "source"] as const).map(mode => <button key={mode} type="button"
+              aria-pressed={readingMode === mode} onClick={() => { setReadingMode(mode); setActiveRange(null); }}
+              className={`rounded px-2 py-1 ${readingMode === mode ? "bg-bg-3 text-fg" : "text-fg-3"}`}>
+              {mode === "markdown" ? "阅读" : "原文与批注"}
+            </button>)}
+          </div>
           <span
             className="inline-flex cursor-help items-center text-fg-3 hover:text-fg"
-            title="点击左侧行号槽选整条（蓝色/翠绿指示条），直接拖选正文锁定 UTF-16 字符区间（琥珀色高亮）"
+            title="阅读模式显示 Markdown 排版；切换“原文与批注”后可拖选原文添加精确区间批注。"
           >
             <Info className="h-3.5 w-3.5" />
             <span className="sr-only">
@@ -458,8 +467,10 @@ export function TextCorpusWorkspace({
                 <div className="mb-2 flex select-none items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2 text-xs">
                     <span className="truncate font-semibold text-fg">{item.title}</span>
-                    <span className="text-fg-3">·</span>
-                    <span className="truncate text-fg-2">{payload.speakerOrContext}</span>
+                    {payload.speakerOrContext.trim() && <>
+                      <span className="text-fg-3">·</span>
+                      <span className="truncate text-fg-2">{payload.speakerOrContext}</span>
+                    </>}
                     <span className="text-fg-3">·</span>
                     <span className="font-mono text-[11px] text-fg-3">
                       {payload.currentText.length} 字符
@@ -542,20 +553,12 @@ export function TextCorpusWorkspace({
                 {/* Paragraph Body or Inline Editor (Respects keyboard focus so Delete won't discard item!) */}
                 {isEditing ? (
                   <div className="mt-1 space-y-2" onClick={(e) => e.stopPropagation()}>
-                    <textarea
-                      value={draftText}
-                      onChange={(e) =>
-                        setDrafts((prev) => ({ ...prev, [rowKey]: e.target.value }))
-                      }
-                      onKeyDown={(e) => {
-                        // Backspace/Delete must only edit text here — never
-                        // bubble up to batch discard shortcuts.
-                        e.stopPropagation();
-                      }}
-                      rows={3}
-                      autoFocus
-                      className="w-full select-text rounded-lg border border-status-info/60 bg-bg p-3 text-sm leading-relaxed text-fg focus:border-status-info focus:outline-none"
-                    />
+                    <div onKeyDown={event => event.stopPropagation()}>
+                      <Suspense fallback={<p className="p-3 text-xs text-fg-3">正在载入编辑器…</p>}>
+                        <ReviewMarkdown source={draftText} editing
+                          onChange={value => setDrafts(previous => ({ ...previous, [rowKey]: value }))} />
+                      </Suspense>
+                    </div>
                     <div className="flex items-center justify-end gap-3 text-xs text-fg-3">
                       <span className="sr-only">
                         编辑框聚焦时：退格/Delete 仅删改文字，绝不触发丢弃素材快捷键；保存后生成新版本 v
@@ -580,12 +583,20 @@ export function TextCorpusWorkspace({
                       </div>
                     </div>
                   </div>
+                ) : readingMode === "markdown" ? (
+                  <div data-testid="text-body" data-mode="markdown" data-item-id={item.id}
+                    className="mx-auto max-w-[90ch] select-text rounded-lg border border-border bg-bg p-5">
+                    <Suspense fallback={<p className="text-xs text-fg-3">正在载入正文…</p>}>
+                      <ReviewMarkdown source={payload.currentText} />
+                    </Suspense>
+                  </div>
                 ) : (
                   <div
                     onMouseUp={(e) => handleBodyMouseUp(item, payload, e)}
                   data-testid="text-body"
+                  data-mode="source"
                   data-item-id={item.id}
-                    className="cursor-text select-text whitespace-pre-line rounded-lg border border-border bg-bg p-3 text-[14px] leading-[1.7] text-fg selection:bg-status-warning/35 selection:text-fg"
+                    className="cursor-text select-text whitespace-pre-wrap rounded-lg border border-border bg-bg p-3 text-[14px] leading-[1.7] text-fg selection:bg-status-warning/35 selection:text-fg"
                   >
                     {payload.currentText}
                   </div>

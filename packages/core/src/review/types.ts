@@ -18,6 +18,7 @@ export interface ReviewBranchOrigin {
 }
 
 export interface ReviewNode {
+  readonly incomingRevision?: number;
   readonly id: string;
   readonly workspaceId: string;
   readonly name: string;
@@ -106,7 +107,7 @@ export interface ReviewExportManifest {
   readonly exportId: string;
   readonly nodeId: string;
   readonly nodeRevision: number;
-  readonly mode: "original" | "adopted" | "node-package" | "version";
+  readonly mode: "original" | "current" | "adopted" | "node-package" | "version";
   readonly scope: "node" | "filtered" | "selected";
   readonly createdAt: number;
   /** Node packages additionally carry validated portable state, separate from media entries. */

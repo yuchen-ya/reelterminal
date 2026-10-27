@@ -118,6 +118,25 @@ describe("workbench slice against the live project store", () => {
     useProjectStore.getState().createNewProject("Workbench slice");
   });
 
+  it("commits a shared rework reason atomically, preserves existing issues, and restores a group with one undo", async () => {
+    const store = useProjectStore.getState;
+    expect((await store().ingestWorkbenchBatch({ batchId: "b1", name: "Group", items: [textItem("a", "A"), textItem("b", "B")] })).ok).toBe(true);
+    const existing: WorkbenchFeedback = { id: "existing", itemId: "a", itemVersion: 1, text: "Existing issue", referencedTagIds: [], state: "confirmed", createdAt: 1, updatedAt: 1 };
+    expect((await store().saveWorkbenchFeedback(existing)).ok).toBe(true);
+    expect((await store().decideWorkbenchItems("b1", [{ itemId: "a", decision: "rework" }, { itemId: "b", decision: "rework" }], "human", "共同修改要求")).ok).toBe(true);
+    expect(state().items.map(item => item.status)).toEqual(["rework", "rework"]);
+    expect(state().feedback).toHaveLength(3);
+    expect(state().feedback).toContainEqual(existing);
+    await store().undo();
+    expect(state().items.map(item => item.status)).toEqual(["pending", "pending"]);
+    expect(state().feedback).toEqual([existing]);
+    await store().redo();
+    expect((await store().revertWorkbenchItems(["a", "b"])).ok).toBe(true);
+    expect(state().items.map(item => item.status)).toEqual(["pending", "pending"]);
+    await store().undo();
+    expect(state().items.map(item => item.status)).toEqual(["rework", "rework"]);
+  });
+
   it("ingests, decides, revises and undoes through the shared history", async () => {
     const input: WorkbenchIngestInput = {
       batchId: "b1",

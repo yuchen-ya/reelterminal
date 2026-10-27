@@ -30,6 +30,45 @@ function ingest(batchId: string, itemId: string, text = "original") {
 }
 
 describe("independent review transactions", () => {
+  it("submits guarded versions in the same task without creating a branch and replays the request", async () => {
+    const { service, target, batchId, itemId } = await setup();
+    await service.commit({ target, expectedNodeRevision: 0, requestId: crypto.randomUUID(), actor: "agent", label: "Input", request: {},
+      build: state => actions(buildWorkbenchIngestActions(state, ingest(batchId, itemId))) });
+    const current = (await service.getItem(target, itemId)).item;
+    if (current.content.type !== "text") throw new Error("Expected text fixture");
+    const input = { target, expectedNodeRevision: 1, requestId: crypto.randomUUID(), request: { text: "# Revised" },
+      results: [{ itemId, expectedItemVersion: 1, content: { ...current.content, versions: [{ ...current.content.versions[0], text: "# Revised" }] } }] };
+    expect(await service.submitResults(input)).toMatchObject({ nodeId: target.nodeId, revision: 2 });
+    expect(await service.submitResults(input)).toMatchObject({ replayed: true });
+    expect((await service.listNodes(target)).nodes).toHaveLength(1);
+    expect((await service.getItem(target, itemId)).item).toMatchObject({ id: itemId, version: 2, status: "pending" });
+    expect((await service.overview(target)).batches[0].incomingRevision).toBe(2);
+    expect((await service.getItem(target, itemId)).item.incomingRevision).toBe(2);
+    await expect(service.submitResults({ ...input, requestId: crypto.randomUUID(), expectedNodeRevision: 2 })).rejects.toMatchObject({ code: "CONFLICT" });
+    await service.history({ target, expectedNodeRevision: 2, requestId: crypto.randomUUID(), actor: "agent", direction: "undo" });
+    expect((await service.getItem(target, itemId)).item.version).toBe(1);
+    expect((await service.overview(target)).batches[0].incomingRevision).toBe(2);
+    await service.commit({ target, expectedNodeRevision: 3, requestId: crypto.randomUUID(), actor: "human", label: "Edit", request: {},
+      build: state => actions(buildWorkbenchTextRevisionActions(state, itemId, "Manual edit")) });
+    expect((await service.overview(target)).batches[0].incomingRevision).toBe(2);
+  });
+
+  it("persists feedback modification time for unloaded summaries and updates it on undo", async () => {
+    const { service, target, batchId, itemId } = await setup();
+    await service.commit({ target, expectedNodeRevision: 0, requestId: crypto.randomUUID(), actor: "human", label: "Input", request: {},
+      build: state => actions(buildWorkbenchIngestActions(state, ingest(batchId, itemId))) });
+    const before = (await service.listItems(target)).items[0].updatedAt!;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(before + 1000);
+    try {
+      const feedback = { id: crypto.randomUUID(), itemId, itemVersion: 1, text: "Note", state: "confirmed", referencedTagIds: [], createdAt: Date.now(), updatedAt: Date.now() };
+      await service.commit({ target, expectedNodeRevision: 1, requestId: crypto.randomUUID(), actor: "human", label: "Note", request: {},
+        readScope: { itemIds: [itemId] }, build: () => [{ type: "workbench/feedback.save", id: crypto.randomUUID(), timestamp: Date.now(), params: { feedback } }] });
+      expect((await service.listItems(target)).items[0].updatedAt).toBe(before + 1000);
+      clock.mockReturnValue(before + 2000);
+      await service.history({ target, expectedNodeRevision: 2, requestId: crypto.randomUUID(), actor: "human", direction: "undo" });
+      expect((await service.listItems(target)).items[0].updatedAt).toBe(before + 2000);
+    } finally { clock.mockRestore(); }
+  });
   it("resolves only titles owned by the requested node, including missing references", async () => {
     const { service, target, batchId, itemId } = await setup();
     const payload = ingest(batchId, itemId);
@@ -143,6 +182,20 @@ describe("independent review transactions", () => {
     expect(adopted.entries[0].text).toBe("Adopted");
     await expect(service.freezeExport({ ...input, mode: "original" })).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(service.freezeExport({ ...input, expectedNodeRevision: 4, mode: "original", scope: "selected", itemIds: [crypto.randomUUID()] })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+  it("exports the current saved version even before adoption and keeps frozen output stable", async () => {
+    const { service, target, batchId, itemId } = await setup();
+    await service.commit({ target, expectedNodeRevision: 0, requestId: crypto.randomUUID(), actor: "human", label: "Input", request: {},
+      build: state => actions(buildWorkbenchIngestActions(state, ingest(batchId, itemId, "Original"))) });
+    const input = { target, exportId: crypto.randomUUID(), mode: "current" as const, scope: "selected" as const, itemIds: [itemId] };
+    const pending = await service.freezeExport({ ...input, expectedNodeRevision: 1 });
+    expect(pending.entries).toMatchObject([{ itemVersion: 1, text: "Original" }]);
+    await service.commit({ target, expectedNodeRevision: 1, requestId: crypto.randomUUID(), actor: "human", label: "Revise", request: {},
+      build: state => actions(buildWorkbenchTextRevisionActions(state, itemId, "Saved edit")) });
+    const current = await service.freezeExport({ ...input, exportId: crypto.randomUUID(), expectedNodeRevision: 2 });
+    expect(current.entries).toMatchObject([{ itemVersion: 2, text: "Saved edit" }]);
+    expect(pending.entries[0].text).toBe("Original");
+    await expect(service.freezeExport({ ...input, expectedNodeRevision: 1 })).rejects.toMatchObject({ code: "CONFLICT" });
   });
   it("serializes two clients by node CAS, persists one receipt and replays the same intent", async () => {
     const { service, target, batchId, itemId } = await setup();

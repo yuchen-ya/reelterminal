@@ -1,5 +1,6 @@
 {
   "review": {
+    "trashConfirm": { "title": "将“{{name}}”移到回收站？", "description": "该任务的所有批次、条目和审阅记录将一并移入回收站，可以还原。" },
     "manageGroups": "管理分类", "finishGroupManagement": "完成管理",
     "migration": {
       "title": "迁移旧项目工作台", "description": "选择已有项目工作区，先检查旧工作台和文件可用性。可读媒体会复制为独立审阅文件，原项目内容保留为只读备份。",
@@ -13,7 +14,7 @@
       "readonly": "此项目工作台已迁移；下方旧内容仅供只读检查，审阅与返工请在独立节点完成。", "oldVersion": "旧版应用仍可能改写源备份，且不能读取独立节点。重新预览可检测源变化，再明确选择作为新批次导入；不会自动覆盖或反向同步。"
     },
     "purge": {
-      "title": "永久清空节点", "description": "永久删除此节点及全部保留版本、反馈、交接快照、处理步骤与撤销历史，无法撤销。需要保留记录时，请先备份节点。",
+      "title": "永久删除任务", "description": "永久删除此节点及全部保留版本、反馈、交接快照、处理步骤与撤销历史，无法撤销。需要保留记录时，请先备份节点。",
       "references": "当前文件引用：内容版本 {{versions}} · 处理步骤 {{steps}} · 交接快照 {{handoffs}} · 日志 {{journal}}。只有同时删除下方确认的历史，才会解除本节点引用。",
       "shared": "保留：其他节点仍引用", "external": "保留外部原件", "release": "删除历史后解除引用",
       "cleanup": "最多 {{bytes}} B 的受管文件将满足回收条件。实际回收在之后启动时、24 小时孤儿宽限期后进行，不会立即释放磁盘空间；项目独立副本保持完整。",
@@ -71,8 +72,8 @@
     "kind": { "model3d": "3D 模型", "image": "图片", "video": "视频", "text": "文字", "data": "数据表" },
     "agentAccessLabel": "允许 Agent 修改审阅", "exportMenu": "\u5bfc\u51fa",
     "copyTaskInstructions": "复制「{{name}}」的 Agent 启动提示词",
-    "startupPrompt": "请通过 ReelTerminal 独立审阅工作台完成我的请求。\nCLI 前缀（所有子命令均接在此前缀后）：{{cli}}\n{{task}}目标：{{target}}\n先运行 review describe 获取操作流程与发现入口。固定此任务目标，不随 GUI 选择切换；重启或冲突后重新核对身份和原任务目标。\n收到具体编辑任务后按 describe 创建或继续同一任务分支；仅复制此提示词不创建分支。",
-    "branch": {"label": "任务分支", "listTitle": "任务分支", "compareTitle": "比较并采纳分支结果", "baseRevision": "起点修订", "adoptHint": "选择要采纳的内容结果。保留源条目的决定与反馈，采纳时会再次检查源条目是否变化。", "select": "选择", "loading": "正在载入分支比较…", "refresh": "刷新比较", "adoptSelected": "采纳所选结果", "empty": "暂无任务分支。Agent 开始具体编辑任务时创建分支。", "state": {"changed": "内容已修改", "added": "新增结果", "unchanged": "未修改", "adopted": "已采纳", "conflict": "源条目已变化"}}
+    "startupPrompt": "请通过 ReelTerminal 独立审阅工作台完成我的请求。\nCLI 前缀（所有子命令均接在此前缀后）：{{cli}}\n{{task}}目标：{{target}}\n先运行 review describe 获取操作流程与发现入口。固定此任务目标，不随 GUI 选择切换；重启或冲突后重新核对身份和原任务目标。\n始终在这个任务内继续工作：新增内容放入合适的父节点/分组，返工更新原条目版本，不为新批次、不同方案或重试创建任务或分支。只有我明确要求一个独立目标时才新建任务。分组可按类型、批次、阶段等组织树；备注有内容才填写。方案和说明使用 Markdown 标题、列表、表格和代码块。",
+    "branch": {"label": "历史关联", "listTitle": "历史任务关联", "compareTitle": "比较并采纳分支结果", "baseRevision": "起点修订", "adoptHint": "选择要采纳的内容结果。保留源条目的决定与反馈，采纳时会再次检查源条目是否变化。", "select": "选择", "loading": "正在载入分支比较…", "refresh": "刷新比较", "adoptSelected": "采纳所选结果", "empty": "没有历史关联任务。新内容和返工请继续提交到当前任务。", "state": {"changed": "内容已修改", "added": "新增结果", "unchanged": "未修改", "adopted": "已采纳", "conflict": "源条目已变化"}}
   },
   "projectMediaFilters": {
     "scope": "查看范围",

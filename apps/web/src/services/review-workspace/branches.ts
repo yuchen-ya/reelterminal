@@ -53,8 +53,8 @@ export function prepareReviewBranch(archive: ReviewNodeArchive, taskId: string) 
 
 function sameItem(a: WorkbenchItem, b: WorkbenchItem): boolean {
   // Undo retains allocated content versions; the allocation ceiling is not a user edit.
-  const { versionCeiling: _a, ...left } = a;
-  const { versionCeiling: _b, ...right } = b;
+  const { versionCeiling: _a, updatedAt: _updatedA, incomingRevision: _incomingA, ...left } = a;
+  const { versionCeiling: _b, updatedAt: _updatedB, incomingRevision: _incomingB, ...right } = b;
   return sameReviewValue(left, right);
 }
 

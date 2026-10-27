@@ -4,18 +4,19 @@ import type { ReviewNode } from "@reelterminal/core/review/types";
 import { ReviewNodeSidebar } from "./ReviewNodeSidebar";
 
 afterEach(cleanup);
-it("copies the hovered task without selecting it", () => {
+it("copies a task from its menu without selecting it", () => {
   const node: ReviewNode = { id: crypto.randomUUID(), workspaceId: crypto.randomUUID(), name: "动作检查",
     pinned: false, revision: 0, createdAt: 1, updatedAt: 1 };
   const onSelectNode = vi.fn();
   const onCopyInstructions = vi.fn(async () => {});
   render(<ReviewNodeSidebar open onToggleOpen={vi.fn()} nodes={[node]} selectedId={null}
-    onSelectNode={onSelectNode} onCopyInstructions={onCopyInstructions}
+    onSelectNode={onSelectNode} onUpdateNode={vi.fn()} onRenameNode={vi.fn()} onPurgeNode={vi.fn()} onCopyInstructions={onCopyInstructions}
     directory={{ groups: [], canUndo: false, canRedo: false }} view="recent" onSelectView={vi.fn()}
     query="" onQueryChange={vi.fn()} groupId="" onSelectGroup={vi.fn()}
     onCreateNode={vi.fn()} onCreateGroup={vi.fn()} onRenameGroup={vi.fn()} onRemoveGroup={vi.fn()}
     onDirectoryHistory={vi.fn()} busy={false} />);
-  fireEvent.click(screen.getByRole("button", { name: /Copy Agent instructions for 动作检查/ }));
+  fireEvent.contextMenu(screen.getByText("动作检查"));
+  fireEvent.click(screen.getByRole("menuitem", { name: /Copy Agent instructions for 动作检查/ }));
   expect(onCopyInstructions).toHaveBeenCalledWith(node);
   expect(onSelectNode).not.toHaveBeenCalled();
 });

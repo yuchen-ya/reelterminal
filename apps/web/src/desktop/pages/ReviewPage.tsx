@@ -58,17 +58,16 @@ export function ReviewPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarUserToggled, setSidebarUserToggled] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const handleToggleSidebar = (open: boolean) => {
-    setSidebarUserToggled(true);
     setSidebarOpen(open);
   };
 
   const [legacy, setLegacy] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
-  const [purgeOpen, setPurgeOpen] = useState(false);
+  const [purgeTarget, setPurgeTarget] = useState<ReviewContext["target"] | null>(null);
+  const [trashRequest, setTrashRequest] = useState<{ node: ReviewNode; revision: number } | null>(null);
   const [migrationOpen, setMigrationOpen] = useState(false);
   const [generation, setGeneration] = useState(0);
   const [rename, setRename] = useState<{
@@ -242,10 +241,6 @@ export function ReviewPage() {
     else setCopied(true);
   };
 
-  const update = (patch: Extract<DirectoryCommand, { kind: "node.update" }>["patch"]) => {
-    if (selected) void mutate([{ kind: "node.update", nodeId: selected.id, patch }]).catch(report);
-  };
-
   const loadMore = async () => {
     if (!context || !cursor) return;
     const page = await reviewService.listNodes(context.target, {
@@ -337,6 +332,23 @@ export function ReviewPage() {
             copiedNodeId={copiedNodeId}
             onCopyInstructions={node => copyInstructions(node).catch(problem => { report(problem); })}
             onSelectNode={chooseNode}
+            onUpdateNode={(nodeId, patch) => {
+              if (patch.trashed) {
+                const node = nodes.find(node => node.id === nodeId);
+                if (node && context) setTrashRequest({ node, revision: context.revision });
+              } else void mutate([{ kind: "node.update", nodeId, patch }]).catch(report);
+            }}
+            onBranches={node => {
+              if (!context) return;
+              const nodeTarget = { ...context.target, nodeId: node.id };
+              if (node.branch) setBranchTarget(nodeTarget); else setBranchListTarget(nodeTarget);
+            }}
+            onRenameNode={node => {
+              if (context) setRename({ kind: "node", id: node.id, name: node.name, revision: context.revision });
+            }}
+            onPurgeNode={node => {
+              if (context) setPurgeTarget({ ...context.target, nodeId: node.id });
+            }}
             directory={directory}
             view={view}
             onSelectView={setView}
@@ -349,7 +361,6 @@ export function ReviewPage() {
               setView("recent");
               setGroupId("");
               chooseNode(result.nodes[0].id);
-              if (!sidebarUserToggled) setSidebarOpen(false);
             }}
             onCreateGroup={async (name) => {
               await mutate([{ kind: "group.create", name }]);
@@ -389,17 +400,6 @@ export function ReviewPage() {
                 <>
                   <ReviewNodeHeader
                     node={selected}
-                    groups={directory.groups}
-                    onUpdateNode={update}
-                    onRenameNode={() =>
-                      setRename({
-                        kind: "node",
-                        id: selected.id,
-                        name: selected.name,
-                        revision: context!.revision,
-                      })
-                    }
-                    onPurgeNode={() => setPurgeOpen(true)}
                     context={context}
                     busy={busy}
                     onToggleAccess={handleToggleAccess}
@@ -416,18 +416,6 @@ export function ReviewPage() {
                   renderHeader={(headerControls) => (
                     <ReviewNodeHeader
                       node={selected}
-                      groups={directory.groups}
-                      onUpdateNode={update}
-                      onRenameNode={() =>
-                        setRename({
-                          kind: "node",
-                          id: selected.id,
-                          name: selected.name,
-                          revision: context!.revision,
-                        })
-                      }
-                      onPurgeNode={() => setPurgeOpen(true)}
-                      onBranches={() => selected.branch ? setBranchTarget(target) : setBranchListTarget(target)}
                       context={context}
                       busy={busy}
                       onToggleAccess={handleToggleAccess}
@@ -441,7 +429,6 @@ export function ReviewPage() {
               <>
                 <ReviewNodeHeader
                   node={null}
-                  groups={directory.groups}
                   context={context}
                   busy={busy}
                   onToggleAccess={handleToggleAccess}
@@ -482,15 +469,17 @@ export function ReviewPage() {
           }}
         />
       )}
-      {purgeOpen && target && (
+      {purgeTarget && (
         <ReviewPurgeDialog
-          target={target}
-          onClose={() => setPurgeOpen(false)}
+          target={purgeTarget}
+          onClose={() => setPurgeTarget(null)}
           onPurged={() => {
-            setPurgeOpen(false);
-            setSelectedId(null);
-            setSelectedNode(null);
-            localStorage.removeItem("reelterminal.review.activeNodeId");
+            setPurgeTarget(null);
+            if (selectedId === purgeTarget.nodeId) {
+              setSelectedId(null);
+              setSelectedNode(null);
+              localStorage.removeItem("reelterminal.review.activeNodeId");
+            }
           }}
         />
       )}
@@ -507,6 +496,19 @@ export function ReviewPage() {
           }}
         />
       )}
+      {trashRequest && <ToolcraftDialog isOpen width={440} purpose="review-trash-confirm" onOpenChange={open => { if (!open && !busy) setTrashRequest(null); }}>
+        <ToolcraftDialogHeader title={t("review.trashConfirm.title", { name: trashRequest.node.name })} onOpenChange={open => { if (!open && !busy) setTrashRequest(null); }} />
+        <div className="space-y-5 p-5" data-testid="review-trash-dialog" data-workbench-modal="true">
+          <p className="text-sm leading-relaxed text-fg-2">{t("review.trashConfirm.description")}</p>
+          <div className="flex justify-end gap-2">
+            <button autoFocus className={wbButton.secondary} disabled={busy} onClick={() => setTrashRequest(null)}>{t("review.cancel")}</button>
+            <button className={`${wbButton.secondary} text-status-error`} disabled={busy} data-testid="review-trash-submit" onClick={() => {
+              void mutate([{ kind: "node.update", nodeId: trashRequest.node.id, patch: { trashed: true } }], trashRequest.revision)
+                .then(() => setTrashRequest(null)).catch(report);
+            }}>{t("review.moveToTrash")}</button>
+          </div>
+        </div>
+      </ToolcraftDialog>}
       {rename && (
         <ToolcraftDialog
           isOpen
@@ -664,6 +666,9 @@ function ReviewNodeEditor({
         <div className="min-h-0 flex-1" inert={state.loading}>
           <WorkbenchPanel
             controller={state.controller}
+            exportTarget={state.overview ? { target, revision: state.overview.node.revision } : undefined}
+            paginated={state.hasPrevious || state.hasNext}
+            pageKey={state.pageNumber}
             independent
             loading={state.loading}
             onImport={() => setImportOpen(true)}

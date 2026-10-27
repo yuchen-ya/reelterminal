@@ -4,6 +4,11 @@ import type { JSX, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronUp, LayoutGrid, PanelLeftOpen } from "lucide-react";
 import type { WorkbenchDecision } from "@reelterminal/core";
+import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
+import { CollectionInteractionContext, type CollectionAction, type CollectionScope } from "../workbench/components/CollectionActions";
+import { useCollectionExport, type CollectionExportTarget } from "../workbench/useCollectionExport";
+import { ReviewExportDialog } from "../workbench/components/ReviewExportDialog";
+import { wbButton } from "../workbench/wb-button";
 import {
   LEGACY_LS_WORKBENCH_ISSUE_WIDTH,
   LEGACY_LS_WORKBENCH_TREE_WIDTH,
@@ -16,7 +21,7 @@ import type {
   WorkbenchController,
   WorkbenchItemView,
 } from "../workbench/types";
-import { useWorkbenchUiStore } from "../../stores/workbench-ui-store";
+import { applyWorkbenchSelection, useWorkbenchUiStore } from "../../stores/workbench-ui-store";
 import { TextCorpusWorkspace } from "../workbench/components/TextCorpusWorkspace";
 import { DataCleaningWorkspace } from "../workbench/components/DataCleaningWorkspace";
 import { ImageViewerWorkspace } from "../workbench/components/ImageViewerWorkspace";
@@ -29,6 +34,7 @@ import type {
 import {
   buildWorkbenchLineageGroups,
   collectSubtreeItems,
+  collectGroupItems,
   getWorkbenchTypeIcon,
   type WorkbenchLineageNode,
 } from "../workbench/components/lineage-tree-utils";
@@ -113,6 +119,9 @@ export function WorkbenchPanel({
   emptyContent,
   loading = false,
   paginationFooter,
+  exportTarget,
+  paginated = false,
+  pageKey,
 }: {
   controller: WorkbenchController;
   independent?: boolean;
@@ -120,6 +129,9 @@ export function WorkbenchPanel({
   emptyContent?: ReactNode;
   loading?: boolean;
   paginationFooter?: ReactNode;
+  exportTarget?: CollectionExportTarget;
+  paginated?: boolean;
+  pageKey?: number;
 }): JSX.Element {
   const leftCollapsed = useWorkbenchUiStore((s) => s.leftCollapsed);
   const ui = useWorkbenchUiStore.getState;
@@ -128,6 +140,13 @@ export function WorkbenchPanel({
   const [activeBoard, setActiveBoard] = useState<SelectedBoardScope | null>(null);
   const [drilledFromBoard, setDrilledFromBoard] =
     useState<SelectedBoardScope | null>(null);
+  const [operation, setOperation] = useState<{ action: CollectionAction; scope: CollectionScope; revision?: number } | null>(null);
+  const [exportScope, setExportScope] = useState<(CollectionScope & { revision?: number }) | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const committing = useRef(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const quickExport = useCollectionExport(exportTarget);
 
   const treeW = useResizable({
     initial: 220,
@@ -185,7 +204,7 @@ export function WorkbenchPanel({
   useEffect(() => {
     setActiveBoard(null);
     setDrilledFromBoard(null);
-  }, [controller.activeBatch?.id]);
+  }, [controller.activeBatch?.id, pageKey]);
 
   // Build lineage groups over batchItems so we can detect if currentItem is a board parent node
   const batchLineageGroups = useMemo(
@@ -209,28 +228,54 @@ export function WorkbenchPanel({
     return null;
   }, [batchLineageGroups, currentItem]);
 
-  const effectiveBoard =
-    activeBoard ?? (drilledFromBoard ? null : currentBoardParentScope);
+  const collection = activeBoard ?? drilledFromBoard ?? currentBoardParentScope;
+  const effectiveBoard = drilledFromBoard ? null : collection;
+  const collectionItems = useMemo(() => {
+    if (!collection) return [];
+    if (collection.id.startsWith("batch:")) return batchItems;
+    if (collection.id.startsWith("group:")) {
+      const group = batchLineageGroups.find(group => `group:${group.id}` === collection.id);
+      return group ? collectGroupItems(group) : [];
+    }
+    if (collection.id.startsWith("node:")) {
+      const node = findLineageNodeById(batchLineageGroups.flatMap(group => group.roots), collection.id.slice(5));
+      return node ? collectSubtreeItems(node) : [];
+    }
+    return batchItems.filter(item => collection.itemIds.includes(item.id));
+  }, [batchItems, batchLineageGroups, collection]);
 
   const effectiveBoardItems = useMemo(() => {
-    if (!effectiveBoard) return [];
-    const idSet = new Set(effectiveBoard.itemIds);
-    return batchItems.filter((item) => idSet.has(item.id));
-  }, [batchItems, effectiveBoard]);
+    if (!collection) return [];
+    const idSet = new Set(collectionItems.map(item => item.id));
+    return visibleItems.filter(item => idSet.has(item.id) &&
+      (treeFilter === "all" || (treeFilter === "pending" ? item.status === "pending" : inReworkChain(item))));
+  }, [visibleItems, collection, collectionItems, treeFilter]);
+
+  const scopeForItem = (itemId: string): SelectedBoardScope | null => {
+    const group = batchLineageGroups.find(group => collectGroupItems(group).some(item => item.id === itemId));
+    if (!group) return null;
+    return { id: `group:${group.id}`, title: group.isUngrouped ? "未分组" : group.baseName, itemIds: collectGroupItems(group).map(item => item.id) };
+  };
 
   const handleSelectItemFromTree = useCallback(
     (itemId: string, modifiers?: SelectModifiers) => {
+      const scope = scopeForItem(itemId);
+      if (!scope) {
+        showToast("该条目不在当前页，请切换分页或筛选后查看");
+        return;
+      }
       setActiveBoard(null);
-      setDrilledFromBoard(null);
+      setDrilledFromBoard(scope);
       controller.selectItem(itemId, modifiers);
     },
-    [controller],
+    [controller, batchLineageGroups, showToast],
   );
 
   const handleSelectBoard = useCallback((board: SelectedBoardScope) => {
     setDrilledFromBoard(null);
     setActiveBoard(board);
-  }, []);
+    controller.clearSelection();
+  }, [controller]);
 
   const handleDrillIntoBoardItem = useCallback(
     (itemId: string) => {
@@ -238,15 +283,79 @@ export function WorkbenchPanel({
         setDrilledFromBoard(effectiveBoard);
       }
       setActiveBoard(null);
-      controller.selectItem(itemId);
+      controller.focusItem(itemId);
     },
     [controller, effectiveBoard],
   );
+
+  const selectInCollection = (itemId: string, modifiers: SelectModifiers = {}) => {
+    const result = applyWorkbenchSelection(effectiveBoardItems.map(item => item.id), currentItem?.id ?? null,
+      controller.selectedIds.filter(id => effectiveBoardItems.some(item => item.id === id)), itemId, modifiers);
+    controller.setSelection(result.selection);
+    if (result.cursor) controller.focusItem(result.cursor);
+  };
+  const decisionTargets = effectiveBoard
+    ? controller.selectedIds.filter(id => effectiveBoardItems.some(item => item.id === id))
+    : currentItem ? [currentItem.id] : [];
+  const navigate = (direction: number) => {
+    if (!collection) { direction > 0 ? controller.skipNext() : controller.skipPrev(); return; }
+    const index = effectiveBoardItems.findIndex(item => item.id === currentItem?.id);
+    const next = effectiveBoardItems[index + direction];
+    if (next) handleDrillIntoBoardItem(next.id);
+  };
+  const commit = async (decision: WorkbenchDecision, ids: readonly string[] = decisionTargets, reworkReason?: string) => {
+    if (committing.current) return { ok: false as const, code: "BUSY", message: "正在提交上一项操作" };
+    committing.current = true;
+    setBusy(true);
+    try {
+      const result = await report(controller.commitDecision(decision, ids, { reason: reworkReason, advance: !collection }),
+        `已${decision === "kept" ? "保留" : decision === "discarded" ? "丢弃" : "标记返工"} ${ids.length} 项，可撤销`);
+      if (result.ok && !effectiveBoard && collection && controller.autoAdvance) navigate(1);
+      return result;
+    } finally {
+      committing.current = false;
+      setBusy(false);
+    }
+  };
+  const runCollectionAction = async (action: CollectionAction, scope: CollectionScope, reworkReason?: string) => {
+    const items = scope.items.filter(item => action.endsWith("pending") ? item.status === "pending" : action === "retrieve" ? item.status !== "pending" : true);
+    if (committing.current) return;
+    setBusy(true); setOperationError(null);
+    try {
+      const result = action === "retrieve"
+        ? await (async () => {
+          committing.current = true;
+          try { return await report(controller.retrieveItemsToPending(items.map(item => item.id)), `已将 ${items.length} 项恢复待审，可撤销`); }
+          finally { committing.current = false; }
+        })()
+        : await commit(action.startsWith("keep") ? "kept" : action.startsWith("discard") ? "discarded" : "rework", items.map(item => item.id), reworkReason);
+      if (result.ok) setOperation(null);
+      else setOperationError(result.message);
+    } finally { setBusy(false); }
+  };
+  const collectionAction = (action: CollectionAction, scope: CollectionScope) => {
+    if (action === "select") {
+      setDrilledFromBoard(null);
+      setActiveBoard({ id: `selection:${scope.items[0].id}`, title: scope.title, itemIds: scope.items.map(item => item.id) });
+      controller.setSelection(scope.items.map(item => item.id));
+      return;
+    }
+    if (action === "export") { setExportScope({ ...scope, revision: exportTarget?.revision }); return; }
+    if (action === "rework" || (action.endsWith("all") && scope.items.some(item => item.status !== "pending"))) {
+      setReason(""); setOperationError(null); setOperation({ action, scope, revision: exportTarget?.revision }); return;
+    }
+    void runCollectionAction(action, scope);
+  };
+  useEffect(() => {
+    controller.clearSelection();
+    setOperation(null); setExportScope(null);
+  }, [controller.typeFilter, controller.searchQuery, treeFilter, controller.activeBatch?.id, pageKey]);
 
   // Keyboard routing: decision shortcuts only when a list/canvas area owns the focus.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (loading) return;
+      if (busy) return;
       if (event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (independent && !target?.closest("[data-review-content-scope]")) return;
@@ -266,26 +375,19 @@ export function WorkbenchPanel({
         const decision: WorkbenchDecision =
           key === "1" ? "kept" : key === "3" ? "rework" : "discarded";
         event.preventDefault();
-        const targetIds = controller.selectedIds.filter((id) =>
-          controller.visibleItemIds.includes(id),
-        );
-        const targets =
-          targetIds.length > 0
-            ? targetIds
-            : currentItem
-              ? [currentItem.id]
-              : undefined;
-        if (!targets) return;
-        void report(controller.commitDecision(decision, targets));
+        if (!decisionTargets.length) return;
+        void commit(decision, decisionTargets);
+      } else if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "a" && effectiveBoard) {
+        event.preventDefault(); controller.setSelection(effectiveBoardItems.map(item => item.id));
+      } else if (key === "Escape" && effectiveBoard) {
+        controller.clearSelection();
       } else if (key === "j" || key === "ArrowDown") {
         if (isTextEntry(target)) return;
         event.preventDefault();
-        setActiveBoard(null);
-        controller.skipNext();
+        navigate(1);
       } else if (key === "k" || key === "ArrowUp") {
         event.preventDefault();
-        setActiveBoard(null);
-        controller.skipPrev();
+        navigate(-1);
       } else if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "z") {
         event.preventDefault();
         void report(event.shiftKey ? controller.redoLast() : controller.undoLast());
@@ -296,15 +398,15 @@ export function WorkbenchPanel({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [controller, currentItem, independent, loading, report, showToast]);
+  }, [controller, currentItem, independent, loading, busy, report, showToast, collection, effectiveBoardItems, decisionTargets]);
 
   const batchTextItems = useMemo(
-    () => batchItems.filter((item) => item.type === "text"),
-    [batchItems],
+    () => (collection ? effectiveBoardItems : visibleItems).filter((item) => item.type === "text"),
+    [collection, effectiveBoardItems, visibleItems],
   );
   const batchImageItems = useMemo(
-    () => batchItems.filter((item) => item.type === "image"),
-    [batchItems],
+    () => (collection ? effectiveBoardItems : visibleItems).filter((item) => item.type === "image"),
+    [collection, effectiveBoardItems, visibleItems],
   );
   const batchVideoItems = useMemo(
     () => batchItems.filter((item) => item.type === "video"),
@@ -364,6 +466,9 @@ export function WorkbenchPanel({
     hasBatch && batchItems.length > 0 && visibleItems.length === 0;
 
   return (
+    <CollectionInteractionContext.Provider value={{ action: collectionAction, busy,
+      selectedItems: (effectiveBoard ? effectiveBoardItems : visibleItems).filter(item => controller.selectedIds.includes(item.id)),
+      ...(exportTarget ? { prepareDrag: quickExport.prepare, drag: quickExport.drag } : {}) }}>
     <div
       className="relative flex h-full min-h-0 flex-col bg-bg text-fg"
       data-testid="workbench-page"
@@ -379,13 +484,14 @@ export function WorkbenchPanel({
       )}
 
       {toast && (
-        <div className="pointer-events-none fixed top-14 left-1/2 z-[var(--z-toast)] -translate-x-1/2 rounded-xl border border-accent/50 bg-bg-2 px-4 py-2 text-xs text-fg shadow-2xl">
+        <div role="status" className="fixed top-14 left-1/2 z-[var(--z-toast)] -translate-x-1/2 rounded-xl border border-accent/50 bg-bg-2 px-4 py-2 text-xs text-fg shadow-2xl">
           {toast}
+          {controller.canUndo && <button className="ml-3 text-accent" onClick={() => { void report(controller.undoLast()); setToast(null); }}>撤销</button>}
         </div>
       )}
 
       {/* Main 1px divider panel layout */}
-      <div className="flex min-h-0 flex-1 overflow-hidden bg-bg">
+      <div className="flex min-h-0 flex-1 overflow-hidden bg-bg" inert={busy}>
         {/* Left: lineage tree queue column — always mounted */}
         {leftCollapsed ? (
           <div
@@ -412,8 +518,7 @@ export function WorkbenchPanel({
               <button
                 type="button"
                 onClick={() => {
-                  setActiveBoard(null);
-                  controller.skipPrev();
+                  navigate(-1);
                 }}
                 disabled={pendingItems.length === 0}
                 className="rounded p-1 text-fg-2 hover:bg-bg-2 hover:text-fg disabled:opacity-35"
@@ -425,8 +530,7 @@ export function WorkbenchPanel({
               <button
                 type="button"
                 onClick={() => {
-                  setActiveBoard(null);
-                  controller.skipNext();
+                  navigate(1);
                 }}
                 disabled={pendingItems.length === 0}
                 className="rounded p-1 text-fg-2 hover:bg-bg-2 hover:text-fg disabled:opacity-35"
@@ -486,6 +590,7 @@ export function WorkbenchPanel({
                 controller={controller}
                 hasBatch={hasBatch}
                 independent={independent}
+                paginated={paginated}
                 onCreateBatch={createBatch}
                 onCollapse={() => ui().setLeftCollapsed(true)}
                 onOpenHandoff={() => ui().setHandoffDialogOpen(true)}
@@ -508,6 +613,7 @@ export function WorkbenchPanel({
 
         {/* Centre/Right main workspace: viewer + bottom dock */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
+          {quickExport.feedback}
           {drilledFromBoard && !effectiveBoard && (
             <div
               className="flex h-7 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3 text-[11px]"
@@ -523,7 +629,7 @@ export function WorkbenchPanel({
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 <LayoutGrid className="h-3.5 w-3.5" />
-                <span>返回聚合画板：{drilledFromBoard.title}</span>
+                <span>返回集合：{drilledFromBoard.title}</span>
               </button>
               <span className="text-fg-3">
                 当前单节点精修：{currentItem?.agentGuidance?.nodeSlotLabel ?? currentItem?.title}
@@ -532,6 +638,17 @@ export function WorkbenchPanel({
           )}
 
           <div className="relative min-h-0 flex-1 overflow-hidden" data-testid="workbench-content">
+            {collection && <div className={effectiveBoard ? "h-full" : "hidden"}>
+              <AdaptiveBoardWorkspace key={collection.id} boardId={collection.id}
+                boardTitle={`${paginated ? "本页 · " : ""}${independent && (controller.typeFilter !== "all" || controller.searchQuery) ? "筛选结果 · " : ""}${collection.title}`}
+                items={effectiveBoardItems} currentItem={currentItem} selectedIds={controller.selectedIds}
+                allItems={collectionItems}
+                onSelectItem={selectInCollection} onOpenChildItem={handleDrillIntoBoardItem}
+                onCommitDecision={commit} onSelectAll={() => controller.setSelection(effectiveBoardItems.map(item => item.id))}
+                onClearSelection={controller.clearSelection}
+                onOpenBatch={() => handleSelectBoard({ id: `batch:${controller.activeBatch!.id}`, title: controller.activeBatch!.name, itemIds: batchItems.map(item => item.id) })}
+                ensureItemsLoaded={controller.ensureItemsLoaded} openMediaUrl={controller.openMediaUrl} />
+            </div>}
             {!hasBatch ? (
               emptyContent ?? (
                 <WorkbenchStartPanel
@@ -541,24 +658,7 @@ export function WorkbenchPanel({
                   onCreateBatch={createBatch}
                 />
               )
-            ) : effectiveBoard && effectiveBoardItems.length > 0 ? (
-              <AdaptiveBoardWorkspace
-                boardTitle={effectiveBoard.title}
-                items={effectiveBoardItems}
-                currentItem={currentItem}
-                selectedIds={controller.selectedIds}
-                onSelectItem={controller.selectItem}
-                onOpenChildItem={handleDrillIntoBoardItem}
-                onCommitDecision={(decision, targetIds) =>
-                  report(
-                    controller.commitDecision(decision, targetIds),
-                    `已对画板执行决定:${decision}`,
-                  )
-                }
-                ensureItemsLoaded={controller.ensureItemsLoaded}
-                openMediaUrl={controller.openMediaUrl}
-              />
-            ) : !currentItem ? (
+            ) : effectiveBoard ? null : !currentItem ? (
               <WorkbenchQueueState
                 kind={filteredEmpty ? "filter-empty" : "queue-done"}
                 processedCount={processedCount}
@@ -570,11 +670,12 @@ export function WorkbenchPanel({
               <ImageViewerWorkspace
                 currentItem={currentItem}
                 batchImageItems={batchImageItems}
+                onOpenCollection={() => { setActiveBoard(drilledFromBoard ?? scopeForItem(currentItem.id)); setDrilledFromBoard(null); }}
                 selectedIds={controller.selectedIds}
                 onSelectItem={controller.selectItem}
                 onUpdateImageAnnotations={controller.updateImageAnnotations}
                 onSaveImageRepair={controller.saveImageRepair}
-                onCommitDecision={controller.commitDecision}
+                onCommitDecision={(decision, ids, options) => commit(decision, ids, options?.reason)}
                 issuePanelWidth={issueW.value}
                 onStartResizeIssuePanel={issueW.onHandlePointerDown}
               />
@@ -593,7 +694,7 @@ export function WorkbenchPanel({
                 onSaveTextRevision={controller.saveTextRevision}
                 onAddRangeComment={controller.addRangeComment}
                 onConfirmDuplicate={controller.confirmDuplicate}
-                onCommitDecision={controller.commitDecision}
+                onCommitDecision={commit}
               />
             ) : currentItem.type === "data" ? (
               <DataCleaningWorkspace
@@ -616,18 +717,13 @@ export function WorkbenchPanel({
           </div>
 
           <SimpleBottomDetailsTimeline
-            currentItem={currentItem}
+            currentItem={effectiveBoard ? null : currentItem}
             canUndo={controller.canUndo}
             canRedo={controller.canRedo}
-            selectedIds={controller.selectedIds}
+            selectedIds={effectiveBoard ? decisionTargets : undefined}
             onSelectItemById={(itemId) => handleSelectItemFromTree(itemId)}
-            onCommitDecision={(decision, targetIds) =>
-              report(
-                controller.commitDecision(decision, targetIds),
-                `已执行决定:${decision}`,
-              )
-            }
-            onSkipNext={controller.skipNext}
+            onCommitDecision={commit}
+            onSkipNext={() => navigate(1)}
             onUndoLast={() => report(controller.undoLast())}
             onRedoLast={() => report(controller.redoLast())}
             onAddUserTag={(itemId, tag) => report(controller.addUserTag(itemId, tag))}
@@ -635,6 +731,29 @@ export function WorkbenchPanel({
         </div>
       </div>
 
+      {exportScope && exportTarget && <ReviewExportDialog target={exportTarget.target} revision={exportScope.revision!}
+        selectedIds={exportScope.items.map(item => item.id)} initialScope="selected" scopeName={exportScope.title}
+        filter={{ batchId: controller.activeBatch?.id, type: controller.typeFilter, query: controller.searchQuery }}
+        onClose={() => setExportScope(null)} />}
+      {operation && <ToolcraftDialog isOpen width={480} onOpenChange={open => { if (!open && !busy) setOperation(null); }}>
+        <ToolcraftDialogHeader title={operation.action === "rework" ? "批量返工" : "覆盖本组审核结论"} />
+        <div className="space-y-3 p-4 text-sm" data-workbench-modal="true">
+          <p>{operation.scope.title} · {operation.scope.items.length} 项 · 当前版本</p>
+          {operation.action === "rework" ? <label className="block">共同修改要求（保留已有圈注）
+            <textarea autoFocus value={reason} onChange={event => setReason(event.target.value)}
+              className="mt-2 min-h-24 w-full rounded border border-border bg-bg-2 p-2" />
+          </label> : <p>将全部设为{operation.action === "keep-all" ? "保留" : "丢弃"}，包括已有结论的条目。操作后可以整体撤销。</p>}
+          {operationError && <p role="alert" className="text-status-error">{operationError}</p>}
+          <div className="flex justify-end gap-2">
+            <button className={wbButton.secondary} disabled={busy} onClick={() => setOperation(null)}>取消</button>
+            <button className={wbButton.primary} disabled={busy || (operation.action === "rework" && !reason.trim())}
+              onClick={() => {
+                if (operation.revision !== exportTarget?.revision) { setOperationError("内容已更新，请关闭后重新选择操作范围。"); return; }
+                void runCollectionAction(operation.action, operation.scope, reason);
+              }}>确认{operation.action === "rework" ? "返工" : "覆盖"}</button>
+          </div>
+        </div>
+      </ToolcraftDialog>}
       <VisualMindMapModal
         isOpen={controller.isMindMapModalOpen}
         onClose={controller.closeMindMapModal}
@@ -672,6 +791,7 @@ export function WorkbenchPanel({
         }}
       />
     </div>
+    </CollectionInteractionContext.Provider>
   );
 }
 

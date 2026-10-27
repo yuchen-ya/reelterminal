@@ -744,6 +744,7 @@ export interface ProjectState {
       contentRevisionId?: string;
     }>,
     operator?: "human" | "agent",
+    reworkReason?: string,
   ) => Promise<import("./project/workbench-slice").WorkbenchMutationOutcome>;
   saveWorkbenchTextRevision: (
     itemId: string,

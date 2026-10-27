@@ -1,10 +1,8 @@
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import type React from "react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Copy,
-  Check,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
@@ -14,13 +12,22 @@ import {
   Trash2,
 } from "lucide-react";
 import type { ReviewGroup, ReviewNode } from "@reelterminal/core/review/types";
+import type { DirectoryCommand } from "../../../services/review-workspace/directory";
 import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from "@reelterminal/ui";
 import { wbButton } from "../wb-button";
+import { reviewSeenKey, useReviewSeenStore } from "../../../stores/review-seen-store";
 
 export type DirectoryView = "recent" | "pinned" | "archived" | "trash";
 
@@ -30,6 +37,10 @@ export interface ReviewNodeSidebarProps {
   nodes: readonly ReviewNode[];
   selectedId: string | null;
   onSelectNode: (nodeId: string) => void;
+  onUpdateNode: (nodeId: string, patch: Extract<DirectoryCommand, { kind: "node.update" }>["patch"]) => void;
+  onRenameNode: (node: ReviewNode) => void;
+  onPurgeNode: (node: ReviewNode) => void;
+  onBranches?: (node: ReviewNode) => void;
   onCopyInstructions?: (node: ReviewNode) => Promise<void>;
   copiedNodeId?: string | null;
   directory: {
@@ -66,6 +77,10 @@ export function ReviewNodeSidebar({
   nodes,
   selectedId,
   onSelectNode,
+  onUpdateNode,
+  onRenameNode,
+  onPurgeNode,
+  onBranches,
   onCopyInstructions,
   copiedNodeId,
   directory,
@@ -85,6 +100,7 @@ export function ReviewNodeSidebar({
   busy,
 }: ReviewNodeSidebarProps): JSX.Element {
   const { t } = useTranslation();
+  const seen = useReviewSeenStore(state => state.seen);
   const [creatingNode, setCreatingNode] = useState(false);
   const [newNodeName, setNewNodeName] = useState("");
   const [managingGroups, setManagingGroups] = useState(false);
@@ -94,6 +110,42 @@ export function ReviewNodeSidebar({
   const nodeInputRef = useRef<HTMLInputElement>(null);
   const hasActiveFilter = Boolean(query) || view !== "recent" || Boolean(groupId) || managingGroups;
   const showFilterDrawer = filtersOpen || hasActiveFilter;
+
+  const menuItems = (node: ReviewNode, context: boolean) => {
+    const Item = context ? ContextMenuItem : DropdownMenuItem;
+    const Separator = context ? ContextMenuSeparator : DropdownMenuSeparator;
+    const Sub = context ? ContextMenuSub : DropdownMenuSub;
+    const SubTrigger = context ? ContextMenuSubTrigger : DropdownMenuSubTrigger;
+    const SubContent = context ? ContextMenuSubContent : DropdownMenuSubContent;
+    return <>
+        <Item disabled={busy} onSelect={() => onRenameNode(node)}>{t("review.rename")}</Item>
+        <Sub><SubTrigger disabled={busy}>{t("review.moveToGroup")}</SubTrigger><SubContent>
+          <Item onSelect={() => onUpdateNode(node.id, { groupId: null })}>{t("review.ungrouped")}</Item>
+          {directory.groups.map(group => <Item key={group.id} onSelect={() => onUpdateNode(node.id, { groupId: group.id })}>{group.name}</Item>)}
+        </SubContent></Sub>
+        <Item disabled={busy} onSelect={() => onUpdateNode(node.id, { pinned: !node.pinned })}>
+          {t(node.pinned ? "review.unpin" : "review.pin")}
+        </Item>
+        {!node.trashedAt && <Item disabled={busy} onSelect={() => onUpdateNode(node.id, { archived: !node.archivedAt })}>
+          {t(node.archivedAt ? "review.unarchive" : "review.archive")}
+        </Item>}
+        {onCopyInstructions && !node.trashedAt && <Item onSelect={() => { void onCopyInstructions(node); }}>{t(copiedNodeId === node.id ? "review.copied" : "review.copyTaskInstructions", { name: node.name })}</Item>}
+        {onBranches && <Item disabled={busy} onSelect={() => onBranches(node)} data-testid="review-branches-open">查看历史任务关联</Item>}
+        <Separator />
+        <Item disabled={busy} onSelect={() => onUpdateNode(node.id, { trashed: !node.trashedAt })}>
+          {t(node.trashedAt ? "review.restore" : "review.moveToTrash")}
+        </Item>
+        {node.trashedAt && <Item disabled={busy} className="text-status-error focus:text-status-error" onSelect={() => onPurgeNode(node)}>
+          {t("review.purge.title")}
+        </Item>}
+    </>;
+  };
+  const taskMenu = (node: ReviewNode, children: ReactNode) => (
+    <ContextMenu key={node.id}>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent className="w-52">{menuItems(node, true)}</ContextMenuContent>
+    </ContextMenu>
+  );
 
   // Keyboard shortcut trapping for directory undo/redo
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
@@ -163,7 +215,7 @@ export function ReviewNodeSidebar({
         >
           {nodes.map((node) => {
             const isCurrent = selectedId === node.id;
-            return (
+            return taskMenu(node, (
               <button
                 key={node.id}
                 type="button"
@@ -179,7 +231,7 @@ export function ReviewNodeSidebar({
                 <span aria-hidden="true">{node.name.slice(0, 1)}</span>
                 <span className="sr-only">{node.name}</span>
               </button>
-            );
+            ));
           })}
         </div>
       </aside>
@@ -470,7 +522,7 @@ export function ReviewNodeSidebar({
         >
           {nodes.map((node) => {
             const isCurrent = selectedId === node.id;
-            return (
+            return taskMenu(node, (
               <div key={node.id} className="group relative">
                 <button
                   type="button"
@@ -488,24 +540,25 @@ export function ReviewNodeSidebar({
                   >
                     {node.pinned ? "★ " : ""}
                     {node.name}
+                    {(node.incomingRevision ?? 0) > (seen[reviewSeenKey(node.id, "node")] ?? 0) && <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-label="有未查看的新内容" />}
                   </span>
                   <span className="text-[10px] text-fg-3">
                     {new Date(node.updatedAt).toLocaleDateString()}
                   </span>
                 </button>
-                {onCopyInstructions && (
+                <DropdownMenu><DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className={`${compactIconButton} absolute right-1 top-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100`}
-                    title={t(copiedNodeId === node.id ? "review.copied" : "review.copyTaskInstructions", { name: node.name })}
-                    aria-label={t("review.copyTaskInstructions", { name: node.name })}
-                    onClick={() => { void onCopyInstructions(node); }}
+                    className={`${compactIconButton} absolute right-1 top-1`}
+                    title={t("review.nodeMenu")}
+                    aria-label={`${node.name} · ${t("review.nodeMenu")}`}
+                    data-testid="review-node-menu-trigger"
                   >
-                    {copiedNodeId === node.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    <MoreHorizontal className="h-3.5 w-3.5" />
                   </button>
-                )}
+                </DropdownMenuTrigger><DropdownMenuContent align="start" className="w-52">{menuItems(node, false)}</DropdownMenuContent></DropdownMenu>
               </div>
-            );
+            ));
           })}
           {!nodes.length && (
             <p className="px-2 py-4 text-center text-xs text-fg-3">
@@ -523,6 +576,9 @@ export function ReviewNodeSidebar({
           )}
         </div>
       </div>
+      <button type="button" className="flex items-center gap-2 border-t border-border px-2 py-2 text-xs text-fg-2 hover:text-fg" aria-label="打开回收站" onClick={() => { onSelectView("trash"); onSelectGroup(""); }}>
+        <Trash2 className="h-3.5 w-3.5" />{t("review.trash")}
+      </button>
     </aside>
   );
 }

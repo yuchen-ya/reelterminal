@@ -8,9 +8,6 @@ import {
   Grid,
   ImageOff,
   Maximize2,
-  RotateCcw,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 import type { WorkbenchDecision } from "@reelterminal/core";
 import type {
@@ -19,12 +16,15 @@ import type {
   WorkbenchItemView,
   WorkbenchMutationResult,
 } from "../types";
+import { CollectionActions } from "./CollectionActions";
+import { CollectionImage } from "./CollectionImage";
 import { getWorkbenchStatusView } from "./lineage-tree-utils";
 
 export interface AdaptiveBoardWorkspaceProps {
   readonly boardId?: string;
   readonly boardTitle: string;
   readonly items: readonly WorkbenchItemView[];
+  readonly allItems?: readonly WorkbenchItemView[];
   readonly currentItem: WorkbenchItemView | null;
   readonly selectedIds: readonly string[];
   readonly onSelectItem: (itemId: string, modifiers?: SelectModifiers) => void;
@@ -33,6 +33,9 @@ export interface AdaptiveBoardWorkspaceProps {
     decision: WorkbenchDecision,
     targetIds?: readonly string[],
   ) => Promise<WorkbenchMutationResult>;
+  readonly onSelectAll?: () => void;
+  readonly onClearSelection?: () => void;
+  readonly onOpenBatch?: () => void;
   readonly ensureItemsLoaded?: WorkbenchController["ensureItemsLoaded"];
   readonly openMediaUrl?: WorkbenchController["openMediaUrl"];
 }
@@ -42,18 +45,21 @@ type ColumnCount = "auto" | 2 | 3 | 4;
 export function AdaptiveBoardWorkspace({
   boardTitle,
   items,
+  allItems = items,
   currentItem,
   selectedIds,
   onSelectItem,
   onOpenChildItem,
   onCommitDecision,
+  onSelectAll,
+  onClearSelection,
+  onOpenBatch,
   ensureItemsLoaded,
   openMediaUrl,
 }: AdaptiveBoardWorkspaceProps): JSX.Element {
   const defaultCols: ColumnCount = items.length === 2 ? 2 : items.length >= 3 ? 3 : "auto";
   const [columns, setColumns] = useState<ColumnCount>(defaultCols);
-  const [zoom, setZoom] = useState<number>(100);
-  const [pixelated, setPixelated] = useState<boolean>(false);
+  const [previewMode, setPreviewMode] = useState<"fit" | "actual" | "pixel">("fit");
   const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
 
   const itemIdsKey = useMemo(() => items.map((i) => i.id).join(","), [items]);
@@ -114,15 +120,10 @@ export function AdaptiveBoardWorkspace({
     [selectedIds, boardItemIds],
   );
   const pendingInBoard = useMemo(
-    () => items.filter((i) => i.status === "pending").map((i) => i.id),
-    [items],
+    () => allItems.filter((i) => i.status === "pending").map((i) => i.id),
+    [allItems],
   );
 
-  const actionTargetIds = useMemo(() => {
-    if (selectedInBoard.length > 0) return selectedInBoard;
-    if (pendingInBoard.length > 0) return pendingInBoard;
-    return items.map((i) => i.id);
-  }, [selectedInBoard, pendingInBoard, items]);
 
   const gridClass =
     columns === 2
@@ -147,8 +148,9 @@ export function AdaptiveBoardWorkspace({
       data-testid="adaptive-board-workspace"
     >
       {/* Top compact toolbar */}
-      <div className="flex h-8 shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-1 px-2.5 text-xs select-none">
+      <div className="flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-2 py-1 border-b border-border bg-bg-1 px-2.5 text-xs select-none">
         <div className="flex min-w-0 items-center gap-2">
+          {onOpenBatch && <button className="shrink-0 text-fg-3 hover:text-fg" onClick={onOpenBatch}>本批内容</button>}
           <div className="flex items-center gap-0.5 rounded-[5px] border border-border bg-bg-2 p-0.5">
             {([2, 3, 4] as const).map((col) => (
               <button
@@ -174,99 +176,53 @@ export function AdaptiveBoardWorkspace({
             {boardTitle}
           </span>
           <span className="shrink-0 font-mono text-[11px] text-fg-3">
-            共 {items.length} 项 · 待审 {pendingInBoard.length}
+            共 {allItems.length} 项 · 当前结果 {items.length} · 待审 {pendingInBoard.length}
           </span>
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
-          <label className="flex cursor-pointer items-center gap-1 rounded border border-border bg-bg-2 px-1.5 py-0.5 text-[11px] text-fg-2 hover:text-fg">
-            <input
-              type="checkbox"
-              checked={pixelated}
-              onChange={(e) => setPixelated(e.target.checked)}
-              className="h-3 w-3 accent-accent"
-            />
-            像素锐化
-          </label>
-
-          <div className="flex h-6 items-center rounded-[5px] border border-border bg-bg-2 px-0.5">
-            <button
-              type="button"
-              onClick={() => setZoom((z) => Math.max(50, z - 25))}
-              disabled={zoom <= 50}
-              className="p-0.5 text-fg-3 hover:text-fg disabled:opacity-30"
-              title="缩小画板"
-            >
-              <ZoomOut className="h-3 w-3" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setZoom(100)}
-              className="px-1 font-mono text-[11px] tabular-nums text-fg-2 hover:text-accent"
-              title="重置为 100%"
-            >
-              {zoom}%
-            </button>
-            <button
-              type="button"
-              onClick={() => setZoom((z) => Math.min(250, z + 25))}
-              disabled={zoom >= 250}
-              className="p-0.5 text-fg-3 hover:text-fg disabled:opacity-30"
-              title="放大画板"
-            >
-              <ZoomIn className="h-3 w-3" />
-            </button>
-            {zoom !== 100 && (
-              <button
-                type="button"
-                onClick={() => setZoom(100)}
-                className="p-0.5 text-fg-3 hover:text-accent"
-                title="重置缩放"
-              >
-                <RotateCcw className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-
+          <select aria-label="图片预览方式" value={previewMode} onChange={event => setPreviewMode(event.target.value as typeof previewMode)} className="rounded border border-border bg-bg-2 px-2 py-1">
+            <option value="fit">完整显示</option><option value="actual">实际像素</option><option value="pixel">像素预览</option>
+          </select>
           <span className="h-3.5 w-px bg-border" />
 
           <button
             type="button"
-            onClick={() => void onCommitDecision("kept", actionTargetIds)}
-            disabled={actionTargetIds.length === 0}
+            onClick={() => void onCommitDecision("kept", pendingInBoard)}
+            disabled={pendingInBoard.length === 0}
             className="inline-flex h-6 items-center rounded-[5px] border border-accent/50 bg-accent/15 px-2 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/25 disabled:opacity-40"
-            title="对当前选中或本画板待审子项批量标记保留"
+            title="仅对本组待审项标记保留"
             data-testid="board-keep-all"
           >
-            整板保留 ({actionTargetIds.length})
+            保留本组待审项 ({pendingInBoard.length})
           </button>
           <button
             type="button"
-            onClick={() => void onCommitDecision("discarded", actionTargetIds)}
-            disabled={actionTargetIds.length === 0}
+            onClick={() => void onCommitDecision("discarded", pendingInBoard)}
+            disabled={pendingInBoard.length === 0}
             className="inline-flex h-6 items-center rounded-[5px] border border-status-error/40 bg-status-error/15 px-2 text-[11px] font-medium text-status-error transition-colors hover:bg-status-error/25 disabled:opacity-40"
-            title="对当前选中或本画板待审子项批量标记丢弃"
+            title="仅对本组待审项标记丢弃（含筛选外条目）"
             data-testid="board-discard-all"
           >
-            整板丢弃
+            丢弃本组待审项 ({pendingInBoard.length})
           </button>
+          <CollectionActions scope={{ title: boardTitle, items: allItems, folder: true }} />
         </div>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-3 py-1.5 text-xs">
+        <button onClick={onSelectAll} disabled={!items.length}>全选当前结果（{items.length}）</button>
+        <span>已选 {selectedInBoard.length} 项</span>
+        {selectedInBoard.length > 0 && <>
+          <button onClick={() => void onCommitDecision("kept", selectedInBoard)}>保留选中项（{selectedInBoard.length}）</button>
+          <button onClick={() => void onCommitDecision("discarded", selectedInBoard)}>丢弃选中项（{selectedInBoard.length}）</button>
+          <button onClick={onClearSelection}>清除选择</button>
+        </>}
       </div>
 
       {/* Contact-sheet / Adaptive Board Canvas */}
       <div className="flex-1 overflow-auto bg-[#181b22] p-3">
-        <div
-          style={
-            zoom !== 100
-              ? {
-                  transform: `scale(${zoom / 100})`,
-                  transformOrigin: "top left",
-                  width: `${10000 / zoom}%`,
-                }
-              : undefined
-          }
-          className={`grid gap-x-4 gap-y-3 ${gridClass}`}
-        >
+        {items.length === 0 && <p className="p-6 text-center text-xs text-fg-3">当前筛选下没有条目；可切换至“全部”查看本组。</p>}
+        <div className={`grid gap-x-4 gap-y-3 ${gridClass}`}>
           {items.map((item) => {
             const isSelected = selectedIds.includes(item.id);
             const isCurrent = currentItem?.id === item.id;
@@ -290,8 +246,10 @@ export function AdaptiveBoardWorkspace({
             const markerCount = item.videoPayload?.markers.length ?? 0;
 
             return (
+              <CollectionActions key={item.id} scope={{ title: item.title, items: [item], folder: false }}>
               <div
-                key={item.id}
+                tabIndex={0}
+                onKeyDown={event => { if (event.key === "Enter" && event.target === event.currentTarget) { event.preventDefault(); onOpenChildItem(item.id); } }}
                 onClick={(e) => handleCardClick(item, e)}
                 onDoubleClick={() => onOpenChildItem(item.id)}
                 data-testid={`board-card-${item.id}`}
@@ -374,15 +332,7 @@ export function AdaptiveBoardWorkspace({
                 {item.type === "image" ? (
                   <div className="relative flex min-h-[160px] flex-1 items-center justify-center overflow-hidden rounded px-1 pb-1.5">
                     {imgSrc ? (
-                      <img
-                        src={imgSrc}
-                        alt={item.title}
-                        draggable={false}
-                        style={{
-                          imageRendering: pixelated ? "pixelated" : "auto",
-                        }}
-                        className="max-h-[320px] w-auto max-w-full object-contain"
-                      />
+                      <CollectionImage src={imgSrc} title={item.title} mode={previewMode} />
                     ) : (
                       <div className="flex h-40 w-full flex-col items-center justify-center gap-1 rounded border border-border/40 bg-bg-1/50 text-fg-3">
                         <ImageOff className="h-4 w-4" />
@@ -488,6 +438,7 @@ export function AdaptiveBoardWorkspace({
                   </div>
                 )}
               </div>
+              </CollectionActions>
             );
           })}
         </div>

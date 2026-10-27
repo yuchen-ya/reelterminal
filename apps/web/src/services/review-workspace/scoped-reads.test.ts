@@ -86,9 +86,10 @@ describe("explicit review read scopes", () => {
     expect(after.state.feedback).toEqual(expect.arrayContaining([expect.objectContaining(otherFeedback), expect.objectContaining({ id: note.id })]));
     expect(after.state.items.find(item => item.id === itemIds[0])?.status).toBe("kept");
     await reviewService.history({ target, expectedNodeRevision: 4, requestId: crypto.randomUUID(), actor: "agent", direction: "undo" });
-    expect((await reviewService.getNode(target)).state).toEqual(before.state);
+    const withoutActivity = (state: typeof before.state) => ({ ...state, items: state.items.map(({ updatedAt: _updatedAt, ...item }) => item) });
+    expect(withoutActivity((await reviewService.getNode(target)).state)).toEqual(withoutActivity(before.state));
     await reviewService.history({ target, expectedNodeRevision: 5, requestId: crypto.randomUUID(), actor: "agent", direction: "redo" });
-    expect((await reviewService.getNode(target)).state).toEqual(after.state);
+    expect(withoutActivity((await reviewService.getNode(target)).state)).toEqual(withoutActivity(after.state));
     expect((await reviewService.archiveNode(target, 6)).journal).toHaveLength(6);
   });
 

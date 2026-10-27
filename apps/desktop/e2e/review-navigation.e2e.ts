@@ -40,12 +40,13 @@ describe("review tasks, categories and content batches", () => {
     await page.getByRole("button", { name: "创建", exact: true }).click();
     await page.getByRole("button", { name: "角色动画", exact: true }).waitFor();
     await page.getByRole("button", { name: "完成管理", exact: true }).click();
-    await page.getByTestId("review-node-menu-trigger").click();
-    await page.getByRole("menuitem", { name: "移到任务分类", exact: true }).hover();
-    await page.getByRole("menuitem", { name: "角色动画", exact: true }).click();
+    await page.getByTestId("review-node-list").getByText("角色动画审阅", { exact: true }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "移到任务分类", exact: true }).focus();
+    await page.keyboard.press("ArrowRight");
+    await page.getByRole("menuitem", { name: "角色动画", exact: true }).press("Enter");
     await page.getByRole("button", { name: "搜索任务", exact: true }).click();
     await page.getByRole("button", { name: "角色动画", exact: true }).click();
-    await vi.waitFor(async () => expect(await page.getByTestId("review-node-list").locator("button").count()).toBe(1));
+    await vi.waitFor(async () => expect(await page.getByTestId("review-node-list").locator(":scope > div.group").count()).toBe(1));
     expect(await page.getByTestId("review-node-list").innerText()).toContain("角色动画审阅");
 
     const names = ["运动连续性：接缝证据与修改设计（第一轮完整审阅材料）", "当前监督修订版：运动审查基线（第二轮完整审阅材料）"];
@@ -56,6 +57,8 @@ describe("review tasks, categories and content batches", () => {
       await dialog.getByRole("button", { name: "粘贴文本", exact: true }).click();
       await dialog.getByLabel("批次名称").fill(names[index]);
       await dialog.getByTestId("review-paste-text").fill(bodies[index]);
+      await vi.waitFor(async () => expect(await dialog.getByTestId("review-paste-text").inputValue()).toBe(bodies[index]));
+      await dialog.getByTestId("review-paste-text").press("Tab");
       await dialog.getByTestId("review-import-submit").click();
       await dialog.waitFor({ state: "hidden" });
       await vi.waitFor(async () => expect(await page.getByTestId("text-body").innerText()).toContain(bodies[index]));
@@ -73,8 +76,7 @@ describe("review tasks, categories and content batches", () => {
     await options.filter({ hasText: names[0] }).click();
     await menu.waitFor({ state: "hidden" });
     await vi.waitFor(async () => expect(await page.getByTestId("text-body").innerText()).toContain(bodies[0]));
-    expect(await page.getByTestId("workbench-tree-panel").innerText()).toContain("本批内容");
-    expect(await page.getByTestId("workbench-tree-panel").innerText()).not.toContain("未分组");
+    expect(await page.getByTestId("workbench-tree-panel").innerText()).toContain("未分组");
 
     await page.getByTestId("workbench-batch-select").focus();
     await page.keyboard.press("Enter");

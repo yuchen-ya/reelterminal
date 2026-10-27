@@ -21,7 +21,7 @@ const JOB_STATUS = "status.json";
 const receiptSchema = z.object({
   schemaVersion: z.literal(1), exportId: z.string().regex(UUID), nodeId: z.string().regex(UUID),
   nodeRevision: z.number().int().nonnegative(), name: z.string().min(1).max(200),
-  mode: z.enum(["original", "adopted", "node-package", "version"]), scope: z.enum(["node", "filtered", "selected"]),
+  mode: z.enum(["original", "current", "adopted", "node-package", "version"]), scope: z.enum(["node", "filtered", "selected"]),
   digest: z.string().regex(/^[0-9a-f]{64}$/), totalFiles: z.number().int().positive(),
 }).strict();
 const statusSchema = z.object({
@@ -36,7 +36,7 @@ const manifestFileSchema = z.object({
 const manifestSchema = z.object({
   schemaVersion: z.literal(1), exportId: z.string().regex(UUID), nodeId: z.string().regex(UUID),
   nodeRevision: z.number().int().nonnegative(),
-  mode: z.enum(["original", "adopted", "node-package", "version"]),
+  mode: z.enum(["original", "current", "adopted", "node-package", "version"]),
   scope: z.enum(["node", "filtered", "selected"]), createdAt: z.number().nonnegative(),
   archive: manifestFileSchema.optional(),
   entries: z.array(manifestFileSchema.extend({

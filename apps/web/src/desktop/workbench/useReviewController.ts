@@ -10,6 +10,7 @@ import { manualReviewSteps } from "../../services/review-workspace/manual-steps"
 import { prepareReviewBlob } from "../../services/review-workspace/files";
 import { createWorkbenchCommands, type WorkbenchMutationOutcome, type WorkbenchSlice } from "../../stores/project/workbench-slice";
 import { useWorkbenchUiStore } from "../../stores/workbench-ui-store";
+import { reviewSeenKey, useReviewSeenStore } from "../../stores/review-seen-store";
 import { toItemView, useWorkbenchControllerSource } from "./useWorkbenchController";
 import type { WorkbenchItemView, WorkbenchMutationResult } from "./types";
 
@@ -72,6 +73,8 @@ async function openReviewMedia(id: string) {
 
 /** A node-bound controller. Lists read summaries; only the selected item reads bodies. */
 export function useReviewController(target: Target) {
+  const seen = useReviewSeenStore(state => state.seen);
+  const markSeen = useReviewSeenStore(state => state.markSeen);
   const [overview, setOverview] = useState<ReviewOverview | null>(null);
   const [page, setPage] = useState<{ items: readonly ReviewItemSummary[]; cursor?: string }>({ items: [] });
   const [pageCursor, setPageCursor] = useState<string | undefined>();
@@ -302,9 +305,31 @@ export function useReviewController(target: Target) {
     }
   }, [overview, loaded, extraLoaded, target]);
   const summaries = useMemo(() => expanded ? undefined : page.items.map(summaryView), [expanded, page.items]);
-  const batchViews = useMemo(() => overview?.batches.map(batch => ({ ...batch, totalCount: overview.counts[batch.id]?.total ?? 0, pendingCount: overview.counts[batch.id]?.pending ?? 0 })) ?? [], [overview]);
+  const batchViews = useMemo(() => overview?.batches.map(batch => ({ ...batch,
+    isNew: (batch.incomingRevision ?? 0) > (seen[reviewSeenKey(target.nodeId!, "batch", batch.id)] ?? 0),
+    totalCount: overview.counts[batch.id]?.total ?? 0, pendingCount: overview.counts[batch.id]?.pending ?? 0,
+  })).sort((a, b) => (b.contentUpdatedAt ?? b.createdAt) - (a.contentUpdatedAt ?? a.createdAt)) ?? [], [overview, seen, target.nodeId]);
   const controller = useWorkbenchControllerSource({ scopeId: `review:${target.nodeId}`, workbench: state, mediaItems, getWorkbench,
     commands: commandSource, openMedia: openReviewMedia, importRepair, undo, redo, canUndo: overview?.canUndo ?? false, canRedo: overview?.canRedo ?? false, summaries, batchViews, managesBatchSelection: true });
+
+  const readBatch = (id: string) => {
+    const batch = overview?.batches.find(batch => batch.id === id);
+    if (batch?.incomingRevision) markSeen(reviewSeenKey(target.nodeId!, "batch", id), batch.incomingRevision);
+  };
+  const readItem = (id: string) => {
+    const item = page.items.find(item => item.id === id) ?? expanded?.items.find(item => item.id === id);
+    if (item?.incomingRevision) markSeen(reviewSeenKey(target.nodeId!, "item", id), item.incomingRevision);
+  };
+  // Only navigation acknowledges updates; background arrivals must keep their NEW badge.
+  useEffect(() => { if (activeBatchId) readBatch(activeBatchId); }, [activeBatchId, overview?.node.id]);
+  useEffect(() => { if (controller.currentItem) readItem(controller.currentItem.id); }, [controller.currentItem?.id]);
+  useEffect(() => {
+    if (overview && !batchViews.some(batch => batch.isNew)) markSeen(reviewSeenKey(target.nodeId!, "node"), overview.node.incomingRevision ?? 0);
+  }, [overview, batchViews, target.nodeId, markSeen]);
+  const withUnread = (item: WorkbenchItemView): WorkbenchItemView => {
+    const incoming = page.items.find(row => row.id === item.id)?.incomingRevision ?? expanded?.items.find(row => row.id === item.id)?.incomingRevision ?? 0;
+    return { ...item, isNew: incoming > (seen[reviewSeenKey(target.nodeId!, "item", item.id)] ?? 0) };
+  };
 
   const commitBranchNod = useCallback(async (items: readonly WorkbenchItemView[]): Promise<WorkbenchMutationResult> => {
     try {
@@ -319,7 +344,12 @@ export function useReviewController(target: Target) {
     } catch (problem) { refresh(); return outcome(problem); }
   }, [target, overview?.node.revision, mediaItems, controller, refresh]);
 
-  return { controller: { ...controller, ensureItemsLoaded, commitBranchNod, saveModelObservation: async (input: import("../../services/review-workspace/model-feedback").SaveModelObservation): Promise<WorkbenchMutationResult> => {
+  return { controller: { ...controller, ensureItemsLoaded, commitBranchNod,
+    batchItems: controller.batchItems.map(withUnread), visibleItems: controller.visibleItems.map(withUnread),
+    setActiveBatchId: (id: string) => { readBatch(id); controller.setActiveBatchId(id); },
+    selectItem: (id: string, modifiers?: import("./types").SelectModifiers) => { readItem(id); controller.selectItem(id, modifiers); },
+    focusItem: (id: string) => { readItem(id); controller.focusItem(id); },
+    saveModelObservation: async (input: import("../../services/review-workspace/model-feedback").SaveModelObservation): Promise<WorkbenchMutationResult> => {
     try { if (!overview) throw reviewError("CONFLICT", "节点未载入"); await saveModelObservation(target, overview.node.revision, input); return { ok: true }; }
     catch (problem) { refresh(); return outcome(problem); }
   } }, overview, loading: loading || detailLoading || previewLoading, error, refresh, pageNumber: previousCursors.length + 1,

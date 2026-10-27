@@ -13,39 +13,27 @@ privately and must not print or log it.
 
 ## Independent Review Workspace
 
-Concrete edits of an existing review node use one task branch. Copying task
-instructions does not create a branch. Read `schema review.branches.create`, then
-create it from the explicit source target/revision with a stable UUID `taskId`, a
-UUID `requestId` and the current directory revision. Creation does not select the
-branch in the GUI or append to the source content history. Reuse the returned
-branch target for `review.apply`, `review.ingest` and `review.steps.*` throughout
-the task. When a copied target already has `node.branch`, continue that branch;
-nested branch creation is rejected.
+A task represents an independent goal. Continue all submissions and revisions in
+the explicit task target. Create a new task only when the user explicitly requests
+an independent goal. Do not create tasks for batches, alternatives or retries.
+Parent nodes/groups may organize content by type, batch, stage or any clear tree;
+group order follows the latest modification. Omit absent remarks. Write plans and
+explanations in Markdown with real headings, lists, tables and fenced code.
 
-After a branch is permanently cleared, replaying its original `requestId` still
-returns the historical receipt. A new request using that cleared `taskId` returns
-`NOT_FOUND`; use a new `taskId` to explicitly start a new task.
+Use review.ingest for new items in that task. For complete replacement results,
+use review.items.submit with the same target, expectedNodeRevision, requestId and
+results containing itemId, expectedItemVersion and content. Resources must already
+belong to the task or be imported atomically through files. The item ID stays the
+same, its version advances, old content and feedback remain, and the result returns
+to pending review. Optional stepId completes a real running processing step. All
+writes retain revision guards and durable request receipts. Published handoff
+rework may continue using the existing review.apply contract.
 
-For inherited images, videos or models, use `review.branches.submit` with the
-branch target/revision, `requestId` and `results: [{itemId, expectedItemVersion,
-content}]`. This appends real replacement content to the same branch item;
-resources must already be retained by that branch or imported through `files` in
-the same request. It never fabricates a handoff. An optional `stepId` atomically
-completes an actual running processing step with the submitted new versions.
-
-`review.branches.compare` reports exact source/result versions and item-local
-conflicts. In the GUI, open **Task branches** from the source header (or **Compare
-and adopt branch results** from a branch), compare the results and explicitly
-select content to adopt. Existing item content and explicit new results are
-supported; deletions and branch review decisions are not propagated. Source
-changes to another item are allowed; changes to the selected item's content,
-decisions, annotations or feedback conflict. Each adoption records a checkpoint
-so later results can continue on the same branch. Adoption uses the source's human
-undo history and keeps old content versions and resource references. Undo does
-not undo external processing or file copies; retrying an old adoption request
-returns its durable receipt without reapplying an undone result. Node packages
-retain historical provenance but restoring one never activates an old branch
-relationship against existing nodes.
+Task branch creation is retired: review.branches.create returns UNSUPPORTED.
+Existing historical branches remain readable and can still be compared/adopted
+through the task menu's historical links. No existing task data is merged or
+deleted automatically. Legacy branch submission remains for existing branches;
+new workflows use review.items.submit.
 
 Select **Review Workspace**, create a data node, and use **Copy connection
 instructions** for the current installation. Review editing has its own checkbox;

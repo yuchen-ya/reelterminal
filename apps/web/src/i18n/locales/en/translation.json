@@ -1,5 +1,6 @@
 {
   "review": {
+    "trashConfirm": { "title": "Move “{{name}}” to the recycle bin?", "description": "All batches, items and review records in this task will move to the recycle bin. You can restore them later." },
     "manageGroups": "Manage categories", "finishGroupManagement": "Done",
     "migration": {
       "title": "Migrate project workbench", "description": "Choose an existing project workspace and inspect its old workbench before copying. Available media becomes independent review files; original project content remains a read-only backup.",
@@ -13,7 +14,7 @@
       "readonly": "This project workbench was migrated. The old content below is a read-only backup; continue review and rework in the independent node.", "oldVersion": "Older apps may still change the source backup and cannot read independent nodes. Preview again to detect source changes and explicitly import them as new batches. No automatic overwrite or reverse synchronization occurs."
     },
     "purge": {
-      "title": "Permanently clear node", "description": "Permanently removes this node, all retained versions, feedback, handoffs, steps and undo history. This cannot be undone. Back up the node first if you need these records.",
+      "title": "Permanently delete task", "description": "Permanently removes this node, all retained versions, feedback, handoffs, steps and undo history. This cannot be undone. Back up the node first if you need these records.",
       "references": "Current file holds: versions {{versions}} · steps {{steps}} · handoffs {{handoffs}} · journal {{journal}}. These node-owned holds are removed only with the history below.",
       "shared": "Keep: another node holds it", "external": "Keep external original", "release": "Release after history deletion",
       "cleanup": "Up to {{bytes}} B of managed files become eligible for cleanup. Physical cleanup runs on a later startup after the 24-hour orphan grace period; it does not free disk space immediately. Independent project copies remain intact.",
@@ -71,8 +72,8 @@
     "kind": { "model3d": "3D model", "image": "Image", "video": "Video", "text": "Text", "data": "Table" },
     "agentAccessLabel": "Allow Agent to edit reviews", "exportMenu": "Export",
     "copyTaskInstructions": "Copy Agent instructions for {{name}}",
-    "startupPrompt": "{{task}}Use the independent ReelTerminal Review Workspace for my request.\nCLI prefix (prepend it to each subcommand): {{cli}}\nTarget: {{target}}\nFirst run review describe for the workflow and discovery steps. Keep this task target fixed across GUI selection changes; recheck identity and the intended target after restart or conflict.\nFor a concrete edit, follow describe to create or continue one task branch; copying this prompt alone creates none.",
-    "branch": {"label": "Task branch", "listTitle": "Task branches", "compareTitle": "Compare and adopt branch results", "baseRevision": "Starting revision", "adoptHint": "Select content results to adopt. Source decisions and feedback are preserved; source changes are checked again when adopting.", "select": "Select", "loading": "Loading branch comparison…", "refresh": "Refresh comparison", "adoptSelected": "Adopt selected results", "empty": "No task branches yet. An Agent creates one when it starts a concrete edit.", "state": {"changed": "Changed", "added": "New result", "unchanged": "Unchanged", "adopted": "Already adopted", "conflict": "Source changed"}}
+    "startupPrompt": "{{task}}Use the independent ReelTerminal Review Workspace for my request.\nCLI prefix (prepend it to each subcommand): {{cli}}\nTarget: {{target}}\nFirst run review describe for the workflow and discovery steps. Keep this task target fixed across GUI selection changes; recheck identity and the intended target after restart or conflict.\nContinue in this same task. Organize new content with meaningful parent nodes/groups and update existing item versions for revisions. Do not create tasks or branches for batches, alternatives or retries. Create a task only when I explicitly request an independent goal. Groups may represent types, batches, stages or other clear tree structures. Omit absent notes. Write plans and explanations in Markdown.",
+    "branch": {"label": "Historical link", "listTitle": "Historical task links", "compareTitle": "Compare and adopt branch results", "baseRevision": "Starting revision", "adoptHint": "Select content results to adopt. Source decisions and feedback are preserved; source changes are checked again when adopting.", "select": "Select", "loading": "Loading branch comparison…", "refresh": "Refresh comparison", "adoptSelected": "Adopt selected results", "empty": "No historical task links. Continue new submissions and revisions in this task.", "state": {"changed": "Changed", "added": "New result", "unchanged": "Unchanged", "adopted": "Already adopted", "conflict": "Source changed"}}
   },
   "projectMediaFilters": {
     "scope": "View scope",

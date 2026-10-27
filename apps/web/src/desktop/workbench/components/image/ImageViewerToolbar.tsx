@@ -116,11 +116,11 @@ export function ImageViewerToolbar({
             onClick={() => setViewMode("grid")}
             className={wbButton.segmentedItem(viewMode === "grid")}
             aria-pressed={viewMode === "grid"}
-            title={`总览本批图片 (${batchImageItemsCount})，点击选择，双击放大查看`}
+            title={`返回当前集合 (${batchImageItemsCount})，点击选择，双击放大查看`}
           >
             <LayoutGrid className="h-3.5 w-3.5" />
             <span className="ml-1 font-mono text-[11px]">{batchImageItemsCount}</span>
-            <span className="sr-only">图片总览 ({batchImageItemsCount})</span>
+            <span className="sr-only">返回集合 ({batchImageItemsCount})</span>
           </button>
           <button
             type="button"

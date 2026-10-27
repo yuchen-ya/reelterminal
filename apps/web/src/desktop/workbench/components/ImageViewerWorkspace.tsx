@@ -7,7 +7,6 @@
  */
 import type {
   JSX,
-  MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -17,7 +16,6 @@ import {
   ImageOff,
 } from "lucide-react";
 import type {
-  WorkbenchDecision,
   WorkbenchPixelStroke,
   WorkbenchRepairBase,
   WorkbenchSpatialAnnotation,
@@ -45,7 +43,6 @@ import {
   type CanvasWorkMode,
   type RepairTool,
 } from "./image/image-canvas-utils";
-import { ImageGridView } from "./image/ImageGridView";
 import { ImageViewerToolbar } from "./image/ImageViewerToolbar";
 import { ImageStage } from "./image/ImageStage";
 import { useImagePointerInteractions } from "./image/useImagePointerInteractions";
@@ -54,6 +51,7 @@ export interface ImageViewerWorkspaceProps {
   readonly currentItem: WorkbenchItemView;
   /** All image items of the batch (grid cards + pinned reference compare). */
   readonly batchImageItems: readonly WorkbenchItemView[];
+  readonly onOpenCollection?: () => void;
   readonly selectedIds: readonly string[];
   readonly onSelectItem: (itemId: string, modifiers?: SelectModifiers) => void;
   readonly onUpdateImageAnnotations: WorkbenchController["updateImageAnnotations"];
@@ -72,15 +70,13 @@ interface RepairDraftCache {
 export function ImageViewerWorkspace({
   currentItem,
   batchImageItems,
-  selectedIds,
-  onSelectItem,
+  onOpenCollection,
   onUpdateImageAnnotations,
   onSaveImageRepair,
-  onCommitDecision,
   issuePanelWidth,
   onStartResizeIssuePanel,
 }: ImageViewerWorkspaceProps): JSX.Element {
-  const [viewMode, setViewMode] = useState<"zoom" | "grid">("zoom");
+  const viewMode = "zoom" as const;
   const [pinnedRefId, setPinnedRefId] = useState<string | null>(null);
   const [showCompareSplit, setShowCompareSplit] = useState<boolean>(false);
 
@@ -147,10 +143,6 @@ export function ImageViewerWorkspace({
   const pinnedRefItem =
     batchImageItems.find((item) => item.id === pinnedRefId) ?? null;
 
-  const selectedCount = useMemo(
-    () => batchImageItems.filter((item) => selectedIds.includes(item.id)).length,
-    [batchImageItems, selectedIds],
-  );
 
   const canDraw =
     viewMode === "zoom" &&
@@ -482,24 +474,6 @@ export function ImageViewerWorkspace({
     [annotations, currentItem.id, currentItem.version, onUpdateImageAnnotations, selectedAnnotationId],
   );
 
-  const handleCardSelect = (item: WorkbenchItemView, e: ReactMouseEvent): void => {
-    onSelectItem(item.id, { ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey });
-  };
-
-  const handleCardOpen = (item: WorkbenchItemView): void => {
-    onSelectItem(item.id);
-    setViewMode("zoom");
-  };
-
-  const handleCardDecision = useCallback(
-    async (item: WorkbenchItemView, decision: WorkbenchDecision): Promise<void> => {
-      const result = await onCommitDecision(decision, [item.id]);
-      if (!result.ok) setMutationError(result.message);
-      else setMutationError(null);
-    },
-    [onCommitDecision],
-  );
-
   const stepZoom = (delta: number): void => {
     setZoom((prev) => clamp(prev + delta, 20, 500));
   };
@@ -619,7 +593,7 @@ export function ImageViewerWorkspace({
     <div className="flex h-full w-full flex-col overflow-hidden bg-bg">
       <ImageViewerToolbar
         viewMode={viewMode}
-        setViewMode={setViewMode}
+        setViewMode={mode => { if (mode === "grid") onOpenCollection?.(); }}
         batchImageItemsCount={batchImageItems.length}
         showCompareSplit={showCompareSplit}
         setShowCompareSplit={setShowCompareSplit}
@@ -686,18 +660,6 @@ export function ImageViewerWorkspace({
         </div>
       )}
 
-      {viewMode === "grid" ? (
-        <ImageGridView
-          batchImageItems={batchImageItems}
-          currentItem={currentItem}
-          selectedIds={selectedIds}
-          pinnedRefId={pinnedRefId}
-          selectedCount={selectedCount}
-          onCardSelect={handleCardSelect}
-          onCardOpen={handleCardOpen}
-          onCardDecision={handleCardDecision}
-        />
-      ) : (
         <div className="flex min-h-0 flex-1 overflow-hidden bg-stage-bg">
           <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
             {showCompareSplit && pinnedRefItem ? (
@@ -785,7 +747,6 @@ export function ImageViewerWorkspace({
             emptyHint="先选上方「标记问题」，在图片上拖出方框或箭头；再点选标记，在这里填写修改要求。"
           />
         </div>
-      )}
     </div>
   );
 }

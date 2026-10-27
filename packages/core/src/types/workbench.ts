@@ -380,6 +380,7 @@ export interface WorkbenchDecisionEntry {
 }
 
 export interface WorkbenchItem {
+  readonly incomingRevision?: number;
   /** 父节点或所属分组的呈现模式。 */
   readonly groupMode?: WorkbenchParentMode;
   /** Agent 预绑定的对比基准条目 ID。 */
@@ -396,6 +397,8 @@ export interface WorkbenchItem {
   readonly type: WorkbenchContentType;
   /** Current content version; starts at 1 on ingest. */
   readonly version: number;
+  /** Latest persisted item/feedback change; older records may omit it. */
+  readonly updatedAt?: number;
   /** Independent review storage retains allocated versions across undo branches. */
   readonly versionCeiling?: number;
   readonly createdAt: number;
@@ -416,6 +419,9 @@ export interface WorkbenchItem {
 }
 
 export interface WorkbenchBatch {
+  /** Local review notification metadata; independent of review decisions. */
+  readonly incomingRevision?: number;
+  readonly contentUpdatedAt?: number;
   readonly id: string;
   readonly name: string;
   readonly description?: string;

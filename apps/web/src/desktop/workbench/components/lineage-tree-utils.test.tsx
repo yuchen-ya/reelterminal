@@ -7,6 +7,7 @@ import {
 } from "./lineage-tree-utils";
 import { PendingLineagePanel } from "./PendingLineagePanel";
 import { AdaptiveBoardWorkspace } from "./AdaptiveBoardWorkspace";
+import { CollectionActions, CollectionInteractionContext } from "./CollectionActions";
 import { VideoFrameWorkspace } from "./VideoFrameWorkspace";
 import type { WorkbenchItemView } from "../types";
 
@@ -50,6 +51,17 @@ const item = (
   }) as WorkbenchItemView;
 
 describe("buildWorkbenchLineageGroups & parent modes", () => {
+  it("orders parent groups by their latest descendant edit while retaining leaf order", () => {
+    const groups = buildWorkbenchLineageGroups([
+      item("a", "old", undefined, { updatedAt: 10 }),
+      item("b", "new", undefined, { updatedAt: 5 }),
+      item("child", "new", "b", { updatedAt: 30 }),
+      item("sibling", "new", "b", { updatedAt: 20 }),
+    ]);
+    expect(groups.map(group => group.id)).toEqual(["new", "old"]);
+    expect(groups[0].roots[0].children.map(node => node.item.id)).toEqual(["child", "sibling"]);
+    expect(groups[0].updatedAt).toBe(30);
+  });
   it("uses real parent links, keeps ungrouped items separate, and promotes a cycle root", () => {
     const groups = buildWorkbenchLineageGroups(
       [
@@ -131,6 +143,12 @@ describe("buildWorkbenchLineageGroups & parent modes", () => {
 });
 
 describe("PendingLineagePanel compact node UI & board vs category parents", () => {
+  it("shows supplied node remarks and leaves absent remarks empty", () => {
+    render(<PendingLineagePanel items={[item("noted", undefined, undefined, { subtitle: "只检查轮廓" }), item("plain")]}
+      currentItem={null} selectedIds={[]} onSelectItem={vi.fn()} onRetrieveItem={vi.fn()} />);
+    expect(screen.getByText("只检查轮廓")).toBeInTheDocument();
+    expect(screen.queryByText("无备注")).toBeNull();
+  });
   it("collapses board parent nodes by default and opens AdaptiveBoard on click, while keeping category parents expanded", () => {
     const onSelectItem = vi.fn();
     const onSelectBoard = vi.fn();
@@ -183,6 +201,37 @@ describe("PendingLineagePanel compact node UI & board vs category parents", () =
 });
 
 describe("AdaptiveBoardWorkspace", () => {
+  it("keeps pending and selected scopes separate and never falls back to processed items", () => {
+    const onCommitDecision = vi.fn();
+    const items = [item("a"), item("b"), item("done", undefined, undefined, { status: "kept" })];
+    const props = { boardTitle: "集合", items, currentItem: items[0], selectedIds: ["a", "outside"],
+      onSelectItem: vi.fn(), onOpenChildItem: vi.fn(), onCommitDecision };
+    const view = render(<AdaptiveBoardWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "保留选中项（1）" }));
+    expect(onCommitDecision).toHaveBeenLastCalledWith("kept", ["a"]);
+    fireEvent.click(screen.getByTestId("board-discard-all"));
+    expect(onCommitDecision).toHaveBeenLastCalledWith("discarded", ["a", "b"]);
+    view.rerender(<AdaptiveBoardWorkspace {...props} items={items.map(entry => ({ ...entry, status: "kept" }))} selectedIds={[]} />);
+    expect(screen.getByTestId("board-keep-all")).toBeDisabled();
+    expect(screen.getByTestId("board-discard-all")).toBeDisabled();
+  });
+
+  it("uses selected siblings for a child drag and the explicit whole scope for a parent drag", () => {
+    const a = item("a"), b = item("b"), outside = item("outside");
+    const drag = vi.fn();
+    render(<CollectionInteractionContext.Provider value={{ action: vi.fn(), drag, selectedItems: [a, b], busy: false }}>
+      <CollectionActions scope={{ title: "a", items: [a], folder: false }}><div>child</div></CollectionActions>
+      <CollectionActions scope={{ title: "group", items: [a, b, outside], folder: true }}><div>parent</div></CollectionActions>
+      <CollectionActions scope={{ title: "outside", items: [outside], folder: false }}><div>unselected</div></CollectionActions>
+    </CollectionInteractionContext.Provider>);
+    fireEvent.dragStart(screen.getByText("child"));
+    expect(drag.mock.calls.at(-1)?.[1]).toMatchObject({ items: [a, b], folder: false });
+    fireEvent.dragStart(screen.getByText("parent"));
+    expect(drag.mock.calls.at(-1)?.[1]).toMatchObject({ items: [a, b, outside], folder: true });
+    fireEvent.dragStart(screen.getByText("unselected"));
+    expect(drag.mock.calls.at(-1)?.[1]).toMatchObject({ items: [outside], folder: false });
+  });
+
   it("renders multi-image, text, and data cards together and supports drill-down and batch verdicts", () => {
     const onSelectItem = vi.fn();
     const onOpenChildItem = vi.fn();

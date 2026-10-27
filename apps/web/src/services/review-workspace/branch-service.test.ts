@@ -170,7 +170,10 @@ describe("durable task branches", () => {
       items: [{ id: imageId, title: "Image", type: "image", content: { type: "image", mediaId: sourceImage } },
         { id: videoId, title: "Video", type: "video", content: { type: "video", mediaId: sourceVideo } },
         { id: dataId, title: "Data", type: "data", content: { type: "data", datasetId: crypto.randomUUID(), columns: [{ columnId, title: "Value" }], rows: [{ rowId, cells: { [columnId]: "old" } }], proposals: [] } }] });
-    const branch = await handleReviewCommand("review.branches.create", { target, expectedNodeRevision: 1, expectedWorkspaceRevision: 1, taskId: crypto.randomUUID(), requestId: crypto.randomUUID(), name: "Media task" }) as Awaited<ReturnType<ReviewService["createBranch"]>>;
+    const branchInput = { target, expectedNodeRevision: 1, expectedWorkspaceRevision: 1, taskId: crypto.randomUUID(), requestId: crypto.randomUUID(), name: "Media task" };
+    await expect(handleReviewCommand("review.branches.create", branchInput)).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    // Seed a historical branch directly to retain comparison/adoption coverage.
+    const branch = await reviewService.createBranch(branchInput);
     const items = (await reviewService.getNode(branch.target)).state.items;
     const image = items.find(item => item.type === "image")!, video = items.find(item => item.type === "video")!, data = items.find(item => item.type === "data")!;
     if (data.content.type !== "data") throw new Error("Expected table");

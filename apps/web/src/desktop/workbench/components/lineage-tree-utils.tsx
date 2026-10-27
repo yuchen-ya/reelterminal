@@ -16,6 +16,7 @@ export interface WorkbenchLineageNode {
   children: WorkbenchLineageNode[];
   /** Present when this node has children: "board" (adaptive board, collapsed by default) or "category". */
   mode?: WorkbenchParentMode;
+  updatedAt?: number;
 }
 
 export interface WorkbenchLineageGroup {
@@ -25,6 +26,7 @@ export interface WorkbenchLineageGroup {
   roots: WorkbenchLineageNode[];
   /** Group-level parent mode: "board" (adaptive board, collapsed by default) or "category" (folder). */
   mode?: WorkbenchParentMode;
+  updatedAt?: number;
 }
 
 export interface WorkbenchLineageGroupOptions {
@@ -139,7 +141,7 @@ export function buildWorkbenchLineageGroups(
     const group: WorkbenchLineageGroup = {
       id: groupId,
       baseName: item.lineage
-        ? item.lineage.upstreamSourceNode || item.lineage.upstreamGroupTitle || groupId
+        ? item.lineage.upstreamGroupTitle || item.lineage.upstreamSourceNode || groupId
         : options.ungroupedLabel,
       isUngrouped: !item.lineage,
       roots: [],
@@ -180,6 +182,7 @@ export function buildWorkbenchLineageGroups(
         entry.children.map((c) => inferParentModeFromItem(c.item)).find(Boolean);
       entry.mode = explicitNodeMode ?? "board";
     }
+    entry.updatedAt = Math.max(entry.item.updatedAt ?? 0, ...entry.children.map(child => child.updatedAt ?? 0));
     active.delete(entry.item.id);
   };
   groups.forEach((group) => group.roots.forEach(visit));
@@ -190,7 +193,17 @@ export function buildWorkbenchLineageGroups(
     visit(entry);
   });
 
+  const sortParents = (nodes: WorkbenchLineageNode[]) => {
+    const parents = nodes.filter(node => node.children.length > 0).sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+    let index = 0;
+    for (let i = 0; i < nodes.length; i++) {
+      if (nodes[i].children.length > 0) nodes[i] = parents[index++];
+      sortParents(nodes[i].children);
+    }
+  };
   groups.forEach((group) => {
+    group.updatedAt = Math.max(0, ...group.roots.map(root => root.updatedAt ?? 0));
+    sortParents(group.roots);
     if (group.isUngrouped || group.roots.some((r) => r.children.length > 0)) {
       group.mode = "category";
       return;
@@ -203,6 +216,8 @@ export function buildWorkbenchLineageGroups(
   });
 
   return Array.from(groups.values()).sort((a, b) => {
+    const modifiedOrder = (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+    if (modifiedOrder) return modifiedOrder;
     if (a.isUngrouped === b.isUngrouped) return 0;
     return a.isUngrouped ? 1 : -1;
   });

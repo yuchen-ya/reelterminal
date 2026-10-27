@@ -54,8 +54,8 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.7.5" as const;
-export const GUI_MANUAL_APP_VERSION = "1.3.1" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.7.8" as const;
+export const GUI_MANUAL_APP_VERSION = "1.3.5" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
 /** Agent-facing payload limits for the help verbs. */
@@ -120,10 +120,13 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     entry: [{ zh: "点击顶栏“审阅工作台”，创建数据节点，再导入文件、文件夹、CSV/JSON 或粘贴文本。", en: "Choose Review Workspace in the top tabs, create a data node, then import files, a folder, CSV/JSON or pasted text." }],
     steps: [
       { zh: "候选图、分镜及需同屏审阅的低密度图文可组织成父节点画板；普通分类目录只用于分组。Agent 可预绑定基准视频并排比较，播放时钟映射仍需单独提供。", en: "Group candidate images, storyboards or sparse text/data into a parent board for same-screen review; use category folders for organization. Agents can prebind a baseline video for side-by-side comparison; playback-time mappings are supplied separately." },
-      { zh: "节点侧栏管理最近、置顶、单层分组、搜索、归档与回收站。节点内的批次队列、正文和处理步骤按页读取。", en: "Use the node sidebar for recents, pins, single-level groups, search, archive and recycle. Item bodies and processing steps are paged." },
+      { zh: "任务管理集中在最左侧：右键或任务卡片的更多菜单提供重命名、分类、置顶、归档与回收；移到回收站前需要确认，底部提供回收站入口。第二栏使用紧凑的批次下拉框，名称和箭头之间的 NEW 表示有未查看的 Agent 内容更新；展开后定位具体批次。查看状态会保存，不会自动切走当前批次。节点内的正文和处理步骤按页读取。", en: "Manage tasks in the left sidebar through right-click or each task's menu; moving to the recycle bin requires confirmation. The bottom entry opens the recycle bin. A compact batch picker occupies the second sidebar. NEW between its name and arrow indicates unseen Agent content; open it to find the updated batch. Read state persists and incoming updates never switch your active batch. Item bodies and processing steps are paged." },
+      { zh: "任务代表独立目标，Agent 在指定任务内持续提交。分组是组织树的父节点，可按批次、类型或阶段组织，按最新修改时间排序；备注有内容才显示。新建任务分支已停用，既有关系在任务菜单的历史关联中查看。", en: "Tasks represent independent goals. Agents continue in the specified task. Parent groups organize batches, types, stages or other meaningful trees and sort by latest modification; remarks appear only when present. New task branches are retired; existing links remain in the task menu." },
+      { zh: "文本默认以 Markdown 排版阅读。直接改文使用开源轻量编辑器及实时预览；切换原文与批注可精确选取原文区间，保存产生新版本。", en: "Text opens in Markdown reading mode. Edit with the open-source lightweight editor and live preview; switch to Source and comments for exact source selections. Saving creates a new version." },
       { zh: "保留、丢弃与返工可撤销。图片修补、改文和单元格修改保留版本；交回本轮决策由人工发布不可变快照，等待 Agent 真实读取与回报。", en: "Keep, discard and rework decisions are undoable. Repairs, text edits and cell changes retain versions. A human publishes an immutable decision snapshot, then waits for real Agent acknowledgement." },
       { zh: "处理过程显示真实记录的输入、方法、输出、候选与失败；可固定两个版本比较，并从步骤引用导出精确版本。缺步骤、缺文件或缺旧正文明确标记。", en: "Processing shows recorded inputs, methods, outputs, candidates and failures. Pin two versions for comparison or export an exact step reference. Missing steps, files and historical bodies remain explicit." },
-      { zh: "导出可选初始原件、人工采用版本或完整节点包，准备后保存副本或拖出文件/文件夹。备份全部节点包含目录索引，目前逐节点恢复；旧交接仅作历史。", en: "Choose originals, human-adopted versions or a full node package, prepare it, then save copies or drag files/a folder out. Whole-node backup includes the directory index; restoration is per node and old handoffs are historical." },
+      { zh: "点击分组打开统一集合，进入单项后可返回原集合。选中项与本组待审项分别操作；父节点右键或更多菜单支持返工、重审和导出，分页时范围标为本页。", en: "Open a group as a collection and return to it after editing an item. Selection and pending-item actions have separate scopes. Parent context menus offer rework, re-review and export; paginated scopes are labelled as the current page." },
+      { zh: "可直接拖出条目或分组；未准备好时先显示进度，就绪后再次拖出文件或文件夹。默认导出当前已保存版本；导出对话框还可选初始原件、人工采用版本或含历史的完整节点包。", en: "Drag items or groups out directly. If preparation is still running, wait for progress and drag the ready files or folder again. Quick export uses current saved versions; the export dialog also offers originals, human-adopted versions and full node packages with history." },
       { zh: "添加采用版本到项目时明确选定目标视频工作区，生成独立媒体副本，不加入时间线。迁移旧项目须预览确认，旧工作台保留为只读备份；永久清空须确认删除节点全部历史。", en: "Attach adopted media to an explicit video workspace as independent media without adding timeline clips. Preview and confirm legacy migration; keep the old workbench read-only. Permanent clearing requires deleting all node history." },
       { zh: "复制工作台接入说明；Agent 审阅写权限与视频写权限分开。人工操作不依赖 Agent，审阅使用 review.*，旧项目工作台使用 workbench.*。", en: "Copy the review connection instructions. Review and video Agent-write grants are separate; human editing needs neither. Independent review uses review.* and the legacy project workbench uses workbench.*." },
     ],

@@ -174,6 +174,7 @@ export function createWorkbenchCommands(
       batchId: string,
       targets: ReadonlyArray<{ itemId: string; decision: WorkbenchDecision; contentRevisionId?: string }>,
       operator: "human" | "agent" = "human",
+      reworkReason?: string,
     ) => {
       let built: WorkbenchBuilderResult;
       try {
@@ -191,13 +192,29 @@ export function createWorkbenchCommands(
         };
       }
       if (isBuilderFailure(built)) return builderFailure(built);
+      const actions = [...built.actions];
+      if (reworkReason?.trim()) {
+        if (targets.some(target => target.decision !== "rework")) {
+          return { ok: false, code: "INVALID_PARAMS", message: "修改要求只能随返工决定提交" };
+        }
+        const now = Date.now();
+        for (const target of targets) {
+          const item = getWorkbench().items.find(item => item.id === target.itemId)!;
+          const feedback: WorkbenchFeedback = {
+            id: uuidv4(), itemId: item.id, itemVersion: item.version,
+            text: reworkReason.trim(), referencedTagIds: [], intent: "rework",
+            state: "confirmed", createdAt: now, updatedAt: now,
+          };
+          actions.push({ type: "workbench/feedback.save", id: uuidv4(), timestamp: now, params: { feedback } });
+        }
+      }
       const label =
         targets.length === 1
           ? `Workbench decision: ${targets[0].decision}`
           : `Workbench decision (${targets.length} items)`;
       return operator === "agent"
-        ? commitAsAgent(built.actions, label)
-        : commit(built.actions, label);
+        ? commitAsAgent(actions, label)
+        : commit(actions, label);
     },
 
     saveWorkbenchTextRevision: async (itemId: string, newText: string) => {

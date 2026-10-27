@@ -35,6 +35,7 @@ export interface WorkbenchQueueColumnProps {
   readonly controller: WorkbenchController;
   readonly hasBatch: boolean;
   readonly independent?: boolean;
+  readonly paginated?: boolean;
   readonly onCreateBatch: () => void;
   readonly onCollapse: () => void;
   readonly onOpenHandoff: () => void;
@@ -59,6 +60,7 @@ export function WorkbenchQueueColumn({
   controller,
   hasBatch,
   independent = false,
+  paginated = false,
   onCreateBatch,
   onCollapse,
   onOpenHandoff,
@@ -123,9 +125,15 @@ export function WorkbenchQueueColumn({
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-bg-1">
-      {/* Queue column top toolbar: 1 compact row + on-demand filter drawer */}
+      {/* Batch scope stays visible; tools do not compete with its name. */}
       <div className="shrink-0 space-y-1.5 border-b border-border p-1.5">
-        <div className="flex h-7 items-center gap-1">
+        <div className="flex h-7 items-center justify-between px-1">
+          <span className="text-xs font-semibold text-fg">审阅内容</span>
+          <button type="button" onClick={onCreateBatch} data-testid="workbench-new-batch" aria-label={independent ? "导入内容" : "新建批次"} className="inline-flex items-center gap-1 text-xs text-accent">
+            <Plus className="h-3.5 w-3.5" />{independent ? "导入" : "新建批次"}
+          </button>
+        </div>
+        <div className="flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -135,9 +143,10 @@ export function WorkbenchQueueColumn({
                 title={activeBatch?.name ?? "暂无批次"}
                 data-testid="workbench-batch-select"
                 data-batch-id={activeBatch?.id}
-                className="flex h-7 min-w-0 flex-1 items-center justify-between gap-1 rounded-md border border-border bg-bg-2 px-2 text-left text-xs font-semibold text-fg hover:bg-bg-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
+                className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-bg-2 px-2 text-left text-xs font-semibold text-fg hover:bg-bg-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
               >
-                <span className="min-w-0 truncate">{activeBatch?.name ?? "暂无批次"}</span>
+                <span className="min-w-0 flex-1 truncate">{activeBatch?.name ?? "暂无批次"}</span>
+                {controller.batches.some(batch => batch.isNew) && <span data-testid="workbench-batch-new" className="shrink-0 rounded bg-accent px-1 py-0.5 text-[10px] font-bold leading-none text-bg" title="有批次包含未查看的新内容">NEW</span>}
                 <ChevronDown className="h-3 w-3 shrink-0 text-fg-3" />
               </button>
             </DropdownMenuTrigger>
@@ -154,16 +163,20 @@ export function WorkbenchQueueColumn({
                   <DropdownMenuRadioItem
                     key={batch.id}
                     value={batch.id}
+                    onSelect={() => controller.setActiveBatchId(batch.id)}
                     textValue={batch.name}
                     className="cursor-pointer whitespace-normal break-words py-1.5 text-xs focus:bg-bg-3 focus:text-fg data-[state=checked]:text-accent"
                   >
-                    {batch.name}
+                    <span className="min-w-0 flex-1">{batch.name}</span>
+                    {batch.isNew && <span className="ml-2 shrink-0 rounded bg-accent px-1 text-[10px] font-bold text-bg">NEW</span>}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-
+        </div>
+        <div className="flex h-7 items-center gap-1">
+          <span className="min-w-0 flex-1 px-1 text-[11px] text-fg-3">分组与条目</span>
           <button
             type="button"
             onClick={() => setFilterOpen((v) => !v)}
@@ -188,22 +201,6 @@ export function WorkbenchQueueColumn({
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-bg-2 text-fg-3 transition-colors hover:bg-bg-3 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Network className="h-3.5 w-3.5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={onCreateBatch}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-bg-2 text-fg-2 transition-colors hover:bg-bg-3 hover:text-fg"
-            title={
-              independent
-                ? "导入图片、视频、文本或数据"
-                : "从项目素材库选择图片/视频创建本地批次"
-            }
-            aria-label={independent ? "导入内容" : "新建批次"}
-            data-testid="workbench-new-batch"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span className="sr-only">{independent ? "导入内容" : "新建批次"}</span>
           </button>
 
           <button
@@ -300,6 +297,9 @@ export function WorkbenchQueueColumn({
         {hasBatch ? (
           <PendingLineagePanel
             items={treeItems}
+            allItems={controller.batchItems}
+            paginated={paginated}
+            filtered={independent && (controller.typeFilter !== "all" || controller.searchQuery.length > 0)}
             currentItem={controller.currentItem}
             selectedIds={controller.selectedIds}
             activeBoardId={activeBoardId}

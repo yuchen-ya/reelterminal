@@ -49,17 +49,21 @@ export async function handleReviewCommand(verb: ReviewVerb, params: Record<strin
   const valid = validateObject<Record<string, unknown>>(params, REVIEW_SCHEMAS[verb], `${verb} params`);
   const target = valid.target as ReviewContext["target"];
   switch (verb) {
-    case "review.branches.create": return reviewService.createBranch(valid as unknown as Parameters<typeof reviewService.createBranch>[0]);
+    case "review.branches.create": throw reviewError("UNSUPPORTED", "任务分支已停用。请在当前任务中分组提交内容，使用 review.items.submit 更新已有条目；只有用户明确要求独立目标时才新建任务。");
     case "review.branches.compare": return reviewService.compareBranch(target);
+    case "review.items.submit":
     case "review.branches.submit": {
+      if (verb === "review.branches.submit" && !(await reviewService.getNodeMetadata(target)).branch) {
+        throw reviewError("INVALID_PARAMS", "旧分支提交接口仅适用于历史分支；当前任务请使用 review.items.submit。");
+      }
       const results = valid.results as Array<{ itemId: string; expectedItemVersion: number; content: ReviewIngestItem["content"] }>;
       // Reuse the existing validated content conversion without ingesting a synthetic batch.
-      const normalized = reviewIngestInput({ batchId: valid.requestId as string, name: "Branch results", items: results.map(result => ({
+      const normalized = reviewIngestInput({ batchId: valid.requestId as string, name: "Task results", items: results.map(result => ({
         id: result.itemId, title: "Result", type: result.content.type, content: result.content,
       })) }, Date.now());
       const files = valid.files as ReviewSourceFile[] | undefined;
-      return reviewService.submitBranch({ target, expectedNodeRevision: valid.expectedNodeRevision as number, requestId: valid.requestId as string,
-        request: { kind: "branch.submit", results, files: valid.files, stepId: valid.stepId }, results: results.map((result, index) => ({ itemId: result.itemId, expectedItemVersion: result.expectedItemVersion, content: normalized.items[index].content })),
+      return reviewService.submitResults({ target, expectedNodeRevision: valid.expectedNodeRevision as number, requestId: valid.requestId as string,
+        request: { kind: verb, results, files: valid.files, stepId: valid.stepId }, results: results.map((result, index) => ({ itemId: result.itemId, expectedItemVersion: result.expectedItemVersion, content: normalized.items[index].content })),
         stepId: valid.stepId as string | undefined, ...(files?.length ? { prepareResources: () => prepareReviewFiles(files, valid.requestId as string, "agent") } : {}) });
     }
     case "review.media.inspect":

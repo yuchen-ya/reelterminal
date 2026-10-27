@@ -13,7 +13,7 @@ export const REVIEW_VERBS = [
   "review.export.prepare", "review.export.status", "review.export.cancel", "review.export.copy",
   "review.steps.start", "review.steps.complete", "review.steps.fail", "review.steps.list",
   "review.package.inspect", "review.package.restore", "review.attach", "review.media.inspect", "review.frames.extract",
-  "review.branches.create", "review.branches.compare", "review.branches.submit",
+  "review.items.submit", "review.branches.create", "review.branches.compare", "review.branches.submit",
 ] as const;
 export type ReviewVerb = typeof REVIEW_VERBS[number];
 export type ReviewFacadeBindings = { readonly [Verb in ReviewVerb]: (params: Record<string, unknown>) => Promise<FacadeResult<unknown>> };
@@ -114,10 +114,12 @@ const exportFilter: ObjectSchema = { batchId: uuidField(false), type: typeFilter
 const videoDestination: ObjectSchema = { kind: kind("video"), projectId: boundedText(200), workspaceId: boundedText(200), instanceId: uuidField() };
 const resourceRead: ObjectSchema = { target: target(true), expectedNodeRevision: revision,
   reference: { check: value => references.some(schema => matchesSchema(value, schema)), describe: "an exact version or resource retained by the target node", required: true, emits: { kind: "anyOfObjects", variants: references } } };
-export const REVIEW_SCHEMAS: Record<ReviewVerb, ObjectSchema> = {
-  "review.branches.submit": { ...nodeWrite, files, stepId: uuidField(false), results: objectArray({ itemId: uuidField(),
+const submitResultsSchema: ObjectSchema = { ...nodeWrite, files, stepId: uuidField(false), results: objectArray({ itemId: uuidField(),
     expectedItemVersion: { ...revision, check: value => isNonNegativeInteger(value) && Number(value) > 0, emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } } }, content }, 1, 500,
-    "exact inherited branch items and complete real replacement content; resource IDs must be retained by this branch or imported atomically through files") },
+    "existing items in the current task and complete replacement content; resource IDs must be retained by this task or imported atomically through files") };
+export const REVIEW_SCHEMAS: Record<ReviewVerb, ObjectSchema> = {
+  "review.items.submit": submitResultsSchema,
+  "review.branches.submit": submitResultsSchema,
   "review.branches.create": { ...nodeWrite, expectedWorkspaceRevision: revision, name,
     taskId: { ...uuidField(), describe: "a stable UUID for this editing task; reuse it to resume the same branch, never generate one per command" } },
   "review.branches.compare": { target: target(true) },
@@ -140,7 +142,7 @@ export const REVIEW_SCHEMAS: Record<ReviewVerb, ObjectSchema> = {
   "review.nodes.list": { target: target(false), ...page, query, groupId: uuidField(false),
     view: { check: value => ["all", "recent", "pinned", "archived", "trash"].includes(String(value)), describe: "a directory view", emits: { kind: "leaf", schema: { enum: ["all", "recent", "pinned", "archived", "trash"] } } } },
   "review.export.prepare": { ...exportIdentity, expectedNodeRevision: revision,
-    mode: { check: value => ["original", "adopted", "node-package", "version"].includes(String(value)), describe: "original files, human-adopted versions, portable node package, or an exact processing reference", required: true, emits: { kind: "leaf", schema: { enum: ["original", "adopted", "node-package", "version"] } } },
+    mode: { check: value => ["original", "current", "adopted", "node-package", "version"].includes(String(value)), describe: "original files, current saved versions, human-adopted versions, portable node package, or an exact processing reference", required: true, emits: { kind: "leaf", schema: { enum: ["original", "current", "adopted", "node-package", "version"] } } },
     reference: { check: value => references.some(schema => matchesSchema(value, schema)), describe: "one exact node-owned version or retained resource; version mode only, full file rather than a cropped region", emits: { kind: "anyOfObjects", variants: references } },
     scope: { check: value => ["node", "filtered", "selected"].includes(String(value)), describe: "an explicit frozen export scope", required: true, emits: { kind: "leaf", schema: { enum: ["node", "filtered", "selected"] } } },
     itemIds: { check: value => Array.isArray(value) && value.length > 0 && value.length <= 10000 && value.every(uuid), describe: "explicit selected item UUIDs", emits: { kind: "array", minItems: 1, maxItems: 10000, items: uuidField().emits! } },
@@ -175,8 +177,9 @@ export const REVIEW_SCHEMAS: Record<ReviewVerb, ObjectSchema> = {
   },
 };
 export const REVIEW_DESCRIPTIONS: Record<ReviewVerb, string> = {
-  "review.branches.submit": "Submit complete real image/video/model/text/table results to exact existing branch items with node and item version guards. Files use the managed review import path; existing resources must already be retained by this branch. Atomically records new immutable branch versions without changing the source or fabricating a handoff. Optional stepId completes a real running branch processing step with these exact new outputs. Continue using this same branch target throughout the task; users adopt selected results in the GUI.",
-  "review.branches.create": "Start one persistent work branch for a concrete editing task from the explicit source node and its revision. Does not switch the GUI or modify the source history. Reuse the taskId and returned branch target for every subsequent review.apply/ingest/steps command. If the copied target is already a branch, continue it directly; nested branches are rejected. Copying instructions alone never creates a branch.",
+  "review.items.submit": "Submit complete replacement results to existing items in the SAME task. Guard node revision and expectedItemVersion; retain immutable versions, feedback and history, and return changed items to pending review. New resources use files and existing resources must belong to this task. Optional stepId completes a running processing step. Do not create another task or branch for revisions, alternatives or continued work; organize new items under meaningful lineage parents. Write plans and explanations as Markdown with real headings, lists, tables and code fences. Plain text remains supported.",
+  "review.branches.submit": "Legacy branch operation. Prefer review.items.submit on the existing task. Submit complete real image/video/model/text/table results to exact existing branch items with node and item version guards. Files use the managed review import path; existing resources must already be retained by this branch. Atomically records new immutable branch versions without changing the source or fabricating a handoff. Optional stepId completes a real running branch processing step with these exact new outputs. Continue using this same branch target throughout the task; users adopt selected results in the GUI.",
+  "review.branches.create": "Retired: creating task branches is disabled. Keep the explicit current task target; use review.ingest for new grouped items and review.items.submit for new versions. Create an independent task only when the user explicitly requests a new independent goal.",
   "review.branches.compare": "Compare the explicit task branch against its fixed source, reporting exact result/source versions and item-local conflicts. Unrelated source edits do not block adoption. Users compare and explicitly adopt selected existing content or new results in the GUI; no automatic merge, deletion, or propagation of branch review decisions. Restored node packages do not reactivate old branch relationships.",
   "review.media.inspect": "Read verified file metadata for an exact node-owned media/resource reference. Requires no video project; does not add feedback or process records.",
   "review.frames.extract": "Use the existing local FFmpeg frame processor on an exact node-owned resource. Returns real source PTS and lossless PNG candidates under review jobs, pinned to the original target/revision. Does not create review items or feedback; record actual processing explicitly with review.steps.*.",
@@ -187,12 +190,12 @@ export const REVIEW_DESCRIPTIONS: Record<ReviewVerb, string> = {
   "review.steps.complete": "Complete a running step atomically with its new output items, content versions or prepared resources. A terminal step cannot be rewritten. Provide ingest or ops, or files for resource-only outputs.",
   "review.steps.fail": "Record a running step as failed or cancelled with no claimed outputs. Retry as a new step, optionally superseding the failed one.",
   "review.steps.list": "Read a bounded page of node-owned processing records with exact input/output references; no media bytes or item bodies.",
-  "review.export.prepare": "Freeze an exact node revision and explicit scope, then stream original or human-adopted versions into disposable copies. Poll status; this does not report an OS drop as received.",
+  "review.export.prepare": "Freeze an exact node revision and explicit scope, then stream original, current saved or human-adopted versions into disposable copies. Poll status; this does not report an OS drop as received.",
   "review.export.status": "Read a node-owned frozen export's progress, errors and ready manifest without media bytes.",
   "review.export.cancel": "Cancel a queued or preparing export. A cancelled export cannot be dragged or copied as complete.",
   "review.export.copy": "Copy a ready frozen export into a new directory under an allowed media root, preserving existing files and verifying each exported byte stream.",
   "review.nodes.list": "List a bounded page of independent review nodes for an explicit review workspace. Does not use a video project or current page selection.",
-  "review.nodes.create": "Create a persistent independent review node with directory CAS and a durable UUID request receipt. Read review.directory.get for expectedWorkspaceRevision first; use an existing task node when one is specified.",
+  "review.nodes.create": "Create a persistent independent review node ONLY when the user explicitly requests a new independent goal. Batches, alternatives, retries and revisions stay in the existing task. Use directory CAS and a durable UUID request receipt. Read review.directory.get for expectedWorkspaceRevision first; use an existing task node when one is specified.",
   "review.directory.get": "Read the independent directory revision and groups in one transaction.",
   "review.directory.apply": "Atomically create or update node/group metadata with directory CAS. Display renames do not rename original files. Trash is reversible.",
   "review.directory.history.control": "Undo or redo directory metadata without rolling back node content revisions. External commits form a history boundary.",

@@ -81,7 +81,7 @@ export function registerReviewExportIpc(mediaRoots: () => readonly string[]): vo
     return store.backup(args.plan, args.directory);
   }));
   handle(CHANNELS.reviewExportPrepare, z.object({ exportId: z.string().uuid(), nodeId: z.string().uuid(), nodeRevision: z.number().int().nonnegative(),
-    name: z.string().min(1).max(200), mode: z.enum(["original", "adopted", "node-package", "version"]), scope: z.enum(["node", "filtered", "selected"]), archive: z.string().max(64 * 1024 * 1024).optional(),
+    name: z.string().min(1).max(200), mode: z.enum(["original", "current", "adopted", "node-package", "version"]), scope: z.enum(["node", "filtered", "selected"]), archive: z.string().max(64 * 1024 * 1024).optional(),
     entries: z.array(z.object({ itemId: z.string().uuid().optional(), itemVersion: z.number().int().positive().optional(), fileName: z.string().min(1).max(500),
       resourceId: z.string().uuid().optional(), text: z.string().max(2_000_000).optional(), serialization: z.enum(["utf8-text", "lossless-json"]).optional(),
     }).strict()).max(25000),

@@ -161,6 +161,8 @@ export interface DataReworkCell {
 }
 
 export interface WorkbenchItemView {
+  readonly isNew?: boolean;
+  readonly updatedAt?: number;
   /** False for a paginated summary; payloads and feedback have not been read yet. */
   readonly detailsLoaded?: boolean;
   readonly id: string;
@@ -201,6 +203,7 @@ export interface WorkbenchItemView {
 }
 
 export interface WorkbenchBatchView {
+  readonly isNew?: boolean;
   readonly id: string;
   readonly name: string;
   readonly description?: string;
@@ -296,6 +299,8 @@ export interface WorkbenchController {
   readonly selectItem: (itemId: string, modifiers?: SelectModifiers) => void;
   readonly selectAllVisible: () => void;
   readonly clearSelection: () => void;
+  readonly setSelection: (itemIds: readonly string[]) => void;
+  readonly focusItem: (itemId: string) => void;
   readonly skipNext: () => void;
   readonly skipPrev: () => void;
 
@@ -303,12 +308,14 @@ export interface WorkbenchController {
   readonly commitDecision: (
     decision: WorkbenchDecision,
     explicitTargetIds?: readonly string[],
+    options?: { reason?: string; advance?: boolean },
   ) => Promise<WorkbenchMutationResult>;
   /** Branch nod: per-item suggested decisions, but one shared execution path. */
   readonly commitBranchNod: (
     items: readonly WorkbenchItemView[],
   ) => Promise<WorkbenchMutationResult>;
   readonly retrieveToPending: (itemId: string) => Promise<WorkbenchMutationResult>;
+  readonly retrieveItemsToPending: (itemIds: readonly string[]) => Promise<WorkbenchMutationResult>;
   readonly undoLast: () => Promise<WorkbenchMutationResult>;
   readonly redoLast: () => Promise<WorkbenchMutationResult>;
   readonly addUserTag: (itemId: string, tag: string) => Promise<WorkbenchMutationResult>;

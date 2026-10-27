@@ -195,6 +195,8 @@ export function toItemView(
   return {
     id: item.id,
     detailsLoaded: true,
+    updatedAt: Math.max(item.updatedAt ?? item.createdAt, ...item.revisions.map(revision => revision.createdAt),
+      ...item.decisionLog.map(decision => decision.decidedAt), ...feedbackForItem.map(feedback => feedback.updatedAt)),
     batchId: item.batchId,
     orderIndex: item.orderIndex,
     title: item.title,
@@ -690,6 +692,7 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
     async (
       decision: WorkbenchDecision,
       explicitTargetIds?: readonly string[],
+      options?: { reason?: string; advance?: boolean },
     ): Promise<WorkbenchMutationResult> => {
       const targets = explicitTargetIds ?? selectedIds;
       if (targets.length === 0) {
@@ -700,8 +703,9 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
         effectiveBatchId,
         targets.map((itemId) => ({ itemId, decision })),
         "human",
+        options?.reason,
       );
-      if (result.ok) advanceAfterDecision(targets);
+      if (result.ok && options?.advance !== false) advanceAfterDecision(targets);
       return result;
     },
     [selectedIds, effectiveBatchId, storeApi, advanceAfterDecision],
@@ -1136,11 +1140,14 @@ type IssueFeedbackInput = {
     selectItem,
     selectAllVisible,
     clearSelection,
+    setSelection: (itemIds) => { if (effectiveBatchId) ui().setSelection(effectiveBatchId, itemIds); },
+    focusItem: (itemId) => { if (effectiveBatchId) ui().setCursor(effectiveBatchId, itemId); },
     skipNext,
     skipPrev,
     commitDecision,
     commitBranchNod,
     retrieveToPending,
+    retrieveItemsToPending: (itemIds) => storeApi().revertWorkbenchItems(itemIds),
     undoLast,
     redoLast,
     addUserTag,

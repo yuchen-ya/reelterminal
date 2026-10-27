@@ -1,28 +1,18 @@
 import type { JSX, ReactNode } from "react";
 import type React from "react";
 import { useTranslation } from "react-i18next";
-import { Bot, ChevronDown, Download, GitBranch, Layers } from "lucide-react";
-import type { ReviewContext, ReviewGroup, ReviewNode } from "@reelterminal/core/review/types";
-import type { DirectoryCommand } from "../../../services/review-workspace/directory";
+import { Bot, Download, GitBranch, Layers } from "lucide-react";
+import type { ReviewContext, ReviewNode } from "@reelterminal/core/review/types";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 } from "@reelterminal/ui";
 import { wbButton } from "../wb-button";
 
 export interface ReviewNodeHeaderProps {
   node: ReviewNode | null;
-  groups: readonly ReviewGroup[];
-  onUpdateNode?: (patch: Extract<DirectoryCommand, { kind: "node.update" }>["patch"]) => void;
-  onRenameNode?: () => void;
-  onPurgeNode?: () => void;
-  onBranches?: () => void;
   view?: "content" | "process";
   stepCount?: number;
   onSelectView?: (view: "content" | "process") => void;
@@ -39,11 +29,6 @@ export interface ReviewNodeHeaderProps {
 
 export function ReviewNodeHeader({
   node,
-  groups,
-  onUpdateNode,
-  onRenameNode,
-  onPurgeNode,
-  onBranches,
   view,
   stepCount = 0,
   onSelectView,
@@ -63,7 +48,7 @@ export function ReviewNodeHeader({
     <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-bg-1 px-2.5">
       {node ? (
         <>
-          {/* 节点名 + ▾ 操作菜单 */}
+          {/* 任务名称；管理入口集中在左侧任务栏 */}
           <div className="flex min-w-0 items-center gap-0.5">
             <h1
               className="truncate text-xs font-semibold text-fg max-w-[220px]"
@@ -74,80 +59,8 @@ export function ReviewNodeHeader({
               {node.pinned ? "★ " : ""}
               {node.name}
             </h1>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className={wbButton.ghost}
-                  data-testid="review-node-menu-trigger"
-                  aria-label={t("review.nodeMenu", "节点操作")}
-                  title={t("review.nodeMenu", "节点操作")}
-                >
-                  <ChevronDown className="h-3.5 w-3.5 text-fg-3 hover:text-fg" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    {t("review.moveToGroup")}
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-44">
-                    <DropdownMenuItem
-                      onSelect={() => onUpdateNode?.({ groupId: null })}
-                    >
-                      {t("review.ungrouped")}
-                    </DropdownMenuItem>
-                    {groups.map((group) => (
-                      <DropdownMenuItem
-                        key={group.id}
-                        onSelect={() => onUpdateNode?.({ groupId: group.id })}
-                      >
-                        {group.name}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-                <DropdownMenuItem onSelect={onRenameNode}>
-                  {t("review.rename")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => onUpdateNode?.({ pinned: !node.pinned })}
-                >
-                  {t(node.pinned ? "review.unpin" : "review.pin")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => onUpdateNode?.({ archived: !node.archivedAt })}
-                >
-                  {t(node.archivedAt ? "review.unarchive" : "review.archive")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => onUpdateNode?.({ trashed: !node.trashedAt })}
-                >
-                  {t(node.trashedAt ? "review.restore" : "review.moveToTrash")}
-                </DropdownMenuItem>
-                {node.trashedAt && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="text-status-error focus:text-status-error"
-                      data-testid="review-purge-open"
-                      onSelect={onPurgeNode}
-                    >
-                      {t("review.purge.title")}
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
 
-          {node.branch && <span className="max-w-32 truncate text-[11px] text-fg-3" title={`${node.branch.sourceNodeId} · r${node.branch.sourceNodeRevision}`} data-testid="review-branch-origin">
-            {t("review.branch.label", "Task branch")} · r{node.branch.sourceNodeRevision}
-          </span>}
-          {onBranches && <button type="button" className={wbButton.ghost} onClick={onBranches} disabled={busy} data-testid="review-branches-open">
-            <GitBranch className="h-3.5 w-3.5" />
-            {t(node.branch ? "review.branch.compareTitle" : "review.branch.listTitle", node.branch ? "Compare and adopt branch results" : "Task branches")}
-          </button>}
+          </div>
 
           {/* 「内容 | 处理过程(n)」紧凑图标切换 */}
           {view && onSelectView && (

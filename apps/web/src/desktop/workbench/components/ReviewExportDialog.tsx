@@ -8,14 +8,16 @@ import { wbButton } from "../wb-button";
 
 const control = "h-7 rounded-[6px] border border-border bg-bg-2 px-2.5 text-xs text-fg disabled:opacity-40 focus:outline-none focus:border-accent";
 
-export function ReviewExportDialog({ target, revision, selectedIds, filter, reference, onClose }: {
+export function ReviewExportDialog({ target, revision, selectedIds, filter, reference, initialScope, scopeName, onClose }: {
   target: ReviewContext["target"]; revision: number; selectedIds: readonly string[];
   reference?: ReviewStepReference;
+  initialScope?: "selected";
+  scopeName?: string;
   filter: { batchId?: string; type: "all" | "image" | "text" | "data" | "video" | "model3d"; query: string }; onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<"original" | "adopted" | "node-package" | "version">(reference ? "version" : "original");
-  const [scope, setScope] = useState<"node" | "filtered" | "selected">(reference ? "selected" : "node");
+  const [mode, setMode] = useState<"original" | "current" | "adopted" | "node-package" | "version">(reference ? "version" : initialScope ? "current" : "original");
+  const [scope, setScope] = useState<"node" | "filtered" | "selected">(reference ? "selected" : initialScope ?? "node");
   const [status, setStatus] = useState<ReviewExportStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +39,7 @@ export function ReviewExportDialog({ target, revision, selectedIds, filter, refe
   const prepare = async () => {
     setBusy(true); setError(null); setCopied(null); setHanded(false);
     try {
-      setStatus(await prepareReviewExport({ target, expectedNodeRevision: revision, exportId: crypto.randomUUID(), mode, scope,
+      setStatus(await prepareReviewExport({ target, expectedNodeRevision: revision, exportId: crypto.randomUUID(), mode, scope, name: scope === "selected" ? scopeName : undefined,
         ...(reference ? { reference } : scope === "selected" ? { itemIds: selectedIds } : scope === "filtered" ? { filter } : {}) }));
     } catch (problem) { fail(problem); }
     finally { setBusy(false); }
@@ -58,6 +60,7 @@ export function ReviewExportDialog({ target, revision, selectedIds, filter, refe
       <ToolcraftDialogHeader title={t("review.export.title")} onOpenChange={open => { if (!open && !busy) onClose(); }} />
       <div className="space-y-4 p-5 text-xs" data-testid="review-export-dialog" data-workbench-modal="true" data-workbench-scope="true">
         <p className="leading-relaxed text-fg-2">{t("review.export.description")}</p>
+        {scopeName && <p>{scopeName} · {selectedIds.length} 项（所选范围）</p>}
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-xs">
             {t("review.export.mode")}
@@ -70,6 +73,7 @@ export function ReviewExportDialog({ target, revision, selectedIds, filter, refe
             >
               {reference && <option value="version">{t("review.export.version")}</option>}
               <option value="original">{t("review.export.original")}</option>
+              <option value="current">当前已保存版本</option>
               <option value="adopted">{t("review.export.adopted")}</option>
               <option value="node-package">{t("review.export.package")}</option>
             </select>
