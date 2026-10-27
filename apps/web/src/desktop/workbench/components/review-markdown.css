@@ -28,3 +28,10 @@
 .review-markdown .wmde-markdown img { max-width: 100%; }
 .review-markdown .w-md-editor-toolbar { background: var(--bg-2); }
 .review-markdown .w-md-editor-toolbar li > button { color: var(--fg-2); }
+
+/* Collection cards show a compact excerpt; full reading opens the item. */
+.review-markdown-summary .wmde-markdown { font-size: 12px; line-height: 1.6; }
+.review-markdown-summary .wmde-markdown h1,
+.review-markdown-summary .wmde-markdown h2,
+.review-markdown-summary .wmde-markdown h3 { font-size: 14px; margin: 8px 0; }
+.review-markdown-summary .wmde-markdown pre { white-space: pre-wrap; }

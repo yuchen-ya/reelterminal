@@ -51,6 +51,7 @@ export interface ImageViewerWorkspaceProps {
   readonly currentItem: WorkbenchItemView;
   /** All image items of the batch (grid cards + pinned reference compare). */
   readonly batchImageItems: readonly WorkbenchItemView[];
+  readonly hideCollectionNavigation?: boolean;
   readonly onOpenCollection?: () => void;
   readonly selectedIds: readonly string[];
   readonly onSelectItem: (itemId: string, modifiers?: SelectModifiers) => void;
@@ -71,6 +72,7 @@ export function ImageViewerWorkspace({
   currentItem,
   batchImageItems,
   onOpenCollection,
+  hideCollectionNavigation = false,
   onUpdateImageAnnotations,
   onSaveImageRepair,
   issuePanelWidth,
@@ -592,6 +594,7 @@ export function ImageViewerWorkspace({
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-bg">
       <ImageViewerToolbar
+        hideCollectionNavigation={hideCollectionNavigation}
         viewMode={viewMode}
         setViewMode={mode => { if (mode === "grid") onOpenCollection?.(); }}
         batchImageItemsCount={batchImageItems.length}

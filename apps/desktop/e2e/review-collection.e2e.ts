@@ -61,7 +61,7 @@ describe("review collection scopes", () => {
     await board.getByTestId(`board-card-${ids[1]}`).click({ modifiers: ["Control"] });
     await board.getByTestId(`board-open-item-${ids[0]}`).click();
     await page.getByTestId("image-stage").waitFor();
-    await page.getByTitle("返回当前集合 (3)，点击选择，双击放大查看").click();
+    await page.getByRole("button", { name: "返回集合：分组甲", exact: true }).click();
     expect(await board.getByText("已选 2 项", { exact: true }).isVisible()).toBe(true);
     expect(await board.getByLabel("图片预览方式").inputValue()).toBe("pixel");
     expect(await board.getByTestId(`board-card-${ids[3]}`).count()).toBe(0);
@@ -101,6 +101,8 @@ describe("review collection scopes", () => {
     await page.keyboard.press("Control+z");
     await vi.waitFor(async () => expect(await statuses()).toEqual(["rework", "rework", "rework", "pending"]));
 
+    // Collapse revealed children before dragging the group, so its label remains a stable target.
+    await tree.getByText("分组甲", { exact: true }).locator("..").getByTitle("收拢分类子项").click();
     const groupBounds = await tree.getByText("分组甲", { exact: true }).boundingBox();
     await page.mouse.move(groupBounds!.x + 10, groupBounds!.y + groupBounds!.height / 2);
     await page.mouse.down();

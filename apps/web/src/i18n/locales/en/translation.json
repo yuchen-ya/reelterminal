@@ -1,5 +1,6 @@
 {
   "review": {
+    "defaultTextBatch": "Text batch", "enterBatchName": "Enter a batch name.", "chooseOrDropFiles": "Choose files, or drop them onto the selection area above.", "enterTextBody": "Paste the text to review.",
     "trashConfirm": { "title": "Move “{{name}}” to the recycle bin?", "description": "All batches, items and review records in this task will move to the recycle bin. You can restore them later." },
     "manageGroups": "Manage categories", "finishGroupManagement": "Done",
     "migration": {

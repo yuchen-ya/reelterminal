@@ -245,7 +245,7 @@ export function getWorkbenchStatusView(status: WorkbenchItemView["status"]): {
 } {
   switch (status) {
     case "pending":
-      return { label: "待审", className: "text-fg-2", dotClassName: "bg-accent" };
+      return { label: "待审", className: "text-fg-2", dotClassName: "border border-fg-3 bg-transparent" };
     case "kept":
       return { label: "保留", className: "text-accent", dotClassName: "bg-accent/70" };
     case "modified":

@@ -59,7 +59,7 @@ export function ReviewImportDialog({ target, expectedNodeRevision, isOpen, onOpe
               type="button"
               disabled={!!phase}
               aria-pressed={mode === value}
-              onClick={() => setMode(value)}
+              onClick={() => { setMode(value); if (value === "text" && !name.trim()) setName(t("review.defaultTextBatch")); }}
               className={wbButton.segmentedItem(mode === value)}
             >
               {t(value === "files" ? "review.files" : "review.pasteText")}
@@ -72,27 +72,27 @@ export function ReviewImportDialog({ target, expectedNodeRevision, isOpen, onOpe
         </label>
         {mode === "files" ? (
           <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="rounded-[6px] border border-border bg-bg-2 p-3 text-xs text-fg-2">
+            <div className="grid gap-3 sm:grid-cols-2" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (!phase) void readFiles(event.dataTransfer.files); }}>
+              <label className="cursor-pointer rounded-[6px] border border-dashed border-border bg-bg-2 p-3 text-xs text-fg-2 focus-within:ring-1 focus-within:ring-accent">
                 {t("review.chooseFiles")}
                 <input
                   type="file"
                   multiple
                   disabled={!!phase}
-                  className="mt-2 block w-full text-xs"
+                  className="sr-only"
                   data-testid="review-files-input"
                   accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,model/gltf-binary,.glb,video/*,.mkv,.avi,.txt,.md,.log,.csv,.json"
                   onChange={event => void readFiles(event.target.files)}
                 />
               </label>
-              <label className="rounded-[6px] border border-border bg-bg-2 p-3 text-xs text-fg-2">
+              <label className="cursor-pointer rounded-[6px] border border-dashed border-border bg-bg-2 p-3 text-xs text-fg-2 focus-within:ring-1 focus-within:ring-accent">
                 {t("review.chooseFolder")}
                 <input
                   type="file"
                   multiple
                   {...{ webkitdirectory: "" }}
                   disabled={!!phase}
-                  className="mt-2 block w-full text-xs"
+                  className="sr-only"
                   data-testid="review-folder-input"
                   onChange={event => void readFiles(event.target.files)}
                 />
@@ -124,6 +124,7 @@ export function ReviewImportDialog({ target, expectedNodeRevision, isOpen, onOpe
             />
           </label>
         )}
+        {!phase && (!name.trim() || (mode === "files" ? !plan : !text.trim())) && <p className="text-xs text-fg-3">{t(!name.trim() ? "review.enterBatchName" : mode === "files" ? "review.chooseOrDropFiles" : "review.enterTextBody")}</p>}
         {error && <p role="alert" className="text-xs text-status-error">{error}</p>}
         {phase && <p role="status" className="text-xs text-fg-2">{t(phase === "parsing" ? "review.readingFiles" : "review.importing")}</p>}
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
@@ -132,7 +133,7 @@ export function ReviewImportDialog({ target, expectedNodeRevision, isOpen, onOpe
           </button>
           <button
             type="button"
-            disabled={!!phase || !name.trim() || (mode === "files" ? !plan : !text)}
+            disabled={!!phase || !name.trim() || (mode === "files" ? !plan : !text.trim())}
             onClick={() => void submit()}
             className={wbButton.primary}
             data-testid="review-import-submit"

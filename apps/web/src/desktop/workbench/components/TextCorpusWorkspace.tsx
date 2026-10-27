@@ -36,6 +36,7 @@ import { selectionOffsetsInRange } from "../text-range-offset";
 const ReviewMarkdown = lazy(() => import("./ReviewMarkdown"));
 
 export interface TextCorpusWorkspaceProps {
+  readonly singleItem?: boolean;
   readonly currentItem: WorkbenchItemView;
   /** Text items of the active batch in stable order (multi-row browsing). */
   readonly batchTextItems: readonly WorkbenchItemView[];
@@ -95,6 +96,7 @@ function resolveTagReference(
 }
 
 export function TextCorpusWorkspace({
+  singleItem = false,
   currentItem,
   batchTextItems,
   selectedIds,
@@ -238,7 +240,7 @@ export function TextCorpusWorkspace({
       {/* Top Sub-bar */}
       <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-border bg-bg-1 px-3">
         <div className="flex items-center gap-2 text-xs text-fg-2">
-          <span className="font-semibold text-fg">文本审阅 ({batchTextItems.length} 条)</span>
+          <span className="font-semibold text-fg">文本审阅{!singleItem && ` (${batchTextItems.length} 条)`}</span>
           <div className="flex gap-1" role="group" aria-label="文本显示方式">
             {(["markdown", "source"] as const).map(mode => <button key={mode} type="button"
               aria-pressed={readingMode === mode} onClick={() => { setReadingMode(mode); setActiveRange(null); }}
@@ -257,7 +259,7 @@ export function TextCorpusWorkspace({
           </span>
         </div>
         <div className="flex items-center gap-2 font-mono text-xs tabular-nums text-fg-3">
-          <span>整条已选: {batchTextItems.filter((item) => selectedIds.includes(item.id)).length}</span>
+          {!singleItem && <span>整条已选: {batchTextItems.filter((item) => selectedIds.includes(item.id)).length}</span>}
           {activeRange && (
             <>
               <span>·</span>
@@ -391,7 +393,7 @@ export function TextCorpusWorkspace({
               key={item.id}
               onClick={() => {
                 // Focusing the row for inspector without wiping text selection
-                if (!window.getSelection()?.toString()) {
+                if (!singleItem && !window.getSelection()?.toString()) {
                   onSelectItem(item.id);
                 }
               }}
@@ -404,7 +406,7 @@ export function TextCorpusWorkspace({
               }`}
             >
               {/* Left Gutter: Click to select ENTIRE entry (distinct from text drag selection) */}
-              <div
+              {!singleItem && <div
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectItem(item.id, { ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey });
@@ -427,7 +429,7 @@ export function TextCorpusWorkspace({
                   #{String(idx + 1).padStart(2, "0")}
                 </span>
                 <span className="font-mono text-[10px] text-fg-3">v{item.version}</span>
-              </div>
+              </div>}
 
               {/* Right Content Column */}
               <div className="min-w-0 flex-1 p-3">

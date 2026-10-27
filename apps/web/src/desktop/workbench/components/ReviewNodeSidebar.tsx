@@ -1,6 +1,6 @@
 import type { JSX, ReactNode } from "react";
 import type React from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   MoreHorizontal,
@@ -32,6 +32,7 @@ import { reviewSeenKey, useReviewSeenStore } from "../../../stores/review-seen-s
 export type DirectoryView = "recent" | "pinned" | "archived" | "trash";
 
 export interface ReviewNodeSidebarProps {
+  creationRequest?: number;
   open: boolean;
   onToggleOpen: (open: boolean) => void;
   nodes: readonly ReviewNode[];
@@ -72,6 +73,7 @@ const textEntry = (element: Element | null) =>
   (element instanceof HTMLElement && element.isContentEditable);
 
 export function ReviewNodeSidebar({
+  creationRequest = 0,
   open,
   onToggleOpen,
   nodes,
@@ -102,6 +104,7 @@ export function ReviewNodeSidebar({
   const { t } = useTranslation();
   const seen = useReviewSeenStore(state => state.seen);
   const [creatingNode, setCreatingNode] = useState(false);
+  useEffect(() => { if (creationRequest > 0) setCreatingNode(true); }, [creationRequest]);
   const [newNodeName, setNewNodeName] = useState("");
   const [managingGroups, setManagingGroups] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");

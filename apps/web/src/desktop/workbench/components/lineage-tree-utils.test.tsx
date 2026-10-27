@@ -207,8 +207,8 @@ describe("AdaptiveBoardWorkspace", () => {
     const props = { boardTitle: "集合", items, currentItem: items[0], selectedIds: ["a", "outside"],
       onSelectItem: vi.fn(), onOpenChildItem: vi.fn(), onCommitDecision };
     const view = render(<AdaptiveBoardWorkspace {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "保留选中项（1）" }));
-    expect(onCommitDecision).toHaveBeenLastCalledWith("kept", ["a"]);
+    expect(screen.getByText("已选 1 项")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保留选中项（1）" })).toBeNull();
     fireEvent.click(screen.getByTestId("board-discard-all"));
     expect(onCommitDecision).toHaveBeenLastCalledWith("discarded", ["a", "b"]);
     view.rerender(<AdaptiveBoardWorkspace {...props} items={items.map(entry => ({ ...entry, status: "kept" }))} selectedIds={[]} />);
@@ -232,7 +232,7 @@ describe("AdaptiveBoardWorkspace", () => {
     expect(drag.mock.calls.at(-1)?.[1]).toMatchObject({ items: [outside], folder: false });
   });
 
-  it("renders multi-image, text, and data cards together and supports drill-down and batch verdicts", () => {
+  it("renders multi-image, text, and data cards together and supports drill-down and batch verdicts", async () => {
     const onSelectItem = vi.fn();
     const onOpenChildItem = vi.fn();
     const onCommitDecision = vi.fn();
@@ -284,7 +284,7 @@ describe("AdaptiveBoardWorkspace", () => {
 
     expect(screen.getByTestId("adaptive-board-workspace")).toBeInTheDocument();
     expect(screen.getByText("早晨街景")).toBeInTheDocument();
-    expect(screen.getByText("清晨的阳光洒在街道上。")).toBeInTheDocument();
+    expect(await screen.findByText("清晨的阳光洒在街道上。")).toBeInTheDocument();
 
     // Double clicking a card drills into its single-item workspace
     fireEvent.doubleClick(screen.getByTestId("board-card-img-1"));
@@ -346,4 +346,28 @@ describe("VideoFrameWorkspace side-by-side comparison", () => {
     expect(screen.getByTestId("video-compare-reference-pane")).toBeInTheDocument();
     expect(screen.getByTestId("video-compare-toggle")).toHaveTextContent("并排对比");
   });
+});
+
+it("reveals the full ancestor path on drill-down without preventing manual collapse", () => {
+  const items = [item("parent", "group"), item("child", "group", "parent"), item("leaf", "group", "child")];
+  const props = { items, currentItem: items[2], selectedIds: [], onSelectItem: vi.fn(), onSelectBoard: vi.fn(), onRetrieveItem: vi.fn() };
+  const view = render(<PendingLineagePanel {...props} activeBoardId="group:group" />);
+  expect(screen.queryByText("leaf")).toBeNull();
+  view.rerender(<PendingLineagePanel {...props} activeBoardId={null} />);
+  expect(screen.getByText("leaf").closest("[data-tree-item-id]")).toHaveAttribute("aria-current", "true");
+  fireEvent.click(screen.getAllByTitle("收拢子节点")[0]);
+  expect(screen.queryByText("leaf")).toBeNull();
+  view.rerender(<PendingLineagePanel {...props} items={[...items]} activeBoardId={null} />);
+  expect(screen.queryByText("leaf")).toBeNull();
+});
+
+it("moves collection keyboard focus without opening an item until Enter", () => {
+  const open = vi.fn();
+  render(<AdaptiveBoardWorkspace boardTitle="集合" items={[item("a"), item("b")]} currentItem={null} selectedIds={[]}
+    onSelectItem={vi.fn()} onOpenChildItem={open} onCommitDecision={vi.fn()} />);
+  const first = screen.getByTestId("board-card-a"); first.focus();
+  fireEvent.keyDown(first, { key: "ArrowRight" });
+  expect(screen.getByTestId("board-card-b")).toHaveFocus(); expect(open).not.toHaveBeenCalled();
+  fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+  expect(open).toHaveBeenCalledWith("b");
 });

@@ -36,6 +36,12 @@ function dependencyOrder(steps: readonly ReviewStep[]): ReviewStep[] {
   return ordered;
 }
 
+function stepPins(step: ReviewStep): { left?: Pin; right?: Pin } {
+  const sourceIndex = Math.max(0, step.inputs.findIndex(input => ["source", "working-source", "original-file"].includes(input.role)));
+  return { ...(step.inputs.length ? { left: { stepId: step.id, side: "input", index: sourceIndex } as Pin } : {}),
+    ...(step.outputs.length ? { right: { stepId: step.id, side: "output", index: 0 } as Pin } : {}) };
+}
+
 export function ReviewProcessView({ target, onReviewItem }: { target: ReviewContext["target"]; onReviewItem: (itemId: string) => void }) {
   const { t } = useTranslation();
   const key = `reelterminal.review.comparison:${target.nodeId}`;
@@ -64,7 +70,10 @@ export function ReviewProcessView({ target, onReviewItem }: { target: ReviewCont
     void reviewService.listSteps(target, { cursor: after }).then(page => {
       if (cancelled) return;
       const ordered = dependencyOrder(page.steps);
-      setSteps(ordered); setCursor(page.cursor); setSelectedId(id => ordered.some(step => step.id === id) ? id : ordered.at(-1)?.id);
+      setSteps(ordered); setCursor(page.cursor);
+      const latest = ordered.at(-1);
+      if (latest) setPins(current => current.left || current.right ? current : stepPins(latest));
+      setSelectedId(id => ordered.some(step => step.id === id) ? id : latest?.id);
     }).catch(problem => { if (!cancelled) setError(problem instanceof Error ? problem.message : String(problem)); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [target, after, generation]);
@@ -88,9 +97,8 @@ export function ReviewProcessView({ target, onReviewItem }: { target: ReviewCont
     setPins(current => { const next = { ...current, [side]: { stepId: step.id, side: referenceSide, index } }; localStorage.setItem(key, JSON.stringify(next)); return next; });
   };
 
-  const usePair = (step: ReviewStep) => {
-    const sourceIndex = Math.max(0, step.inputs.findIndex(input => ["source", "working-source", "original-file"].includes(input.role)));
-    const next = { ...(step.inputs.length ? { left: { stepId: step.id, side: "input" as const, index: sourceIndex } } : {}), ...(step.outputs.length ? { right: { stepId: step.id, side: "output" as const, index: 0 } } : {}) };
+  const compareStep = (step: ReviewStep) => {
+    const next = stepPins(step);
     localStorage.setItem(key, JSON.stringify(next)); setPins(next); setSelectedId(step.id);
   };
 
@@ -148,9 +156,9 @@ export function ReviewProcessView({ target, onReviewItem }: { target: ReviewCont
                   }`}
                   data-testid="review-step-card"
                   data-step-id={step.id}
-                  onClick={() => setSelectedId(step.id)}
+                  onClick={() => compareStep(step)}
                 >
-                  <button className="w-full text-left font-medium text-fg truncate block" onClick={() => setSelectedId(step.id)}>
+                  <button className="w-full text-left font-medium text-fg truncate block" onClick={event => { event.stopPropagation(); compareStep(step); }}>
                     {step.label}
                   </button>
                   <p className="mt-1 text-fg-3 truncate">
@@ -166,7 +174,7 @@ export function ReviewProcessView({ target, onReviewItem }: { target: ReviewCont
                   <div className="mt-2">
                     <button
                       className={wbButton.secondary}
-                      onClick={(e) => { e.stopPropagation(); usePair(step); }}
+                      onClick={(e) => { e.stopPropagation(); compareStep(step); }}
                       data-testid="review-step-compare"
                     >
                       {t("review.process.compareStep")}
@@ -198,7 +206,7 @@ export function ReviewProcessView({ target, onReviewItem }: { target: ReviewCont
                     <li key={`${side}:${index}`} className="flex flex-wrap items-center gap-2 rounded border border-border bg-bg-2/30 p-2 text-xs">
                       <span className="font-medium text-fg">{t(side === "input" ? "review.process.input" : "review.process.output")}:</span>
                       <span className="min-w-0 flex-1 break-words text-fg-2" title={`${reference.role} · ${"resourceId" in reference ? reference.resourceId : reference.itemId}`}>
-                        {"resourceId" in reference ? `#${reference.resourceId.slice(-8)}` : `${itemTitles[reference.itemId] ?? `#${reference.itemId.slice(-8)}`} · v${reference.version}`}
+                        {"resourceId" in reference ? `文件 ${index + 1}` : `${itemTitles[reference.itemId] ?? "审阅条目"} · v${reference.version}`}
                         {reference.region ? ` · ${reference.region.x},${reference.region.y} ${reference.region.width}×${reference.region.height}` : ""}
                         {reference.range ? ` · ${reference.range.startSec}–${reference.range.endSec} s` : ""}
                       </span>

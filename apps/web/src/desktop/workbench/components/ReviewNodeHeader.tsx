@@ -167,7 +167,7 @@ export function ReviewNodeHeader({
           }`}
         />
         <Bot className="pointer-events-none h-3.5 w-3.5" />
-        <span className="sr-only">
+        <span className="pointer-events-none">
           {t(
             context?.access === "write"
               ? "review.agentWrite"

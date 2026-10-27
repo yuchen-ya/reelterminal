@@ -1,5 +1,6 @@
 {
   "review": {
+    "defaultTextBatch": "文本批次", "enterBatchName": "请填写批次名称。", "chooseOrDropFiles": "请选择文件，或拖拽文件到上方选择区域。", "enterTextBody": "请粘贴需要审阅的文本。",
     "trashConfirm": { "title": "将“{{name}}”移到回收站？", "description": "该任务的所有批次、条目和审阅记录将一并移入回收站，可以还原。" },
     "manageGroups": "管理分类", "finishGroupManagement": "完成管理",
     "migration": {
@@ -21,9 +22,9 @@
       "confirm": "永久删除此节点及其全部保留版本、快照、处理与撤销历史。", "refresh": "刷新引用检查"
     },
     "backup": {
-      "title": "备份全部节点", "description": "为全部节点准备完整节点包，包含归档、回收站、保留版本和处理历史，同时保存目录与分组索引。",
-      "restore": "可用“恢复节点包”逐个恢复 nodes 文件夹中的节点包。backup.json 保留原目录元数据，目前不提供整个目录的自动恢复。",
-      "prepare": "准备全部节点包", "copy": "保存完整备份…", "copying": "正在核对并保存备份…", "progress": "已准备 {{done}} / {{total}} 个节点包"
+      "title": "备份全部任务", "description": "为全部任务准备完整任务包，包含归档、回收站、保留版本和处理历史，同时保存目录与分组索引。",
+      "restore": "可用“恢复任务包”逐个恢复 nodes 文件夹中的任务包。backup.json 保留原目录元数据，目前不提供整个目录的自动恢复。",
+      "prepare": "准备全部任务包", "copy": "保存完整备份…", "copying": "正在核对并保存备份…", "progress": "已准备 {{done}} / {{total}} 个任务包"
     },
     "attach": {
       "title": "添加采用版本到项目", "description": "将人工采用的图片或视频版本复制到项目媒体。项目独立保存副本，不会自动添加到时间线。",
@@ -32,9 +33,9 @@
     },
     "restorePackage": {
       "missing": "{{count}} 个文件引用只有不可用标记，没有文件字节。恢复会保留标记，此包不是完整媒体备份。",
-      "missingManifest": "请选择直接包含 manifest.json 的节点包文件夹。",
-      "title": "恢复节点包", "description": "选择完整节点包文件夹，先校验文件与引用，再恢复；已有节点会保留。",
-      "choose": "选择节点包文件夹…", "busy": "正在校验文件／恢复…", "counts": "{{items}} 个条目 · {{versions}} 个保留版本 · {{steps}} 个步骤 · {{files}} 个文件",
+      "missingManifest": "请选择直接包含 manifest.json 的任务包文件夹。",
+      "title": "恢复任务包", "description": "选择完整任务包文件夹，先校验文件与引用，再恢复；已有任务会保留。",
+      "choose": "选择任务包文件夹…", "busy": "正在校验文件／恢复…", "counts": "{{items}} 个条目 · {{versions}} 个保留版本 · {{steps}} 个步骤 · {{files}} 个文件",
       "handoffs": "{{count}} 个历史交接", "history": "恢复会生成新节点与新身份。旧交接不可继续执行，旧撤销日志仅保留为历史证据。同一次恢复重试会读回原结果。",
       "restore": "执行本次恢复", "newAttempt": "另建一次独立恢复"
     },
@@ -50,10 +51,10 @@
       "state": { "planned": "已计划", "running": "运行中", "completed": "已完成", "failed": "失败", "cancelled": "已取消" }
     },
     "export": {
-      "package": "完整节点包（含历史）",
+      "package": "完整任务包（含历史）",
       "version": "导出此精确版本", "exactReference": "导出记录的完整文件或正文；对比中的区域和时间范围不会裁剪或截取导出内容。",
       "title": "导出文件", "description": "冻结所选版本后准备副本。原件导出包含已丢弃条目；移动或删除导出副本不会改变工作台原件。",
-      "mode": "导出内容", "original": "初始原件", "adopted": "人工采用的明确版本", "scope": "导出范围", "node": "整个节点，所有批次", "filtered": "当前批次与筛选，包含全部分页", "selected": "当前可见选中项（{{count}}）",
+      "mode": "导出内容", "original": "初始原件", "adopted": "人工采用的明确版本", "scope": "导出范围", "node": "整个任务，所有批次", "filtered": "当前批次与筛选，包含全部分页", "selected": "当前可见选中项（{{count}}）",
       "serialization": "有原文件时保持原始字节。无原文件的文字生成 UTF-8 TXT，表格生成保留稳定行列 ID 的 JSON；这些序列化文件不冒充原始文件。",
       "prepare": "准备导出", "newPlan": "准备另一份导出", "copy": "复制到文件夹…", "dragFolder": "拖出文件夹", "dragFiles": "拖出文件", "handed": "已交给系统，尚未验证目标应用是否接收。", "copied": "已复制并校验：{{directory}}",
       "state": { "queued": "等待准备", "preparing": "正在准备", "ready": "可以复制或拖出", "failed": "导出失败", "cancelled": "已取消" }

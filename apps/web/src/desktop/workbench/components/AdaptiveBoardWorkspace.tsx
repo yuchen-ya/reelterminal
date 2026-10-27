@@ -1,5 +1,5 @@
 import type { JSX, MouseEvent as ReactMouseEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   Check,
   Database,
@@ -19,6 +19,8 @@ import type {
 import { CollectionActions } from "./CollectionActions";
 import { CollectionImage } from "./CollectionImage";
 import { getWorkbenchStatusView } from "./lineage-tree-utils";
+
+const ReviewMarkdown = lazy(() => import("./ReviewMarkdown"));
 
 export interface AdaptiveBoardWorkspaceProps {
   readonly boardId?: string;
@@ -212,17 +214,13 @@ export function AdaptiveBoardWorkspace({
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-3 py-1.5 text-xs">
         <button onClick={onSelectAll} disabled={!items.length}>全选当前结果（{items.length}）</button>
         <span>已选 {selectedInBoard.length} 项</span>
-        {selectedInBoard.length > 0 && <>
-          <button onClick={() => void onCommitDecision("kept", selectedInBoard)}>保留选中项（{selectedInBoard.length}）</button>
-          <button onClick={() => void onCommitDecision("discarded", selectedInBoard)}>丢弃选中项（{selectedInBoard.length}）</button>
-          <button onClick={onClearSelection}>清除选择</button>
-        </>}
+        {selectedInBoard.length > 0 && <button onClick={onClearSelection}>清除选择</button>}
       </div>
 
       {/* Contact-sheet / Adaptive Board Canvas */}
       <div className="flex-1 overflow-auto bg-[#181b22] p-3">
         {items.length === 0 && <p className="p-6 text-center text-xs text-fg-3">当前筛选下没有条目；可切换至“全部”查看本组。</p>}
-        <div className={`grid gap-x-4 gap-y-3 ${gridClass}`}>
+        <div data-board-grid className={`grid gap-x-4 gap-y-3 ${gridClass}`}>
           {items.map((item) => {
             const isSelected = selectedIds.includes(item.id);
             const isCurrent = currentItem?.id === item.id;
@@ -249,11 +247,21 @@ export function AdaptiveBoardWorkspace({
               <CollectionActions key={item.id} scope={{ title: item.title, items: [item], folder: false }}>
               <div
                 tabIndex={0}
-                onKeyDown={event => { if (event.key === "Enter" && event.target === event.currentTarget) { event.preventDefault(); onOpenChildItem(item.id); } }}
+                data-board-card
+                onKeyDown={event => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key === "Enter") { event.preventDefault(); onOpenChildItem(item.id); return; }
+                  const columnCount = columns === "auto" ? 1 : columns;
+                  const offset = ({ ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columnCount, ArrowDown: columnCount } as Record<string, number>)[event.key];
+                  if (offset === undefined) return;
+                  event.preventDefault();
+                  const cards = Array.from(event.currentTarget.closest("[data-board-grid]")!.querySelectorAll<HTMLElement>("[data-board-card]"));
+                  cards[cards.indexOf(event.currentTarget) + offset]?.focus();
+                }}
                 onClick={(e) => handleCardClick(item, e)}
                 onDoubleClick={() => onOpenChildItem(item.id)}
                 data-testid={`board-card-${item.id}`}
-                className={`group flex flex-col rounded-md transition-all select-none ${
+                className={`group flex flex-col rounded-md transition-all select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
                   isSelected
                     ? "ring-1 ring-accent bg-white/[0.04]"
                     : isCurrent
@@ -354,13 +362,13 @@ export function AdaptiveBoardWorkspace({
                         <FileText className="h-3 w-3 text-status-info" />
                         {item.textPayload?.speakerOrContext ?? "文本语料"}
                       </span>
-                      <span>双击批注/改文</span>
+                      <span>双击打开阅读</span>
                     </div>
-                    <pre className="max-h-52 flex-1 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-fg-2">
-                      {item.textPayload?.currentText ??
-                        item.textPayload?.originalText ??
-                        (!item.detailsLoaded ? "正在载入文本…" : "无正文")}
-                    </pre>
+                    <div className="review-markdown-summary max-h-52 overflow-hidden text-xs">
+                      <Suspense fallback={<span>正在载入文本…</span>}>
+                        <ReviewMarkdown source={item.textPayload?.currentText ?? item.textPayload?.originalText ?? ""} />
+                      </Suspense>
+                    </div>
                   </div>
                 ) : item.type === "data" ? (
                   <div className="flex flex-1 flex-col overflow-hidden rounded border border-border/60 bg-bg-1 p-2 text-xs">

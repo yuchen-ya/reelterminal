@@ -8,7 +8,7 @@
  * - "category" (分类父节点): expanded by default as a directory folder.
  */
 import { CollectionActions } from "./CollectionActions";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArchiveRestore,
   ChevronDown,
@@ -120,6 +120,39 @@ export function PendingLineagePanel({
   );
   const sourceTrees = useMemo(() => buildTreeGroups(items), [items]);
   const fullTrees = useMemo(() => buildTreeGroups(allItems), [allItems]);
+  const currentItemId = currentItem?.id;
+  const treeRef = useRef<HTMLDivElement>(null);
+  const revealed = useRef<string | null>(null);
+  const scrollRequested = useRef(false);
+  useEffect(() => {
+    if (activeBoardId) { revealed.current = null; scrollRequested.current = false; return; }
+    if (!currentItemId || revealed.current === currentItemId) return;
+    const pathTo = (nodes: readonly WorkbenchLineageNode[]): string[] | null => {
+      for (const node of nodes) {
+        if (node.item.id === currentItemId) return [];
+        const path = pathTo(node.children);
+        if (path) return [node.item.id, ...path];
+      }
+      return null;
+    };
+    for (const group of sourceTrees) {
+      const path = pathTo(group.roots);
+      if (!path) continue;
+      revealed.current = currentItemId;
+      scrollRequested.current = true;
+      setCollapsedBases(previous => ({ ...previous, [group.id]: false }));
+      setCollapsedParents(previous => ({ ...previous, ...Object.fromEntries(path.map(id => [id, false])) }));
+      break;
+    }
+  }, [currentItemId, activeBoardId, sourceTrees]);
+  useEffect(() => {
+    if (activeBoardId || !currentItemId || !scrollRequested.current) return;
+    const row = treeRef.current?.querySelector('[data-tree-item-id][aria-current="true"]');
+    if (row) {
+      row.scrollIntoView?.({ block: "nearest" });
+      scrollRequested.current = false;
+    }
+  }, [currentItemId, activeBoardId, collapsedBases, collapsedParents]);
   const scopeTitle = (title: string) => `${paginated ? "本页 · " : ""}${filtered ? "筛选结果 · " : ""}${title}`;
   const fullNode = (id: string, nodes: readonly WorkbenchLineageNode[]): WorkbenchLineageNode | undefined => {
     for (const node of nodes) { if (node.item.id === id) return node; const found = fullNode(id, node.children); if (found) return found; }
@@ -168,7 +201,6 @@ export function PendingLineagePanel({
     const showVersionBadge = item.version > 1 || priorSteps.length > 0;
     const statusView = getWorkbenchStatusView(item.status);
     const label = item.agentGuidance?.nodeSlotLabel ?? item.title;
-    const triageGroup = item.agentGuidance?.triageGroup;
     const subtreeItems = collectSubtreeItems(fullNode(item.id, fullTrees.flatMap(group => group.roots)) ?? node).filter(entry => !contextOnlySet.has(entry.id));
 
     const rowTone = isCurrent
@@ -197,6 +229,8 @@ export function PendingLineagePanel({
         <div className={`py-px ${item.lineage ? "pl-3" : ""}`}>
           <CollectionActions scope={{ title: scopeTitle(label), items: subtreeItems, folder: hasChildren }}>
           <div
+            data-tree-item-id={item.id}
+            aria-current={isCurrent ? "true" : undefined}
             onClick={
               isContextOnly
                 ? undefined
@@ -265,7 +299,7 @@ export function PendingLineagePanel({
                 getWorkbenchTypeIcon(item.type)
               )}
               <div className="min-w-0">
-                <span className="flex items-center gap-1.5 font-medium"><span className="truncate">{label}</span>{item.isNew && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-label="有未查看的新内容" />}</span>
+                <span className="flex items-center gap-1.5 font-medium"><span className="truncate">{label}</span>{item.isNew && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-info" aria-label="有未查看的新内容" />}</span>
                 {item.subtitle.trim() && <span className="block truncate text-[10px] font-normal text-fg-3" title={item.subtitle}>{item.subtitle}</span>}
               </div>
               {hasChildren && (
@@ -307,49 +341,12 @@ export function PendingLineagePanel({
                 </div>
               )}
 
-              {item.status === "pending" ? (
-                <span
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                    failStreak >= 2
-                      ? "bg-status-error ring-2 ring-status-error/30"
-                      : triageGroup === "need_verdict"
-                        ? "bg-status-warning"
-                        : triageGroup === "ready_patch"
-                          ? "bg-status-info"
-                          : "bg-accent"
-                  }`}
-                />
-              ) : (
-                <div className="flex shrink-0 items-center gap-0.5">
-                  {item.status === "rework" ? (
-                    <span
-                      className={`font-mono text-[10px] leading-none ${statusView.className} group-hover:hidden`}
-                    >
-                      {statusView.label}
-                    </span>
-                  ) : (
-                    <>
-                      <span
-                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusView.dotClassName} group-hover:hidden`}
-                        title={statusView.label}
-                      />
-                      <span className="sr-only">{statusView.label}</span>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRetrieve(item.id);
-                    }}
-                    disabled={retrievingId === item.id}
-                    className="hidden rounded p-0.5 text-fg-3 hover:bg-bg-3 hover:text-fg disabled:opacity-50 group-hover:inline-flex"
-                    title={`取回重审 (${statusView.label})`}
-                  >
-                    <ArchiveRestore className="h-3 w-3" />
-                  </button>
-                </div>
-              )}
+              <span className={`shrink-0 text-[10px] ${statusView.className}`} title={statusView.label}>
+                {{ pending: "○", kept: "✓ 保留", modified: "✎ 已改", rework: "↺ 返工", discarded: "× 丢弃" }[item.status]}
+              </span>
+              {isArchived && <button type="button" onClick={event => { event.stopPropagation(); handleRetrieve(item.id); }}
+                disabled={retrievingId === item.id} className="hidden rounded p-0.5 text-fg-3 hover:text-fg group-hover:inline-flex"
+                title={`取回重审 (${statusView.label})`}><ArchiveRestore className="h-3 w-3" /></button>}
             </div>
           </div>
 
@@ -385,7 +382,7 @@ export function PendingLineagePanel({
       )}
 
       {/* Multi-level tree hierarchy (compact node style) */}
-      <div className="flex-1 select-none space-y-1 overflow-y-auto p-1.5">
+      <div ref={treeRef} className="flex-1 select-none space-y-1 overflow-y-auto p-1.5">
         {sourceTrees.length === 0 && (
           <div className="px-2.5 py-6 text-center">
             <p className="text-xs text-fg-2">当前筛选下没有可见条目</p>
@@ -505,7 +502,7 @@ export function PendingLineagePanel({
                   )}
                   {pendingGroupCount > 0 && (
                     <span
-                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full border border-fg-3"
                       title={`待审 ${pendingGroupCount} 项`}
                     />
                   )}

@@ -86,7 +86,7 @@ describe("same-task updates, parent ordering and Markdown", () => {
     });
     expect(headingContrast).toBeGreaterThanOrEqual(4.5);
     expect(await content.getByRole("table").innerText()).toContain("待审核");
-    expect(await content.locator("pre code").innerText()).toContain('"ready": true');
+    expect(await content.locator("pre code:visible").innerText()).toContain('"ready": true');
     expect(await tree.getByText("只调整节奏，不改姿势", { exact: true }).isVisible()).toBe(true);
     expect(await tree.getByText("无备注", { exact: true }).count()).toBe(0);
     const planBox = await tree.getByText("方案组", { exact: true }).boundingBox();

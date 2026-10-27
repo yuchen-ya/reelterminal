@@ -58,6 +58,7 @@ export function ReviewPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [creationRequest, setCreationRequest] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const handleToggleSidebar = (open: boolean) => {
@@ -325,6 +326,7 @@ export function ReviewPage() {
       ) : (
         <div className="flex min-h-0 flex-1">
           <ReviewNodeSidebar
+            creationRequest={creationRequest}
             open={sidebarOpen}
             onToggleOpen={handleToggleSidebar}
             nodes={nodes}
@@ -411,6 +413,8 @@ export function ReviewPage() {
                 </>
               ) : (
                 <ReviewNodeEditor
+                  onCopyInstructions={() => void copyInstructions().catch(report)}
+                  copied={copied}
                   key={selected.id}
                   target={target}
                   renderHeader={(headerControls) => (
@@ -440,6 +444,7 @@ export function ReviewPage() {
                     <p className="mt-2 max-w-md text-sm leading-relaxed text-fg-2">
                       {t("review.emptyWorkspace")}
                     </p>
+                    <button className={`${wbButton.primary} mt-4`} onClick={() => { setSidebarOpen(true); setCreationRequest(value => value + 1); }} data-testid="review-empty-create">{t("review.newNode")}</button>
                   </div>
                 </div>
               </>
@@ -557,10 +562,14 @@ export function ReviewPage() {
 }
 
 function ReviewNodeEditor({
+  onCopyInstructions,
+  copied,
   target,
   renderHeader,
 }: {
   target: ReviewContext["target"];
+  onCopyInstructions: () => void;
+  copied: boolean;
   renderHeader: (controls: {
     view: "content" | "process";
     onSelectView: (view: "content" | "process") => void;
@@ -725,6 +734,8 @@ function ReviewNodeEditor({
                   >
                     {t("review.importTitle")}
                   </button>
+                  <button type="button" className={`${wbButton.secondary} ml-2`} onClick={onCopyInstructions}>{t(copied ? "review.copied" : "review.copyStartup")}</button>
+                  <p className="text-xs text-fg-3">Agent 投递前，请在右上角将“Agent 只读”切换为可写。</p>
                 </div>
               </div>
             }

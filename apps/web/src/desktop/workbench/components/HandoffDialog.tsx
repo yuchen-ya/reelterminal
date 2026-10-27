@@ -193,11 +193,10 @@ export function HandoffDialog({
       purpose="workbench-handoff-publish"
     >
       <ToolcraftDialogHeader
-        title="交回本轮审阅结果"
+        title="发布本批审阅结果"
         subtitle={
           <>
-            {batch.name} · 仅包含已决定条目，待处理项 ({pendingItems.length}) 与未确认草稿
-            反馈 ({draftFeedbackCount}) 绝不误发
+            {batch.name} · 仅发布本批已审阅条目；其他批次请切换后发布。待审 {pendingItems.length} 项与草稿反馈 {draftFeedbackCount} 条不包含在内。
           </>
         }
         onOpenChange={onOpenChange}
@@ -271,7 +270,7 @@ export function HandoffDialog({
         {/* Pending & draft exclusion notice */}
         <div className="px-3.5 py-2 rounded-[6px] bg-bg-2 border border-border flex items-center justify-between gap-3 text-xs text-fg-2">
           <span>
-            边界校验: 当前仍有 <strong className="text-fg tabular-nums">{pendingItems.length}</strong>{" "}
+            当前仍有 <strong className="text-fg tabular-nums">{pendingItems.length}</strong>{" "}
             项处于待处理队列。允许先行交回已处理子集,
             {draftFeedbackCount > 0 && (
               <>
@@ -281,16 +280,14 @@ export function HandoffDialog({
             )}
             未确认草稿反馈一律留在本地。
           </span>
-          <span className="font-mono text-[11px] text-accent shrink-0 select-none">
-            互斥计数守恒
-          </span>
+
         </div>
 
         {/* Table of decided entries to publish (subset selectable) */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-fg">
-              即将写入交接快照的条目明细<span className="sr-only"> (不可变 Handoff 快照)</span> ({checkedCount}/{decidedItems.length} 项)
+              本次发布的条目<span className="sr-only"> (不可变 Handoff 快照)</span> ({checkedCount}/{decidedItems.length} 项)
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -338,7 +335,7 @@ export function HandoffDialog({
                   <tr className="bg-bg-1 border-b border-border text-fg-2 text-[11px]">
                     <th className="py-2 px-3 w-8 select-none">发布</th>
                     <th className="py-2 px-3">条目与版本</th>
-                    <th className="py-2 px-3">主决定 (互斥)</th>
+                    <th className="py-2 px-3">审阅结果</th>
                     <th className="py-2 px-3">锚定坐标 / 修订范围</th>
                     <th className="py-2 px-3">反馈与 @来源引用</th>
                   </tr>
@@ -358,7 +355,7 @@ export function HandoffDialog({
                       <td className="py-2 px-3 font-medium text-fg">
                         <div>{item.title}</div>
                         <div className="font-mono tabular-nums text-[10px] text-fg-3">
-                          ID: {item.id} · v{item.version}
+                          版本 v{item.version}
                           {item.reworkOrigin && ` · 返工自 v${item.reworkOrigin.previousVersion}`}
                         </div>
                       </td>
@@ -401,27 +398,16 @@ export function HandoffDialog({
         {handoffs.length > 0 && (
           <div className="space-y-2 pt-2 border-t border-border">
             <div className="text-xs font-semibold text-fg">
-              已发布 Handoff 快照历史与 Agent 接收/返工回流状态
+              发布历史与 Agent 接收状态
             </div>
-            {handoffs.map((handoff) => (
+            {handoffs.map((handoff, index) => (
               <div
                 key={handoff.handoffId}
                 className="p-3 rounded-[6px] bg-bg-2 border border-border space-y-1"
               >
                 <div className="flex items-center gap-2 text-xs flex-wrap">
-                  <span className="font-mono font-semibold text-fg">{handoff.handoffId}</span>
-                  <span className="text-fg-3">·</span>
-                  <span className="font-mono text-[11px] text-fg-2">
-                    幂等键: {handoff.idempotencyKey}
-                  </span>
-                  {handoff.supersedesHandoffId && (
-                    <>
-                      <span className="text-fg-3">·</span>
-                      <span className="text-[11px] text-status-warning select-none">
-                        明确取代旧快照 {handoff.supersedesHandoffId}
-                      </span>
-                    </>
-                  )}
+                  <span className="font-semibold text-fg">发布记录 {handoffs.length - index}</span>
+                  {handoff.supersedesHandoffId && <span className="text-status-warning">已更新此前的交接结果</span>}
                 </div>
                 <div className="flex items-center gap-2 text-xs flex-wrap select-none">
                   <span className="text-fg-2 tabular-nums">
@@ -433,19 +419,19 @@ export function HandoffDialog({
                   {!handoff.historicalOnly && handoff.deliveryState === "published_waiting" && (
                     <span className="text-status-warning flex items-center gap-1 font-medium">
                       <Clock className="w-3.5 h-3.5" />
-                      状态: 已交回, 等待 Agent 读取 (workbench.handoff.get)
+                      已发布，等待 Agent 读取
                     </span>
                   )}
                   {!handoff.historicalOnly && handoff.deliveryState === "agent_acked" && (
                     <span className="text-status-info flex items-center gap-1 font-medium">
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      状态: Agent 已回报接收 (workbench.handoff.ack)
+                      Agent 已确认接收
                     </span>
                   )}
                   {!handoff.historicalOnly && handoff.deliveryState === "rework_returned" && (
                     <span className="text-accent flex items-center gap-1 font-medium">
                       <CircleCheck className="w-3.5 h-3.5" />
-                      状态: 返工产物已关联原 item/handoff 回流至待处理队列
+                      返工结果已返回待审队列
                     </span>
                   )}
                 </div>
@@ -486,8 +472,8 @@ export function HandoffDialog({
             {publishing
               ? "发布中…"
               : latestHandoff
-                ? `发布新修订快照 (Supersede, ${checkedCount} 项)`
-                : `发布本轮交接快照 (${checkedCount} 项)`}
+                ? `更新交接结果 (${checkedCount} 项)`
+                : `发布交接结果 (${checkedCount} 项)`}
           </button>
         </div>
       </div>

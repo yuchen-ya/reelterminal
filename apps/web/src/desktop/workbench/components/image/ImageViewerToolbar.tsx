@@ -25,6 +25,7 @@ import type { AnnotateTool, CanvasWorkMode, RepairTool } from "./image-canvas-ut
 export type RepairBaseChoice = "latest" | "source";
 
 export interface ImageViewerToolbarProps {
+  readonly hideCollectionNavigation?: boolean;
   readonly viewMode: "grid" | "zoom";
   readonly setViewMode: (mode: "grid" | "zoom") => void;
   readonly batchImageItemsCount: number;
@@ -63,6 +64,7 @@ export interface ImageViewerToolbarProps {
 }
 
 export function ImageViewerToolbar({
+  hideCollectionNavigation = false,
   viewMode,
   setViewMode,
   batchImageItemsCount,
@@ -110,7 +112,7 @@ export function ImageViewerToolbar({
     <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-bg-1 px-2.5 py-1" data-testid="image-toolbar">
       {/* Left: View switcher + compare */}
       <div className="flex items-center gap-1">
-        <div className={wbButton.segmentedContainer}>
+        {!hideCollectionNavigation && <div className={wbButton.segmentedContainer}>
           <button
             type="button"
             onClick={() => setViewMode("grid")}
@@ -132,7 +134,7 @@ export function ImageViewerToolbar({
             <Maximize2 className="h-3.5 w-3.5" />
             <span className="sr-only">查看大图</span>
           </button>
-        </div>
+        </div>}
 
         {viewMode === "zoom" && (
           <>
