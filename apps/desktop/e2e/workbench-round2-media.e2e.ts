@@ -167,6 +167,10 @@ describe("workbench round 2: real media repair and marker persistence", () => {
     await page.getByRole("button", { name: /保存修补/ }).click();
     await page.getByText(/修改|已修改/).first().waitFor({ state: "visible", timeout: 30_000 });
 
+    await expect.poll(async () => {
+      const current = await readProjectState(agent, identity);
+      return current.project.workbench.items.find((candidate) => candidate.id === IMAGE_ID)?.version;
+    }, { timeout: 15_000 }).toBe(2);
     const state = await readProjectState(agent, identity);
     const item = state.project.workbench.items.find((candidate) => candidate.id === IMAGE_ID)!;
     expect(item.version).toBe(2);
