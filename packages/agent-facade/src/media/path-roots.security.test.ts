@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import path from "node:path";
+import { existsSync, realpathSync } from "node:fs";
 import { resolveContainedPathDetailed, hasUrlScheme } from "./path-roots";
 
 describe("path rejection before filesystem resolution", () => {
@@ -23,4 +24,16 @@ describe("path rejection before filesystem resolution", () => {
     expect(resolver.mock.calls).toEqual([[candidate]]);
     expect(hasUrlScheme("ab:payload")).toBe(true);
   });
+});
+
+describe("Windows short path aliases", () => {
+  const short = String.raw`C:\PROGRA~1`;
+  const long = String.raw`C:\Program Files`;
+  it.skipIf(process.platform !== "win32" || !existsSync(short) || !existsSync(long))(
+    "recognizes an 8.3 alias and its long name as the same root", () => {
+      expect(realpathSync.native(short).toLowerCase()).toBe(realpathSync.native(long).toLowerCase());
+      expect(resolveContainedPathDetailed(long, [short]).kind).toBe("ok");
+      expect(resolveContainedPathDetailed(short, [long]).kind).toBe("ok");
+    },
+  );
 });

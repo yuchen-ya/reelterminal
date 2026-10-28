@@ -68,7 +68,10 @@ export type ContainmentResult =
 export function resolveContainedPathDetailed(
   candidate: string,
   roots: readonly string[],
-  resolveRealPath: (path: string) => string = realpathSync,
+  // On Windows the JavaScript implementation may preserve 8.3 aliases while
+  // fs.promises.realpath expands them. Resolve both sides through the native
+  // filesystem API so the same directory has one comparison form.
+  resolveRealPath: (path: string) => string = realpathSync.native,
 ): ContainmentResult {
   if (typeof candidate !== "string" || candidate.length === 0) {
     return { kind: "unresolvable" };
