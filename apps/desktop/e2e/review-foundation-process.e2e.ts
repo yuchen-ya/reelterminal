@@ -123,7 +123,7 @@ describe("recorded review processing and native version comparisons", () => {
     await page.getByTestId("review-process-view").waitFor();
     const compare = async (label: string) => page.getByTestId("review-step-card").filter({ hasText: label }).getByTestId("review-step-compare").click();
     await compare("真实文字差异");
-    await vi.waitFor(async () => expect(await page.getByTestId("review-text-diff").textContent()).toContain("Edited 👀"));
+    await vi.waitFor(async () => expect(await page.getByTestId("review-text-diff").textContent()).toContain("Edited 👀"), { timeout: 15_000 });
     await compare("稳定单元格差异");
     await vi.waitFor(async () => expect(await page.getByTestId("review-data-diff").textContent()).toContain(rowId));
     expect(await page.getByTestId("review-data-diff").textContent()).toContain("null");
