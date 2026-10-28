@@ -103,6 +103,7 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     value(await agent.callCommand("review.steps.start",{target,expectedNodeRevision:await nodeRevision(),requestId:crypto.randomUUID(),stepId,runId:crypto.randomUUID(),label:"Change fixture material",inputs:[{nodeId:node.id,itemId,version:1,role:"source"}],method:{kind:"algorithm",name:"MIT fixture generator"}}));
     value(await agent.callCommand("review.steps.complete",{target,expectedNodeRevision:await nodeRevision(),requestId:crypto.randomUUID(),stepId,
       files:[{resourceId:nextResource,sourcePath:nextFile,mime:"model/gltf-binary"}],ops:[{op:"workbench.rework",handoffId,results:[{sourceItemId:itemId,previousVersion:1,content:{type:"model3d",resourceId:nextResource}}]}],outputs:[{nodeId:node.id,itemId,version:2,role:"result"}]}));
+    await vi.waitFor(async()=>expect(await preview().getAttribute("data-resource-id")).toBe(nextResource),{timeout:20000});
     await ready(); expect((await readItem()).item.version).toBe(2);expect((await readItem()).feedback[0].itemVersion).toBe(1);
     expect((await observation()).animation?.time).toBe(0);
     await page.getByTestId("review-process-tab").click();
