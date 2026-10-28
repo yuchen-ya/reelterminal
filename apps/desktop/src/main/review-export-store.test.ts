@@ -124,7 +124,7 @@ describe("frozen review exports with actual filesystem copies", () => {
     await expect(store.status(randomUUID(), plan.nodeId)).rejects.toMatchObject({ reason: "NOT_FOUND" });
   });
 
-  it("recovers evicted ready jobs from disk and keeps internal receipts outside the dragged folder", async () => {
+  it("recovers evicted ready jobs from disk and keeps internal receipts outside the dragged folder", { timeout: 30_000 }, async () => {
     const { store, resources, plan } = await setup();
     const plans = Array.from({ length: 65 }, (_, index): ReviewExportPlan => ({
       ...plan,

@@ -205,17 +205,21 @@ describe("Aurora native renderer timeout and cancellation", () => {
     async () => {
       await setFakeMode("hang");
       const controller = new AbortController();
-      const startedAt = Date.now();
       const pending = renderMeshWithNativeAuroraRenderer(
         fixtureMesh,
         fixtureOptions,
         controller.signal,
       );
-      setTimeout(() => controller.abort(), 150);
-      const failure = await pending.then(
+      const outcome = pending.then(
         () => null,
         (error: Error) => error,
       );
+      // Cancel only after the child is actually running; a slow CI spawn can
+      // otherwise be aborted before it has created any event evidence.
+      await waitForLog("serve-start mode=hang", 5_000);
+      const startedAt = Date.now();
+      controller.abort();
+      const failure = await outcome;
       const elapsed = Date.now() - startedAt;
 
       expect(failure).not.toBeNull();
