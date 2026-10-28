@@ -72,7 +72,7 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
           if (el.isConnected) el.requestVideoFrameCallback(record);
         };
         el.requestVideoFrameCallback(record);
-      }, { timeout: 15_000 });
+      });
     };
     const seek = async (seconds: number) => {
       const duration = await player().evaluate((el: HTMLVideoElement) => el.duration);
@@ -81,7 +81,7 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
       await vi.waitFor(async () => {
         expect(await player().evaluate((el: HTMLVideoElement) => el.seeking)).toBe(false);
         expect((await readFrame(player())).currentTime).toBeCloseTo(seconds, 2);
-      });
+      }, { timeout: 15_000 });
     };
     const retained: WorkbenchItem[] = [];
     const observations = [];
