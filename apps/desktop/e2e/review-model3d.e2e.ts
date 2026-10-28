@@ -206,7 +206,7 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
   await vi.waitFor(async()=>expect(await page.getByTestId("model-preview").getAttribute("data-phase")).toBe("context-lost"));await page.getByRole("button",{name:"重载预览"}).click();await ready();
   await select("Animated");await ready();await page.getByTestId("model-play").click();
   const host=page.getByTestId("model-canvas-host");await host.evaluate(e=>{(e as HTMLElement).style.visibility="hidden";(e as HTMLElement).style.display="none";});await page.waitForTimeout(100);
-  const stopped=await host.getAttribute("data-render-count");await page.waitForTimeout(200);expect(await host.getAttribute("data-render-count")).toBe(stopped);
+  let stopped:string|null=null;await vi.waitFor(async()=>{stopped=await host.getAttribute("data-render-count");await page.waitForTimeout(200);expect(await host.getAttribute("data-render-count")).toBe(stopped);},{timeout:5000});
   await host.evaluate(e=>{(e as HTMLElement).style.visibility="";(e as HTMLElement).style.display="";});await page.waitForTimeout(100);expect(Number(await host.getAttribute("data-render-count"))).toBeGreaterThan(Number(stopped));
   await page.getByRole("tab",{name:/Video edit|视频编辑/i}).click();expect(await page.locator('canvas[aria-label="3D model preview"]').count()).toBe(0);await page.getByRole("tab",{name:/Review Workspace|审阅工作台/i}).click();await ready();
   const stress=modelFixture({animated:false,triangles:160000,textureSide:4096});

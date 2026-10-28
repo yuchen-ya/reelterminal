@@ -59,7 +59,7 @@ describe("review foundation P0: isolated feasibility evidence", () => {
 
   test.skipIf(process.env.REELTERMINAL_P0_NATIVE_ONLY === "1")("writes and reads back a >256 MiB video through bounded existing media IPC", async () => {
     const source = path.join(launched.runDir, "large-original.avi");
-    const ffmpeg = path.join(DESKTOP_DIR, "resources", "bin", "win32-x64", "ffmpeg.exe");
+    const ffmpeg = process.platform === "win32" ? path.join(DESKTOP_DIR, "resources", "bin", "win32-x64", "ffmpeg.exe") : "ffmpeg";
     execFileSync(ffmpeg, ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
       "testsrc2=size=1920x1080:rate=24", "-frames:v", "48", "-c:v", "rawvideo", "-pix_fmt", "bgr24", source],
     { windowsHide: true, timeout: 60_000 });

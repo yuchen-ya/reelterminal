@@ -58,7 +58,7 @@ describe("review collection scopes", () => {
     }))).toBe(true));
     await board.getByLabel("图片预览方式").selectOption("pixel");
     await board.getByTestId(`board-card-${ids[0]}`).click();
-    await board.getByTestId(`board-card-${ids[1]}`).click({ modifiers: ["Control"] });
+    await board.getByTestId(`board-card-${ids[1]}`).click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] });
     await board.getByTestId(`board-open-item-${ids[0]}`).click();
     await page.getByTestId("image-stage").waitFor();
     await page.getByRole("button", { name: "返回集合：分组甲", exact: true }).click();

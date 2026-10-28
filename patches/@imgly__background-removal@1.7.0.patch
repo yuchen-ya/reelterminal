@@ -1,0 +1,78 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 74683dfccb3130e1f6430709f7a74ddbc8537620..86632081324288d41658a74fb5aa6847ef23d29e 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -3265,6 +3265,11 @@ var ZodArray = class _ZodArray extends ZodType {
+         status.dirty();
+       }
+     }
++    // Reject oversized constrained arrays before parsing their elements.
++    if ((def.exactLength !== null && ctx.data.length > def.exactLength.value) ||
++        (def.maxLength !== null && ctx.data.length > def.maxLength.value)) {
++      return { status: "dirty", value: [] };
++    }
+     if (ctx.common.async) {
+       return Promise.all([...ctx.data].map((item, i) => {
+         return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+@@ -4190,6 +4195,10 @@ var ZodSet = class _ZodSet extends ZodType {
+         status.dirty();
+       }
+     }
++    // Reject oversized constrained sets before parsing their elements.
++    if (def.maxSize !== null && ctx.data.size > def.maxSize.value) {
++      return { status: "dirty", value: new Set() };
++    }
+     const valueType = this._def.valueType;
+     function finalizeSet(elements2) {
+       const parsedSet = /* @__PURE__ */ new Set();
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 0ea9fb5118c12e92fe3168a28aa8f494e6a18eb5..92b354206b3f229007c2685a8df96db3aa4c033e 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -3248,6 +3248,11 @@ var ZodArray = class _ZodArray extends ZodType {
+         status.dirty();
+       }
+     }
++    // Reject oversized constrained arrays before parsing their elements.
++    if ((def.exactLength !== null && ctx.data.length > def.exactLength.value) ||
++        (def.maxLength !== null && ctx.data.length > def.maxLength.value)) {
++      return { status: "dirty", value: [] };
++    }
+     if (ctx.common.async) {
+       return Promise.all([...ctx.data].map((item, i) => {
+         return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+@@ -4173,6 +4178,10 @@ var ZodSet = class _ZodSet extends ZodType {
+         status.dirty();
+       }
+     }
++    // Reject oversized constrained sets before parsing their elements.
++    if (def.maxSize !== null && ctx.data.size > def.maxSize.value) {
++      return { status: "dirty", value: new Set() };
++    }
+     const valueType = this._def.valueType;
+     function finalizeSet(elements2) {
+       const parsedSet = /* @__PURE__ */ new Set();
+diff --git a/dist/src/schema.d.ts b/dist/src/schema.d.ts
+index 74f452c2eab4dfca81436af68c251c9172382d39..1a9296fc7421379de63d5af56a2cc3756e551b1d 100644
+--- a/dist/src/schema.d.ts
++++ b/dist/src/schema.d.ts
+@@ -1,5 +1,5 @@
+ export { Config, ConfigSchema, validateConfig };
+-import { z } from 'zod';
++import { z } from 'zod/v3';
+ declare const ConfigSchema: z.ZodEffects<z.ZodDefault<z.ZodObject<{
+     publicPath: z.ZodEffects<z.ZodDefault<z.ZodOptional<z.ZodString>>, string, string>;
+     debug: z.ZodDefault<z.ZodBoolean>;
+diff --git a/package.json b/package.json
+index 9998057d9426bafcaa4d38793e427c908f963926..f7cb8c05218b1c81a23f6c03bf2c501bdeb64ad9 100644
+--- a/package.json
++++ b/package.json
+@@ -46,7 +46,7 @@
+   "dependencies": {
+     "lodash-es": "^4.17.21",
+     "ndarray": "~1.0.0",
+-    "zod": "^3.23.8"
++    "zod": "^4.6.6"
+   },
+   "peerDependencies": {
+     "onnxruntime-web": "1.21.0"

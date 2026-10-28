@@ -153,7 +153,7 @@ async function waitForHandoffCount(
 
 async function markTwoCellsRework(page: LaunchedApp["page"], firstValue: string, secondValue: string): Promise<void> {
   await page.getByText(firstValue, { exact: true }).and(page.locator("td:visible span.text-fg")).click();
-  await page.getByText(secondValue, { exact: true }).and(page.locator("td:visible span.text-fg")).click({ modifiers: ["Control"] });
+  await page.getByText(secondValue, { exact: true }).and(page.locator("td:visible span.text-fg")).click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] });
   await page.getByTestId("workbench-data-mark-rework").click();
 }
 

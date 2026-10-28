@@ -38,7 +38,7 @@ describe("review navigation and decision loop", () => {
     await board.getByRole("heading", { name: "正文2", exact: true }).waitFor();
     const first = board.getByTestId(`board-card-${ids[0]}`);
     await first.click();
-    await board.getByTestId(`board-card-${ids[1]}`).click({ modifiers: ["Control"] });
+    await board.getByTestId(`board-card-${ids[1]}`).click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] });
     await first.focus(); await page.keyboard.press("ArrowRight");
     expect(await board.getByTestId(`board-card-${ids[1]}`).evaluate(element => element === document.activeElement)).toBe(true);
     await page.keyboard.press("Enter");

@@ -115,7 +115,7 @@ test("pages a 1,000 by 20 table without losing last-page editing or full-column 
     const pagination = page.getByTestId("workbench-data-pagination");
     await pagination.waitFor();
     const content = page.getByTestId("workbench-content");
-    expect(await content.getByRole("row").count()).toBe(51);
+    await vi.waitFor(async () => expect(await content.getByRole("row").count()).toBe(51));
     expect(await content.getByRole("cell").count()).toBe(1050);
     const openMs = performance.now() - opened;
     await content.getByRole("button", { name: /Column 0/ }).click();

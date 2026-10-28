@@ -46,12 +46,12 @@
     "mediabunny": "^1.55.4",
     "onnxruntime-node": "^1.30.0",
     "playwright-core": "^1.60.0",
-    "zod": "^3.25.76"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^20.19.41",
     "cross-env": "^10.1.0",
-    "electron": "^44.5.1",
+    "electron": "^44.9.1",
     "electron-builder": "^26.15.3",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
