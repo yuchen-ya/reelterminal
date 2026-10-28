@@ -8,7 +8,14 @@ import { ReviewFileStore } from "./review-file-store";
 import { ReviewExportStore } from "./review-export-store";
 
 const directories: string[] = [];
-afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
+let activeRecovery: { cancel: AbortController; settled: Promise<void> } | undefined;
+afterEach(async () => {
+  // A Vitest timeout does not cancel an async test. Stop the serial fixture and
+  // wait for its current disk operation before removing its directories.
+  const active = activeRecovery;
+  if (active) { active.cancel.abort(); await active.settled; }
+  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
+});
 async function setup() {
   const directory = await mkdtemp(path.join(tmpdir(), "reel-review-export-"));
   directories.push(directory);
@@ -125,6 +132,8 @@ describe("frozen review exports with actual filesystem copies", () => {
   });
 
   it("recovers evicted ready jobs from disk and keeps internal receipts outside the dragged folder", { timeout: 120_000 }, async () => {
+    const cancel = new AbortController();
+    const run = async () => {
     const { store, resources, plan } = await setup();
     const startedAt = Date.now();
     const plans = Array.from({ length: 65 }, (_, index): ReviewExportPlan => ({
@@ -134,6 +143,7 @@ describe("frozen review exports with actual filesystem copies", () => {
       entries: [{ itemId: randomUUID(), itemVersion: 1, fileName: "status.json", text: "value " + index, serialization: "utf8-text" }],
     }));
     for (const [index, frozen] of plans.entries()) {
+      if (cancel.signal.aborted) return;
       await store.prepare(frozen);
       expect((await store.wait(frozen.exportId)).state).toBe("ready");
       if (process.env.CI && (index + 1) % 16 === 0) console.info(`export recovery fixture: ${index + 1}/65 ready in ${Date.now() - startedAt}ms`);
@@ -168,6 +178,10 @@ describe("frozen review exports with actual filesystem copies", () => {
     await rm(reloaded.dragPaths(plans[0].exportId, false)[0]);
     expect(() => reloaded.dragPaths(plans[0].exportId, false)).toThrow(/moved or deleted/);
     expect(() => reloaded.dragPaths(plans[0].exportId, true)).toThrow(/moved or deleted/);
+    };
+    const pending = run();
+    activeRecovery = { cancel, settled: pending.then(() => undefined, () => undefined) };
+    try { await pending; } finally { activeRecovery = undefined; }
   });
 
   it("shares concurrent same-ID reservations across stores and rejects conflicts", async () => {
