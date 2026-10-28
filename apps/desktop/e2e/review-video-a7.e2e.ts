@@ -121,7 +121,7 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
       await panel.getByTestId("workbench-issue-save").click();
       await vi.waitFor(async () => expect(((await readItem(id)).content as WorkbenchVideoContent).markers[0].note).toContain(`browser ${markerTime.toFixed(3)}`), { timeout: 15_000 });
       await panel.getByTestId("workbench-issue-card").first().click();
-      await vi.waitFor(async () => expect((await readFrame(player())).currentTime).toBeCloseTo(markerTime, 2));
+      await vi.waitFor(async () => expect((await readFrame(player())).currentTime).toBeCloseTo(markerTime, 2), { timeout: 15_000 });
       // Browser SVG matrix supplies screen coordinates independently of the product's pointer normalization math.
       const points = await player().evaluate((video, dimension) => {
         const svg = video.parentElement!.querySelector("svg")!;
@@ -141,7 +141,7 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
       expect(annotation.ptsSec).toBe(marker.startPtsSec);
       await seek(firstPts + 0.35);
       await panel.getByTestId("workbench-issue-card").first().click();
-      await vi.waitFor(async () => expect((await readFrame(player())).currentTime).toBeCloseTo(marker.startPtsSec, 2));
+      await vi.waitFor(async () => expect((await readFrame(player())).currentTime).toBeCloseTo(marker.startPtsSec, 2), { timeout: 15_000 });
       await mkdir(ARTIFACTS_DIR, { recursive: true });
       await page.screenshot({ path: path.join(ARTIFACTS_DIR, `review-video-a7-${fixture.name.replaceAll(" ", "-")}.png`) });
       retained.push(item); observations.push({ name: fixture.name, samples, marker });

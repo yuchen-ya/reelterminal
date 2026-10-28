@@ -313,6 +313,9 @@ export function VideoFrameWorkspace({
       pendingSeekRef.current =
         typeof cached === "number" && Number.isFinite(cached) ? cached : 0;
       if (video.readyState >= 1) {
+        setVideoReady(true);
+        if (video.videoWidth > 0 && video.videoHeight > 0) setVideoSize({ w: video.videoWidth, h: video.videoHeight });
+        if (Number.isFinite(video.duration) && video.duration > 0) setVideoDuration(video.duration);
         const target = pendingSeekRef.current;
         pendingSeekRef.current = null;
         const dur =
@@ -387,7 +390,10 @@ export function VideoFrameWorkspace({
   const seekTo = useCallback(
     (t: number): void => {
       const video = videoRef.current;
-      if (!video || !videoReady) return;
+      if (!video || !videoReady) {
+        if (Number.isFinite(t)) pendingSeekRef.current = t;
+        return;
+      }
       const dur =
         Number.isFinite(video.duration) && video.duration > 0
           ? video.duration

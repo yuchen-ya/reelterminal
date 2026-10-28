@@ -59,3 +59,17 @@ it("releases a comparison handle that arrives after unmount", async () => {
   await act(async () => { resolve({ url: "blob:late-reference", release }); await pending; });
   expect(release).toHaveBeenCalledTimes(1);
 });
+
+it("seeks to a selected issue after video metadata arrives", async () => {
+  const base = video("current", "blob:current");
+  const item: WorkbenchItemView = { ...base, videoPayload: { ...base.videoPayload!, markers: [{ id:"marker", type:"frame", startPtsSec:2.65, note:"Issue", version:1, annotations:[] }] } };
+  render(<VideoFrameWorkspace item={item} batchVideoItems={[item]} issuePanelWidth={280}
+    onUpdateVideoMarkers={async () => ({ ok:true })} />);
+  const player = document.querySelector("[data-workbench-player='true'] video") as HTMLVideoElement;
+  expect(player).not.toBeNull();
+  Object.defineProperty(player, "duration", { configurable:true, value:10 });
+  fireEvent.click(screen.getByTestId("workbench-issue-card"));
+  expect(player.currentTime).toBe(0);
+  fireEvent.loadedMetadata(player);
+  await waitFor(() => expect(player.currentTime).toBeCloseTo(2.65, 2));
+});
