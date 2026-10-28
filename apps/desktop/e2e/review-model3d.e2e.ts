@@ -84,6 +84,7 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     const screenshot = await page.evaluate(async id=>window.reelterminal!.reviewFiles!.resolve(id,true),saved.target.screenshotResourceId);
     if(!screenshot.ok) throw new Error(screenshot.error.message);
     const screenshotBytes=await readFile(screenshot.value.path);expect(screenshotBytes.subarray(1,4).toString()).toBe("PNG");
+    expect(Math.max(screenshotBytes.readUInt32BE(16),screenshotBytes.readUInt32BE(20))).toBeLessThanOrEqual(512);
     await page.getByTestId("model-saved-observation").click(); await ready();
     expect((await observation()).animation!.time).toBeCloseTo(morphView.animation!.time,3);
     await page.getByRole("button",{name:"返回当前版本"}).click();await ready();
@@ -215,11 +216,32 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
   const stressPath=path.join(launched.runDir,"stress.glb");await writeFile(stressPath,stress.bytes);
   const left=crypto.randomUUID(),right=crypto.randomUUID(),stressItem=crypto.randomUUID(),step=crypto.randomUUID();const now=Date.now();
   const current=value(await agent.callCommand<{node:ReviewNode}>("review.get",{target}));
-  const started=performance.now();
   value(await agent.callCommand("review.ingest",{target,expectedNodeRevision:current.node.revision,requestId:crypto.randomUUID(),batchId:crypto.randomUUID(),name:"Measured dual-view budget",
    files:[{resourceId:left,sourcePath:stressPath,mime:"model/gltf-binary"},{resourceId:right,sourcePath:stressPath,mime:"model/gltf-binary"}],items:[{id:stressItem,title:"Stress model",type:"model3d",content:{type:"model3d",resourceId:right}}],
    steps:[{id:step,runId:crypto.randomUUID(),label:"Stress pair",inputs:[{resourceId:left,role:"source"}],outputs:[{nodeId:node.id,itemId:stressItem,version:1,role:"result"}],method:{kind:"algorithm",name:"MIT repeated triangle fixture"},startedAt:now,finishedAt:now}]}));
-  await page.getByTestId("review-process-tab").click();await page.getByTestId("review-step-card").filter({hasText:"Stress pair"}).getByTestId("review-step-compare").click();
+  await page.getByTestId("review-process-tab").click();
+  const stressStarted=performance.now();
+  await page.getByTestId("review-step-card").filter({hasText:"Stress pair"}).getByTestId("review-step-compare").click();
+  await vi.waitFor(async()=>expect(await page.locator('[data-testid="model-preview"][data-phase="error"]').count()).toBe(2),{timeout:15000});
+  const stressRejectMs=performance.now()-stressStarted;
+  expect(await page.getByText(/3D 预览仅支持简单场景/).count()).toBe(2);
+  expect(await page.locator('[data-testid="model-preview"] canvas').count()).toBe(0);
+  for(const resourceId of [left,right]){
+   const original=await page.evaluate(id=>window.reelterminal!.reviewFiles!.resolve(id,true),resourceId);
+   if(!original.ok)throw new Error(original.error.message);
+   expect((await readFile(original.value.path)).equals(stress.bytes)).toBe(true);
+  }
+  await page.getByTestId("review-content-tab").click();
+  await page.getByTestId("review-process-tab").click();
+  const simple=modelFixture({animated:false,triangles:200,textureSide:512});
+  const simplePath=path.join(launched.runDir,"simple-budget.glb");await writeFile(simplePath,simple.bytes);
+  const simpleLeft=crypto.randomUUID(),simpleRight=crypto.randomUUID(),simpleItem=crypto.randomUUID(),simpleStep=crypto.randomUUID();
+  const next=value(await agent.callCommand<{node:ReviewNode}>("review.get",{target}));
+  value(await agent.callCommand("review.ingest",{target,expectedNodeRevision:next.node.revision,requestId:crypto.randomUUID(),batchId:crypto.randomUUID(),name:"Simple dual-view budget",
+   files:[{resourceId:simpleLeft,sourcePath:simplePath,mime:"model/gltf-binary"},{resourceId:simpleRight,sourcePath:simplePath,mime:"model/gltf-binary"}],items:[{id:simpleItem,title:"Simple model",type:"model3d",content:{type:"model3d",resourceId:simpleRight}}],
+   steps:[{id:simpleStep,runId:crypto.randomUUID(),label:"Simple pair",inputs:[{resourceId:simpleLeft,role:"source"}],outputs:[{nodeId:node.id,itemId:simpleItem,version:1,role:"result"}],method:{kind:"algorithm",name:"MIT repeated triangle fixture"},startedAt:now,finishedAt:now}]}));
+  const simpleStarted=performance.now();
+  await page.getByTestId("review-step-card").filter({hasText:"Simple pair"}).getByTestId("review-step-compare").click();
   try {
    await vi.waitFor(async()=>expect(await page.locator('[data-testid="model-preview"][data-phase="ready"]').count()).toBe(2),{timeout:30000});
   } catch (error) {
@@ -234,12 +256,14 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
    console.log("MODEL_COMPARE_DIAGNOSTICS", JSON.stringify(diagnostics));
    throw error;
   }
-  const dualLoadMs=performance.now()-started;
+  const dualLoadMs=performance.now()-simpleStarted;
+  expect(dualLoadMs).toBeLessThan(15_000);
   const stats=await page.getByTestId("model-canvas-host").evaluateAll(elements=>elements.map(e=>({geometries:Number((e as HTMLElement).dataset.geometries),textures:Number((e as HTMLElement).dataset.textures),renders:Number((e as HTMLElement).dataset.renderCount)})));
   const memory=await launched.app.evaluate(({app})=>app.getAppMetrics().map(({type,memory})=>({type,memory})));
   await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-budget-pair.png")});
   evidence.gpu=await launched.app.evaluate(({app})=>app.getGPUInfo("basic"));evidence.network=network;evidence.offline=true;expect(network).toEqual([]);
-  evidence.samples=fixtures.map(f=>({name:f.name,bytes:f.bytes.length}));evidence.cycles=cycles;evidence.stress={preflight:inspectGlb(stress.bytes.buffer.slice(stress.bytes.byteOffset,stress.bytes.byteOffset+stress.bytes.byteLength) as ArrayBuffer),fileBytes:stress.bytes.length,textureSide:4096,texturePixels:4096**2,triangles:480000,dualLoadMs,stats,memory};
+  evidence.samples=fixtures.map(f=>({name:f.name,bytes:f.bytes.length}));evidence.cycles=cycles;evidence.stress={rejected:true,fileBytes:stress.bytes.length,textureSide:4096,triangles:480000,rejectionMs:stressRejectMs};
+  evidence.simple={preflight:inspectGlb(simple.bytes.buffer.slice(simple.bytes.byteOffset,simple.bytes.byteOffset+simple.bytes.byteLength) as ArrayBuffer),fileBytes:simple.bytes.length,textureSide:512,triangles:600,dualLoadMs,stats,memory};
   evidence.console=launched.output.rendererConsole;await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget.json"),JSON.stringify(evidence,evidenceJsonReplacer,2));
  }catch(error){failed=true;throw error;}finally{
   try{await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget-console.json"),JSON.stringify(launched.output.rendererConsole,evidenceJsonReplacer,2));if(!page.isClosed())await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-budget-terminal.png"),timeout:60000});}

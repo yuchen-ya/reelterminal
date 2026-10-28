@@ -43,7 +43,7 @@ export function registerReviewFilesIpc(mediaRoots: () => readonly string[]): voi
     if (args.mime === "model/gltf-binary") {
       return getReviewFileStore().prepare({ ...args, source: args.source ?? "user", inspect: async file => {
         try {
-          if ((await stat(file)).size > MODEL_PREVIEW_BUDGET.fileBytes) throw Object.assign(new Error("GLB 超过 48 MiB 预览预算；原件仍可导出"), { code: "UNSUPPORTED" });
+          if ((await stat(file)).size > MODEL_PREVIEW_BUDGET.fileBytes) throw Object.assign(new Error("3D 预览仅支持简单场景：GLB 不超过 8 MiB；原件仍可导出"), { code: "UNSUPPORTED" });
           const bytes = await readFile(file);
           inspectGlb(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
           return { mime: "model/gltf-binary", modelPreview: { status: "ready" as const } };

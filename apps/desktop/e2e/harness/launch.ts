@@ -103,7 +103,7 @@ async function launch(
 
   const app = await electron.launch({
     ...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? { executablePath: process.env.REELTERMINAL_E2E_APP_EXECUTABLE } : {}),
-    args: [...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? [] : ["."]), "--lang=en-US", `--user-data-dir=${paths.userDataDir}`],
+    args: [...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? [] : ["."]), ...(process.env.REELTERMINAL_E2E_SOFTWARE_GL === "1" ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : []), "--lang=en-US", `--user-data-dir=${paths.userDataDir}`],
     cwd: DESKTOP_DIR,
     env: {
       ...process.env,
@@ -277,7 +277,7 @@ async function launch(
       if (closePromise) return closePromise;
       closePromise = (async () => {
         const gracefulTimeoutMs = options.gracefulTimeoutMs ?? 15_000;
-        const child = app.process();
+        const child = proc;
         const errors: unknown[] = [];
 
         const killChild = (): void => {

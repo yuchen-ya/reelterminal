@@ -30,10 +30,12 @@ export function ModelPreview({ resourceId, restore, onCapture, onRuntime, onObse
     setPhase("loading"); setInfo(undefined); setView(undefined); setError(""); setPlaying(false);
     const load = async () => {
       const [resource] = await reviewService.getResources([resourceId]);
+      if (cancelled) return;
       setFileInfo(`${resource.originalFileName} · ${resource.size.toLocaleString()} B`);
       if (resource.modelPreview && resource.modelPreview.status !== "ready") throw new Error(resource.modelPreview.reason ?? "模型不支持预览");
       if (resource.storage.kind === "unavailable") throw new Error(resource.storage.reason);
       const resolved = await window.reelterminal!.reviewFiles!.resolve(resourceId);
+      if (cancelled) return;
       if (!resolved.ok) throw new Error(resolved.error.message);
       const { ModelPreviewRuntime } = await import("../model-preview/runtime");
       if (cancelled) return;

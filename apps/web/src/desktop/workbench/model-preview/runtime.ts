@@ -45,6 +45,7 @@ export class ModelPreviewRuntime {
   private disposed = false;
   private visible = true;
   private frame = 0;
+  private initializing = false;
   private previousTime = 0;
   private generation = 0;
   private renders = 0;
@@ -59,8 +60,9 @@ export class ModelPreviewRuntime {
   private readonly onContextLost: (event: Event) => void;
 
   constructor(private host: HTMLElement, private changed: (view: ModelObservation) => void, lost: () => void) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    // Preview is intentionally lightweight, including on high-DPI displays.
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: "low-power" });
+    this.renderer.setPixelRatio(1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1;
@@ -70,7 +72,8 @@ export class ModelPreviewRuntime {
     this.controls.enableDamping = false;
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const room = new RoomEnvironment();
-    this.environment = pmrem.fromScene(room, 0.04);
+    // A small neutral environment keeps per-context setup bounded in dual view.
+    this.environment = pmrem.fromScene(room, 0.04, 0.1, 100, { size: 64 });
     room.dispose(); pmrem.dispose();
     this.scene.environment = this.environment.texture;
     this.scene.environmentIntensity = 0.6;
@@ -126,9 +129,14 @@ export class ModelPreviewRuntime {
     const box = new THREE.Box3().setFromObject(loaded.scene, true);
     if (box.isEmpty() || !Number.isFinite(box.max.length()) || box.getSize(new THREE.Vector3()).length() <= 1e-10) throw new Error("默认场景为空或边界为零，无法取景");
     box.getCenter(this.center); this.radius = box.getSize(new THREE.Vector3()).length() / 2;
-    if (loaded.animations.length) this.setAnimation(0, 0, false);
-    this.fit();
-    if (restore) this.setView(restore);
+    // Initial setup changes animation, camera and background together. Render
+    // the final state once rather than submitting each intermediate frame.
+    this.initializing = true;
+    try {
+      if (loaded.animations.length) this.setAnimation(0, 0, false);
+      this.fit();
+      if (restore) this.setView(restore);
+    } finally { this.initializing = false; }
     this.render(); this.changed(this.observation());
     const gl = this.renderer.getContext();
     return { ...report, animations: loaded.animations.map((clip, index) => ({ name: clip.name || `Animation ${index + 1}`, duration: clip.duration })),
@@ -138,6 +146,9 @@ export class ModelPreviewRuntime {
   resize(): void {
     let width = Math.max(1, this.host.clientWidth), height = Math.max(1, this.host.clientHeight);
     if (this.savedAspect) { if (width / height > this.savedAspect) width = height * this.savedAspect; else height = width / this.savedAspect; }
+    // Bound raster work on large or high-DPI screens without changing layout.
+    const pixelRatio = Math.min(1, 512 / Math.max(width, height));
+    if (this.renderer.getPixelRatio() !== pixelRatio) this.renderer.setPixelRatio(pixelRatio);
 
     this.renderer.setSize(width, height); this.camera.aspect = width / height; this.camera.updateProjectionMatrix(); this.render();
   }
@@ -201,7 +212,7 @@ export class ModelPreviewRuntime {
     return { blob, observation };
   }
   private render(force = false): void {
-    if (this.disposed || (!force && (!this.visible || document.hidden))) return;
+    if (this.disposed || (!force && (this.initializing || !this.visible || document.hidden))) return;
     this.renderer.render(this.scene, this.camera);
     this.host.dataset.renderCount = String(++this.renders);
     this.host.dataset.geometries = String(this.renderer.info.memory.geometries);

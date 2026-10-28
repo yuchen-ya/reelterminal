@@ -416,10 +416,11 @@ desktop page (`null` otherwise).
 未支持预览的 GLB 原件仍注册并可按 original/version/adopted 导出，不隐式转换视频。
 视频项目不接受模型 attach。
 
-查看器只接受自包含 GLB 2.0，嵌入 PNG/JPEG、基础 PBR/unlit 与已有骨骼/morph 动画。
-外部 URI、未知 required 扩展、Draco/Meshopt/KTX2 和实例扩展明确拒绝预览；没有 CDN
-或自动下载解码器。当前预览门限是 48 MiB 文件、96 MiB 保守展开计数、16M 纹理像素、
-4096 纹理边长、50 万含实例三角图元、10000 节点和 128 层层级。门限是资源保护，
+查看器只接受自包含 GLB 2.0 三角网格，嵌入 PNG/JPEG、基础 PBR/unlit 与已有骨骼/morph 动画；点和线图元不支持预览。
+外部 URI、白名单以外的扩展、Draco/Meshopt/KTX2 和实例扩展明确拒绝预览；没有 CDN
+或自动下载解码器。每个简单预览最多 8 MiB 文件及保守展开数据、262144 总纹理像素、
+512 纹理边长、600 含实例三角图元、32 个网格实例和绘制单元、256 节点和 128 层层级；
+双视图各自执行这些限制；预览及其截图画布最长边不超过 512 像素，不使用抗锯齿。门限是资源保护，
 不保证门限内任意模型的外观或性能。实际样例和环境见 `REVIEW-3D-PREVIEW-DELIVERY.md`。
 
 GUI `model-view` 反馈 target 包含 observationId、模型 resourceId、screenshotResourceId、
