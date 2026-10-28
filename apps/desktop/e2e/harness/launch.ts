@@ -69,7 +69,8 @@ function makeRunDirs(runDir?: string): {
 } {
   const requestedDir = runDir ?? mkdtempSync(path.join(tmpdir(), "reelterminal-e2e-"));
   mkdirSync(requestedDir, { recursive: true });
-  const dir = realpathSync(requestedDir);
+  // Match production's canonical path handling, including Windows 8.3 aliases.
+  const dir = realpathSync.native(requestedDir);
   mkdirSync(path.join(dir, "agent-workspace"), { recursive: true });
   return {
     runDir: dir,

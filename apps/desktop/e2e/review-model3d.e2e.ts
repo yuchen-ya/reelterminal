@@ -220,7 +220,20 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
    files:[{resourceId:left,sourcePath:stressPath,mime:"model/gltf-binary"},{resourceId:right,sourcePath:stressPath,mime:"model/gltf-binary"}],items:[{id:stressItem,title:"Stress model",type:"model3d",content:{type:"model3d",resourceId:right}}],
    steps:[{id:step,runId:crypto.randomUUID(),label:"Stress pair",inputs:[{resourceId:left,role:"source"}],outputs:[{nodeId:node.id,itemId:stressItem,version:1,role:"result"}],method:{kind:"algorithm",name:"MIT repeated triangle fixture"},startedAt:now,finishedAt:now}]}));
   await page.getByTestId("review-process-tab").click();await page.getByTestId("review-step-card").filter({hasText:"Stress pair"}).getByTestId("review-step-compare").click();
-  await vi.waitFor(async()=>expect(await page.locator('[data-testid="model-preview"][data-phase="ready"]').count()).toBe(2),{timeout:30000});
+  try {
+   await vi.waitFor(async()=>expect(await page.locator('[data-testid="model-preview"][data-phase="ready"]').count()).toBe(2),{timeout:30000});
+  } catch (error) {
+   const diagnostics = await Promise.race([
+    page.evaluate(() => ({
+     comparisons: document.querySelectorAll('[data-testid^="review-comparison-"]').length,
+     phases: Array.from(document.querySelectorAll('[data-testid="model-preview"]'), element => element.getAttribute("data-phase")),
+     alerts: document.querySelectorAll('[role="alert"]').length,
+    })),
+    new Promise<{ unavailable: true }>(resolve => setTimeout(() => resolve({ unavailable: true }), 5000)),
+   ]).catch(() => ({ unavailable: true as const }));
+   console.log("MODEL_COMPARE_DIAGNOSTICS", JSON.stringify(diagnostics));
+   throw error;
+  }
   const dualLoadMs=performance.now()-started;
   const stats=await page.getByTestId("model-canvas-host").evaluateAll(elements=>elements.map(e=>({geometries:Number((e as HTMLElement).dataset.geometries),textures:Number((e as HTMLElement).dataset.textures),renders:Number((e as HTMLElement).dataset.renderCount)})));
   const memory=await launched.app.evaluate(({app})=>app.getAppMetrics().map(({type,memory})=>({type,memory})));
