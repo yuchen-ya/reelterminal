@@ -134,50 +134,50 @@ describe("frozen review exports with actual filesystem copies", () => {
   it("recovers evicted ready jobs from disk and keeps internal receipts outside the dragged folder", { timeout: 120_000 }, async () => {
     const cancel = new AbortController();
     const run = async () => {
-    const { store, resources, plan } = await setup();
-    const startedAt = Date.now();
-    const plans = Array.from({ length: 65 }, (_, index): ReviewExportPlan => ({
-      ...plan,
-      exportId: randomUUID(),
-      name: index === 0 ? "control" : "Node " + index,
-      entries: [{ itemId: randomUUID(), itemVersion: 1, fileName: "status.json", text: "value " + index, serialization: "utf8-text" }],
-    }));
-    for (const [index, frozen] of plans.entries()) {
-      if (cancel.signal.aborted) return;
-      await store.prepare(frozen);
-      expect((await store.wait(frozen.exportId)).state).toBe("ready");
-      if (process.env.CI && (index + 1) % 16 === 0) console.info(`export recovery fixture: ${index + 1}/65 ready in ${Date.now() - startedAt}ms`);
-    }
-    if (process.env.CI) console.info(`export recovery fixture: 65/65 ready in ${Date.now() - startedAt}ms; checking eviction and disk recovery`);
+      const { store, resources, plan } = await setup();
+      const startedAt = Date.now();
+      const plans = Array.from({ length: 65 }, (_, index): ReviewExportPlan => ({
+        ...plan,
+        exportId: randomUUID(),
+        name: index === 0 ? "control" : "Node " + index,
+        entries: [{ itemId: randomUUID(), itemVersion: 1, fileName: "status.json", text: "value " + index, serialization: "utf8-text" }],
+      }));
+      for (const [index, frozen] of plans.entries()) {
+        if (cancel.signal.aborted) return;
+        await store.prepare(frozen);
+        expect((await store.wait(frozen.exportId)).state).toBe("ready");
+        if (process.env.CI && (index + 1) % 16 === 0) console.info(`export recovery fixture: ${index + 1}/65 ready in ${Date.now() - startedAt}ms`);
+      }
+      if (process.env.CI) console.info(`export recovery fixture: 65/65 ready in ${Date.now() - startedAt}ms; checking eviction and disk recovery`);
 
-    const cache = (store as unknown as {
-      jobs: Map<string, { plan?: ReviewExportPlan; status: Record<string, unknown> }>;
-    }).jobs;
-    expect(cache.size).toBe(64);
-    expect(cache.has(plans[0].exportId)).toBe(false);
-    for (const job of cache.values()) {
-      expect(job.plan).toBeUndefined();
-      expect("manifest" in job.status).toBe(false);
-    }
-    expect((await store.prepare(plans[0])).state).toBe("ready");
-    expect(store.dragPaths(plans[0].exportId, true)).toHaveLength(1);
-    const copiedRoot = path.join(path.dirname(store.root), "reloaded-copy");
-    await mkdir(copiedRoot);
-    const copied = await store.copy(plans[0].exportId, copiedRoot, plans[0].nodeId);
-    expect(await readFile(path.join(copied.directory, "status.json"), "utf8")).toBe("value 0");
+      const cache = (store as unknown as {
+        jobs: Map<string, { plan?: ReviewExportPlan; status: Record<string, unknown> }>;
+      }).jobs;
+      expect(cache.size).toBe(64);
+      expect(cache.has(plans[0].exportId)).toBe(false);
+      for (const job of cache.values()) {
+        expect(job.plan).toBeUndefined();
+        expect("manifest" in job.status).toBe(false);
+      }
+      expect((await store.prepare(plans[0])).state).toBe("ready");
+      expect(store.dragPaths(plans[0].exportId, true)).toHaveLength(1);
+      const copiedRoot = path.join(path.dirname(store.root), "reloaded-copy");
+      await mkdir(copiedRoot);
+      const copied = await store.copy(plans[0].exportId, copiedRoot, plans[0].nodeId);
+      expect(await readFile(path.join(copied.directory, "status.json"), "utf8")).toBe("value 0");
 
-    const reloaded = new ReviewExportStore(store.root, resources);
-    expect(await reloaded.status(plans[0].exportId, plans[0].nodeId)).toMatchObject({
-      state: "ready", manifest: { entries: [{ relativePath: "status.json" }] },
-    });
-    expect(await readFile(reloaded.dragPaths(plans[0].exportId, false)[0], "utf8")).toBe("value 0");
-    expect(new Set(await readdir(reloaded.dragPaths(plans[0].exportId, true)[0]))).toEqual(new Set(["manifest.json", "status.json"]));
-    expect((await reloaded.prepare(plans[0])).state).toBe("ready");
-    await expect(reloaded.prepare({ ...plans[0], nodeRevision: plans[0].nodeRevision + 1 })).rejects.toMatchObject({ reason: "CONFLICT" });
+      const reloaded = new ReviewExportStore(store.root, resources);
+      expect(await reloaded.status(plans[0].exportId, plans[0].nodeId)).toMatchObject({
+        state: "ready", manifest: { entries: [{ relativePath: "status.json" }] },
+      });
+      expect(await readFile(reloaded.dragPaths(plans[0].exportId, false)[0], "utf8")).toBe("value 0");
+      expect(new Set(await readdir(reloaded.dragPaths(plans[0].exportId, true)[0]))).toEqual(new Set(["manifest.json", "status.json"]));
+      expect((await reloaded.prepare(plans[0])).state).toBe("ready");
+      await expect(reloaded.prepare({ ...plans[0], nodeRevision: plans[0].nodeRevision + 1 })).rejects.toMatchObject({ reason: "CONFLICT" });
 
-    await rm(reloaded.dragPaths(plans[0].exportId, false)[0]);
-    expect(() => reloaded.dragPaths(plans[0].exportId, false)).toThrow(/moved or deleted/);
-    expect(() => reloaded.dragPaths(plans[0].exportId, true)).toThrow(/moved or deleted/);
+      await rm(reloaded.dragPaths(plans[0].exportId, false)[0]);
+      expect(() => reloaded.dragPaths(plans[0].exportId, false)).toThrow(/moved or deleted/);
+      expect(() => reloaded.dragPaths(plans[0].exportId, true)).toThrow(/moved or deleted/);
     };
     const pending = run();
     activeRecovery = { cancel, settled: pending.then(() => undefined, () => undefined) };
