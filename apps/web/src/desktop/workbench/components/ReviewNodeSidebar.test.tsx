@@ -20,3 +20,24 @@ it("copies a task from its menu without selecting it", () => {
   expect(onCopyInstructions).toHaveBeenCalledWith(node);
   expect(onSelectNode).not.toHaveBeenCalled();
 });
+
+it("does not submit a task while its directory is unavailable", () => {
+  const onCreateNode = vi.fn().mockResolvedValue(undefined);
+  const props = { open: true, onToggleOpen: vi.fn(), nodes: [], selectedId: null,
+    onSelectNode: vi.fn(), onUpdateNode: vi.fn(), onRenameNode: vi.fn(), onPurgeNode: vi.fn(),
+    directory: { groups: [], canUndo: false, canRedo: false }, view: "recent" as const, onSelectView: vi.fn(),
+    query: "", onQueryChange: vi.fn(), groupId: "", onSelectGroup: vi.fn(), onCreateNode,
+    onCreateGroup: vi.fn(), onRenameGroup: vi.fn(), onRemoveGroup: vi.fn(), onDirectoryHistory: vi.fn() };
+  const { rerender } = render(<ReviewNodeSidebar {...props} busy />);
+  fireEvent.click(screen.getByTestId("review-new-task"));
+  const create = screen.getByTestId("review-create-node") as HTMLButtonElement;
+  const form = create.closest("form")!;
+  fireEvent.change(form.querySelector("input")!, { target: { value: "Task" } });
+  expect(create.disabled).toBe(true);
+  fireEvent.submit(form);
+  expect(onCreateNode).not.toHaveBeenCalled();
+  rerender(<ReviewNodeSidebar {...props} busy={false} />);
+  expect(create.disabled).toBe(false);
+  fireEvent.submit(form);
+  expect(onCreateNode).toHaveBeenCalledWith("Task");
+});

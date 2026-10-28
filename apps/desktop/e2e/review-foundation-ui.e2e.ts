@@ -8,6 +8,7 @@ import type { ReviewExportStatus } from "@reelterminal/core/review/export";
 import type { ReviewPackagePreview } from "@reelterminal/core/review/archive";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
+import { diagnosePackageContainment } from "./harness/package-containment";
 import { ARTIFACTS_DIR, DESKTOP_DIR } from "./harness/paths";
 import { evidenceJsonReplacer } from "./harness/evidence";
 import { createVideoFixture } from "./harness/workbench-fixtures";
@@ -168,7 +169,9 @@ describe("independent review GUI without a video project", () => {
     await page.getByTestId("review-restore-submit").click();
     await page.getByTestId("review-restore-dialog").waitFor({ state: "hidden" });
     expect(value(await agent.callCommand<{ nodes: ReviewNode[] }>("review.nodes.list", { target: context!.target })).nodes).toHaveLength(2);
-    const packagePreview = value(await agent.callCommand<ReviewPackagePreview>("review.package.inspect", { target: context!.target, directory: packageCopy.directory }));
+    const packagePreviewReply = await agent.callCommand<ReviewPackagePreview>("review.package.inspect", { target: context!.target, directory: packageCopy.directory });
+    if (!packagePreviewReply.ok) await diagnosePackageContainment(agent, packageCopy.directory, launched.runDir);
+    const packagePreview = value(packagePreviewReply);
     const directoryNow = value(await agent.callCommand<{ revision: number }>("review.directory.get", { target: context!.target }));
     const restoreRequest = { target: context!.target, expectedWorkspaceRevision: directoryNow.revision, requestId: crypto.randomUUID(), packageId: packagePreview.packageId, digest: packagePreview.digest };
     const cliRestored = value(await agent.callCommand<{ node: ReviewNode; replayed: boolean }>("review.package.restore", restoreRequest));

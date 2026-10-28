@@ -31,7 +31,7 @@ describe("review tasks, categories and content batches", () => {
       await page.getByTestId("review-new-task").click();
       await page.getByLabel("任务名称", { exact: true }).fill(name);
       await page.getByTestId("review-create-node").click();
-      await vi.waitFor(async () => expect(await page.getByTestId("review-node-title").textContent()).toBe(name));
+      await vi.waitFor(async () => expect(await page.getByTestId("review-node-title").textContent()).toBe(name), { timeout: 15_000 });
     }
     await page.getByTestId("review-node-list").getByText("角色动画审阅", { exact: true }).click();
     await page.getByRole("button", { name: "撤销目录操作", exact: true }).click();

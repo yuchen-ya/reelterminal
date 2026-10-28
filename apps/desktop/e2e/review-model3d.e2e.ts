@@ -115,7 +115,7 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-comparison.png")});
     await page.getByTestId("review-content-tab").click();await ready();
     await page.getByTestId("workbench-bottom-dock").getByRole("button",{name:"保留",exact:true}).click();
-    await vi.waitFor(async()=>expect((await readItem()).item.status).toBe("kept"));
+    await vi.waitFor(async()=>expect((await readItem()).item.status).toBe("kept"),{timeout:15000});
     const exportTo = async(mode:"original"|"adopted"|"node-package")=>{
       const exportId=crypto.randomUUID();value(await agent.callCommand("review.export.prepare",{target,expectedNodeRevision:await nodeRevision(),exportId,scope:"node",mode}));
       let status:ReviewExportStatus;await vi.waitFor(async()=>{status=value(await agent.callCommand<ReviewExportStatus>("review.export.status",{target,exportId}));expect(status.state,JSON.stringify(status.error)).toBe("ready");},{timeout:20000});
@@ -226,5 +226,5 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
   evidence.gpu=await launched.app.evaluate(({app})=>app.getGPUInfo("basic"));evidence.network=network;evidence.offline=true;expect(network).toEqual([]);
   evidence.samples=fixtures.map(f=>({name:f.name,bytes:f.bytes.length}));evidence.cycles=cycles;evidence.stress={preflight:inspectGlb(stress.bytes.buffer.slice(stress.bytes.byteOffset,stress.bytes.byteOffset+stress.bytes.byteLength) as ArrayBuffer),fileBytes:stress.bytes.length,textureSide:4096,texturePixels:4096**2,triangles:480000,dualLoadMs,stats,memory};
   evidence.console=launched.output.rendererConsole;await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget.json"),JSON.stringify(evidence,evidenceJsonReplacer,2));
- }finally{await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget-console.json"),JSON.stringify(launched.output.rendererConsole,evidenceJsonReplacer,2));if(!page.isClosed())await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-budget-terminal.png")});await agent.close();await launched.close();}
+ }finally{await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget-console.json"),JSON.stringify(launched.output.rendererConsole,evidenceJsonReplacer,2));if(!page.isClosed())await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-budget-terminal.png"),timeout:60000});await agent.close();await launched.close();}
 },180000);

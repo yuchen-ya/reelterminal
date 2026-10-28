@@ -381,7 +381,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
             onDirectoryHistory={(direction) => void directoryHistory(direction).catch(report)}
             cursor={cursor}
             onLoadMore={() => void loadMore().catch(report)}
-            busy={busy}
+            busy={busy || !context}
           />
 
           <main className="flex min-w-0 flex-1 flex-col">

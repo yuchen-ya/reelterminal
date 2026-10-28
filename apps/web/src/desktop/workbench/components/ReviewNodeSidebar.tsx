@@ -324,7 +324,7 @@ export function ReviewNodeSidebar({
         className="flex items-center gap-1 px-1"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!newNodeName.trim()) return;
+          if (busy || !newNodeName.trim()) return;
           void onCreateNode(newNodeName).then(() => {
             setNewNodeName("");
             setCreatingNode(false);
@@ -425,7 +425,7 @@ export function ReviewNodeSidebar({
                 className="flex items-center gap-1 px-1 mb-1"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (!newGroupName.trim()) return;
+                  if (busy || !newGroupName.trim()) return;
                   void onCreateGroup(newGroupName).then(() => {
                     setNewGroupName("");
                   });

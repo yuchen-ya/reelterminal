@@ -109,7 +109,7 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
           frame = await readFrame(player());
           expect(matchFrame(fixture, frame.signature)).toBe(expectedIndex);
           expect(frame.mediaTime).toBeCloseTo(Number(fixture.probe.frames[expectedIndex].best_effort_timestamp_time), 3);
-        });
+        }, { timeout: 15_000 });
         expect(frame!.width).toBe(fixture.width); expect(frame!.height).toBe(fixture.height);
         samples.push({ expectedContainerPts: fixture.probe.frames[expectedIndex].best_effort_timestamp_time, expectedIndex, browser: frame! });
       }

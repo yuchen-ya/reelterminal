@@ -28,10 +28,10 @@ describe("recorded review processing and native version comparisons", () => {
   test("eight actual local image stages, a second pose input, a branch, failure, missing file and restart", async () => {
     launched = await launchApp(); await launched.waitForEndpointFile();
     agent = await connectExternalAgent(launched.endpointFile);
-    let context: ReviewContext;
-    await vi.waitFor(async () => { context = value(await agent.callCommand<ReviewContext>("review.context")); }, { timeout: 15_000 });
     const page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace/i }).click();
+    let context: ReviewContext;
+    await vi.waitFor(async () => { context = value(await agent.callCommand<ReviewContext>("review.context")); }, { timeout: 15_000 });
     await page.getByTestId("review-new-task").click();
     await page.getByLabel("Task name").fill("Eight-stage pixel fixture");
     await page.getByTestId("review-create-node").click();

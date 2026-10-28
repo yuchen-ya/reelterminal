@@ -13,6 +13,7 @@ import { createProjectViaUI, enableAgentSessionViaUI } from "./harness/ui";
 import { applyOp, createImageFixture, createVideoFixture, importMedia, ingestBatch, readIdentity, readProjectState, waitForStableWorkspace } from "./harness/workbench-fixtures";
 import { ARTIFACTS_DIR } from "./harness/paths";
 import { evidenceJsonReplacer } from "./harness/evidence";
+import { diagnosePackageContainment } from "./harness/package-containment";
 
 
 describe("legacy project review migration", () => {
@@ -149,7 +150,9 @@ describe("legacy project review migration", () => {
     const destination = path.join(launched.runDir, "migration-package");
     await mkdir(destination);
     const copied = value(await agent.callCommand<{ directory: string }>("review.export.copy", { target, exportId, directory: destination }));
-    const preview = value(await agent.callCommand<ReviewPackagePreview>("review.package.inspect", { target: review.target, directory: copied.directory }));
+    const previewReply = await agent.callCommand<ReviewPackagePreview>("review.package.inspect", { target: review.target, directory: copied.directory });
+    if (!previewReply.ok) await diagnosePackageContainment(agent, copied.directory, launched.runDir);
+    const preview = value(previewReply);
     expect(preview).toMatchObject({ itemCount: 4, missingResourceCount: 1, missingVersionCount: 1, handoffCount: 2, stepCount: 0 });
     const archived = JSON.parse(await readFile(path.join(copied.directory, "node.json"), "utf8")) as { state: WorkbenchProjectState };
     expect(archived.state.handoffs.every(handoff => handoff.historicalOnly)).toBe(true);
