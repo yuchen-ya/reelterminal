@@ -67,9 +67,14 @@ test("Chinese instruction workflow remains usable in a narrow inspector", async 
     expect(new Set(before.map(item => item.color)).size).toBe(4);
     const from = (await chips.first().boundingBox())!;
     const to = (await chips.nth(1).boundingBox())!;
-    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    // Start on the card's grip, not its nested edit button: Chromium on macOS
+    // can interpret a drag from the button as an ordinary click instead.
+    await page.mouse.move(from.x + 6, from.y + from.height / 2);
     await page.mouse.down();
+    await page.mouse.move(from.x + 24, from.y + from.height / 2, { steps: 4 });
+    await expect.poll(async () => (await chips.first().getAttribute("class"))?.includes("opacity-40")).toBe(true);
     await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+    await expect.poll(async () => (await chips.nth(1).getAttribute("class"))?.includes("ring-accent")).toBe(true);
     await snapshot("drag-position");
     await page.mouse.up();
     await expect.poll(() => chips.first().getAttribute("data-instruction-id")).toBe(before[1].id);
