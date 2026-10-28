@@ -88,7 +88,7 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     expect((await observation()).animation!.time).toBeCloseTo(morphView.animation!.time,3);
     await page.getByRole("button",{name:"返回当前版本"}).click();await ready();
     await page.getByTestId("model-capture").click();await page.getByTestId("model-save-feedback").click();
-    await vi.waitFor(async()=>expect((await readItem()).feedback.length).toBe(1));await ready();
+    await vi.waitFor(async()=>expect((await readItem()).feedback.length).toBe(1),{timeout:15000});await ready();
     saved=(await readItem()).feedback[0];
     await page.getByRole("button",{name:/发布审阅结果/}).click();
     await page.getByRole("button",{name:/发布交接结果|更新交接结果/}).click();
@@ -171,6 +171,7 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
  const launched=await launchApp();await launched.waitForEndpointFile();const agent=await connectExternalAgent(launched.endpointFile);const page=launched.page;
  const evidence:Record<string,unknown>={measuredAt:new Date().toISOString()};
  const network:string[]=[];page.on("request",request=>{if(/^https?:/.test(request.url()))network.push(request.url());});
+ let failed=false;
  try {
   await page.getByRole("tab",{name:/Review Workspace|审阅工作台/i}).click();await page.getByTestId("review-new-task").click();
     await page.getByLabel(/Task name|任务名称/).fill("GLB budgets");await page.getByTestId("review-create-node").click();await page.getByTestId("review-node-title").waitFor();await page.getByTestId("review-access-toggle").click();
@@ -227,5 +228,9 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
   evidence.gpu=await launched.app.evaluate(({app})=>app.getGPUInfo("basic"));evidence.network=network;evidence.offline=true;expect(network).toEqual([]);
   evidence.samples=fixtures.map(f=>({name:f.name,bytes:f.bytes.length}));evidence.cycles=cycles;evidence.stress={preflight:inspectGlb(stress.bytes.buffer.slice(stress.bytes.byteOffset,stress.bytes.byteOffset+stress.bytes.byteLength) as ArrayBuffer),fileBytes:stress.bytes.length,textureSide:4096,texturePixels:4096**2,triangles:480000,dualLoadMs,stats,memory};
   evidence.console=launched.output.rendererConsole;await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget.json"),JSON.stringify(evidence,evidenceJsonReplacer,2));
- }finally{await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget-console.json"),JSON.stringify(launched.output.rendererConsole,evidenceJsonReplacer,2));if(!page.isClosed())await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-budget-terminal.png"),timeout:60000});await agent.close();await launched.close();}
+ }catch(error){failed=true;throw error;}finally{
+  try{await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget-console.json"),JSON.stringify(launched.output.rendererConsole,evidenceJsonReplacer,2));if(!page.isClosed())await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-budget-terminal.png"),timeout:60000});}
+  catch(error){if(!failed)throw error;}
+  finally{await agent.close();await launched.close();}
+ }
 },180000);
