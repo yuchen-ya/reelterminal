@@ -372,7 +372,7 @@ describe("workbench round 3 batch C: feedback reliability", () => {
     await page.getByRole("button", { name: "直接改文" }).first().click();
     const editor = page.getByTestId("workbench-content").locator("textarea").first();
     await editor.fill("第一段落包含重复短语。第二段落也有重复短语。\n第三行包含 emoji 🙂。修订版");
-    await page.getByRole("button", { name: /保存修改/ }).first().click();
+    await page.getByTestId("workbench-content").getByRole("button", { name: "保存", exact: true }).click();
     const revised = await waitForItem(agent, identity, TEXT_ID, (item) => item.version === 2);
     expect(revised.version).toBe(2);
     state = await readProjectState(agent, identity);

@@ -11,6 +11,7 @@ import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { createProjectViaUI } from "./harness/ui";
 import { createImageFixture, createVideoFixture, waitForStableWorkspace } from "./harness/workbench-fixtures";
 import { ARTIFACTS_DIR } from "./harness/paths";
+import { evidenceJsonReplacer } from "./harness/evidence";
 
 async function fileHash(filename: string) {
   const hash = createHash("sha256");
@@ -138,6 +139,7 @@ describe("independent review adopted project copies", () => {
     const project = value(await agent.callCommand<{ project: { mediaLibrary: { items: Array<{ id: string }> }; timeline: { tracks: Array<{ clips: unknown[] }> } } }>("project.get_state", { projectId: editor.identity.projectId, workspaceId: editor.identity.workspaceId }));
     expect(project.project.mediaLibrary.items.map(item => item.id).sort()).toEqual([imageMediaId, attached.mediaId].sort());
     expect(project.project.timeline.tracks.flatMap(track => track.clips)).toHaveLength(0);
-    await writeFile(path.join(ARTIFACTS_DIR, "review-attach.json"), JSON.stringify({ size, originalSize, imageItem, attached, replay, controlled, playback, fixture: "Playable CFR MP4 plus ISO-BMFF free box; IO size and independent persistence, not a decode throughput benchmark" }, null, 2));
+    await mkdir(ARTIFACTS_DIR, { recursive: true });
+    await writeFile(path.join(ARTIFACTS_DIR, "review-attach.json"), JSON.stringify({ size, originalSize, imageItem, attached, replay, controlled, playback, fixture: "Playable CFR MP4 plus ISO-BMFF free box; IO size and independent persistence, not a decode throughput benchmark" }, evidenceJsonReplacer, 2));
   }, 180_000);
 });

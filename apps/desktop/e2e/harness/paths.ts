@@ -11,7 +11,9 @@ export const E2E_DIR = path.resolve(here, "..");
 /** apps/desktop */
 export const DESKTOP_DIR = path.resolve(E2E_DIR, "..");
 /** Machine-readable evidence root (uploaded in CI, gitignored). */
-export const ARTIFACTS_DIR = path.join(E2E_DIR, ".artifacts");
+export const ARTIFACTS_DIR = process.env.REELTERMINAL_E2E_ARTIFACTS_DIR
+  ? path.resolve(process.env.REELTERMINAL_E2E_ARTIFACTS_DIR)
+  : path.join(E2E_DIR, ".artifacts");
 /** The built main-process bundle — must exist before the suite runs. */
 export const MAIN_BUNDLE_PATH = path.join(DESKTOP_DIR, "dist", "main", "index.js");
 /** The shipped live CLI used by external Agent clients. */

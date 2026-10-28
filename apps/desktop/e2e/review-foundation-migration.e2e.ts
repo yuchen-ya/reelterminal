@@ -12,6 +12,7 @@ import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { createProjectViaUI, enableAgentSessionViaUI } from "./harness/ui";
 import { applyOp, createImageFixture, createVideoFixture, importMedia, ingestBatch, readIdentity, readProjectState, waitForStableWorkspace } from "./harness/workbench-fixtures";
 import { ARTIFACTS_DIR } from "./harness/paths";
+import { evidenceJsonReplacer } from "./harness/evidence";
 
 
 describe("legacy project review migration", () => {
@@ -21,7 +22,7 @@ describe("legacy project review migration", () => {
     if (launched && !launched.page.isClosed()) {
       await mkdir(ARTIFACTS_DIR, { recursive: true });
       await launched.page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-migration-terminal.png") });
-      await writeFile(path.join(ARTIFACTS_DIR, "review-migration-console.json"), JSON.stringify(launched.output.rendererConsole, null, 2));
+      await writeFile(path.join(ARTIFACTS_DIR, "review-migration-console.json"), JSON.stringify(launched.output.rendererConsole, evidenceJsonReplacer, 2));
     }
     await agent?.close();
     await launched?.close();
@@ -68,7 +69,7 @@ describe("legacy project review migration", () => {
     };
     const publish = async () => {
       await page.getByRole("button", { name: /发布审阅结果/ }).click();
-      await page.getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ }).first().click();
+      await page.getByRole("button", { name: /发布交接结果|更新交接结果/ }).click();
       await page.getByText(/等待 Agent 读取/).first().waitFor();
       await page.keyboard.press("Escape");
     };
@@ -186,6 +187,6 @@ describe("legacy project review migration", () => {
     if (!reopenedRepair.ok) throw new Error(reopenedRepair.error.message);
     expect((await readFile(reopenedRepair.value.path)).equals(repairBytes)).toBe(true);
     await mkdir(ARTIFACTS_DIR, { recursive: true });
-    await writeFile(path.join(ARTIFACTS_DIR, "review-migration.json"), JSON.stringify({ identity, nodeId, imported, text, data, repaired, missing, preview, restored }, null, 2));
+    await writeFile(path.join(ARTIFACTS_DIR, "review-migration.json"), JSON.stringify({ identity, nodeId, imported, text, data, repaired, missing, preview, restored }, evidenceJsonReplacer, 2));
   }, 180_000);
 });

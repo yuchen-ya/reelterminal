@@ -134,12 +134,8 @@ describe("workbench round 3 batch B: local media batch", () => {
       .getByText(imageItem.title, { exact: true })
       .first()
       .click();
-    await page.getByTitle(/保留 · 作用于/).click();
-    await page.waitForFunction(
-      () => document.body.textContent?.includes("已处理 1 / 2"),
-      undefined,
-      { timeout: 15_000 },
-    );
+    await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "保留", exact: true }).click();
+    await page.getByTitle(/已处理 1 \/ 2/).waitFor({ state: "visible", timeout: 15_000 });
     await page.waitForTimeout(3_400);
 
     await page.getByTestId("workbench-new-batch").click();

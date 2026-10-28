@@ -4,6 +4,7 @@ import { IDBFactory, IDBIndex, IDBKeyRange } from "fake-indexeddb";
 import { getReviewContext } from "./context";
 import { ReviewService } from "./service";
 import { buildWorkbenchIngestActions } from "@reelterminal/core/actions/workbench-actions";
+import { openMaterialDatabase } from "../material-library/storage";
 
 beforeEach(() => { vi.stubGlobal("indexedDB", new IDBFactory()); vi.stubGlobal("IDBKeyRange", IDBKeyRange); });
 afterEach(() => vi.unstubAllGlobals());
@@ -30,11 +31,11 @@ describe("review directory history", () => {
     expect((await service.directory.get(target)).revision).toBe(3);
     await new ReviewService().directory.history({ target, expectedWorkspaceRevision: 3, requestId: crypto.randomUUID(), actor: "human", direction: "undo" });
     const restored = await service.getNode(nodeTarget);
-    expect(restored.node).toMatchObject({ name: "Original", revision: 1, pinned: false });
+    expect(restored.node).toMatchObject({ name: "Original", revision: 1, incomingRevision: 1, pinned: false });
     expect(restored.node.groupId).toBeUndefined();
     expect(restored.state.items[0].content).toMatchObject({ versions: [{ text: "Retain this body" }] });
     await service.directory.history({ target, expectedWorkspaceRevision: 4, requestId: crypto.randomUUID(), actor: "human", direction: "redo" });
-    expect((await service.getNode(nodeTarget)).node).toMatchObject({ name: "Renamed", groupId: group.id, revision: 1 });
+    expect((await service.getNode(nodeTarget)).node).toMatchObject({ name: "Renamed", groupId: group.id, revision: 1, incomingRevision: 1 });
   });
 
   it("persists directory receipts, monotonic undo/redo and external actor boundaries", async () => {
@@ -51,6 +52,25 @@ describe("review directory history", () => {
     await service.directory.commit({ target, expectedWorkspaceRevision: 3, requestId: crypto.randomUUID(), actor: "agent", commands: [{ kind: "node.update", nodeId: result.nodes[0].id, patch: { trashed: true } }] });
     await expect(service.directory.history({ target, expectedWorkspaceRevision: 4, requestId: crypto.randomUUID(), actor: "human", direction: "undo" })).rejects.toMatchObject({ code: "CONFLICT" });
     expect((await service.listNodes(target)).nodes[0].trashedAt).toBeGreaterThan(0);
+  });
+
+  it("rejects undo when directory metadata changed independently", async () => {
+    const { target } = await getReviewContext();
+    const service = new ReviewService();
+    const node = await service.createNode({ target, name: "Original", expectedWorkspaceRevision: 0, requestId: crypto.randomUUID() });
+    await service.directory.commit({ target, expectedWorkspaceRevision: 1, requestId: crypto.randomUUID(), actor: "human", commands: [{ kind: "node.update", nodeId: node.id, patch: { name: "Renamed" } }] });
+    const db = await openMaterialDatabase();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("reviewNodes", "readwrite");
+      const store = tx.objectStore("reviewNodes");
+      const request = store.get(node.id);
+      request.onsuccess = () => store.put({ ...request.result, name: "Concurrent edit" });
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () => reject(tx.error);
+    });
+    await expect(service.directory.history({ target, expectedWorkspaceRevision: 2, requestId: crypto.randomUUID(), actor: "human", direction: "undo" })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await service.getNode({ ...target, nodeId: node.id })).node.name).toBe("Concurrent edit");
+    expect((await service.directory.get(target)).revision).toBe(2);
   });
 
   it("appends ordinary directory changes without loading the retained undo journal", async () => {

@@ -60,7 +60,7 @@ export type JsonSchemaNode = (
   | { readonly type: "boolean" }
   /** Mixed-type enums are expressed as a single `enum` (e.g. fontWeight). */
   | { readonly enum: readonly (string | number)[] }
-  | { readonly const: string }
+  | { readonly const: string | boolean }
   | { readonly type: readonly ["object", "null"]; readonly additionalProperties: false;
       readonly properties: Readonly<Record<string, JsonSchemaNode>>; readonly required: readonly string[] }
   | JsonSchemaObjectNode

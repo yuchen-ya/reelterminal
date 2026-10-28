@@ -68,6 +68,10 @@ describe("collaboration instructions in the existing board", () => {
     await page.getByRole("switch", { name: "Enable Show me a prototype" }).click();
     expect((await read()).value.instructions).toEqual([]);
     await enableAgentSessionViaUI(page, launched.endpointFile);
+    // The persistent startup prompt overlaps the board tabs at small window sizes.
+    // Dismiss it through the same control available to a user before continuing.
+    await page.getByTestId("notification-toast").filter({ hasText: "Copy Agent startup prompt" })
+      .getByRole("button", { name: "Dismiss notification" }).click();
     const revision = (await read()).value.revision;
     expect((await cli(["history", "undo", ...target, "--expected-revision", String(revision)])).ok).toBe(true);
     expect((await read()).value.instructions).toEqual(saved.value.instructions);

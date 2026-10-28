@@ -24,11 +24,11 @@ import type { ReviewContext, ReviewNode } from "@reelterminal/core/review/types"
 import { modelFixture } from "../../../packages/core/src/review/glb-fixtures.test-helper";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { connectExternalAgent, type ExternalAgent, value } from "./harness/cli-client";
-import { DESKTOP_DIR } from "./harness/paths";
+import { ARTIFACTS_DIR } from "./harness/paths";
 import { createImageFixture } from "./harness/workbench-fixtures";
 
 const PHASE = process.env.REVIEW_UI_PHASE ?? "0";
-const OUTPUT_DIR = path.resolve(DESKTOP_DIR, "e2e/.artifacts/review-ui", `phase-${PHASE}`);
+const OUTPUT_DIR = path.resolve(ARTIFACTS_DIR, "review-ui", `phase-${PHASE}`);
 
 function createCustomVideoFixture(
   runDir: string,
@@ -377,15 +377,9 @@ describe("review workbench visual baseline captures", () => {
       .getByText("1280x640_演示样片.mp4", { exact: true })
       .first()
       .click();
-    await page.locator("video").waitFor({ state: "visible", timeout: 20_000 });
-    await page.waitForFunction(
-      () => {
-        const v = document.querySelector("video");
-        return v !== null && v.readyState >= 2;
-      },
-      undefined,
-      { timeout: 20_000 },
-    );
+    const activeVideo = page.locator("video:visible");
+    await activeVideo.waitFor({ state: "visible", timeout: 20_000 });
+    await vi.waitFor(async () => expect(await activeVideo.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(2), { timeout: 20_000 });
     await captureScreenshot(page, "video");
 
     // -------------------------------------------------------------
@@ -472,15 +466,8 @@ describe("review workbench visual baseline captures", () => {
       .getByText("1280x640_演示样片.mp4", { exact: true })
       .first()
       .click();
-    await page.locator("video").waitFor({ state: "visible", timeout: 20_000 });
-    await page.waitForFunction(
-      () => {
-        const v = document.querySelector("video");
-        return v !== null && v.readyState >= 2;
-      },
-      undefined,
-      { timeout: 20_000 },
-    );
+    await activeVideo.waitFor({ state: "visible", timeout: 20_000 });
+    await vi.waitFor(async () => expect(await activeVideo.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(2), { timeout: 20_000 });
 
     const expandSidebarBtn = page.getByRole("button", { name: /展开数据节点侧栏|展开侧栏/i }).first();
     if (await expandSidebarBtn.isVisible()) {
@@ -492,13 +479,6 @@ describe("review workbench visual baseline captures", () => {
     });
     await captureScreenshot(page, "sidebar-expanded");
 
-    // Collapse sidebar again
-    const collapseBtn = page.getByRole("button", { name: /收起侧栏/i }).first();
-    if (await collapseBtn.isVisible()) {
-      await collapseBtn.click();
-    }
-    await page.waitForTimeout(300);
-
     // -------------------------------------------------------------
     // State: node-menu-open (node action dropdown menu open)
     // -------------------------------------------------------------
@@ -507,6 +487,12 @@ describe("review workbench visual baseline captures", () => {
     await captureScreenshot(page, "node-menu-open");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
+
+    // The action button belongs to the expanded sidebar; collapse only after
+    // capturing its menu.
+    const collapseBtn = page.getByRole("button", { name: /收起侧栏/i }).first();
+    if (await collapseBtn.isVisible()) await collapseBtn.click();
+    await page.waitForTimeout(300);
 
     // -------------------------------------------------------------
     // State: admin-menu-open (more admin options dropdown menu open)
@@ -557,7 +543,7 @@ describe("review workbench visual baseline captures", () => {
       .getByText("1280x640_演示样片.mp4", { exact: true })
       .first()
       .click();
-    await page.locator("video").waitFor({ state: "visible", timeout: 20_000 });
+    await activeVideo.waitFor({ state: "visible", timeout: 20_000 });
 
     // Click '保留' button
     await page
@@ -577,7 +563,7 @@ describe("review workbench visual baseline captures", () => {
     await page.waitForTimeout(3600);
 
     await handoffBtn.click();
-    await page.getByText("互斥计数守恒").waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByTestId("workbench-handoff-dialog").waitFor({ state: "visible", timeout: 15_000 });
     await captureScreenshot(page, "dialog-handoff");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);

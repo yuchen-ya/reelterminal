@@ -9,6 +9,7 @@ import type { ReviewPackagePreview } from "@reelterminal/core/review/archive";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { ARTIFACTS_DIR, DESKTOP_DIR } from "./harness/paths";
+import { evidenceJsonReplacer } from "./harness/evidence";
 import { createVideoFixture } from "./harness/workbench-fixtures";
 
 
@@ -22,7 +23,7 @@ describe("independent review GUI without a video project", () => {
       await writeFile(path.join(ARTIFACTS_DIR, "review-foundation-ui-diagnostic.json"), JSON.stringify({ rendererConsole: launched.output.rendererConsole,
         context: agent ? await agent.callCommand("review.context") : null,
         alerts: await launched.page.getByRole("alert").allTextContents(),
-      }, null, 2));
+      }, evidenceJsonReplacer, 2));
     }
     await agent?.close(); await launched?.close();
   });
@@ -54,7 +55,7 @@ describe("independent review GUI without a video project", () => {
     await dialog.getByTestId("review-import-submit").click();
     await dialog.waitFor({ state: "hidden" });
     await page.getByTestId("text-body").waitFor({ state: "visible", timeout: 20_000 });
-    expect(await page.getByTestId("text-body").textContent()).toContain("Alpha 👀");
+    await vi.waitFor(async () => expect(await page.getByTestId("text-body").textContent()).toContain("Alpha 👀"), { timeout: 20_000 });
     const first = value(await agent.callCommand<{ node: ReviewNode; items: Array<{ id: string }> }>("review.get", { target }));
     expect(first.items).toHaveLength(1);
     const text = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target, itemId: first.items[0].id }));
@@ -91,7 +92,7 @@ describe("independent review GUI without a video project", () => {
     const folderBatch = all!.items.find(item => item.title.includes("original.png"))!.batchId;
     await vi.waitFor(async () => expect(await page.getByTestId("workbench-batch-select").getAttribute("data-batch-id")).toBe(folderBatch), { timeout: 15_000 });
     await page.getByTestId("workbench-tree-panel").getByText(/original.png/).click();
-    await page.getByTestId("workbench-content").locator("img").first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByTestId("image-stage").locator("img").waitFor({ state: "visible", timeout: 15_000 });
     await page.getByTestId("image-mode-repair").click();
     const stage = await page.getByTestId("image-stage").boundingBox();
     expect(stage).not.toBeNull();
@@ -99,7 +100,7 @@ describe("independent review GUI without a video project", () => {
     await page.mouse.down();
     await page.mouse.move(stage!.x + stage!.width * 0.55, stage!.y + stage!.height * 0.55, { steps: 8 });
     await page.mouse.up();
-    await page.getByRole("button", { name: /保存修补/ }).click();
+    await page.getByRole("button", { name: /^保存修补\(/ }).click();
     const imageId = imported.find(entry => entry.item.title.endsWith("original.png"))!.item.id;
     let repaired: WorkbenchItem;
     await vi.waitFor(async () => { repaired = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target, itemId: imageId })).item; expect(repaired.version).toBe(2); }, { timeout: 15_000 });
@@ -185,10 +186,16 @@ describe("independent review GUI without a video project", () => {
     await vi.waitFor(async () => expect(await page.getByTestId("review-backup-progress").getAttribute("data-ready")).toBe("true"), { timeout: 30_000 });
     expect(await page.getByTestId("review-backup-progress").textContent()).toContain("3 / 3");
     await page.keyboard.press("Escape");
-    await page.getByTestId("review-node-menu-trigger").click();
+    expect(await page.getByTestId("review-node-title").getAttribute("data-node-id")).toBe(restoredNodeId!);
+    await page.getByTestId("review-node-list").locator("div.group").filter({ has: page.locator('button[aria-current="true"]') }).getByTestId("review-node-menu-trigger").click();
     await page.getByRole("menuitem", { name: /Move to recycle bin|移到回收站/ }).click();
-    await page.getByTestId("review-node-menu-trigger").click();
-    await page.getByTestId("review-purge-open").click();
+    await page.getByTestId("review-trash-submit").click();
+    await page.getByTestId("review-trash-dialog").waitFor({ state: "hidden" });
+    await page.getByRole("button", { name: "打开回收站" }).click();
+    const trashedNode = page.getByTestId("review-node-list").getByText("Independent GUI node", { exact: true });
+    await vi.waitFor(async () => expect(await trashedNode.count()).toBe(1));
+    await trashedNode.click({ button: "right" });
+    await page.getByRole("menuitem", { name: /Permanently delete|永久删除任务/ }).click();
     await page.getByTestId("review-purge-confirm").waitFor();
     expect(await page.getByTestId("review-purge-submit").isDisabled()).toBe(true);
     await page.getByTestId("review-purge-confirm").check();
@@ -210,6 +217,6 @@ describe("independent review GUI without a video project", () => {
     const readback = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target: { ...reopened!.target, nodeId: node.id }, itemId: csv.id }));
     expect(readback.item.content).toEqual(csv.content);
     expect((await agent.callCommand("editor.get_context")).error?.message).toBe("No project is open");
-    await writeFile(path.join(ARTIFACTS_DIR, "review-foundation-ui.json"), JSON.stringify({ measuredAt: new Date().toISOString(), node, context: context!, first, text, imported, resources, repaired: repaired!, originalExport, copied, adopted: adopted!, adoptedCopy, packageExport: packageExport!, restoredNodeId: restoredNodeId!, restoredItems, cliRestored, reopened: reopened!, readback }, null, 2));
+    await writeFile(path.join(ARTIFACTS_DIR, "review-foundation-ui.json"), JSON.stringify({ measuredAt: new Date().toISOString(), node, context: context!, first, text, imported, resources, repaired: repaired!, originalExport, copied, adopted: adopted!, adoptedCopy, packageExport: packageExport!, restoredNodeId: restoredNodeId!, restoredItems, cliRestored, reopened: reopened!, readback }, evidenceJsonReplacer, 2));
   });
 });

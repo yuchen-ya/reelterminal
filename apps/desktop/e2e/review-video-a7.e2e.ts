@@ -10,6 +10,7 @@ import { launchApp } from "./harness/launch";
 import { connectExternalAgent } from "./harness/cli-client";
 import { createReviewVideoFixtures, VIDEO_SAMPLE_POINTS, type ReviewVideoFixture } from "./harness/review-video-fixtures";
 import { ARTIFACTS_DIR } from "./harness/paths";
+import { evidenceJsonReplacer } from "./harness/evidence";
 
 
 async function readFrame(video: Locator) {
@@ -150,10 +151,13 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
     for (const original of retained) {
       await select(original.title);
       await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "返工", exact: true }).click();
+      const reworkDialog = page.getByRole("dialog");
+      await reworkDialog.getByLabel(/共同修改要求/).fill("保留现有圈注并提交更新的视频版本");
+      await reworkDialog.getByRole("button", { name: "确认返工", exact: true }).click();
       await vi.waitFor(async () => expect((await readItem(original.id)).status).toBe("rework"));
     }
-    await page.getByRole("button", { name: /发布审阅结果/ }).click();
-    await page.getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ }).first().click();
+    await page.getByTitle("预览本轮已处理结果，确认后发布给 Agent 读取", { exact: true }).click();
+    await page.getByRole("button", { name: /发布交接结果|更新交接结果/ }).click();
     await page.getByText(/等待 Agent 读取/).first().waitFor();
     await page.keyboard.press("Escape");
     const changes = value(await agent.callCommand<{ entries: Array<{ handoffIds?: string[] }> }>("review.changes", { target, afterSequence: 0 }));
@@ -220,11 +224,24 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
         expect(await videos.count()).toBe(2);
         expect(await videos.evaluateAll(elements => elements.every(element => (element as HTMLVideoElement).readyState >= 2))).toBe(true);
       });
+      await videos.evaluateAll(elements => {
+        const state = window as unknown as { comparisonTrace?: Array<{ index: number; event: string; time: number }> };
+        state.comparisonTrace = [];
+        elements.forEach((element, index) => {
+          const video = element as HTMLVideoElement;
+          for (const event of ["seeking", "seeked", "timeupdate", "play"]) video.addEventListener(event, () => {
+            state.comparisonTrace?.push({ index, event, time: video.currentTime });
+          });
+        });
+      });
       await videos.nth(0).evaluate((el: HTMLVideoElement) => { el.currentTime = 1.53; });
       await vi.waitFor(async () => expect((await readFrame(videos.nth(0))).currentTime).toBeCloseTo(1.53, 2));
       if (mapped) {
         await vi.waitFor(async () => expect((await readFrame(videos.nth(1))).currentTime).toBeCloseTo(3.06, 1));
-        expect(matchFrame(fixtures[0], (await readFrame(videos.nth(0))).signature)).toBe(matchFrame(fixtures[3], (await readFrame(videos.nth(1))).signature));
+        await vi.waitFor(async () => {
+          expect(matchFrame(fixtures[0], (await readFrame(videos.nth(0))).signature))
+            .toBe(matchFrame(fixtures[3], (await readFrame(videos.nth(1))).signature));
+        }, { timeout: 10_000 });
         await page.getByRole("button", { name: "Play mapped pair" }).click();
         await vi.waitFor(async () => expect((await readFrame(videos.nth(0))).currentTime).toBeGreaterThan(1.7));
         const rates = await videos.evaluateAll(elements => elements.map(el => (el as HTMLVideoElement).playbackRate));
@@ -241,8 +258,9 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
   } finally {
     await mkdir(ARTIFACTS_DIR, { recursive: true });
     evidence.console = launched.output.rendererConsole;
+    evidence.comparisonTrace = await launched.page.evaluate(() => (window as unknown as { comparisonTrace?: unknown }).comparisonTrace).catch(() => undefined);
     if (!launched.page.isClosed()) await launched.page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-video-a7-terminal.png") });
-    await writeFile(evidencePath, JSON.stringify(evidence, null, 2));
+    await writeFile(evidencePath, JSON.stringify(evidence, evidenceJsonReplacer, 2));
     await agent.close(); await launched.close();
   }
 }, 240_000);

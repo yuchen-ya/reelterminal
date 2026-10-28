@@ -6,6 +6,7 @@ import type { ReviewContext, ReviewNode } from "@reelterminal/core/review/types"
 import { launchApp } from "./harness/launch";
 import { connectExternalAgent } from "./harness/cli-client";
 import { ARTIFACTS_DIR } from "./harness/paths";
+import { evidenceJsonReplacer } from "./harness/evidence";
 
 
 test("a real pointer gesture on each formal handle reaches the native drag boundary", async () => {
@@ -64,7 +65,7 @@ test("a real pointer gesture on each formal handle reaches the native drag bound
       calls: await launched.app.evaluate(() => (globalThis as unknown as { gestureCalls?: unknown[] }).gestureCalls),
       events: await page.evaluate(() => (window as unknown as { gestureEvents?: unknown[] }).gestureEvents),
       alerts: await page.getByRole("alert").allTextContents(), console: launched.output.rendererConsole,
-    }, null, 2));
+    }, evidenceJsonReplacer, 2));
     await page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-export-gesture.png") });
     await agent.close(); await launched.close();
   }

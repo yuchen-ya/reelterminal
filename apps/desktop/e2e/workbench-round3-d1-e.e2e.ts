@@ -152,15 +152,15 @@ async function waitForHandoffCount(
 }
 
 async function markTwoCellsRework(page: LaunchedApp["page"], firstValue: string, secondValue: string): Promise<void> {
-  await page.getByText(firstValue, { exact: true }).first().click();
-  await page.getByText(secondValue, { exact: true }).first().click({ modifiers: ["Control"] });
+  await page.getByText(firstValue, { exact: true }).and(page.locator("td:visible span.text-fg")).click();
+  await page.getByText(secondValue, { exact: true }).and(page.locator("td:visible span.text-fg")).click({ modifiers: ["Control"] });
   await page.getByTestId("workbench-data-mark-rework").click();
 }
 
 async function publishFromDialog(page: LaunchedApp["page"], expectedCount: number): Promise<void> {
   await page.getByRole("button", { name: /发布审阅结果/ }).click();
   const publish = page.getByRole("button", {
-    name: new RegExp(`发布.*${expectedCount} 项`),
+    name: new RegExp(`(?:发布|更新)交接结果.*${expectedCount} 项`),
   });
   await publish.waitFor({ timeout: 10_000 });
   await publish.click();
@@ -482,7 +482,7 @@ describe("workbench round 3 D1+E: data rework and execution-level handoff", () =
     await page.getByRole("menuitemradio", { name: "部分接受回归", exact: true }).click();
     await selectTreeItem(page, "部分接受数据");
     await markTwoCellsRework(page, "部分原值", "剩余原值");
-    await page.getByText("部分原值", { exact: true }).first().click();
+    await page.getByText("部分原值", { exact: true }).and(page.locator("td:visible span.text-fg")).click();
     await page.getByRole("button", { name: "确认建议 (1 项)", exact: true }).click();
     await expect.poll(async () => (await itemState(agent, identity, "partial-accept-item")).version).toBe(2);
     expect((await itemState(agent, identity, "partial-accept-item")).status).toBe("rework");

@@ -24,7 +24,7 @@ function name(value: string): string {
   return value.trim();
 }
 function nodeMetadata(node: ReviewNode): object {
-  const { revision: _revision, updatedAt: _updatedAt, history: _history, ...metadata } = node;
+  const { revision: _revision, updatedAt: _updatedAt, history: _history, incomingRevision: _incomingRevision, ...metadata } = node;
   return metadata;
 }
 function directoryStacks(entries: readonly Entry[]) {
@@ -167,7 +167,7 @@ export class ReviewDirectory {
                 if (change.store === "reviewNodes") {
                   if (!equal(current && nodeMetadata(current as ReviewNode), change.after && nodeMetadata(change.after as ReviewNode))) throw reviewError("CONFLICT", "Review node metadata changed after this directory action");
                   if (current && !change.before && (current as ReviewNode).revision !== 0) throw reviewError("CONFLICT", "A node with content history cannot be removed by undoing its creation; move it to the recycle bin");
-                  update(change.store, change.id, change.before ? { ...change.before, ...(current ? { revision: (current as ReviewNode).revision, history: (current as ReviewNode).history } : {}), updatedAt: now } as ReviewNode : undefined);
+                  update(change.store, change.id, change.before ? { ...change.before, ...(current ? { revision: (current as ReviewNode).revision, history: (current as ReviewNode).history, incomingRevision: (current as ReviewNode).incomingRevision } : {}), updatedAt: now } as ReviewNode : undefined);
                 } else {
                   if (!equal(current, change.after)) throw reviewError("CONFLICT", "Review group changed after this directory action");
                   update(change.store, change.id, change.before);

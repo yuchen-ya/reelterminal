@@ -99,7 +99,11 @@ export function ReviewProcessView({ target, onReviewItem }: { target: ReviewCont
 
   const compareStep = (step: ReviewStep) => {
     const next = stepPins(step);
-    localStorage.setItem(key, JSON.stringify(next)); setPins(next); setSelectedId(step.id);
+    localStorage.setItem(key, JSON.stringify(next));
+    // Do not leave the previous players interactive while the new selection is loading.
+    setSelections({});
+    setPins(next);
+    setSelectedId(step.id);
   };
 
   const references = useMemo(() => selected ? ([...selected.inputs.map((reference, index) => ({ reference, side: "input" as const, index })), ...selected.outputs.map((reference, index) => ({ reference, side: "output" as const, index }))]) : [], [selected]);

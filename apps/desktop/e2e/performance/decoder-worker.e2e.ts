@@ -87,6 +87,22 @@ test("the editor paints a valid frame while optional decode workers are still pr
   const launched = await launchApp({ runDir, skipLocaleReload: true });
   const evidence = createEvidence("p4-worker-nonblocking-first-frame", launched.page);
   try {
+    // Parallel decoding is deliberately disabled in the shipped engine until
+    // its request queue is wired. Opt in only in this isolated renderer by
+    // replacing the single built class-field initializer in the routed bundle.
+    // Fail closed if the build shape changes; do not modify files on disk.
+    const assets = path.resolve(DESKTOP_DIR, "../web/dist/assets");
+    const initializer = "useParallelDecoding=!1;";
+    const candidates = await Promise.all((await readdir(assets))
+      .filter(name => /^index-.*\.js$/.test(name))
+      .map(async name => ({ name, source: await readFile(path.join(assets, name), "utf8") })));
+    const matches = candidates.filter(candidate => candidate.source.includes(initializer));
+    expect(matches, "exactly one renderer bundle must contain the disabled decoder initializer").toHaveLength(1);
+    const [{ name: engineBundle, source }] = matches;
+    expect(source.split(initializer), "decoder initializer must be unique").toHaveLength(2);
+    const optedInSource = source.replace(initializer, "useParallelDecoding=!0;");
+    await launched.page.route(url => url.pathname === `/assets/${engineBundle}`, route =>
+      route.fulfill({ status: 200, contentType: "text/javascript", body: optedInSource }));
     await launched.page.addInitScript(() => {
       const NativeWorker = Worker;
       const pending: Array<() => void> = [];

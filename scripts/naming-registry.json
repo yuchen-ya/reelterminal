@@ -22,6 +22,36 @@
       "reason": "Isolated test profiles set the existing persisted locale key; no user profile is modified."
     },
     {
+      "files": "apps/desktop/e2e/review-batch-updates.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated review test sets the existing persisted locale key."
+    },
+    {
+      "files": "apps/desktop/e2e/review-branches.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated review test sets the existing persisted locale key."
+    },
+    {
+      "files": "apps/desktop/e2e/review-collection.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated review test sets the existing persisted locale key."
+    },
+    {
+      "files": "apps/desktop/e2e/review-interaction.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated review test sets the existing persisted locale key."
+    },
+    {
+      "files": "apps/desktop/e2e/review-task-menu.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated review test sets the existing persisted locale key."
+    },
+    {
       "files": "apps/desktop/e2e/harness/performance/driver.ts",
       "pattern": "openreel-locale|openreel-onboarding-complete|openreel-db",
       "category": 4,

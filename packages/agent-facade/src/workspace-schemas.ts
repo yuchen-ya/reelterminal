@@ -87,7 +87,7 @@ const confirmedTrue = {
   check: (value: unknown) => value === true,
   describe: "true after explicit confirmation of the reviewed scope",
   required: true,
-  emits: { kind: "leaf" as const, schema: { type: "boolean" as const } },
+  emits: { kind: "leaf" as const, schema: { const: true } },
 };
 
 export const WORKSPACE_VERB_SCHEMAS: Readonly<Record<WorkspaceVerb, ObjectSchema>> = {

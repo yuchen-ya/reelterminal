@@ -9,6 +9,7 @@ import type { ReviewContext, ReviewNode, ReviewStep } from "@reelterminal/core/r
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { ARTIFACTS_DIR } from "./harness/paths";
+import { evidenceJsonReplacer } from "./harness/evidence";
 import { createVideoFixture } from "./harness/workbench-fixtures";
 
 
@@ -19,7 +20,7 @@ describe("recorded review processing and native version comparisons", () => {
     if (launched && !launched.page.isClosed()) {
       await mkdir(ARTIFACTS_DIR, { recursive: true });
       await launched.page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-process-terminal.png") });
-      await writeFile(path.join(ARTIFACTS_DIR, "review-process-console.json"), JSON.stringify(launched.output.rendererConsole, null, 2));
+      await writeFile(path.join(ARTIFACTS_DIR, "review-process-console.json"), JSON.stringify(launched.output.rendererConsole, evidenceJsonReplacer, 2));
     }
     await agent?.close(); await launched?.close();
   });
@@ -160,6 +161,8 @@ describe("recorded review processing and native version comparisons", () => {
     await page.getByTestId("review-step-card").filter({ hasText: "最终补点" }).getByTestId("review-step-compare").click();
     await page.getByTestId("review-comparison-right").locator("img").waitFor();
     await agent.close(); launched = await launched.relaunch(); agent = await connectExternalAgent(launched.endpointFile);
+    await launched.page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await launched.page.getByTestId("review-process-tab").click();
     await launched.page.getByTestId("review-process-view").waitFor({ timeout: 20_000 });
     await launched.page.getByTestId("review-comparison-right").locator("img").waitFor();
     const reopened = value(await agent.callCommand<ReviewContext>("review.context"));
@@ -188,9 +191,10 @@ describe("recorded review processing and native version comparisons", () => {
     await launched.page.getByTestId("review-content-tab").click();
     await launched.page.getByTestId("workbench-content").locator("img").first().waitFor();
     expect(value(await agent.callCommand<{ steps: ReviewStep[] }>("review.steps.list", { target: finalTarget })).steps).toHaveLength(0);
-    await launched.page.getByTestId("review-node-list").getByRole("button", { name: /Eight-stage pixel fixture/ }).click();
+    await launched.page.getByTestId("review-node-list").locator('button:not([data-testid="review-node-menu-trigger"])').filter({ hasText: "Eight-stage pixel fixture" }).click();
+    await launched.page.getByTestId("review-process-tab").click();
     await launched.page.getByTestId("review-process-view").waitFor();
     await launched.page.getByTestId("review-comparison-right").locator("img").waitFor();
-    await writeFile(path.join(ARTIFACTS_DIR, "review-process.json"), JSON.stringify({ measuredAt: new Date().toISOString(), node, recorded, stages, inspection, sharedFrames, exactExport, exactCopy, reopened, retained, note: "Deterministic local FFmpeg fixtures exercise process/data contracts; they do not validate model-generated pose transfer or perceptual super-resolution quality." }, null, 2));
+    await writeFile(path.join(ARTIFACTS_DIR, "review-process.json"), JSON.stringify({ measuredAt: new Date().toISOString(), node, recorded, stages, inspection, sharedFrames, exactExport, exactCopy, reopened, retained, note: "Deterministic local FFmpeg fixtures exercise process/data contracts; they do not validate model-generated pose transfer or perceptual super-resolution quality." }, evidenceJsonReplacer, 2));
   });
 });

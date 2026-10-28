@@ -10,6 +10,7 @@ import { modelFixture, encodeGlb } from "../../../packages/core/src/review/glb-f
 import { launchApp } from "./harness/launch";
 import { connectExternalAgent, value } from "./harness/cli-client";
 import { ARTIFACTS_DIR } from "./harness/paths";
+import { evidenceJsonReplacer } from "./harness/evidence";
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
 test("GLB real renderer: material/skin/morph, frozen feedback, rework, comparison, original export and package restore", async () => {
@@ -90,7 +91,7 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     await vi.waitFor(async()=>expect((await readItem()).feedback.length).toBe(1));await ready();
     saved=(await readItem()).feedback[0];
     await page.getByRole("button",{name:/发布审阅结果/}).click();
-    await page.getByRole("button",{name:/发布本轮交接快照|发布新修订快照/}).first().click();
+    await page.getByRole("button",{name:/发布交接结果|更新交接结果/}).click();
     await page.getByText(/等待 Agent 读取/).first().waitFor();await page.keyboard.press("Escape");
     const changes=value(await agent.callCommand<{entries:Array<{handoffIds?:string[]}>}>("review.changes",{target,afterSequence:0}));
     const handoffId=changes.entries.flatMap(entry=>entry.handoffIds??[]).at(-1)!;
@@ -155,11 +156,11 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     evidence.restoredExport=restoredExport!;
     evidence.restored=restoredItem;evidence.network=network;expect(network).toEqual([]);
     evidence.console=launched.output.rendererConsole;expect(launched.output.rendererConsole.filter(line=>/pageerror|\[error\]/i.test(line))).toEqual([]);
-    await writeFile(path.join(ARTIFACTS_DIR,"review-model3d.json"),JSON.stringify(evidence,null,2));
+    await writeFile(path.join(ARTIFACTS_DIR,"review-model3d.json"),JSON.stringify(evidence,evidenceJsonReplacer,2));
   } finally {
     await mkdir(ARTIFACTS_DIR,{recursive:true});
     if(!launched.page.isClosed())await launched.page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-terminal.png")});
-    await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-console.json"),JSON.stringify(launched.output.rendererConsole,null,2));
+    await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-console.json"),JSON.stringify(launched.output.rendererConsole,evidenceJsonReplacer,2));
     await agent.close();await launched.close();
   }
 },180000);
@@ -224,6 +225,6 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
   await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-budget-pair.png")});
   evidence.gpu=await launched.app.evaluate(({app})=>app.getGPUInfo("basic"));evidence.network=network;evidence.offline=true;expect(network).toEqual([]);
   evidence.samples=fixtures.map(f=>({name:f.name,bytes:f.bytes.length}));evidence.cycles=cycles;evidence.stress={preflight:inspectGlb(stress.bytes.buffer.slice(stress.bytes.byteOffset,stress.bytes.byteOffset+stress.bytes.byteLength) as ArrayBuffer),fileBytes:stress.bytes.length,textureSide:4096,texturePixels:4096**2,triangles:480000,dualLoadMs,stats,memory};
-  evidence.console=launched.output.rendererConsole;await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget.json"),JSON.stringify(evidence,null,2));
- }finally{await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget-console.json"),JSON.stringify(launched.output.rendererConsole,null,2));if(!page.isClosed())await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-budget-terminal.png")});await agent.close();await launched.close();}
+  evidence.console=launched.output.rendererConsole;await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget.json"),JSON.stringify(evidence,evidenceJsonReplacer,2));
+ }finally{await writeFile(path.join(ARTIFACTS_DIR,"review-model3d-budget-console.json"),JSON.stringify(launched.output.rendererConsole,evidenceJsonReplacer,2));if(!page.isClosed())await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-budget-terminal.png")});await agent.close();await launched.close();}
 },180000);

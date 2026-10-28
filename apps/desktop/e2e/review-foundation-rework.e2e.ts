@@ -9,6 +9,7 @@ import { launchApp } from "./harness/launch";
 import { connectExternalAgent } from "./harness/cli-client";
 import { createImageFixture, createVideoFixture } from "./harness/workbench-fixtures";
 import { ARTIFACTS_DIR } from "./harness/paths";
+import { evidenceJsonReplacer } from "./harness/evidence";
 
 
 test("four independent content types complete human review, partial rework, history and reopen", async () => {
@@ -44,10 +45,13 @@ test("four independent content types complete human review, partial rework, hist
     for (const title of ["Rework image", "Rework video", "Rework text", "Rework data"]) {
       await select(title);
       await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "返工", exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByLabel(/共同修改要求/).fill("请保留已有内容并提交修订结果");
+      await dialog.getByRole("button", { name: "确认返工", exact: true }).click();
     }
     await vi.waitFor(async () => expect((await readItem(data)).status).toBe("rework"));
-    await page.getByRole("button", { name: /发布审阅结果/ }).click();
-    await page.getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ }).first().click();
+    await page.getByTitle("预览本轮已处理结果，确认后发布给 Agent 读取", { exact: true }).click();
+    await page.getByRole("button", { name: /发布交接结果|更新交接结果/ }).click();
     await page.getByText(/等待 Agent 读取/).first().waitFor();
     await page.keyboard.press("Escape");
     const changes = value(await agent.callCommand<{ entries: Array<{ handoffIds?: string[] }> }>("review.changes", { target, afterSequence: 0 }));
@@ -104,6 +108,6 @@ test("four independent content types complete human review, partial rework, hist
     }
     await mkdir(ARTIFACTS_DIR, { recursive: true });
     await page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-rework.png") });
-    await writeFile(path.join(ARTIFACTS_DIR, "review-rework.json"), JSON.stringify({ target, handoff, readbacks }, null, 2));
+    await writeFile(path.join(ARTIFACTS_DIR, "review-rework.json"), JSON.stringify({ target, handoff, readbacks }, evidenceJsonReplacer, 2));
   } finally { await agent.close(); await launched.close(); }
 }, 180_000);

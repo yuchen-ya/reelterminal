@@ -306,8 +306,7 @@ describe("workbench round 2: real media repair and marker persistence", () => {
 
     await page.getByRole("button", { name: /发布审阅结果/ }).click();
     const publish = page
-      .getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ })
-      .first();
+      .getByRole("button", { name: /发布交接结果|更新交接结果/ });
     await publish.waitFor({ timeout: 10_000 });
     await publish.click();
     await page.getByText(/等待 Agent 读取/).first().waitFor({ state: "visible", timeout: 15_000 });
@@ -367,6 +366,8 @@ describe("workbench round 2: real media repair and marker persistence", () => {
       .getByText(/已修改/)
       .first()
       .waitFor({ state: "visible", timeout: 20_000 });
+    const reopenIssuePanel = launched.page.getByTitle("展开问题面板", { exact: true });
+    if (await reopenIssuePanel.isVisible()) await reopenIssuePanel.click();
     const reopenedPanelWidth = (await launched.page
       .getByTestId("workbench-issue-panel")
       .boundingBox())!.width;
@@ -434,9 +435,14 @@ describe("workbench round 2: real media repair and marker persistence", () => {
   test("adding a video marker republishes execution content without changing the old snapshot", async () => {
     const page = launched.page;
     await page.getByRole("button", { name: "返工", exact: true }).click();
+    const reworkDialog = page.getByRole("dialog");
+    if (await reworkDialog.isVisible()) {
+      await reworkDialog.getByLabel(/共同修改要求/).fill("保留问题标记并提交修订结果");
+      await reworkDialog.getByRole("button", { name: "确认返工", exact: true }).click();
+    }
     const publish = async () => {
       await page.getByRole("button", { name: /发布审阅结果/ }).click();
-      await page.getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ }).first().click();
+      await page.getByRole("button", { name: /发布交接结果|更新交接结果/ }).click();
       await page.getByRole("button", { name: "关闭窗口" }).click();
       const result = await agent.callCommand<{ handoffEvents: Array<{ handoffId: string }> }>("workbench.changes", { batchId: BATCH_ID });
       expect(result.ok).toBe(true);

@@ -8,6 +8,7 @@ import type { WorkbenchItem } from "@reelterminal/core/types/workbench";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { connectExternalAgent, type ExternalAgent } from "./harness/cli-client";
 import { ARTIFACTS_DIR, DESKTOP_DIR } from "./harness/paths";
+import { evidenceJsonReplacer } from "./harness/evidence";
 
 
 describe("review P1: actual no-project transactions through two CLI processes", () => {
@@ -177,6 +178,6 @@ describe("review P1: actual no-project transactions through two CLI processes", 
       root, node, reviewDiscovery, reviewCapabilities, deniedWithVideoWrite, concurrent, replay, summaries, crossRead, crossBatch, directoryEdit, brokenGroupRemoval, prepared, imageReplay, range, rangeEdges, failedIO,
       reviewed, staleItem, originalVersion, changes, crossFeedback, forbiddenPublish,
       reopened: reopened!, persisted, persistedResource,
-    }, null, 2));
+    }, evidenceJsonReplacer, 2));
   });
 });

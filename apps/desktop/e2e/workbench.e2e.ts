@@ -174,7 +174,7 @@ describe("workbench: ingest → review → handoff → rework", () => {
 
   test("GUI text revision + decision is visible to the agent through workbench.get", async () => {
     const page = launched.page;
-    await page.getByText("语料条目").first().click();
+    await page.getByTestId("workbench-tree-panel").getByText("语料条目", { exact: true }).click();
     await page
       .getByTestId("workbench-content")
       .getByText("重复短语")
@@ -184,7 +184,7 @@ describe("workbench: ingest → review → handoff → rework", () => {
     const editor = page.getByTestId("workbench-content").locator("textarea").first();
     await editor.waitFor({ timeout: 10_000 });
     await editor.fill("人工修订后的正文内容。");
-    await page.getByRole("button", { name: /保存修改/ }).first().click();
+    await page.getByTestId("workbench-content").getByRole("button", { name: "保存", exact: true }).click();
     await page.getByText("已修改").first().waitFor({ timeout: 15_000 });
 
     const read = await agent.callCommand("workbench.get", { batchId: "e2e-batch-1" });
@@ -197,21 +197,13 @@ describe("workbench: ingest → review → handoff → rework", () => {
 
   test("data proposal confirm patches exactly the chosen cell", async () => {
     const page = launched.page;
-    await page.getByText("清洗表").first().click();
-    await page
-      .getByTestId("workbench-content")
-      .getByText("2026/1/5")
-      .first()
-      .waitFor({ timeout: 10_000 });
+    await page.getByTestId("workbench-tree-panel").getByText("清洗表", { exact: true }).click();
+    await page.getByText("2026/1/5", { exact: true }).and(page.locator("td:visible span.text-fg")).waitFor({ timeout: 10_000 });
     // Select the pending proposal cells explicitly, then confirm (the button
     // always shows its actual scope count).
     await page.getByRole("button", { name: /全选待清洗建议/ }).first().click();
     await page.getByRole("button", { name: /^确认建议 \(/ }).first().click();
-    await page
-      .getByTestId("workbench-content")
-      .getByText("2026-01-05")
-      .first()
-      .waitFor({ timeout: 15_000 });
+    await page.getByText("2026-01-05", { exact: true }).and(page.locator("td:visible span.text-fg")).waitFor({ timeout: 15_000 });
     const read = await agent.callCommand("workbench.get", {
       batchId: "e2e-batch-1",
       itemId: "e2e-data-1",
@@ -238,18 +230,21 @@ describe("workbench: ingest → review → handoff → rework", () => {
       .getByText("语料条目", { exact: true })
       .first()
       .click();
-    await page.getByTitle(/标为待返工/).first().click();
-    await page
-      .getByTestId("workbench-tree-panel")
-      .getByText("返工", { exact: true })
-      .first()
-      .waitFor({ timeout: 15_000 });
+    await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "返工", exact: true }).click();
+    const reworkDialog = page.getByRole("dialog");
+    if (await reworkDialog.isVisible()) {
+      await reworkDialog.getByLabel(/共同修改要求/).fill("请根据审阅意见提交修订版本");
+      await reworkDialog.getByRole("button", { name: "确认返工", exact: true }).click();
+    }
+    await expect.poll(async () => {
+      const result = await agent.callCommand<{ item: { status: string } }>("workbench.get", { batchId: "e2e-batch-1", itemId: "e2e-txt-1" });
+      return result.value?.item.status;
+    }, { timeout: 15_000 }).toBe("rework");
 
     // Publish through the real handoff dialog.
     await page.getByRole("button", { name: /发布审阅结果/ }).click();
     const publish = page
-      .getByRole("button", { name: /发布本轮交接快照|发布新修订快照/ })
-      .first();
+      .getByRole("button", { name: /发布交接结果|更新交接结果/ });
     await publish.waitFor({ timeout: 10_000 });
     await publish.click();
     await page.getByText(/等待 Agent 读取/).first().waitFor({ timeout: 15_000 });

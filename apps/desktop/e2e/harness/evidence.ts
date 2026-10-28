@@ -9,6 +9,17 @@ import path from "node:path";
 import type { Page } from "playwright-core";
 import { ARTIFACTS_DIR } from "./paths";
 
+/** Redact machine-specific path roots in synthetic evidence, retaining other data for the CI privacy check. */
+export function evidenceJsonReplacer(key: string, value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  // Keep credential-shaped values intact so the existing fail-closed check rejects them.
+  if (/^(?:token|access_token|refresh_token|apiKey|api_key|authorization)$/i.test(key) ||
+      /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}|Bearer\s+[A-Za-z0-9._~+/-]{20,}/.test(value)) return value;
+  return value
+    .replace(/(?:[A-Z]:[\\/]+Users[\\/]+|\/Users\/|\/home\/)[^\\/\r\n"'<>`]+/gi, "<home>")
+    .replace(/[A-Z]:[\\/]+(?:1my_projects|audio-eval)(?=[\\/]|$)/gi, "<local-root>");
+}
+
 export interface EvidenceRecord {
   /** Free-form named values; appended in test order. */
   record(key: string, value: unknown): void;
@@ -53,7 +64,7 @@ export function createEvidence(testName: string, page?: Page): EvidenceRecord {
       const file = path.join(dir, `${safe(testName)}.json`);
       writeFileSync(
         file,
-        JSON.stringify({ ...data, ...(extra ?? {}), artifactsDir: dir }, null, 2),
+        JSON.stringify({ ...data, ...(extra ?? {}), artifactsDir: dir }, evidenceJsonReplacer, 2),
       );
       return file;
     },

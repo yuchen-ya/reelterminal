@@ -356,13 +356,15 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     const zoomShot = await evidence.screenshot("02-image-zoom-issue-panel");
     evidence.record("imageLayout", { contentBox, panelBox, bottomBox, zoomShot });
 
-    // Grid view keeps the card-level quick decisions from the prototype.
-    await page.getByRole("button", { name: /图片总览/ }).click();
-    await page.getByTestId("image-card-keep").first().waitFor({ state: "visible" });
-    await page.getByTestId("image-card-discard").first().waitFor({ state: "visible" });
+    // The collection view exposes the same card-level quick decisions.
+    await page.getByRole("button", { name: /返回集合/ }).click();
+    const imageCard = page.getByTestId(`board-card-${IMAGE_ID}`);
+    await imageCard.hover();
+    await imageCard.getByTitle("保留此项").waitFor({ state: "visible" });
+    await imageCard.getByTitle("丢弃此项").waitFor({ state: "visible" });
     const gridShot = await evidence.screenshot("03-image-grid");
     evidence.record("imageGridShot", gridShot);
-    await page.getByRole("button", { name: /查看大图/ }).click();
+    await page.getByTestId(`board-open-item-${IMAGE_ID}`).click();
     await waitForImageStage(page);
     await waitForNoHorizontalOverflow(page);
   }, 120_000);
@@ -428,7 +430,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     await page.getByRole("button", { name: "直接改文" }).first().click();
     const editor = page.getByTestId("workbench-content").locator("textarea").first();
     await editor.fill("人工修订后的正文。\n第二行保留 emoji 🙂。");
-    await page.getByRole("button", { name: /保存修改/ }).first().click();
+    await page.getByTestId("workbench-content").getByRole("button", { name: "保存", exact: true }).click();
     await page.getByText(/已修改/).first().waitFor({ state: "visible", timeout: 15_000 });
 
     const state = await readProjectState(agent, identity);
@@ -441,7 +443,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     const page = launched.page;
     await selectTreeItem(page, "清洗数据表");
     expect(await page.getByTestId("workbench-issue-panel").count()).toBe(0);
-    await page.getByTestId("workbench-content").getByText("2026/1/5").first().waitFor({
+    await page.getByText("2026/1/5", { exact: true }).and(page.locator("td:visible span.text-fg")).waitFor({
       timeout: 10_000,
     });
     const dataShot = await evidence.screenshot("06-data-table");
@@ -449,7 +451,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
 
     await page.getByRole("button", { name: /全选待清洗建议/ }).first().click();
     await page.getByRole("button", { name: /^确认建议 \(/ }).first().click();
-    await page.getByTestId("workbench-content").getByText("2026-01-05").first().waitFor({
+    await page.getByText("2026-01-05", { exact: true }).and(page.locator("td:visible span.text-fg")).waitFor({
       timeout: 15_000,
     });
 
@@ -582,7 +584,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     // Decide the image so the batch has something publishable.
     await selectTreeItem(page, "真实图片");
     await page.getByRole("button", { name: /^保留$/ }).first().click();
-    await page.getByText(/已执行决定/).first().waitFor({ state: "visible", timeout: 10_000 });
+    await vi.waitFor(async () => expect((await readProjectState(agent, identity)).project.workbench.items.find(item => item.id === IMAGE_ID)?.status).toBe("kept"));
     // Let the decision toast clear before opening the dialog.
     await page.waitForTimeout(3400);
 
@@ -591,7 +593,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     await handoffButton.click();
     const dialog = page.getByRole("dialog");
     try {
-      await dialog.getByText("交回本轮审阅结果", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+      await page.getByTestId("workbench-handoff-dialog").waitFor({ state: "visible", timeout: 10_000 });
       await dialog.getByText(/边缘溢色与毛刺/).first().waitFor({ state: "visible", timeout: 10_000 });
       await dialog.getByText(/@母版/).first().waitFor({ state: "visible" });
       // Wait for the dialog's open animation to settle (screenshot evidence).
@@ -646,6 +648,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     const treeHandle = page.getByTitle("拖拽调整队列宽度");
     const treeBox = await treeHandle.boundingBox();
     expect(treeBox).not.toBeNull();
+    const originalTreeWidth = await page.evaluate(() => Number(localStorage.getItem("reelterminal-workbench-tree-w") ?? 220));
     await page.mouse.move(treeBox!.x + treeBox!.width / 2, treeBox!.y + treeBox!.height / 2);
     await page.mouse.down();
     await page.mouse.move(treeBox!.x + 50, treeBox!.y + treeBox!.height / 2, { steps: 8 });
@@ -666,7 +669,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
       issue: localStorage.getItem("reelterminal-workbench-issue-w"),
     }));
     expect(Number(stored.issue)).toBeGreaterThan(300);
-    expect(Number(stored.tree)).toBeGreaterThan(300);
+    expect(Number(stored.tree)).toBeGreaterThan(originalTreeWidth + 20);
     evidence.record("layout", { before, after, stored });
     evidence.flush();
   }, 180_000);

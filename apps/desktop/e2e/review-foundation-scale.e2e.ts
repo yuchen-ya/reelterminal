@@ -44,17 +44,18 @@ test("measures the actual paged UI with 1,000 text items and 110 declared proces
     }
     const settled = async () => page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const started = performance.now();
-    await page.getByTestId("review-node-list").getByRole("button", { name: /Scale acceptance/ }).click();
+    await page.getByTestId("review-node-list").locator('button:not([data-testid="review-node-menu-trigger"])').filter({ hasText: "Scale acceptance 1000 / 110" }).click();
     await page.getByTestId("text-body").waitFor();
-    await page.getByTestId("review-item-pagination").getByRole("button", { name: "Next", exact: true }).waitFor();
-    await vi.waitFor(async () => expect(await page.getByTestId("review-item-pagination").getByRole("button", { name: "Next", exact: true }).isEnabled()).toBe(true));
+    const nextPage = page.getByTestId("review-item-pagination").getByTitle("Next", { exact: true });
+    await nextPage.waitFor();
+    await vi.waitFor(async () => expect(await nextPage.isEnabled()).toBe(true));
     await settled();
     const firstPageMs = performance.now() - started;
     const visibleTreeRows = await page.getByTestId("workbench-tree-panel").getByText(/^Scale \d{4}$/).count();
     expect(visibleTreeRows).toBe(100);
     const firstText = await page.getByTestId("text-body").textContent();
     const nextStarted = performance.now();
-    await page.getByTestId("review-item-pagination").getByRole("button", { name: "Next", exact: true }).click();
+    await nextPage.click();
     await vi.waitFor(async () => expect(await page.getByTestId("text-body").textContent()).not.toBe(firstText));
     await settled();
     const nextPageMs = performance.now() - nextStarted;
@@ -83,6 +84,8 @@ test("measures the actual paged UI with 1,000 text items and 110 declared proces
   } finally {
     clearInterval(timer);
     while (sampling) await new Promise(resolve => setTimeout(resolve, 10));
+    await mkdir(ARTIFACTS_DIR, { recursive: true });
+    if (!launched.page.isClosed()) await launched.page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-scale-terminal.png") });
     await agent.close();
     await launched.close();
   }
@@ -108,7 +111,7 @@ test("pages a 1,000 by 20 table without losing last-page editing or full-column 
       batchId: crypto.randomUUID(), name: "Large table", items: [{ id: itemId, title: "Large table", type: "data",
         content: { type: "data", datasetId: crypto.randomUUID(), columns, rows, proposals: [] } }] }));
     const opened = performance.now();
-    await page.getByTestId("review-node-list").getByRole("button", { name: /Large table audit/ }).click();
+    await page.getByTestId("review-node-list").locator('button:not([data-testid="review-node-menu-trigger"])').filter({ hasText: "Large table audit" }).click();
     const pagination = page.getByTestId("workbench-data-pagination");
     await pagination.waitFor();
     const content = page.getByTestId("workbench-content");

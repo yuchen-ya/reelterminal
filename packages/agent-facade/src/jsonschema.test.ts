@@ -96,6 +96,9 @@ describe("emitted verb JSON Schemas — global client constraints", () => {
         // Completion can ingest a table or patch one through the shared operation vocabulary.
         "review.steps.complete",
         "review.steps.complete",
+      // Both submit verbs reuse the same validated table-cell content schema.
+      "review.items.submit",
+      "review.branches.submit",
       // The workbench data content carries its cells as a dynamic
       // Record<columnId, string|null> map, deep-validated by the runtime
       // boundary (workbench.ts isCellsRecord); edit.validate/edit.apply embed the

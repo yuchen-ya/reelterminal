@@ -11,6 +11,7 @@ import {
   openRecentProjectViaUI,
 } from "./harness/ui";
 import { ARTIFACTS_DIR, DESKTOP_DIR } from "./harness/paths";
+import { evidenceJsonReplacer } from "./harness/evidence";
 
 test("human export, review handoff, explicit cleanup and retained media survive reopen", async () => {
   let launched = await launchApp();
@@ -372,7 +373,7 @@ test("human export, review handoff, explicit cleanup and retained media survive 
       clipboardHostRoundTrip, copiedPromptValidated: true,
       realProducerResidual: { jobId: residualJobId, path: residualFile.path, reclaimedBytes: residualFile.sizeBytes, removed: !existsSync(residualFile.path) },
       retainedMediaId: after.project.mediaLibrary.items[0].id,
-    }, null, 2));
+    }, evidenceJsonReplacer, 2));
   } catch (error) {
     mkdirSync(ARTIFACTS_DIR, { recursive: true });
     await launched.page.screenshot({ path: path.join(ARTIFACTS_DIR, "export-cleanup-failed.png") }).catch(() => undefined);

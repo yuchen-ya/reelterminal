@@ -75,7 +75,8 @@ describe("review issue quick actions and Agent details", () => {
       await page.getByRole("button", { name: /标问题帧 @/ }).click();
       await vi.waitFor(async () => expect(await page.getByTestId("workbench-issue-card").count()).toBe(index + 1));
     }
-    await page.getByTitle("展开问题面板", { exact: true }).click();
+    const initialIssuesOpener = page.getByTitle("展开问题面板", { exact: true });
+    if (await initialIssuesOpener.isVisible()) await initialIssuesOpener.click();
     const rows = page.getByTestId("workbench-issue-row");
     await page.getByTestId("workbench-batch-select").focus();
     await page.mouse.move(10, 10);
@@ -127,7 +128,8 @@ describe("review issue quick actions and Agent details", () => {
       await page.screenshot({ path: path.join(ARTIFACTS_DIR, `review-details-${width}.png`), animations: "disabled" });
     }
     await tree.getByText("测试视频", { exact: true }).click();
-    await page.getByTitle("展开问题面板", { exact: true }).click();
+    const finalIssuesOpener = page.getByTitle("展开问题面板", { exact: true });
+    if (await finalIssuesOpener.isVisible()) await finalIssuesOpener.click();
     await rows.first().waitFor();
     await rows.first().hover();
   }, 90_000);

@@ -287,6 +287,15 @@ describe("shared export cleanup service", () => {
     vi.clearAllMocks();
   });
 
+  it("rejects an unconfirmed plan before deleting media", async () => {
+    state.media = [media("orphan", "123")];
+    const plan = await createCleanupPlan(target, "purge-media");
+    expect(plan.status).toBe("ready");
+    await expect(executeCleanupPlan({ ...confirm(plan), confirmed: false as true })).rejects.toThrow("confirmation does not match");
+    expect(state.media).toHaveLength(1);
+    expect(state.guardedDeleteCalls).toHaveLength(0);
+  });
+
   it("requires explicit work-file selection, retains adopted files and outputs, and rechecks references before deletion", async () => {
     const artifact = (fileId: string, kind: "work" | "output" = "work"): ProjectLibraryTrackedArtifactFile => ({
       fileId, kind, path: `C:\\artifacts\\${fileId}.mp4`, purpose: "generation-attempt", origin: "agent", rebuildable: false,
