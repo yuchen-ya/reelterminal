@@ -81,7 +81,9 @@ describe("review collection scopes", () => {
     await board.getByTestId("board-keep-all").click();
     await vi.waitFor(async () => expect(await statuses()).toEqual(["kept", "kept", "kept", "pending"]));
     expect(await board.getByTestId("board-keep-all").isDisabled()).toBe(true);
+    await vi.waitFor(async () => expect(await board.evaluate(element => element.closest("[inert]") === null)).toBe(true));
     await board.getByTestId(`board-card-${ids[0]}`).focus();
+    await vi.waitFor(async () => expect(await board.getByTestId(`board-card-${ids[0]}`).evaluate(element => element === document.activeElement)).toBe(true));
     await page.keyboard.press("Control+z");
     await vi.waitFor(async () => expect(await statuses()).toEqual(["kept", "pending", "pending", "pending"]));
 
@@ -97,7 +99,9 @@ describe("review collection scopes", () => {
     await tree.getByRole("button", { name: "分组甲的操作", exact: true }).click();
     await page.getByRole("menuitem", { name: "将已处理项恢复待审（3）", exact: true }).click();
     await vi.waitFor(async () => expect(await statuses()).toEqual(["pending", "pending", "pending", "pending"]));
+    await vi.waitFor(async () => expect(await board.evaluate(element => element.closest("[inert]") === null)).toBe(true));
     await board.getByTestId(`board-card-${ids[0]}`).focus();
+    await vi.waitFor(async () => expect(await board.getByTestId(`board-card-${ids[0]}`).evaluate(element => element === document.activeElement)).toBe(true));
     await page.keyboard.press("Control+z");
     await vi.waitFor(async () => expect(await statuses()).toEqual(["rework", "rework", "rework", "pending"]));
 
