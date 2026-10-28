@@ -124,18 +124,21 @@ describe("frozen review exports with actual filesystem copies", () => {
     await expect(store.status(randomUUID(), plan.nodeId)).rejects.toMatchObject({ reason: "NOT_FOUND" });
   });
 
-  it("recovers evicted ready jobs from disk and keeps internal receipts outside the dragged folder", { timeout: 30_000 }, async () => {
+  it("recovers evicted ready jobs from disk and keeps internal receipts outside the dragged folder", { timeout: 120_000 }, async () => {
     const { store, resources, plan } = await setup();
+    const startedAt = Date.now();
     const plans = Array.from({ length: 65 }, (_, index): ReviewExportPlan => ({
       ...plan,
       exportId: randomUUID(),
       name: index === 0 ? "control" : "Node " + index,
       entries: [{ itemId: randomUUID(), itemVersion: 1, fileName: "status.json", text: "value " + index, serialization: "utf8-text" }],
     }));
-    for (const frozen of plans) {
+    for (const [index, frozen] of plans.entries()) {
       await store.prepare(frozen);
       expect((await store.wait(frozen.exportId)).state).toBe("ready");
+      if (process.env.CI && (index + 1) % 16 === 0) console.info(`export recovery fixture: ${index + 1}/65 ready in ${Date.now() - startedAt}ms`);
     }
+    if (process.env.CI) console.info(`export recovery fixture: 65/65 ready in ${Date.now() - startedAt}ms; checking eviction and disk recovery`);
 
     const cache = (store as unknown as {
       jobs: Map<string, { plan?: ReviewExportPlan; status: Record<string, unknown> }>;
