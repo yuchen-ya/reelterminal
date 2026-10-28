@@ -39,7 +39,13 @@ describe("review navigation and decision loop", () => {
     const first = board.getByTestId(`board-card-${ids[0]}`);
     await first.click();
     await board.getByTestId(`board-card-${ids[1]}`).click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] });
-    await first.focus(); await page.keyboard.press("ArrowRight");
+    await vi.waitFor(async () => {
+      expect(await first.evaluate(element => element.classList.contains("ring-accent"))).toBe(true);
+      expect(await board.getByTestId(`board-card-${ids[1]}`).evaluate(element => element.classList.contains("ring-accent"))).toBe(true);
+    }, { timeout: 10_000 });
+    await first.focus();
+    await vi.waitFor(async () => expect(await first.evaluate(element => element === document.activeElement)).toBe(true), { timeout: 10_000 });
+    await page.keyboard.press("ArrowRight");
     await vi.waitFor(async () => expect(await board.getByTestId(`board-card-${ids[1]}`).evaluate(element => element === document.activeElement)).toBe(true), { timeout: 10_000 });
     await page.keyboard.press("Enter");
     const body = page.getByTestId("text-body");
