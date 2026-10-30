@@ -79,7 +79,7 @@ export function useReviewController(target: Target) {
   const [page, setPage] = useState<{ items: readonly ReviewItemSummary[]; cursor?: string }>({ items: [] });
   const [pageCursor, setPageCursor] = useState<string | undefined>();
   const [previousCursors, setPreviousCursors] = useState<Array<string | undefined>>([]);
-  const [loaded, setLoaded] = useState<LoadedItem | null>(null);
+  const [loadedDetail, setLoadedDetail] = useState<{ targetKey: string; snapshot: LoadedItem } | null>(null);
   const [resources, setResources] = useState<readonly FileResource[]>([]);
   const [extraLoaded, setExtraLoaded] = useState<ReadonlyMap<string, LoadedItem>>(new Map());
   const [extraResources, setExtraResources] = useState<ReadonlyMap<string, FileResource>>(new Map());
@@ -140,11 +140,14 @@ export function useReviewController(target: Target) {
   const batchId = overview?.batches.some(batch => batch.id === activeBatchId) ? activeBatchId : overview?.batches[0]?.id;
   const requestedId = page.items.find(item => item.id === (batchId ? cursors[batchId] : undefined))?.id
     ?? page.items.find(item => item.status === "pending")?.id ?? page.items[0]?.id;
+  const targetKey = JSON.stringify([target.instanceId, target.reviewWorkspaceId, target.nodeId]);
+  // Keep the visible item's last complete snapshot during a background refresh.
+  // Navigation and target changes must never borrow another item's picture.
+  const loaded = loadedDetail?.targetKey === targetKey && loadedDetail.snapshot.item.id === requestedId
+    ? loadedDetail.snapshot : null;
 
   useEffect(() => {
     let cancelled = false;
-    setLoaded(null);
-    setResources([]);
     if (!requestedId || !overview) { setDetailLoading(false); return; }
     setDetailLoading(true);
     const load = async () => {
@@ -154,13 +157,16 @@ export function useReviewController(target: Target) {
       const repair = [...item.item.revisions].reverse().find(revision => revision.kind === "image-repair" && revision.mediaId && revision.producedVersion === item.item.version)?.mediaId;
       if (repair) ids.push(repair);
       const media = await reviewService.getResources(ids);
-      if (!cancelled) { setLoaded(item); setResources(media); setDetailLoading(false); }
+      if (!cancelled) { setLoadedDetail({ targetKey, snapshot: item }); setResources(media); setDetailLoading(false); }
     };
     void load().catch(problem => {
-      if (!cancelled) { setError(problem instanceof Error ? problem.message : String(problem)); setDetailLoading(false); }
+      if (!cancelled) {
+        setError(`审阅内容未载入，尚未显示最新版本：${problem instanceof Error ? problem.message : String(problem)}`);
+        setDetailLoading(false);
+      }
     });
     return () => { cancelled = true; };
-  }, [target, requestedId, overview, refresh]);
+  }, [target, targetKey, requestedId, overview, refresh]);
 
   // Opening the handoff dialog explicitly requests its full publication preview.
   useEffect(() => {
@@ -183,7 +189,7 @@ export function useReviewController(target: Target) {
 
   const state = useMemo<WorkbenchProjectState>(() => expanded ?? { ...EMPTY, batches: overview?.batches ?? [],
     items: [
-      ...(loaded && loaded.node.revision === overview?.node.revision ? [loaded.item] : []),
+      ...(loaded ? [loaded.item] : []),
       ...Array.from(extraLoaded.values())
         .filter((e) => e.node.revision === overview?.node.revision && e.item.id !== loaded?.item.id)
         .map((e) => e.item),
@@ -203,6 +209,7 @@ export function useReviewController(target: Target) {
     return async (name: keyof WorkbenchSlice, args: unknown[]): Promise<WorkbenchMutationOutcome> => {
       const expected = ownRevision;
       if (expected === undefined) return { ok: false, code: "CONFLICT", message: "审阅节点尚未载入" };
+      if (loaded && loaded.node.revision !== expected) return { ok: false, code: "CONFLICT", message: "新版本内容尚未载入，请稍后重试" };
       try {
         const readScope = commandReadScope(name, args);
         const snapshot = await reviewService.getNode(target, readScope);
@@ -222,7 +229,7 @@ export function useReviewController(target: Target) {
         return await command(...args);
       } catch (problem) { refresh(); return outcome(problem); }
     };
-  }, [target, overview?.node.revision, refresh]);
+  }, [target, overview?.node.revision, loaded, refresh]);
 
   const commands = useMemo<WorkbenchSlice>(() => ({
     ingestWorkbenchBatch: (...args) => runCommand("ingestWorkbenchBatch", args),

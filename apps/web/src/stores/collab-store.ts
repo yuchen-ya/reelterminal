@@ -16,9 +16,13 @@ import { t } from "../i18n";
 
 export type CollabStatus = OpenReelCollabStatus;
 export type BackgroundTaskProgress = Extract<DesktopLiveEvent, { type: "task" }>;
+export type CommandActivity = Extract<DesktopLiveEvent, { type: "action" }>;
+export const COMMAND_ACTIVITY_LIMIT = 100;
 
 interface CollabState extends CollabStatus {
   startupHintShown: boolean;
+  commandActivity: readonly CommandActivity[];
+  applyCommandActivity: (event: CommandActivity) => void;
   taskProgress: Record<string, BackgroundTaskProgress>;
   applyTaskProgress: (task: BackgroundTaskProgress) => void;
   refresh: () => Promise<void>;
@@ -36,6 +40,20 @@ const collabControl = () =>
 
 export const useCollabStore = create<CollabState>()((set, get) => ({
   startupHintShown: false,
+  commandActivity: [],
+  applyCommandActivity: (event) => {
+    // Legacy activity pushes still drive the video status bar. Only targeted,
+    // correlated commands belong in the independent review command panel.
+    if (!event.callId || !event.reviewTarget) return;
+    set((state) => {
+      const index = state.commandActivity.findIndex(entry => entry.callId === event.callId);
+      if (index < 0) return { commandActivity: [...state.commandActivity, event].slice(-COMMAND_ACTIVITY_LIMIT) };
+      if (state.commandActivity[index].phase === "end" && event.phase === "start") return state;
+      const commandActivity = [...state.commandActivity];
+      commandActivity[index] = event;
+      return { commandActivity };
+    });
+  },
   taskProgress: {},
   applyTaskProgress: (task) => {
     const previous = get().taskProgress[task.jobId];
@@ -127,6 +145,7 @@ export function installCollabEventListener(): () => void {
     } else if (evt.type === "task") {
       useCollabStore.getState().applyTaskProgress(evt);
     } else if (evt.type === "action") {
+      useCollabStore.getState().applyCommandActivity(evt);
       useCollabStore
         .getState()
         .setCurrentAction(evt.phase === "start" ? evt.verb : null);

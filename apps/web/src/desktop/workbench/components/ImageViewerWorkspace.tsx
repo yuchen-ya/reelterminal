@@ -9,7 +9,7 @@ import type {
   JSX,
   PointerEvent as ReactPointerEvent,
 } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Pin,
   X,
@@ -91,8 +91,8 @@ export function ImageViewerWorkspace({
   const [loupeEnabled, setLoupeEnabled] = useState<boolean>(false);
   const [holdOriginal, setHoldOriginal] = useState<boolean>(false);
 
-  const [decodedImage, setDecodedImage] = useState<{ url: string; w: number; h: number } | null>(null);
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [decodedImage, setDecodedImage] = useState<{ scope: string; url: string; w: number; h: number; repaired: boolean } | null>(null);
+  const [failedImage, setFailedImage] = useState<{ request: string; message: string } | null>(null);
   const [areaSize, setAreaSize] = useState<{ readonly w: number; readonly h: number }>({
     w: 0,
     h: 0,
@@ -119,10 +119,11 @@ export function ImageViewerWorkspace({
   const repairedMedia = payload?.repairMedia;
   const repair = payload?.repair;
   const annotations = payload?.annotations ?? EMPTY_ANNOTATIONS;
+  const imageScope = JSON.stringify([currentItem.id, originalMedia?.mediaId]);
 
-  const [displayMode, setDisplayMode] = useState<ImageDisplayMode>(
-    payload?.initialDisplayMode ?? "original",
-  );
+  const [displayChoice, setDisplayChoice] = useState<{ scope: string; mode: ImageDisplayMode } | null>(null);
+  const displayMode = displayChoice?.scope === imageScope ? displayChoice.mode : payload?.initialDisplayMode ?? "original";
+  const setDisplayMode = useCallback((mode: ImageDisplayMode) => setDisplayChoice({ scope: imageScope, mode }), [imageScope]);
   const [repairBase, setRepairBase] = useState<"latest" | "source">("latest");
   const [repairNotice, setRepairNotice] = useState<string | null>(null);
 
@@ -130,14 +131,19 @@ export function ImageViewerWorkspace({
     repairedMedia?.status === "ready" && Boolean(repairedMedia.url);
   const usingRepair =
     workMode === "repair"
-      ? repairBase === "latest" && Boolean(repair) && repairReady
-      : displayMode === "repaired" && !holdOriginal && repairReady;
+      ? repairBase === "latest" && Boolean(repair)
+      : displayMode === "repaired" && !holdOriginal && Boolean(repair);
   const activeMedia = usingRepair ? repairedMedia : originalMedia;
   const activeUrl = activeMedia?.url ?? null;
-  // Bind decode state to its source. A passive reset on URL changes can run
-  // after a cached image's load event and leave it hidden forever.
-  const natural = decodedImage?.url === activeUrl ? decodedImage : null;
-  const imgError = activeUrl !== null && failedUrl === activeUrl;
+  const requestedImage = JSON.stringify([imageScope, activeUrl]);
+  const requestedImageRef = useRef(requestedImage);
+  requestedImageRef.current = requestedImage;
+  // The old decoded image stays mounted until its replacement has decoded.
+  // A different item or source is a hard boundary, even before effects run.
+  const natural = decodedImage?.scope === imageScope ? decodedImage : null;
+  const imgError = activeUrl !== null && failedImage?.request === requestedImage;
+  const imageCurrent = natural !== null && natural.url === activeUrl && activeMedia?.status === "ready" && !imgError;
+  const imageLoadFailed = imgError || activeMedia?.status === "error" || activeMedia?.status === "unavailable";
 
   const draftKey = `${currentItem.id}:${currentItem.version}`;
   const draftStrokes = draftsByItemVersion[draftKey]?.strokes ?? EMPTY_STROKES;
@@ -146,36 +152,23 @@ export function ImageViewerWorkspace({
     batchImageItems.find((item) => item.id === pinnedRefId) ?? null;
 
 
-  const canDraw =
-    viewMode === "zoom" &&
-    payload !== undefined &&
-    activeMedia !== undefined &&
-    activeMedia.status === "ready" &&
-    activeUrl !== null &&
-    !imgError &&
-    natural !== null;
+  const canDraw = viewMode === "zoom" && imageCurrent;
 
   const nextId = (prefix: string): string => {
     idSeqRef.current += 1;
     return `${prefix}_${Date.now().toString(36)}_${idSeqRef.current}`;
   };
 
-  // Reset transient state on item/version switch; drafts live in the keyed cache.
-  useEffect(() => {
+  // Background versions preserve the user's mode, selection and viewport.
+  // Drafts remain version-bound and cannot be applied to a newer image.
+  useLayoutEffect(() => {
     setSelectedAnnotationId(null);
     setMutationError(null);
-    setDisplayMode(payload?.initialDisplayMode ?? "original");
+    setDecodedImage(null);
+    setFailedImage(null);
     setRepairBase("latest");
     setRepairNotice(null);
-  }, [currentItem.id, currentItem.version, payload?.initialDisplayMode]);
-
-  // A missing/broken saved repair must not masquerade as the editing base.
-  useEffect(() => {
-    if (repair && repairedMedia?.status === "error") {
-      setRepairBase("source");
-      setRepairNotice("已保存修补结果不可用，已切到原图底图");
-    }
-  }, [repair, repairedMedia?.status]);
+  }, [imageScope]);
 
   const measureArea = useCallback((): void => {
     const el = areaRef.current;
@@ -233,6 +226,10 @@ export function ImageViewerWorkspace({
       next: readonly WorkbenchSpatialAnnotation[],
       selectId?: string,
     ): Promise<void> => {
+      if (!imageCurrent) {
+        setMutationError("当前版本图像尚未载入，暂时无法修改圈注");
+        return;
+      }
       const result = await onUpdateImageAnnotations(
         currentItem.id,
         next,
@@ -246,7 +243,7 @@ export function ImageViewerWorkspace({
       setMutationError(null);
       if (selectId) setSelectedAnnotationId(selectId);
     },
-    [onUpdateImageAnnotations, currentItem.id, currentItem.version],
+    [onUpdateImageAnnotations, currentItem.id, currentItem.version, imageCurrent],
   );
 
   const renderPatchedImage = useCallback(async (): Promise<Blob | null> => {
@@ -281,6 +278,10 @@ export function ImageViewerWorkspace({
 
   const handleSaveRepair = useCallback(async (): Promise<void> => {
     if (draftStrokes.length === 0) return;
+    if (!imageCurrent) {
+      setMutationError("当前版本图像尚未载入，暂时无法保存修补");
+      return;
+    }
     if (repairBase === "latest" && repair && !repairReady) {
       setMutationError("已保存修补结果不可用，请切换为“从原图重新修补”后再保存");
       return;
@@ -325,6 +326,8 @@ export function ImageViewerWorkspace({
     repairBase,
     repair,
     repairReady,
+    imageCurrent,
+    setDisplayMode,
   ]);
 
   const handleUndoStroke = (): void => {
@@ -356,6 +359,7 @@ export function ImageViewerWorkspace({
     handleStagePointerMove,
     handleStagePointerUp,
     handleStagePointerCancel,
+    resetPointerState,
   } = useImagePointerInteractions({
     canDraw,
     workMode,
@@ -376,6 +380,9 @@ export function ImageViewerWorkspace({
     setMutationError,
     nextId,
   });
+
+  // A gesture cannot finish against a different version or source after an update.
+  useEffect(() => { resetPointerState(); }, [imageScope, currentItem.version, resetPointerState]);
 
   const handleClearAnnotations = async (): Promise<void> => {
     if (annotations.length === 0) return;
@@ -406,6 +413,7 @@ export function ImageViewerWorkspace({
       issueId: string,
       input: WorkbenchIssueSaveInput,
     ): Promise<WorkbenchMutationResult> => {
+      if (!imageCurrent) return { ok: false, code: "CONFLICT", message: "当前版本图像尚未载入，暂时无法修改圈注" };
       const annotation = annotations.find((ann) => ann.id === issueId);
       if (!annotation) {
         return { ok: false, code: "NOT_FOUND", message: "圈注不存在" };
@@ -447,11 +455,12 @@ export function ImageViewerWorkspace({
       setSelectedAnnotationId(issueId);
       return result;
     },
-    [annotations, currentItem.id, currentItem.version, onUpdateImageAnnotations, payload],
+    [annotations, currentItem.id, currentItem.version, onUpdateImageAnnotations, payload, imageCurrent],
   );
 
   const handleDeleteIssue = useCallback(
     async (issueId: string): Promise<WorkbenchMutationResult> => {
+      if (!imageCurrent) return { ok: false, code: "CONFLICT", message: "当前版本图像尚未载入，暂时无法修改圈注" };
       const remaining = annotations.filter((ann) => ann.id !== issueId);
       if (remaining.length === annotations.length) {
         return { ok: false, code: "NOT_FOUND", message: "圈注不存在" };
@@ -473,7 +482,7 @@ export function ImageViewerWorkspace({
         : current);
       return result;
     },
-    [annotations, currentItem.id, currentItem.version, onUpdateImageAnnotations, selectedAnnotationId],
+    [annotations, currentItem.id, currentItem.version, onUpdateImageAnnotations, selectedAnnotationId, imageCurrent],
   );
 
   const stepZoom = (delta: number): void => {
@@ -505,32 +514,32 @@ export function ImageViewerWorkspace({
           : "cursor-crosshair"
         : "cursor-crosshair";
 
-  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>): void => {
-    const width = e.currentTarget.naturalWidth;
-    const height = e.currentTarget.naturalHeight;
-    if (
-      usingRepair &&
-      payload?.naturalWidth &&
-      payload?.naturalHeight &&
-      (width !== payload.naturalWidth || height !== payload.naturalHeight)
-    ) {
-      setDisplayMode("original");
-      setRepairBase("source");
-      setRepairNotice("修补结果尺寸与源图不一致，已回退原图");
+  const handleImageLoad = async (e: React.SyntheticEvent<HTMLImageElement>): Promise<void> => {
+    const image = e.currentTarget;
+    // load alone does not guarantee the replacement is ready for presentation.
+    try {
+      if (image.decode) await image.decode();
+    } catch {
+      if (requestedImageRef.current === requestedImage && image.isConnected) {
+        setFailedImage({ request: requestedImage, message: "图片解码失败" });
+      }
       return;
     }
-    setDecodedImage({ url: e.currentTarget.src, w: width, h: height });
-    setFailedUrl(null);
+    if (requestedImageRef.current !== requestedImage || !image.isConnected) return;
+    const width = image.naturalWidth;
+    const height = image.naturalHeight;
+    if (usingRepair && payload?.naturalWidth && payload?.naturalHeight &&
+      (width !== payload.naturalWidth || height !== payload.naturalHeight)) {
+      setFailedImage({ request: requestedImage, message: "修补结果尺寸与源图不一致" });
+      return;
+    }
+    setDecodedImage({ scope: imageScope, url: image.src, w: width, h: height, repaired: usingRepair });
+    setFailedImage(null);
     measureArea();
   };
 
   const handleImageError = (): void => {
-    if (usingRepair) {
-      setDisplayMode("original");
-      setRepairNotice("修补结果不可用，已回退原图");
-      return;
-    }
-    setFailedUrl(activeUrl);
+    setFailedImage({ request: requestedImage, message: "图片加载失败" });
   };
 
   const compareSourceUrl = (() => {
@@ -556,15 +565,17 @@ export function ImageViewerWorkspace({
       </div>
       <div ref={areaRef} className="absolute inset-0 flex items-center justify-center">
         <ImageStage
+          key={imageScope}
           stageRef={stageRef}
           imgRef={imgRef}
           repairCanvasRef={repairCanvasRef}
           activeMedia={activeMedia}
           payload={payload}
           activeUrl={activeUrl}
+          displayedUrl={natural?.url ?? null}
           imgError={imgError}
           currentItemTitle={currentItem.title}
-          usingRepair={usingRepair}
+          usingRepair={natural?.repaired ?? usingRepair}
           natural={natural}
           display={display}
           zoom={zoom}
@@ -587,6 +598,15 @@ export function ImageViewerWorkspace({
           onStagePointerCancel={handleStagePointerCancel}
           onWheel={handleWheel}
         />
+        {natural && !imageCurrent && (
+          <div role={imageLoadFailed ? "alert" : "status"}
+            data-testid="image-update-status"
+            className="pointer-events-none absolute bottom-3 left-1/2 max-w-full -translate-x-1/2 rounded border border-border bg-bg-1/95 px-3 py-1.5 text-xs text-fg-2">
+            {imageLoadFailed
+              ? `新版本未载入，仍显示上一张已载入图像：${imgError ? failedImage?.message : activeMedia?.error ?? "媒体不可用"}`
+              : "正在载入新图像，暂时保留上一张已载入图像"}
+          </div>
+        )}
       </div>
     </div>
   );

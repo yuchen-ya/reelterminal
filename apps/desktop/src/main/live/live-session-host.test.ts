@@ -448,6 +448,26 @@ describe("live session host enable/status/disable", () => {
 });
 
 describe("live session host verb dispatch + events", () => {
+  it("correlates a rejected review invocation with its target, arguments and terminal failure", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    const host = createLiveSessionHost(fixture.deps);
+    await host.enable();
+    cleanups.push(() => void host.disable());
+    const reviewTarget = { reviewWorkspaceId: "review-workspace", instanceId: "review-instance", nodeId: "review-node" };
+    const target = { kind: "review", ...reviewTarget };
+    const result = await host.callExternal("review.repair.apply", { target, requestId: "receipt-1", token: "private-token" });
+    expect(result.ok).toBe(false);
+    const actions = actionEvents(fixture.events);
+    expect(actions).toHaveLength(2);
+    expect(actions[0]).toMatchObject({ phase: "start", verb: "review.repair.apply", reviewTarget });
+    expect(actions[1]).toMatchObject({ phase: "end", callId: actions[0]!.callId, startedAt: actions[0]!.startedAt,
+      reviewTarget, ok: false, summary: expect.stringContaining("INVALID_PARAMS") });
+    expect(actions[1]!.phase === "end" && actions[1]!.finishedAt).toBeGreaterThanOrEqual(actions[0]!.startedAt!);
+    expect(actions[0]!.arguments).toContain("receipt-1");
+    expect(JSON.stringify(actions)).not.toContain("private-token");
+  });
+
   it("emits fixed task progress only after the durable task record is updated", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));

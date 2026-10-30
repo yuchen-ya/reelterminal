@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { commandProjectContext, type CommandProjectGuard } from "./command-context";
 import { readVisualImageSet } from "./artifact-images";
+import { activityText, commandActivityDetails } from "./command-activity";
 /**
  * LiveSessionHost — the desktop main-process singleton for live agent access:
  *
@@ -473,14 +474,6 @@ export function createLiveSessionHost(
       );
     }
 
-    // Mutual Legibility: every agent action is visible as it happens.
-    inFlight.push(verb);
-    deps.emitEvent({ type: "action", phase: "start", verb });
-    pushStatus();
-    const removeInFlight = (): void => {
-      const index = inFlight.lastIndexOf(verb);
-      if (index >= 0) inFlight.splice(index, 1);
-    };
     try {
       const call = session[verb] as unknown as (
         p: unknown,
@@ -517,29 +510,10 @@ export function createLiveSessionHost(
             images, limitations: [...(value.limitations ?? []), ...(sampleTimes.length > 0 ? [`Sample times: ${sampleTimes.map((time) => time.toFixed(3)).join(", ")} s`] : [])] });
         }
       }
-      deps.emitEvent({
-        type: "action",
-        phase: "end",
-        verb,
-        ok: result.ok,
-        summary: summarizeResult(verb, result),
-      });
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      deps.emitEvent({
-        type: "action",
-        phase: "end",
-        verb,
-        ok: false,
-        summary: oneLine(`INTERNAL: ${message}`),
-      });
       return internalFailure(message);
-    } finally {
-      removeInFlight();
-      // Pushed AFTER the action-end event so the renderer clears the
-      // current-action indicator last.
-      pushStatus();
     }
   };
 
@@ -676,6 +650,27 @@ export function createLiveSessionHost(
     },
 
     callExternal: async (verb, params, guard) => {
+      const activity = { callId: randomUUID(), startedAt: Date.now(), ...commandActivityDetails(params) };
+      inFlight.push(verb);
+      deps.emitEvent({ type: "action", phase: "start", verb, ...activity });
+      pushStatus();
+      let result: FacadeResult<unknown>;
+      try {
+        result = await dispatchExternal(verb, params, guard);
+      } catch (error) {
+        result = internalFailure(error instanceof Error ? error.message : String(error));
+      }
+      deps.emitEvent({ type: "action", phase: "end", verb, ...activity, finishedAt: Date.now(), ok: result.ok,
+        ...(result.ok && result.value && typeof result.value === "object" && "replayed" in result.value ? { replayed: result.value.replayed === true } : {}),
+        summary: activityText(summarizeResult(verb, result), 160) });
+      const index = inFlight.lastIndexOf(verb);
+      if (index >= 0) inFlight.splice(index, 1);
+      pushStatus();
+      return result;
+    },
+  };
+
+  async function dispatchExternal(verb: FacadeVerb, params: unknown, guard?: CommandProjectGuard): Promise<FacadeResult<unknown>> {
       const record = typeof params === "object" && params !== null && !Array.isArray(params)
         ? params as Record<string, unknown>
         : null;
@@ -716,8 +711,7 @@ export function createLiveSessionHost(
         routedParams = rest;
       }
       return commandProjectContext.run(context, () => callVerb(verb, routedParams));
-    },
-  };
+  }
 
   return host;
 }

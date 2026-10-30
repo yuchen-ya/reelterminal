@@ -171,7 +171,7 @@ export function toItemView(
       ...(repairMedia ? { repairMedia } : {}),
       ...(repair ? { repair } : {}),
       initialDisplayMode:
-        repair && repairMedia?.status !== "error" ? "repaired" : "original",
+        repair ? "repaired" : "original",
       ...(content.naturalWidth !== undefined ? { naturalWidth: content.naturalWidth } : {}),
       ...(content.naturalHeight !== undefined ? { naturalHeight: content.naturalHeight } : {}),
       annotations: [...content.annotations],

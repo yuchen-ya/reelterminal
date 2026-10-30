@@ -22,6 +22,7 @@ export interface ImageStageProps {
   readonly activeMedia?: WorkbenchMediaRef;
   readonly payload?: ImagePayloadView;
   readonly activeUrl: string | null;
+  readonly displayedUrl: string | null;
   readonly imgError: boolean;
   readonly currentItemTitle: string;
   readonly usingRepair: boolean;
@@ -55,6 +56,7 @@ export function ImageStage({
   activeMedia,
   payload,
   activeUrl,
+  displayedUrl,
   imgError,
   currentItemTitle,
   usingRepair,
@@ -114,7 +116,7 @@ export function ImageStage({
       drawLoupe(loupePos.normX, loupePos.normY);
     }
   });
-  if (!activeMedia || activeMedia.status !== "ready" || !activeUrl || imgError) {
+  if (!displayedUrl && (!activeMedia || activeMedia.status !== "ready" || !activeUrl || imgError)) {
     return (
       <ImagePlaceholder
         payload={payload}
@@ -126,6 +128,8 @@ export function ImageStage({
   }
 
   const ready = natural !== null && display !== null;
+  const imageUrls = [...new Set([displayedUrl, activeMedia?.status === "ready" && !imgError ? activeUrl : null])]
+    .filter((url): url is string => url !== null);
 
   return (
     <>
@@ -143,17 +147,22 @@ export function ImageStage({
             : undefined
         }
       >
-        <img
-          key={activeUrl}
-          ref={imgRef}
-          src={activeUrl}
-          alt={activeMedia.displayName}
-          draggable={false}
-          data-display-mode={usingRepair ? "repaired" : "original"}
-          onLoad={onImageLoad}
-          onError={onImageError}
-          className={ready ? "block h-full w-full" : "block h-px w-px opacity-0"}
-        />
+        {imageUrls.map(url => {
+          const visible = url === displayedUrl;
+          return <img
+            key={url}
+            ref={visible || !displayedUrl ? imgRef : undefined}
+            src={url}
+            alt={visible || !displayedUrl ? activeMedia?.displayName ?? currentItemTitle : ""}
+            aria-hidden={!visible && !!displayedUrl}
+            draggable={false}
+            data-testid={visible ? "image-stage-image" : "image-stage-pending-image"}
+            data-display-mode={usingRepair ? "repaired" : "original"}
+            onLoad={url === activeUrl ? onImageLoad : undefined}
+            onError={url === activeUrl ? onImageError : undefined}
+            className={visible && ready ? "block h-full w-full" : "pointer-events-none absolute h-px w-px opacity-0"}
+          />;
+        })}
 
         {ready && workMode === "repair" && (
           <canvas
@@ -240,7 +249,7 @@ export function ImageStage({
         <div className="absolute flex max-w-md flex-col items-center gap-2 rounded-xl border border-border bg-bg-1 px-6 py-8 text-center">
           <LoaderCircle className="h-6 w-6 animate-spin text-fg-3" />
           <div className="text-sm text-fg-2">媒体加载中…</div>
-          <div className="text-xs text-fg-3">{activeMedia.displayName}</div>
+          <div className="text-xs text-fg-3">{activeMedia?.displayName}</div>
         </div>
       )}
     </>

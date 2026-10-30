@@ -18,6 +18,7 @@ import { ReviewImportDialog } from "../workbench/components/ReviewImportDialog";
 import { ReviewExportDialog } from "../workbench/components/ReviewExportDialog";
 import { ReviewAttachDialog } from "../workbench/components/ReviewAttachDialog";
 import { ReviewProcessView } from "../workbench/components/ReviewProcessView";
+import { ReviewCommandActivity } from "../workbench/components/ReviewCommandActivity";
 import { ReviewRestoreDialog } from "../workbench/components/ReviewRestoreDialog";
 import { ReviewBackupDialog } from "../workbench/components/ReviewBackupDialog";
 import { ReviewPurgeDialog } from "../workbench/components/ReviewPurgeDialog";
@@ -678,6 +679,8 @@ function ReviewNodeEditor({
         onExport: () => setExportOpen(true),
       })}
 
+      {!browserDemo && <ReviewCommandActivity target={target} />}
+
       {state.error && (
         <div role="alert" className="flex items-center gap-2 p-2 text-xs text-status-error">
           {state.error}
@@ -727,7 +730,7 @@ function ReviewNodeEditor({
           }}
         />
       ) : (
-        <div className="min-h-0 flex-1" inert={state.loading}>
+        <div className="relative min-h-0 flex-1" inert={state.loading && !state.controller.currentItem}>
           <WorkbenchPanel
             browserDemo={browserDemo}
             controller={state.controller}
@@ -736,10 +739,10 @@ function ReviewNodeEditor({
             paginated={state.hasPrevious || state.hasNext}
             pageKey={state.pageNumber}
             independent
-            loading={state.loading}
+            loading={state.loading && !state.controller.currentItem}
             onImport={() => browserDemo ? toast.error("请使用桌面版导入文件") : setImportOpen(true)}
               paginationFooter={
-                (state.hasPrevious || state.hasNext || state.loading) ? (
+                (state.hasPrevious || state.hasNext || (state.loading && !state.controller.currentItem)) ? (
                   <div
                     className="flex shrink-0 items-center justify-between border-t border-border pt-1 text-[11px]"
                     data-testid="review-item-pagination"
@@ -797,6 +800,11 @@ function ReviewNodeEditor({
               </div>
             }
           />
+          {state.loading && state.controller.currentItem && (
+            <div role="status" data-testid="review-detail-updating" className="pointer-events-none absolute bottom-3 left-3 rounded border border-border bg-bg-1/95 px-3 py-1.5 text-xs text-fg-2">
+              正在载入审阅更新，暂时保留上一版内容
+            </div>
+          )}
         </div>
       )}
 

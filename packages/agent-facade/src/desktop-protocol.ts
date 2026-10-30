@@ -143,6 +143,15 @@ export interface DesktopInspection {
   readonly limitations: readonly string[];
 }
 
+/** Bounded, redacted UI projection of an actual endpoint invocation. */
+export interface DesktopCommandActivity {
+  readonly callId: string;
+  readonly startedAt: number;
+  readonly reviewTarget?: { readonly reviewWorkspaceId: string; readonly instanceId: string; readonly nodeId?: string };
+  readonly arguments: string;
+  readonly argumentSummary: string;
+}
+
 export type DesktopLiveEvent =
   | ({ readonly type: "inspection" } & DesktopInspection)
   | ({ readonly type: "status" } & DesktopCollabStatus)
@@ -157,15 +166,17 @@ export type DesktopLiveEvent =
       readonly progress: { readonly phase: string; readonly percent: number } | null;
       readonly error?: string;
     }
-  | { readonly type: "action"; readonly phase: "start"; readonly verb: string }
-  | {
+  | ({ readonly type: "action"; readonly phase: "start"; readonly verb: string } & Partial<DesktopCommandActivity>)
+  | ({
       readonly type: "action";
       readonly phase: "end";
       readonly verb: string;
       readonly ok: boolean;
       /** One safe human-readable line; never raw params or JSON. */
       readonly summary: string;
-    };
+      readonly finishedAt?: number;
+      readonly replayed?: boolean;
+    } & Partial<DesktopCommandActivity>);
 
 /** Typed renderer-facing contextBridge collaboration surfaces. */
 export interface DesktopLiveBridgeApi {

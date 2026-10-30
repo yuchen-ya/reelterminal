@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { IDBFactory, IDBIndex, IDBKeyRange } from "fake-indexeddb";
-import { buildWorkbenchIngestActions } from "@reelterminal/core/actions/workbench-actions";
+import { buildWorkbenchImageRepairAction, buildWorkbenchIngestActions } from "@reelterminal/core/actions/workbench-actions";
 import { getReviewContext } from "../../services/review-workspace/context";
 import { reviewService } from "../../services/review-workspace/service";
 import { useReviewController } from "./useReviewController";
@@ -165,4 +165,57 @@ it.each(["revision", "batch"] as const)("discards collection media that finishes
   await waitFor(() => expect(result.current.loading).toBe(false));
   await act(async () => { finish([first.resources[1]]); await load; });
   expect(result.current.controller.mediaAssets.map(media => media.id)).not.toContain(first.resources[1].id);
+});
+
+it("retains the selected detail through an external repair refresh and blocks edits until the new snapshot arrives", async () => {
+  const { target, batches } = await imageBatches();
+  const first = batches[0];
+  const frames: Array<string | null> = [];
+  let record = false;
+  const { result } = renderHook(() => {
+    const state = useReviewController(target);
+    if (record) frames.push(state.controller.currentItem?.id ?? null);
+    return state;
+  });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  act(() => result.current.controller.setActiveBatchId(first.batchId));
+  await waitFor(() => expect(result.current.controller.currentItem?.id).toBe(first.itemIds[0]));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const readItem = reviewService.getItem.bind(reviewService);
+  vi.spyOn(reviewService, "getItem").mockImplementation(async (scope, id) => {
+    const item = await readItem(scope, id);
+    if (item.node.revision === 3) await pending;
+    return item;
+  });
+  const repaired = { ...first.resources[0], id: crypto.randomUUID() };
+  record = true;
+  await act(async () => {
+    await reviewService.commit({ target, expectedNodeRevision: 2, requestId: crypto.randomUUID(), actor: "agent", label: "External repair", request: {}, resources: [repaired],
+      readScope: { itemIds: [first.itemIds[0]] }, build: state => {
+        const built = buildWorkbenchImageRepairAction(state, first.itemIds[0], repaired.id,
+          [{ id: crypto.randomUUID(), tool: "brush", color: "#800080", size: 2, points: [{ x: 10, y: 10, pressure: 1 }] }]);
+        if (!built.ok) throw new Error(built.message);
+        return built.actions;
+      } });
+  });
+  await waitFor(() => expect(result.current.overview?.node.revision).toBe(3));
+  expect(result.current.controller.currentItem).toMatchObject({ id: first.itemIds[0], version: 1 });
+  expect(result.current.loading).toBe(true);
+  await act(async () => {
+    expect(await result.current.controller.commitDecision("kept", [first.itemIds[0]], { advance: false }))
+      .toMatchObject({ ok: false, code: "CONFLICT" });
+  });
+  await act(async () => finish());
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.controller.currentItem).toMatchObject({ id: first.itemIds[0], version: 2 });
+  expect(frames.length).toBeGreaterThan(1);
+  expect(frames.every(id => id === first.itemIds[0])).toBe(true);
+
+  record = false;
+  act(() => result.current.controller.focusItem(first.itemIds[1]));
+  expect(result.current.controller.currentItem).toBeNull();
+  await waitFor(() => expect(result.current.controller.currentItem?.id).toBe(first.itemIds[1]));
 });

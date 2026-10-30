@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImageViewerWorkspace } from "./ImageViewerWorkspace";
 import type { ImageViewerWorkspaceProps } from "./ImageViewerWorkspace";
@@ -400,4 +400,140 @@ it("draws inside an existing box, selects on click and deletes to the adjacent i
   fireEvent.keyDown(surface, { key: "Delete" });
   await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(screen.getByLabelText("问题建议")).toHaveValue("相邻问题"));
+});
+
+function repairedItem(version: number, status: "loading" | "ready" | "error" = "ready"): WorkbenchItemView {
+  const item = imageItem();
+  return { ...item, version, imagePayload: { ...item.imagePayload!, initialDisplayMode: "repaired",
+    repair: { revisionId: `revision-${version}`, mediaId: `repair-${version}`, producedVersion: version },
+    repairMedia: { mediaId: `repair-${version}`, status, url: status === "ready" ? `blob:repair-${version}` : null,
+      displayName: "repair.png", thumbnailUrl: null, ...(status === "error" ? { error: "cannot read file" } : {}) },
+  } };
+}
+
+function renderUpdatingImage(initial: WorkbenchItemView) {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 400, 200));
+  const props = { selectedIds: [], onSelectItem: vi.fn(), onUpdateImageAnnotations: vi.fn(async () => ({ ok: true as const })),
+    onSaveImageRepair: vi.fn(async () => ({ ok: true as const })), onCommitDecision: vi.fn(async () => ({ ok: true as const })), issuePanelWidth: 300 };
+  const view = (item: WorkbenchItemView) => <ImageViewerWorkspace {...props} currentItem={item} batchImageItems={[item]} />;
+  const mounted = render(view(initial));
+  return { ...mounted, update: (item: WorkbenchItemView) => mounted.rerender(view(item)) };
+}
+
+function loadImage(image: HTMLImageElement) {
+  Object.defineProperty(image, "naturalWidth", { configurable: true, value: 100 });
+  Object.defineProperty(image, "naturalHeight", { configurable: true, value: 50 });
+  fireEvent.load(image);
+}
+
+it("keeps the decoded frame and focused viewport until the first repair decodes, then preserves an explicit original choice", async () => {
+  const { update } = renderUpdatingImage(imageItem());
+  loadImage(screen.getByTestId("image-stage-pending-image") as HTMLImageElement);
+  const original = await screen.findByTestId("image-stage-image");
+  const stage = screen.getByTestId("image-stage");
+  const surface = screen.getByTestId("image-stage-pointer-surface");
+  fireEvent.wheel(surface, { deltaY: -1 });
+  surface.focus();
+  let transform = stage.style.transform;
+
+  update(repairedItem(2, "loading"));
+  expect(screen.getByTestId("image-stage-image")).toBe(original);
+  expect(screen.getByTestId("image-update-status")).toHaveTextContent("正在载入");
+  expect(stage.style.transform).toBe(transform);
+  expect(document.activeElement).toBe(surface);
+  // Navigation uses the retained frame, even while writes await the new image.
+  fireEvent.pointerDown(surface, { button: 1, pointerId: 10, clientX: 20, clientY: 20 });
+  fireEvent.pointerMove(surface, { pointerId: 10, clientX: 45, clientY: 35 });
+  fireEvent.pointerUp(surface, { pointerId: 10, clientX: 45, clientY: 35 });
+  expect(stage.style.transform).toContain("translate(25px, 15px)");
+  fireEvent.wheel(surface, { deltaY: -1 });
+  expect(stage.style.transform).toContain("scale(1.4)");
+  transform = stage.style.transform;
+
+  update(repairedItem(2));
+  const pending = screen.getByTestId("image-stage-pending-image") as HTMLImageElement;
+  let finishDecode!: () => void;
+  Object.defineProperty(pending, "decode", { value: () => new Promise<void>(resolve => { finishDecode = resolve; }) });
+  loadImage(pending);
+  expect(screen.getByTestId("image-stage-image")).toBe(original);
+  await act(async () => finishDecode());
+  expect(screen.getByTestId("image-stage-image")).toBe(pending);
+  expect(pending).toHaveAttribute("data-display-mode", "repaired");
+  expect(stage.style.transform).toBe(transform);
+  expect(screen.getByTestId("image-stage-pointer-surface")).toBe(surface);
+  expect(document.activeElement).toBe(surface);
+
+  fireEvent.click(screen.getByTestId("image-display-original"));
+  loadImage(screen.getByTestId("image-stage-pending-image") as HTMLImageElement);
+  await waitFor(() => expect(screen.getByTestId("image-stage-image")).toHaveAttribute("data-display-mode", "original"));
+  const selectedOriginal = screen.getByTestId("image-stage-image");
+  update(repairedItem(3));
+  expect(screen.getByTestId("image-stage-image")).toBe(selectedOriginal);
+  expect(screen.queryByTestId("image-stage-pending-image")).toBeNull();
+  expect(screen.queryByTestId("image-update-status")).toBeNull();
+});
+
+it("discards superseded decodes and reports a failed replacement while keeping the previous frame", async () => {
+  const { update } = renderUpdatingImage(repairedItem(2));
+  loadImage(screen.getByTestId("image-stage-pending-image") as HTMLImageElement);
+  const previous = await screen.findByTestId("image-stage-image");
+  update(repairedItem(3));
+  const pending = screen.getByTestId("image-stage-pending-image") as HTMLImageElement;
+  let finishDecode!: () => void;
+  Object.defineProperty(pending, "decode", { value: () => new Promise<void>(resolve => { finishDecode = resolve; }) });
+  loadImage(pending);
+  update(repairedItem(4));
+  await act(async () => finishDecode());
+  expect(screen.getByTestId("image-stage-image")).toBe(previous);
+  fireEvent.error(screen.getByTestId("image-stage-pending-image"));
+  expect(screen.getByTestId("image-stage-image")).toBe(previous);
+  expect(screen.getByTestId("image-update-status")).toHaveTextContent("新版本未载入");
+  expect(previous).toHaveAttribute("data-display-mode", "repaired");
+  update(repairedItem(5, "error"));
+  expect(screen.getByTestId("image-stage-image")).toBe(previous);
+  expect(screen.getByRole("alert")).toHaveTextContent("cannot read file");
+});
+
+it.each(["item", "source"] as const)("never retains an old image across a different %s", async change => {
+  const { update } = renderUpdatingImage(imageItem());
+  loadImage(screen.getByTestId("image-stage-pending-image") as HTMLImageElement);
+  await screen.findByTestId("image-stage-image");
+  const next = imageItem();
+  update(change === "item" ? { ...next, id: "another-item" } : { ...next, version: 2,
+    imagePayload: { ...next.imagePayload!, originalMedia: { ...next.imagePayload!.originalMedia, mediaId: "replacement", url: "blob:replacement" } } });
+  expect(screen.queryByTestId("image-stage-image")).toBeNull();
+  expect(screen.queryByTestId("image-stage-pointer-surface")).toBeNull();
+});
+
+it("retries a failed image after leaving and returning to its item without remounting the workspace", async () => {
+  const item = repairedItem(2);
+  const { update } = renderUpdatingImage(item);
+  fireEvent.error(screen.getByTestId("image-stage-pending-image"));
+  expect(screen.getByText("图片解码失败")).toBeInTheDocument();
+  update({ ...imageItem(), id: "another-item" });
+  update(item);
+  const retry = screen.getByTestId("image-stage-pending-image") as HTMLImageElement;
+  loadImage(retry);
+  await waitFor(() => expect(screen.getByTestId("image-stage-image")).toBe(retry));
+  expect(screen.queryByTestId("image-update-status")).toBeNull();
+});
+
+it("requires the remounted image to decode when returning through an item that never became ready", async () => {
+  const item = imageItem();
+  const { update } = renderUpdatingImage(item);
+  loadImage(screen.getByTestId("image-stage-pending-image") as HTMLImageElement);
+  const initial = await screen.findByTestId("image-stage-image");
+  update({ ...item, id: "another-item" });
+  expect(screen.queryByTestId("image-stage-image")).toBeNull();
+  update(item);
+  expect(screen.queryByTestId("image-stage-image")).toBeNull();
+  expect(screen.queryByTestId("image-stage-pointer-surface")).toBeNull();
+  const returning = screen.getByTestId("image-stage-pending-image") as HTMLImageElement;
+  expect(returning).not.toBe(initial);
+  let finishDecode!: () => void;
+  Object.defineProperty(returning, "decode", { value: () => new Promise<void>(resolve => { finishDecode = resolve; }) });
+  loadImage(returning);
+  expect(screen.queryByTestId("image-stage-image")).toBeNull();
+  await act(async () => finishDecode());
+  expect(screen.getByTestId("image-stage-image")).toBe(returning);
 });
