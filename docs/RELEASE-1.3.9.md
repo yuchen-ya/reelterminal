@@ -35,7 +35,7 @@ tabs 的范围单测与 13 个选定 GUI tests 通过；后续缺陷复核的四
 ## 构建与产物
 
 应用入口及内置手册版本同步为 1.3.9，内部 workspace 库沿用既有版本。
-依赖未改变；`pnpm-lock.yaml` 不含入口应用自身版本，因此不为版本升级改写锁文件。
+发布前更新 Vite、nanoid、lodash-es 和 KaTeX 的安全修复版本，并同步锁文件。
 从干净冻结提交顺序运行：
 
 ```powershell
