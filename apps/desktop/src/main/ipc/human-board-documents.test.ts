@@ -48,13 +48,13 @@ it("rejects malformed local navigation and always completes the web request call
 
 function editorFrame(token: number, scale: number, name: string) {
   return { isEmpty: () => false, getSize: () => ({ width: 800 * scale, height: 600 * scale }),
-    crop: (bounds: { x: number; width: number; height: number }) => bounds.width === 1 && bounds.height === 1
+    crop: (bounds: { x: number; y: number; width: number; height: number }) => bounds.width === 1 && bounds.height === 1
       ? { toBitmap: () => (token >>> Math.floor(bounds.x / (8 * scale))) & 1
         ? Buffer.from([255, 255, 255, 255]) : Buffer.from([255, 0, 0, 0]) }
       : { isEmpty: () => false, toPNG: () => Buffer.from(name) } };
 }
 
-it.each([0.25, 1, 1.25, 2])("rejects a queued document surface before accepting the current marker at scale %s", async scale => {
+it.each([0.25, 0.67, 1, 1.25, 2])("rejects a queued document surface before accepting the current marker at scale %s", async scale => {
   registerHumanBoardDocumentsIpc();
   native.editor.webContents.endFrameSubscription.mockClear();
   let resolved = false;
@@ -63,8 +63,11 @@ it.each([0.25, 1, 1.25, 2])("rejects a queued document surface before accepting 
   native.present(editorFrame(0x40000001, scale, "previous document"));
   await new Promise(resolve => setImmediate(resolve));
   expect(resolved).toBe(false);
-  native.present(editorFrame(0x40000002, scale, "current document"));
+  const current = editorFrame(0x40000002, scale, "current document");
+  const crop = vi.spyOn(current, "crop");
+  native.present(current);
   expect(await capture).toEqual(Buffer.from("current document"));
+  expect(crop.mock.calls.at(-1)?.[0].y).toBeGreaterThanOrEqual(8 * scale);
   expect(native.editor.webContents.endFrameSubscription).toHaveBeenCalledOnce();
 });
 

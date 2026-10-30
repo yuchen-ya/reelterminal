@@ -128,7 +128,7 @@ export function registerHumanBoardDocumentsIpc(): void {
       candidate.getSize().width / editor.getContentSize()[0] * contents.getZoomFactor()));
     const size = frame.getSize();
     const scale = size.width / editor.getContentSize()[0] * contents.getZoomFactor();
-    const x = Math.round(bounds.x * scale), y = Math.round(bounds.y * scale);
+    const x = Math.round(bounds.x * scale), y = Math.ceil(bounds.y * scale);
     const image = frame.crop({ x, y, width: Math.min(size.width - x, Math.round(bounds.width * scale)), height: Math.min(size.height - y, Math.round(bounds.height * scale)) });
     if (image.isEmpty()) throw new Error("文档预览尚未就绪");
     return image.toPNG();
