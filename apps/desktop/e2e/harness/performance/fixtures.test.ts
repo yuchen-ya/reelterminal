@@ -251,7 +251,7 @@ describe("deterministic performance fixtures", () => {
       expect(Object.keys(paths)).toHaveLength(fixture.assets.length);
       expect(await readFile(paths[asset.assetId]!)).toEqual(Buffer.from(asset.content, "base64"));
       await expect(
-        materializePerformanceFixtureAssets(fixture, path.join(process.cwd(), ".fixture-output")),
+        materializePerformanceFixtureAssets(fixture, path.resolve(tmpdir(), "..", ".fixture-output")),
       ).rejects.toThrow(/system temp directory/);
     } finally {
       await rm(directory, { recursive: true, force: true });

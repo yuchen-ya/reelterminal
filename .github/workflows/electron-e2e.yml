@@ -87,6 +87,10 @@ jobs:
           src/main/sidecar/export-job.test.ts src/main/ipc/export.test.ts
           test/ipc-contract.test.ts test/packaging-config.test.ts --maxWorkers=2
       - name: Build desktop app
+        env:
+          # macOS Node defaults to a ~2 GiB heap; the renderer needs more while
+          # retaining its module graph and reporting the emitted font assets.
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm --filter @reelterminal/desktop build
       - name: Build unpacked app for physical resource verification
         env:
