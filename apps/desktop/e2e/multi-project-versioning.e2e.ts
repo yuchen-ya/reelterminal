@@ -18,6 +18,7 @@
  *  2-4. short sessions: close-time retention preferences (ask / auto /
  *     skip), restart recovery and replayed node saves.
  */
+import { expectVideoStartupPrompt } from "./harness/startup-prompt";
 import { execFileSync, spawn } from "node:child_process";
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -564,9 +565,7 @@ describe("multi-project version nodes UX on the real desktop", () => {
     await clickToastAction(L.copyAgentPrompt);
     await waitForToast("Agent prompt copied");
     let prompt = await launched.app.evaluate(({ clipboard }) => clipboard.readText());
-    expect(prompt).toContain(a.projectId);
-    expect(prompt).toContain(a.workspaceId);
-    expect(prompt).toContain("workspaceId:");
+    expectVideoStartupPrompt(prompt, a);
     // Check for credential-shaped content without reading the endpoint secret.
     expect(/\b[a-f0-9]{64}\b/i.test(prompt)).toBe(false);
 
@@ -575,7 +574,7 @@ describe("multi-project version nodes UX on the real desktop", () => {
     await page().getByRole("button", { name: L.copyAgentPrompt, exact: true }).click();
     await waitForToast("Agent prompt copied");
     prompt = await launched.app.evaluate(({ clipboard }) => clipboard.readText());
-    expect(prompt).toContain(a.projectId);
+    expectVideoStartupPrompt(prompt, a);
 
     // Consecutive switches replace the notification instead of stacking.
     await switchToProjectViaMenu("Vertical", b.projectId);

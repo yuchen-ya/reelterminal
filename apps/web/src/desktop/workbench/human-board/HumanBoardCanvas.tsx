@@ -8,6 +8,7 @@ import type { ModelObservation } from "@reelterminal/core/types/workbench";
 import { humanBoardStorage, type HumanBoard } from "../../../services/human-board/storage";
 import { hydrateBoardFiles, imageSize, importBoardFiles, importBoardImageUrl, prepareBoardHtmlPreview, cancelBoardHtmlPreviews, resourceImage, retainBoardBlob, type BoardImport } from "../../../services/human-board/media";
 import { boardBinding, exportBoardObjectToReview } from "../../../services/human-board/export";
+import { dispatchBoardHistory } from "../../../services/human-board/history";
 import { freezeBoardScene, renderBoardRegion, type BoardRegion, type FrozenBoardScene, type MediaCapture } from "../../../services/human-board/render";
 import { boardDocumentBinding, boardTransferInput, resolveDocumentAsset, singleBoardUrl, type BoardDocumentBinding } from "../../../services/human-board/documents";
 import { decodeReviewText } from "../../../services/review-workspace/table-import";
@@ -207,8 +208,7 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
     if (repairOpen.current) { repairHistory.current?.(direction); return; }
     if (captureOpen.current) return;
     const target = host.current?.querySelector<HTMLElement>(".excalidraw");
-    target?.focus();
-    target?.dispatchEvent(new KeyboardEvent("keydown", { key: "z", code: "KeyZ", ctrlKey: true, shiftKey: direction === "redo", bubbles: true, cancelable: true }));
+    dispatchBoardHistory(target, direction);
   }, []);
   const setRepairHistory = useCallback((callback: ((direction: "undo" | "redo") => void) | null) => { repairHistory.current = callback; }, []);
   useEffect(() => {
@@ -296,7 +296,10 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
       <span className="text-fg-3">拖入/粘贴追加 · 双击容器进入交互 · 对象多选与区域截图独立</span>
     </div>
     {error && <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-border p-2 text-xs text-status-error">{error}<button onClick={() => setError("")}>关闭</button><button onClick={() => void persist().catch(report)}>重试保存</button></div>}
-    {selected.length > 0 && <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-1 text-xs" data-testid="human-board-selection-tools">
+    {/* Keep the scene origin stable when the first click changes selection;
+        otherwise the second click/drag lands on a different scene coordinate. */}
+    <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-1 text-xs" data-testid="human-board-selection-tools">
+      {selected.length > 0 && <>
       <span>已选 {selected.length} 项</span>
       <button className={wbButton.secondary} data-testid="human-board-delete-selection" onClick={() => api!.updateScene({ elements: api!.getSceneElementsIncludingDeleted().map(element => selected.some(item => item.id === element.id) ? newElementWith(element, { isDeleted: true }) : element), captureUpdate: CaptureUpdateAction.IMMEDIATELY })}>删除对象</button>
       {one?.type === "image" && <>
@@ -322,7 +325,8 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
           .then(nodeId => { setExportedNodeId(nodeId); setOutput(null); }).catch(report).finally(() => setBusy(false));
       }}>导出此内容为审阅节点</button>
       {exportedNodeId && <button className={wbButton.secondary} onClick={() => onOpenReview(exportedNodeId)}>打开导出的审阅节点</button>}
-    </div>}
+      </>}
+    </div>
     <div className="relative min-h-0 flex-1" data-testid="human-board-scene"
       onDragOverCapture={event => {
         if ((event.target as HTMLElement).closest("input,textarea,[contenteditable=true]")) return;

@@ -36,7 +36,7 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     await writeFile(source, fixture.bytes); await writeFile(nextFile, nextFixture.bytes);
     // Formal GUI file import, including the native resource preparation path.
     await page.getByTestId("review-node-editor").getByRole("button",{name:/Import content|导入内容/}).first().click();
-    await page.locator('input[type="file"]').first().setInputFiles(source);
+    await page.getByTestId("review-files-input").setInputFiles(source);
     await page.getByTestId("review-import-submit").click();
     const preview = () => page.getByTestId("model-preview").first();
     const ready = async () => vi.waitFor(async () => expect(await preview().getAttribute("data-phase")).toBe("ready"),{timeout:20000});

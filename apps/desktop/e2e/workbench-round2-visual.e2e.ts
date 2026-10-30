@@ -1,3 +1,4 @@
+import { expectVideoStartupPrompt } from "./harness/startup-prompt";
 import { switchToWorkbench, selectTreeItem } from "./harness/workbench-fixtures";
 /**
  * Round-2 workbench visual + interaction acceptance (isolated profile).
@@ -172,7 +173,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     await waitForNoHorizontalOverflow(page);
   }, 120_000);
 
-  test("copy button sends the displayed instructions and reports clipboard rejection", async () => {
+  test("copy button sends a target-bound startup command and reports clipboard rejection", async () => {
     const page = launched.page;
     const clipboardHandle = await page.evaluateHandle(() => {
       const original = navigator.clipboard.writeText;
@@ -185,15 +186,14 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
       await page.getByText("已复制接入说明").waitFor({ state: "visible" });
       const calls = await clipboardHandle.evaluate(state => state.calls);
       expect(calls).toHaveLength(1);
-      expect(calls[0]).toBe(await page.getByTestId("workbench-ingest-help-panel").locator("pre").textContent());
-      expect(calls[0]).toContain("workbench.ingest");
-      expect(calls[0]).toContain("media.import");
+      expectVideoStartupPrompt(calls[0], identity);
+      expect(await page.getByTestId("workbench-ingest-help-panel").textContent()).toContain("video.legacy-workbench");
       expect(calls[0]).not.toMatch(/token|Bearer/i);
       await page.evaluate(() => {
         navigator.clipboard.writeText = async () => { throw new DOMException("Denied", "NotAllowedError"); };
       });
       await page.getByTestId("workbench-copy-ingest").click();
-      await page.getByText("复制失败，请展开下方命令手动复制", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("复制失败，请确认项目工作区已就绪后重试", { exact: true }).waitFor({ state: "visible" });
       expect(await page.getByText("已复制接入说明").count()).toBe(0);
       evidence.record("clipboardInternal", { payloadMatchesDisplayedInstructions: true, rejectionShown: true, adapterStub: true });
     } finally {
@@ -221,9 +221,9 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     let clipboardText = "";
     await vi.waitFor(async () => {
       clipboardText = await launched.app.evaluate(({ clipboard }) => clipboard.readText());
-      expect(clipboardText).toContain("workbench.ingest");
+      expectVideoStartupPrompt(clipboardText, identity);
     });
-    expect(clipboardText).toContain("media.import");
+    expectVideoStartupPrompt(clipboardText, identity);
     expect(clipboardText).not.toMatch(/token|Bearer/i);
     await page.waitForTimeout(3400);
   });

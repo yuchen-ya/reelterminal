@@ -176,7 +176,7 @@ describe("CLI schema is exactly the facade command registry", () => {
 
   test("an unknown command is a CLI invocation error", async () => {
     await expect(agent.callCommand("execute_action", { action: "x" })).rejects.toThrow(
-      /not available/i,
+      /canonical dotted command.*toolName is not an alias/i,
     );
     evidence.record("unknown_tool_rejected", { tool: "execute_action" });
   });

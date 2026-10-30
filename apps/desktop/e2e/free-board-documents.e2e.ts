@@ -34,6 +34,9 @@ async function boards(page: Page): Promise<Board[]> {
   }, LEGACY_IDB_MATERIAL_LIBRARY);
 }
 async function saved(page: Page) {
+  // Fit-to-content publishes its viewport change on the next paint. Observe
+  // that change before accepting a previous "saved" state for pointer geometry.
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await vi.waitFor(async () => expect(await page.getByTestId("human-board-canvas").getAttribute("data-save-state")).toBe("saved"), { timeout: 20_000 });
 }
 async function openBoard(page: Page) {
@@ -65,7 +68,7 @@ async function nativePaste(launched: Awaited<ReturnType<typeof launchApp>>, text
   } else throw new Error("Board canvas is absent");
   const clipboardValue = await launched.app.evaluate(async ({ clipboard }, value) => { await clipboard.writeText(value); return await clipboard.readText(); }, text);
   expect(clipboardValue).toBe(text);
-  await launched.page.keyboard.press("Control+V");
+  await launched.page.keyboard.press("ControlOrMeta+V");
 }
 
 test("native text paste stays text and URI drops use the full scene coordinates", async () => {
@@ -99,7 +102,7 @@ test("native text paste stays text and URI drops use the full scene coordinates"
     const at = await point(page, text); await page.mouse.dblclick(at.x, at.y);
     const editor = page.locator("textarea.excalidraw-wysiwyg"); await editor.waitFor({ state: "visible" });
     await launched.app.evaluate(({ clipboard }) => clipboard.writeText("Edit this text only https://example.com/inside-editor"));
-    await page.keyboard.press("Control+A"); await page.keyboard.press("Control+V"); await page.keyboard.press("Escape"); await saved(page);
+    await page.keyboard.press("ControlOrMeta+A"); await page.keyboard.press("ControlOrMeta+V"); await page.keyboard.press("Escape"); await saved(page);
     expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(2);
     expect((await boards(page))[0].elements.find(element => element.id === text.id)?.originalText).toBe("Edit this text only https://example.com/inside-editor");
     evidence.record("drop", { expected, actual: { x: web.x, y: web.y }, sidebar: "removed", syntheticUriEvent: true, nativeClipboard: true });
@@ -189,6 +192,19 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
   const server = await startBoardPageServer();
   let serverClosed = false;
   const evidence = createEvidence("free-board-browser", launched.page);
+  // Bound native viewport snapshots before they become source-resolution images.
+  // A maximized high-DPI display can otherwise make this eight-object fixture
+  // exceed the 64MP export contract; no source pixels or limit are reduced.
+  const contentSize = await launched.app.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    window.setContentSize(1024, 720);
+    return window.getContentSize();
+  });
+  evidence.record("contentSize", contentSize);
+  expect(contentSize[0]).toBeGreaterThanOrEqual(1023);
+  expect(contentSize[0]).toBeLessThanOrEqual(1024);
+  expect(contentSize[1]).toBeGreaterThanOrEqual(700);
+  expect(contentSize[1]).toBeLessThanOrEqual(720);
   try {
     let page = launched.page; await openBoard(page);
     const directory = path.join(launched.runDir, "html-fixture"); await mkdir(directory);
@@ -248,10 +264,15 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     expect((await boards(page))[0].elements.find(element => element.id === local.id)?.customData?.snapshotResourceId).not.toBe(local.customData?.snapshotResourceId);
     await page.getByTestId("human-board-undo").click(); await saved(page);
     expect((await boards(page))[0].elements.find(element => element.id === local.id)?.customData?.snapshotResourceId).toBe(local.customData?.snapshotResourceId);
-    const nativeFocus = await launched.app.evaluate(({ BrowserWindow, webContents }) => ({
-      mainFocused: BrowserWindow.getAllWindows()[0].webContents.isFocused(),
-      contents: webContents.getAllWebContents().map(contents => ({ type: contents.getType(), focused: contents.isFocused(), loading: contents.isLoading() })),
-    }));
+    const nativeFocus = await vi.waitFor(async () => {
+      const state = await launched.app.evaluate(({ BrowserWindow, webContents }) => ({
+        mainFocused: BrowserWindow.getAllWindows()[0].webContents.isFocused(),
+        contents: webContents.getAllWebContents().map(contents => ({ type: contents.getType(), focused: contents.isFocused(), loading: contents.isLoading() })),
+      }));
+      evidence.record("focusAfterHTMLUndo", state);
+      expect(state.mainFocused).toBe(true);
+      return state;
+    }, { timeout: 5_000 });
     evidence.record("focusAfterHTMLUndo", nativeFocus);
     expect(nativeFocus.mainFocused).toBe(true);
     evidence.record("nativeClipboardProbe", await launched.app.evaluate(async ({ clipboard }, text) => {
@@ -325,6 +346,7 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
       }).observe(document.body, { childList: true });
     });
     await fit(page);
+    evidence.record("compositeSceneGeometry", visible.map(element => ({ kind: element.customData?.kind ?? element.type, x: element.x, y: element.y, width: element.width, height: element.height })));
     await page.getByTestId("human-board-capture-region").click();
     await page.getByTestId("human-board-capture-overlay").waitFor({ timeout: 30_000 });
     expect(await page.getByTestId("review-workspace-open").isDisabled()).toBe(true);
@@ -376,7 +398,12 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
       return await guest.executeJavaScript("document.body.dataset.bridge");
     }, server.url)).toBe("undefined/undefined/undefined");
     await page.getByTestId("human-board-browser-close").click();
+    // Browser focus does not select its source object. Explicitly select the
+    // temporary link result before deleting it so no retained page is removed.
+    await select(page, linkedWebpage);
     await page.getByTestId("human-board-delete-selection").click(); await saved(page);
+    await vi.waitFor(async () => expect((await boards(page))[0].elements.find(element => element.id === linkedWebpage.id)?.isDeleted).toBe(true));
+    expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(8);
     await fit(page);
     evidence.record("markdownExternalLink", { targetUrl: server.url, nativePageScriptsExecuted: true, appBridgeAbsent: true });
     evidence.record("phase", "markdown-external-link-browsed"); evidence.flush();
@@ -386,7 +413,19 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     const reopened = (await boards(page))[0];
     expect(reopened.elements.find(element => element.id === webpage.id)?.customData?.snapshotResourceId).toBe(webpage.customData?.snapshotResourceId);
     await vi.waitFor(async () => expect(await page.locator('[data-document-kind="webpage"] img').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true));
-    const localCorner = await point(page, { ...local, x: local.x + 35, y: local.y + 60, width: 0, height: 0 });
+    // At the whole-board 10% fit, overlapping edges are closer than the
+    // drawing tool's pointer hit radius. Zoom to the page before selecting
+    // the retained HTML's exposed bottom edge and bringing it to the front.
+    const topPage = await point(page, reopened.elements.find(element => element.id === webpage.id)!);
+    await page.mouse.click(topPage.x, topPage.y);
+    await page.getByTestId("human-board-scene").locator(".excalidraw").focus();
+    await page.keyboard.press("Shift+2"); await saved(page);
+    const localCorner = await point(page, { ...local, x: local.x + 35, y: local.y + local.height - 25, width: 0, height: 0 });
+    await page.mouse.click(localCorner.x, localCorner.y);
+    await page.getByTestId("human-board-scene").locator(".excalidraw").focus();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+]" : "Control+Shift+]");
+    await saved(page);
+    await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted).at(-1)?.id).toBe(local.id));
     await page.mouse.dblclick(localCorner.x, localCorner.y);
     await page.locator('[data-document-kind="html"]').getByTestId("human-board-document-browse").click();
     await vi.waitFor(async () => expect(await page.getByTestId("human-board-browser").getAttribute("data-state")).toBe("ready"), { timeout: 30_000 });
@@ -404,8 +443,17 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     })).toContain("Local linked page"), { timeout: 15_000 });
     await page.getByTestId("human-board-browser-close").click();
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("Escape");
-    const webCorner = await point(page, { ...webpage, x: webpage.x + webpage.width / 2, y: webpage.y + webpage.height - 40, width: 0, height: 0 });
-    await page.mouse.dblclick(webCorner.x, webCorner.y);
+    await saved(page);
+    // The HTML was brought forward above. Select the webpage's exposed top
+    // header, bring it forward too, then enter its unobscured content.
+    const webCorner = await point(page, { ...webpage, x: webpage.x + webpage.width / 2, y: webpage.y + 16, width: 0, height: 0 });
+    await page.mouse.click(webCorner.x, webCorner.y);
+    await page.getByTestId("human-board-scene").locator(".excalidraw").focus();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+]" : "Control+Shift+]");
+    await saved(page);
+    await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted).at(-1)?.id).toBe(webpage.id));
+    const webCenter = await point(page, webpage);
+    await page.mouse.dblclick(webCenter.x, webCenter.y);
     await page.locator('[data-document-kind="webpage"]').getByTestId("human-board-document-browse").click();
     await vi.waitFor(async () => expect(await page.getByTestId("human-board-browser").getAttribute("data-state")).toBe("error"), { timeout: 30_000 });
     await evidence.screenshot("url-offline-error");

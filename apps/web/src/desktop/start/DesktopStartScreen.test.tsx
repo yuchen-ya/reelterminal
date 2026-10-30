@@ -110,13 +110,13 @@ describe("DesktopStartScreen", () => {
   it("keeps the chooser on file cancellation and exits after a successful open", async () => {
     const onProjectOpened = vi.fn();
     render(<DesktopStartScreen onProjectOpened={onProjectOpened} />);
-    fireEvent.click(screen.getByRole("button", { name: "Open Project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open from file…" }));
     await waitFor(() => expect(actionMocks.openProject).toHaveBeenCalledOnce());
-    await waitFor(() => expect(screen.getByRole("button", { name: "Open Project" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Open from file…" })).toBeEnabled());
     expect(onProjectOpened).not.toHaveBeenCalled();
 
     actionMocks.openProject.mockResolvedValue(true);
-    fireEvent.click(screen.getByRole("button", { name: "Open Project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open from file…" }));
     await waitFor(() => expect(onProjectOpened).toHaveBeenCalledOnce());
   });
 });

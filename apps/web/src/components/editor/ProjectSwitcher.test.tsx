@@ -60,7 +60,7 @@ describe("ProjectSwitcher", () => {
     fireEvent.click(screen.getByRole("button", { name: "Horizontal" }));
 
     expect(await screen.findByText("新建项目")).toBeInTheDocument();
-    expect(screen.getByText("打开项目")).toBeInTheDocument();
+    expect(screen.getByText("从文件打开…")).toBeInTheDocument();
     expect(screen.getByText("最近的项目")).toBeInTheDocument();
     expect(await screen.findByText("Flip Horizontal")).toBeInTheDocument();
     expect(screen.queryByText("当前项目")).toBeNull();

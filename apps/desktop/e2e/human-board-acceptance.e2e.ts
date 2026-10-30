@@ -33,6 +33,9 @@ async function boards(page: Page): Promise<BoardSnapshot[]> {
 }
 
 async function saved(page: Page) {
+  // Fit-to-content publishes its viewport change on the next paint. Observe
+  // that change before accepting a previous "saved" state for pointer geometry.
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await vi.waitFor(async () => expect(await page.getByTestId("human-board-canvas").getAttribute("data-save-state")).toBe("saved"), { timeout: 20_000 });
 }
 
@@ -100,7 +103,13 @@ test("private mixed-media board appends in one scene, exports one frozen contain
     await saved(page);
     const image = (await boards(page))[0].elements.find(element => element.type === "image")!;
     const point = await elementPoint(page, image);
+    const beforeSelection = (await page.getByTestId("human-board-scene").boundingBox())!;
     await page.mouse.click(point.x, point.y);
+    await saved(page);
+    const afterSelection = (await page.getByTestId("human-board-scene").boundingBox())!;
+    expect(afterSelection.y).toBe(beforeSelection.y);
+    expect(afterSelection.height).toBe(beforeSelection.height);
+    evidence.record("selectionSceneOrigin", { before: beforeSelection, after: afterSelection });
     await page.getByTestId("human-board-delete-selection").click();
     await vi.waitFor(async () => expect((await boards(page))[0].elements.find(element => element.id === image.id)?.isDeleted).toBe(true), { timeout: 20_000 });
     expect((await boards(page))[0].resourceIds).toEqual(initial.resourceIds);
@@ -159,7 +168,7 @@ test("private mixed-media board appends in one scene, exports one frozen contain
         await page.mouse.dblclick(point.x, point.y);
         const editor = page.locator("textarea.excalidraw-wysiwyg");
         await editor.waitFor({ state: "visible" });
-        await page.keyboard.press("Control+A"); await page.keyboard.press("Control+C");
+        await page.keyboard.press("ControlOrMeta+A"); await page.keyboard.press("ControlOrMeta+C");
         expect((await launched.app.evaluate(({ clipboard }) => clipboard.readText())).replace(/\r\n/g, "\n")).toBe(privateText);
         await page.keyboard.press("Escape");
       }
@@ -221,7 +230,7 @@ test("plain-text paste creates one board and path-backed drop uses the actual sc
     await page.getByTestId(`close-tab-board-${blankBoardId}`).click();
     await page.getByTestId("workbench-empty").waitFor();
     await launched.app.evaluate(({ clipboard }) => clipboard.writeText("Plain pasted board text"));
-    await page.keyboard.press("Control+V");
+    await page.keyboard.press("ControlOrMeta+V");
     await page.getByTestId("human-board-canvas").waitFor({ timeout: 30_000 });
     const pastedBoardId = await page.getByTestId("human-board-canvas").getAttribute("data-board-id");
     expect(pastedBoardId).not.toBe(blankBoardId);
@@ -229,7 +238,7 @@ test("plain-text paste creates one board and path-backed drop uses the actual sc
     await vi.waitFor(async () => expect((await activeBoard()).elements.filter(element => !element.isDeleted)).toHaveLength(1), { timeout: 20_000 });
     expect((await activeBoard()).elements[0].text).toBe("Plain pasted board text");
     await launched.app.evaluate(({ clipboard }) => clipboard.writeText("Appended native Excalidraw text"));
-    await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("Control+V");
+    await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("ControlOrMeta+V");
     await vi.waitFor(async () => expect((await activeBoard()).elements.filter(element => !element.isDeleted)).toHaveLength(2), { timeout: 20_000 });
     const fixture = createRepairAcceptanceFixture(path.join(launched.runDir, "position-input"));
     const board = (await activeBoard());
@@ -248,13 +257,17 @@ test("plain-text paste creates one board and path-backed drop uses the actual sc
     const image = (await activeBoard()).elements.find(element => element.type === "image")!;
     expect(Math.abs(image.x - expected.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(image.y - expected.y)).toBeLessThanOrEqual(1);
+    await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("Shift+1");
+    await saved(page);
     const point = await elementPoint(page, image);
     await page.mouse.move(point.x, point.y); await page.mouse.down(); await page.mouse.move(point.x + 40, point.y - 20, { steps: 8 }); await page.mouse.up();
     await vi.waitFor(async () => expect((await activeBoard()).elements.find(element => element.id === image.id)!.x).toBeGreaterThan(image.x + 20), { timeout: 20_000 });
     const moved = (await activeBoard()).elements.find(element => element.id === image.id)!;
+    await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("Shift+1");
     await saved(page);
     const after = (await activeBoard());
-    const corner = { x: stage.x + (moved.x + moved.width + after.appState.scrollX!) * after.appState.zoom!.value, y: stage.y + (moved.y + moved.height + after.appState.scrollY!) * after.appState.zoom!.value };
+    const resizeStage = (await page.getByTestId("human-board-scene").locator(".excalidraw").boundingBox())!;
+    const corner = { x: resizeStage.x + (moved.x + moved.width + after.appState.scrollX!) * after.appState.zoom!.value, y: resizeStage.y + (moved.y + moved.height + after.appState.scrollY!) * after.appState.zoom!.value };
     await page.mouse.move(corner.x, corner.y); await page.mouse.down(); await page.mouse.move(corner.x + 40, corner.y + 30, { steps: 8 }); await page.mouse.up();
     await vi.waitFor(async () => expect((await activeBoard()).elements.find(element => element.id === image.id)!.width).toBeGreaterThan(moved.width), { timeout: 20_000 });
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("a");
@@ -313,6 +326,11 @@ test("video/model interactions retain board geometry and freeze source views wit
     evidence.record("internalMediaLink", { hintHidden: true, externalOpenPrevented: true });
     const modelHost = page.getByTestId("model-canvas-host");
     const observation = () => page.getByTestId("model-preview").getAttribute("data-observation");
+    // The hidden-link security probe above is a separate synthetic click. Enter
+    // the model again through real pointer input before testing its controls.
+    const activeModelPoint = await elementPoint(page, modelElement);
+    await page.mouse.dblclick(activeModelPoint.x, activeModelPoint.y);
+    await vi.waitFor(async () => expect(await modelHost.evaluate(host => getComputedStyle(host.closest(".excalidraw__embeddable-container__inner")!).pointerEvents)).toBe("all"));
     const oldObservation = await observation();
     const modelBounds = (await modelHost.boundingBox())!;
     await page.mouse.move(modelBounds.x + modelBounds.width * 0.5, modelBounds.y + modelBounds.height * 0.5); await page.mouse.down();
@@ -534,8 +552,11 @@ test("region PNG preserves source resolution, image crop/rotation/alpha and text
     await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(countBefore + 1), { timeout: 20_000 });
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("Shift+1");
     const overlayElement = (await boards(page))[0].elements.find(element => element.customData?.name === "transparent-quadrants.png")!;
-    const overlayPoint = await elementPoint(page, overlayElement);
+    // The center is covered by TOP text. Select the exposed lower-left part
+    // of this known 90-degree-rotated image rather than its overlaid label.
+    const overlayPoint = await elementPoint(page, { ...overlayElement, x: overlayElement.x + overlayElement.width / 2 - 40, y: overlayElement.y + overlayElement.height / 2 + 16, width: 0, height: 0 });
     await page.mouse.click(overlayPoint.x, overlayPoint.y);
+    await page.getByTestId("human-board-image-repair").waitFor();
     await page.getByTestId("human-board-single-file").click();
     await page.getByTestId("human-board-output-image").waitFor();
     const single = Buffer.from(await page.getByTestId("human-board-output-image").evaluate(async image => [...new Uint8Array(await (await fetch((image as HTMLImageElement).src)).arrayBuffer())]));

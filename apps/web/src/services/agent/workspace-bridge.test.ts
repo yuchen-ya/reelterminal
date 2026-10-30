@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
+import { Blob as NodeBlob } from "node:buffer";
+import { loadMediaBlob, saveMediaBlob } from "../media-storage";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { workspaceManager, WorkspaceManagerError } from "../workspace-manager";
 import { failureCode, handleWorkspaceLibraryRequest } from "./workspace-bridge";
@@ -80,6 +82,12 @@ describe("workspace node query bridge", () => {
   it("requires exact cleanup confirmation through the Agent workspace bridge", async () => {
     const created = await workspaceManager.createProject(createEmptyProject("Cleanup bridge"));
     const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+    const mediaId = "cleanup-bridge-orphan";
+    const bytes = new NodeBlob(["unreferenced cleanup fixture"]) as unknown as Blob;
+    await saveMediaBlob(target.projectId, mediaId, bytes, {
+      duration: 1, width: 1, height: 1, frameRate: 1, codec: "fixture",
+      sampleRate: 0, channels: 0, fileSize: bytes.size,
+    });
     const review = await handleWorkspaceLibraryRequest("media.cleanup.review", target);
     expect(review.ok).toBe(true);
     if (!review.ok) return;
@@ -88,6 +96,7 @@ describe("workspace node query bridge", () => {
     const planned = await handleWorkspaceLibraryRequest("media.cleanup.plan", { ...target, action: "purge-media" });
     expect(planned.ok).toBe(true);
     if (!planned.ok) return;
+    expect(planned.result).toMatchObject({ status: "ready" });
     const confirmation = (planned.result as { confirmation: Record<string, unknown> }).confirmation;
     const { target: cleanupTarget, ...scope } = confirmation;
     const flattened = { ...scope, ...(cleanupTarget as Record<string, unknown>) };
@@ -95,8 +104,23 @@ describe("workspace node query bridge", () => {
     const denied = await handleWorkspaceLibraryRequest("media.cleanup.execute", { ...flattened, confirmed: false });
     expect(denied).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
 
+    const changedSelection = await handleWorkspaceLibraryRequest("media.cleanup.execute", { ...flattened, mediaIds: [], confirmed: true });
+    expect(changedSelection).toMatchObject({ ok: false, error: { message: "Cleanup confirmation does not match the reviewed plan scope" } });
+    expect(await loadMediaBlob(mediaId)).not.toBeNull();
     const executed = await handleWorkspaceLibraryRequest("media.cleanup.execute", { ...flattened, confirmed: true });
-    expect(executed).toMatchObject({ ok: true, result: { status: "completed", deletedMediaIds: [], reclaimedBytes: 0 } });
+    expect(executed).toMatchObject({ ok: true, result: { status: "completed", deletedMediaIds: [mediaId], reclaimedBytes: bytes.size } });
+    expect(await loadMediaBlob(mediaId)).toBeNull();
+  });
+
+  it("keeps an empty media cleanup blocked even with exact confirmation", async () => {
+    const created = await workspaceManager.createProject(createEmptyProject("Empty cleanup bridge"));
+    const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+    const planned = await handleWorkspaceLibraryRequest("media.cleanup.plan", { ...target, action: "purge-media" });
+    expect(planned).toMatchObject({ ok: true, result: { status: "review-required" } });
+    if (!planned.ok) return;
+    const { target: cleanupTarget, ...scope } = (planned.result as { confirmation: { target: Record<string, unknown> } }).confirmation;
+    const executed = await handleWorkspaceLibraryRequest("media.cleanup.execute", { ...scope, ...cleanupTarget, confirmed: true });
+    expect(executed).toMatchObject({ ok: true, result: { status: "blocked", deletedMediaIds: [], reclaimedBytes: 0 } });
   });
 });
 

@@ -22,6 +22,12 @@
       "reason": "Isolated test profiles set the existing persisted locale key; no user profile is modified."
     },
     {
+      "files": "apps/desktop/e2e/review-placement.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated placement test sets the existing persisted locale key; no user profile is modified."
+    },
+    {
       "files": "apps/desktop/e2e/review-batch-updates.e2e.ts",
       "pattern": "openreel-locale",
       "category": 4,

@@ -161,7 +161,7 @@ describe("review workbench visual baseline captures", () => {
     // -------------------------------------------------------------
     // State 1: empty-workspace (no nodes)
     // -------------------------------------------------------------
-    await page.getByText("创建一个审阅任务").waitFor({ state: "visible", timeout: 20_000 });
+    await page.getByTestId("workbench-empty").waitFor({ state: "visible", timeout: 20_000 });
     await captureScreenshot(page, "empty-workspace");
 
     // -------------------------------------------------------------

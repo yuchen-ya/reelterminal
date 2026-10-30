@@ -48,6 +48,19 @@ describe("PlaybackBridge scrubbing", () => {
     });
   });
 
+  it("starts the visible preview at the selected position without a second core audio owner", async () => {
+    const controller = makeController();
+    const bridge = new PlaybackBridge();
+    Object.assign(bridge, { playbackController: controller });
+    useTimelineStore.setState({ playheadPosition: 1.25 });
+    await bridge.play();
+    expect(useTimelineStore.getState().playbackState).toBe("playing");
+    expect(useTimelineStore.getState().playheadPosition).toBe(1.25);
+    expect(controller.play).not.toHaveBeenCalled();
+    bridge.pause();
+    expect(useTimelineStore.getState().playbackState).toBe("paused");
+  });
+
   it.each([24, 30, 60])( "steps on the %i fps project grid and clamps at timeline boundaries", async frameRate => {
     const state = useProjectStore.getState();
     useProjectStore.setState({ project: {

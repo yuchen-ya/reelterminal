@@ -202,10 +202,12 @@ async function launch(
         return window.getContentSize();
       });
       // macOS CI limits the requested height to its 700px desktop work area.
+      // Fractional Windows display scaling can round the requested width down by
+      // one DIP (1024 -> 1023). Keep the same bounded small-layout gate.
       // Both platforms still exercise the small layout with real pointer events.
-      if (contentSize[0] !== 1024 || contentSize[1] < 700 || contentSize[1] > 720) {
+      if (contentSize[0] < 1023 || contentSize[0] > 1024 || contentSize[1] < 700 || contentSize[1] > 720) {
         throw new Error(
-          `Could not set E2E content to width 1024 and height 700–720; actual content is ${contentSize[0]}x${contentSize[1]}`,
+          `Could not set E2E content to width 1023–1024 and height 700–720; actual content is ${contentSize[0]}x${contentSize[1]}`,
         );
       }
     }

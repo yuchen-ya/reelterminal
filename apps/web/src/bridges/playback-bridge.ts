@@ -186,9 +186,9 @@ export class PlaybackBridge {
    * Feature: core-ui-integration, Property 5: Playback State Transitions
    */
   async play(): Promise<void> {
-    if (this.playbackController) {
-      await this.playbackController.play();
-    }
+    // Preview owns the live clock and audio scheduler, including its preparation
+    // and seek boundary. Use the same entry as the GUI play button: starting the
+    // core controller here first makes Preview tear down and restart that source.
     useTimelineStore.getState().play();
   }
 

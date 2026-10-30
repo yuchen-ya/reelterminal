@@ -1,3 +1,4 @@
+import { expectVideoStartupPrompt } from "./harness/startup-prompt";
 import { expect, test, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -48,7 +49,7 @@ test("visible isolated desktop: title close waits, rename is shared, local fonts
 
     await createTextClipViaUI(launched.page);
     expect((await pausedFrame()).corner).toEqual([0, 0, 0]);
-    await launched.page.keyboard.press("Control+s");
+    await launched.page.keyboard.press("ControlOrMeta+s");
     expect(call("node.list", { projectId: target.projectId }).nodes).toHaveLength(0);
     call("workspace.create", { projectId: target.projectId, sourceWorkspaceId: target.workspaceId, name: "Untouched export copy", idempotencyKey: "close-copy" });
     await launched.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
@@ -70,9 +71,8 @@ test("visible isolated desktop: title close waits, rename is shared, local fonts
     await launched.page.getByRole("button", { name: "Node UX fixes regression", exact: true }).click();
     await launched.page.getByRole("button", { name: "Copy Agent prompt", exact: true }).click();
 
-    await vi.waitFor(async () => expect(await launched.app.evaluate(({ clipboard }) => clipboard.readText())).toContain("Node UX fixes regression"));
-    expect(await launched.app.evaluate(({ clipboard }) => clipboard.readText())).toContain(target.projectId);
-    observations.copiedNameMatches = true;
+    await vi.waitFor(async () => expectVideoStartupPrompt(await launched.app.evaluate(({ clipboard }) => clipboard.readText()), target));
+    observations.copiedTargetMatches = true;
     const state = call("project.get_state", target);
     const textId = state.project.textClips[0].id;
     const localFont = process.platform === "darwin" ? "Arial" : "Microsoft YaHei";

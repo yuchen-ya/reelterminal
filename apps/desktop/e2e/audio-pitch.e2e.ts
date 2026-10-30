@@ -7,7 +7,7 @@ import { connectExternalAgent, type ExternalAgent, value } from "./harness/cli-c
 import { createProjectViaUI, enableAgentSessionViaUI } from "./harness/ui";
 import { ARTIFACTS_DIR } from "./harness/paths";
 
-type ScheduledPcm = { id: number; duration: number; sampleRate: number; playbackRate: number; offset: number; frequencies: number[] };
+type ScheduledPcm = { id: number; duration: number; sampleRate: number; playbackRate: number; offset: number; contextTime: number; when: number; frequencies: number[] };
 
 function frequency(samples: number[], rate: number): number {
   const crossings: number[] = [];
@@ -44,6 +44,7 @@ test("packaged pitch-preserving playback, seek, speed edits and encoded export u
       const original = AudioBufferSourceNode.prototype.start;
       AudioBufferSourceNode.prototype.start = function (...args: Parameters<typeof original>) {
         if (this.buffer) {
+          const contextTime = this.context.currentTime;
           const buffer = this.buffer;
           if (!ids.has(buffer)) ids.set(buffer, ++nextId);
           const frequencies = Array.from({ length: buffer.numberOfChannels }, (_, channel) => {
@@ -55,7 +56,7 @@ test("packaged pitch-preserving playback, seek, speed edits and encoded export u
             return (crossings.length - 1) * buffer.sampleRate / (crossings[crossings.length - 1] - crossings[0]);
           });
           observed.pitchScheduled.push({ id: ids.get(buffer)!, duration: buffer.duration, sampleRate: buffer.sampleRate,
-            playbackRate: this.playbackRate.value, offset: args[1] ?? 0, frequencies });
+            playbackRate: this.playbackRate.value, offset: args[1] ?? 0, contextTime, when: args[0] ?? 0, frequencies });
         }
         Reflect.apply(original, this, args);
       };
@@ -77,6 +78,7 @@ test("packaged pitch-preserving playback, seek, speed edits and encoded export u
     await edit([{ op: "clip.add", trackId: "pitch-track", mediaId: imported.mediaId, startTime: 0, inPoint: 1, outPoint: 5, duration: 4 }]);
     const clipId = (await state()).project.timeline.tracks.find((track: any) => track.id === "pitch-track").clips[0].id;
     const records: ScheduledPcm[] = [];
+    const seekRecords: Array<{ speed: number; seekCommand: unknown; playCommand: unknown; pauseCommand: unknown; sources: ScheduledPcm[] }> = [];
     const scheduled = () => launched.page.evaluate(() => (globalThis as unknown as { pitchScheduled: ScheduledPcm[] }).pitchScheduled);
     const control = (action: string, timeSeconds?: number) => call("editor.control", { ...target, action, ...(timeSeconds === undefined ? {} : { timeSeconds }) });
     for (const speed of [1.5, 2]) {
@@ -94,11 +96,20 @@ test("packaged pitch-preserving playback, seek, speed edits and encoded export u
       expect(first.frequencies[1]).toBeCloseTo(660, 0);
       records.push(first);
       const beforeSeek = (await scheduled()).length;
-      await control("seek", 1.25);
-      await control("play");
+      const seekCommand = await control("seek", 1.25);
+      const playCommand = await control("play");
       await vi.waitFor(async () => expect((await scheduled()).length).toBeGreaterThan(beforeSeek), { timeout: 15000, interval: 100 });
-      await control("pause");
-      const seek = (await scheduled()).filter((row) => Math.abs(row.duration - 4 / speed) < 0.0001).at(-1)!;
+      // Keep playback alive across more than one scheduler tick: a second owner
+      // previously stopped the correct source and rescheduled it 100ms later.
+      await launched.page.waitForTimeout(180);
+      const pauseCommand = await control("pause");
+      mkdirSync(ARTIFACTS_DIR, { recursive: true });
+      const seekSources = (await scheduled()).slice(beforeSeek);
+      seekRecords.push({ speed, seekCommand, playCommand, pauseCommand, sources: seekSources });
+      writeFileSync(path.join(ARTIFACTS_DIR, "audio-pitch-scheduling.json"), JSON.stringify(seekRecords, null, 2));
+      expect(seekCommand.playheadSeconds).toBe(1.25);
+      expect(seekSources).toHaveLength(1);
+      const seek = seekSources[0];
       expect(seek.duration).toBeCloseTo(4 / speed, 4);
       expect(seek.frequencies[0]).toBeCloseTo(440, 0);
       expect(seek.frequencies[1]).toBeCloseTo(660, 0);
@@ -131,7 +142,7 @@ test("packaged pitch-preserving playback, seek, speed edits and encoded export u
     expect(launched.output.rendererConsole.filter((line) => /startPlayback error|Audio playback failed|Unable to load signalsmith|worker initialization failed/i.test(line))).toEqual([]);
     mkdirSync(ARTIFACTS_DIR, { recursive: true });
     copyFileSync(destination, path.join(ARTIFACTS_DIR, "audio-pitch-export.mp4"));
-    writeFileSync(path.join(ARTIFACTS_DIR, "audio-pitch-result.json"), JSON.stringify({ packaged: Boolean(process.env.REELTERMINAL_E2E_APP_EXECUTABLE), scheduled: records, workers,
+    writeFileSync(path.join(ARTIFACTS_DIR, "audio-pitch-result.json"), JSON.stringify({ packaged: Boolean(process.env.REELTERMINAL_E2E_APP_EXECUTABLE), scheduled: records, seeks: seekRecords, workers,
       export: { duration: Number(probe.format.duration), frequencies, audioCodec: probe.streams.find((stream: any) => stream.codec_type === "audio")?.codec_name } }, null, 2));
   } finally {
     await agent?.close();
