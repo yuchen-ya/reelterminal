@@ -3,8 +3,10 @@
 [data-testid="human-board-canvas"] .excalidraw-hyperlinkContainer:has(input[value^="https://human-board.invalid/"]) {
   display: none;
 }
-/* Inline source editing owns input until Save/Cancel. The floating drawing
- * toolbar must not cover those controls in a narrow viewport. */
+/* Active embedded content owns input until Escape/canvas selection. Drawing
+ * controls must not cover its edit/browse buttons in a narrow viewport, including
+ * the initial click that opens the inline source editor. */
+.excalidraw:has(.excalidraw__embeddable-container__inner[style*="pointer-events: all"]) .layer-ui__wrapper,
 .excalidraw:has([data-testid="human-board-document-source"]) .layer-ui__wrapper {
   visibility: hidden;
 }
