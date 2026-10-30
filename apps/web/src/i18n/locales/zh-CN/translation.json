@@ -120,6 +120,11 @@
     }
   },
   "projectLibrary": {
+    "purging": "正在删除项目并清理缓存…",
+    "fileSaved": "工程文件已保存。文件包含当前编辑，不包含原始素材和完整存档历史；后续编辑仍会自动保存在应用内。",
+    "noProjectFile": "此项目自动保存在应用内，尚无关联的工程文件。请先选择“另存工程文件…”，再定位文件。",
+    "revealFile": "定位已保存的工程文件",
+    "saveFile": "另存工程文件…",
     "title": "本地项目",
     "all": "全部项目",
     "ungrouped": "未分组",
@@ -156,7 +161,7 @@
     "nameInput": "名称",
     "confirm": "确认",
     "retry": "重试",
-    "localHelp": "仅本地项目 · 文件夹不会移动原始素材",
+    "localHelp": "项目自动保存在此应用内，点击列表即可继续编辑。“从文件打开”用于打开另存的 .oreel 文件；列表文件夹仅用于分组。",
     "trashHelp": "已删除项目及其版本保留在此，直到永久删除。",
     "sizeHelp": "当前编辑数据的大小，不包含原始视频、素材缓存和历史版本。",
     "modifiedOn": "修改于 {{date}}",
@@ -230,7 +235,7 @@
     "close": "关闭",
     "loading": "加载中…",
     "open": "打开",
-    "openProjectPicker": "打开项目",
+    "openProjectPicker": "从文件打开…",
     "settings": "设置",
     "githubRepository": "GitHub 仓库",
     "systemDefault": "跟随系统"

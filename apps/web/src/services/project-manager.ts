@@ -888,6 +888,13 @@ export class ProjectManager {
     return map;
   }
 
+  async getSavedProjectPath(projectId: string): Promise<string | null> {
+    await this.initialize();
+    const handle = this.fileHandlesByProject.get(projectId)
+      ?? (await this.loadRecentRecord(projectId))?.fileHandle;
+    return isNativeRef(handle) ? handle.path : null;
+  }
+
   getCurrentFileHandle(projectId?: string): ProjectFileRef | null {
     const id = projectId ?? this.activeProjectId;
     return id ? this.fileHandlesByProject.get(id) ?? null : null;

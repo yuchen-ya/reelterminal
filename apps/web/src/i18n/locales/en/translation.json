@@ -120,6 +120,11 @@
     }
   },
   "projectLibrary": {
+    "purging": "Deleting projects and cleaning caches…",
+    "fileSaved": "Project file saved with the current edit, without source media or full archive history. Further edits are saved in the app.",
+    "noProjectFile": "This project is saved inside the app. Use “Save project file…” first to create a file you can locate.",
+    "revealFile": "Show saved project file",
+    "saveFile": "Save project file…",
     "title": "Local projects",
     "all": "All projects",
     "ungrouped": "Ungrouped",
@@ -156,7 +161,7 @@
     "nameInput": "Name",
     "confirm": "Confirm",
     "retry": "Retry",
-    "localHelp": "Local projects only · folders do not move source files",
+    "localHelp": "Projects are saved in this app; click one to continue editing. Open from file loads a saved .oreel file. Folders only group this list.",
     "trashHelp": "Deleted projects and their versions stay here until permanently deleted.",
     "sizeHelp": "Size of the current edit data; excludes source videos, cached media and version history.",
     "modifiedOn": "Modified {{date}}",
@@ -230,7 +235,7 @@
     "close": "Close",
     "loading": "Loading…",
     "open": "Open",
-    "openProjectPicker": "Open Project",
+    "openProjectPicker": "Open from file…",
     "settings": "Settings",
     "githubRepository": "GitHub repository",
     "systemDefault": "System default"

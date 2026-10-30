@@ -37,7 +37,7 @@ test("new project chooser preserves the editor and open uses the active project 
       };
     }, { channel: CHANNELS.dataRootGetInfo, projects });
 
-    await page.getByRole("button", { name: "Open Project", exact: true }).click();
+    await page.getByRole("button", { name: "Open from file…", exact: true }).click();
     await vi.waitFor(async () => {
       expect(await app.evaluate(() => (globalThis as unknown as { projectEntryTest: { lastFolder: string } }).projectEntryTest.lastFolder)).toBe(projects);
     });

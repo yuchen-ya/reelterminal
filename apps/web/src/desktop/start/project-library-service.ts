@@ -104,8 +104,8 @@ export async function purgeLibraryProjects(
         .flatMap((record) => record.purgedMediaIds ?? []),
     ]),
   ];
+  await autoSaveManager.clearProjectsSaves(ids);
   for (const id of ids) {
-    await autoSaveManager.clearProjectSaves(id);
     await projectManager.deleteStoredProject(id);
   }
   // Legacy cleanup happens while the project is still recoverable in the bin.
@@ -123,6 +123,15 @@ export async function purgeLibraryProjects(
 }
 
 export const projectLibraryActions = {
+  saveFile: async (id: string) => {
+    const project = await workspaceManager.getLibraryProjectSnapshot(id);
+    return projectManager.saveProjectAs(project);
+  },
+  revealFile: async (id: string) => {
+    const path = await projectManager.getSavedProjectPath(id);
+    if (!path) throw new Error(i18n.t("projectLibrary.noProjectFile"));
+    await window.reelterminal!.fs.revealInFolder(path);
+  },
   rename: (id: string, name: string) =>
     workspaceManager.renameLibraryProject(id, name),
   copy: (id: string) => workspaceManager.copyLibraryProject(id),

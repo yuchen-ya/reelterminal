@@ -706,6 +706,13 @@ export class WorkspaceManager {
     }
   }
 
+  async getLibraryProjectSnapshot(id: string): Promise<Project> {
+    await this.initialize();
+    const record = this.requireAvailableProject(id);
+    await this.flushWorkspaceWrites(record.defaultWorkspaceId);
+    return cloneProject(this.workspaces.get(record.defaultWorkspaceId)!.project);
+  }
+
   async copyLibraryProject(id: string): Promise<string> {
     await this.initialize();
     const record = this.requireAvailableProject(id);

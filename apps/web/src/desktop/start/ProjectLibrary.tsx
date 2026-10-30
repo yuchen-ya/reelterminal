@@ -493,7 +493,7 @@ export function ProjectLibrary({
               >
                 {(inTrash
                   ? ["restore", "purge"]
-                  : ["rename", "copy", "move", "recycle"]
+                  : ["saveFile", ...(window.reelterminal ? ["revealFile"] : []), "rename", "copy", "move", "recycle"]
                 ).map((action) => (
                   <button
                     key={action}
@@ -501,6 +501,13 @@ export function ProjectLibrary({
                     type="button"
                     className={`block w-full rounded px-3 py-2 text-left text-sm hover:bg-bg-3 ${action === "recycle" || action === "purge" ? "text-red-400" : "text-fg"}`}
                     onClick={() => {
+                      if (action === "saveFile")
+                        void run(async () => {
+                          if (await projectLibraryActions.saveFile(project.id))
+                            setNotice(t("projectLibrary.fileSaved"));
+                        });
+                      if (action === "revealFile")
+                        void run(() => projectLibraryActions.revealFile(project.id));
                       if (action === "rename")
                         showDialog({
                           kind: "rename",
@@ -914,7 +921,7 @@ export function ProjectLibrary({
                     className={`${buttonClass} ${dialog.kind === "purge" ? "border-red-400 bg-red-400/10 text-red-400" : "border-accent bg-accent text-accent-fg"}`}
                     disabled={busy || Boolean(naming && !name.trim())}
                   >
-                    {t(busy ? "common.loading" : "projectLibrary.confirm")}
+                    {t(busy ? (dialog.kind === "purge" ? "projectLibrary.purging" : "common.loading") : "projectLibrary.confirm")}
                   </button>
                 </div>
               </form>

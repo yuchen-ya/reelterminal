@@ -595,15 +595,29 @@ export class AutoSaveManager {
   }
 
   async clearProjectSaves(projectId: string): Promise<void> {
-    await this.suspendProject(projectId);
+    await this.clearProjectsSaves([projectId]);
+  }
+
+  async clearProjectsSaves(projectIds: readonly string[]): Promise<void> {
+    for (const id of projectIds) await this.suspendProject(id);
     await this.initialize();
-
-    const allSaves = await this.getAllSaves();
-    const projectSaves = allSaves.filter((s) => s.projectId === projectId);
-
-    for (const save of projectSaves) {
-      await this.deleteRecord(save.id);
-    }
+    await new Promise<void>((resolve, reject) => {
+      const tx = this.db!.transaction(AUTO_SAVE_STORE, "readwrite");
+      const store = tx.objectStore(AUTO_SAVE_STORE);
+      const index = store.index("projectId");
+      for (const id of projectIds) {
+        const request = index.openKeyCursor(id);
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          store.delete(cursor.primaryKey);
+          cursor.continue();
+        };
+      }
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error ?? new Error("Recovery deletion aborted"));
+      tx.onerror = () => reject(tx.error);
+    });
   }
 
   /** Drain in-flight saves before a project leaves the editor; retain recovery slots. */

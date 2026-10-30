@@ -32,6 +32,17 @@ const internals = (manager: AutoSaveManager): TestableManager =>
   manager as unknown as TestableManager;
 
 describe("AutoSaveManager", () => {
+  it("deletes recovery slots for a batch while retaining other projects", async () => {
+    globalThis.indexedDB = new IDBFactory();
+    const manager = new AutoSaveManager();
+    await manager.initialize();
+    for (const id of ["a", "b", "keep"]) {
+      await manager.forceSave({ ...project(id), id });
+    }
+    await manager.clearProjectsSaves(["a", "b"]);
+    const remaining = await manager.checkForRecovery();
+    expect(remaining.map((save) => save.projectId)).toEqual(["keep"]);
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();

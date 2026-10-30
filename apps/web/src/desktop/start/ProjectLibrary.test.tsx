@@ -12,6 +12,7 @@ import type { ProjectLibraryData } from "./project-library-service";
 
 const mocks = vi.hoisted(() => ({
   load: vi.fn(),
+  saveFile: vi.fn(),
   rename: vi.fn(),
   copy: vi.fn(),
   move: vi.fn(),
@@ -84,6 +85,16 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ProjectLibrary", () => {
+  it("saves a project file from its menu without opening the editor", async () => {
+    mocks.saveFile.mockResolvedValue(true);
+    const open = vi.fn();
+    render(<ProjectLibrary onOpen={open} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Alpha" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Save project file…" }));
+    await waitFor(() => expect(mocks.saveFile).toHaveBeenCalledWith("a"));
+    expect(await screen.findByRole("status")).toHaveTextContent("Project file saved");
+    expect(open).not.toHaveBeenCalled();
+  });
   it("opens only the project button and confirms a rename without opening the editor", async () => {
     const open = vi.fn().mockResolvedValue(undefined);
     render(<ProjectLibrary onOpen={open} />);
