@@ -39,7 +39,7 @@ async function saved(page: Page) {
   await vi.waitFor(async () => expect(await page.getByTestId("human-board-canvas").getAttribute("data-save-state")).toBe("saved"), { timeout: 20_000 });
 }
 
-async function elementPoint(page: Page, element: BoardElement) {
+async function elementPoint(page: Page, element: BoardElement, mediaHeader = false) {
   await saved(page);
   // Embed DOM follows the live viewport immediately; its persisted viewport can
   // still describe the previous fit while the autosave debounce is pending.
@@ -48,14 +48,15 @@ async function elementPoint(page: Page, element: BoardElement) {
     const content = kind === "model3d"
       ? page.locator(`[data-testid="model-preview"][data-resource-id="${resourceId}"]`)
       : page.locator(`video[src$="/${resourceId}"]`);
-    return content.evaluate(node => new Promise<{ x: number; y: number }>((resolve, reject) => {
+    return content.evaluate((node, header) => new Promise<{ x: number; y: number }>((resolve, reject) => {
       let previous = "", stable = 0;
       const deadline = performance.now() + 5000;
       const inspect = () => {
         const bounds = node.closest(".excalidraw__embeddable-container__inner")!.getBoundingClientRect();
         const scene = node.closest('[data-testid="human-board-scene"]')!.getBoundingClientRect();
-        const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
-        const current = [bounds.x, bounds.y, bounds.width, bounds.height].join(":");
+        const target = header ? node.closest('[data-testid="human-board-media"]')!.querySelector(":scope > div:first-child > span")!.getBoundingClientRect() : bounds;
+        const x = target.x + target.width / 2, y = target.y + target.height / 2;
+        const current = [bounds.x, bounds.y, bounds.width, bounds.height, target.x, target.y, target.width, target.height].join(":");
         const visible = x > scene.left && x < scene.right && y > scene.top && y < scene.bottom;
         stable = visible && current === previous ? stable + 1 : 0;
         previous = current;
@@ -64,7 +65,7 @@ async function elementPoint(page: Page, element: BoardElement) {
         else requestAnimationFrame(inspect);
       };
       requestAnimationFrame(inspect);
-    }));
+    }), mediaHeader);
   }
   const boardId = await page.getByTestId("human-board-canvas").getAttribute("data-board-id");
   const board = (await boards(page)).find(board => board.id === boardId)!;
@@ -77,13 +78,16 @@ async function elementPoint(page: Page, element: BoardElement) {
 async function activateMedia(page: Page, element: BoardElement) {
   const scene = page.getByTestId("human-board-scene").locator(".excalidraw");
   await scene.focus(); await page.keyboard.press("Escape");
-  let at = await elementPoint(page, element);
+  // The title activates the embed without double-clicking the native video.
+  // On macOS, the latter can enter player fullscreen as the embed becomes active.
+  let at = await elementPoint(page, element, true);
   await page.mouse.click(at.x, at.y);
   await vi.waitFor(async () => expect(await page.getByTestId("human-board-canvas").getAttribute("data-selected-element-id")).toBe(element.id), { timeout: 10_000 });
   // Selecting a newly added image can still finish its automatic fit. Observe
   // the selected object's live, settled position before entering its controls.
-  at = await elementPoint(page, element);
+  at = await elementPoint(page, element, true);
   await page.mouse.dblclick(at.x, at.y);
+  expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
 }
 
 test("private mixed-media board appends in one scene, exports one frozen container and retains undo resources", async () => {
