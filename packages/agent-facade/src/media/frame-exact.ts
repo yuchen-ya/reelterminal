@@ -549,12 +549,14 @@ async function extractByPtsWindows(
     const prefix = `tmpC${clusterIndex}`;
     // Seek one frame before the first window so the target always sits
     // inside the decoded range; -t bounds the read just past the last one.
+    // Packet/decoded PTS are container timestamps. Preserve them with copyts
+    // and interpret -ss in that same timeline, including a nonzero start.
     const seekSec = Math.max(0, firstPts - frameDeltaSec);
     const readSec = lastPts - seekSec + frameDeltaSec * 3 + eps * 2;
     const stderr = await runToolProcess(
       ffmpeg,
-      ["-hide_banner", "-nostdin", "-loglevel", "info",
-        "-ss", seekSec.toFixed(6), "-t", readSec.toFixed(6), ...inputOptions, "-i", sourcePath,
+      ["-hide_banner", "-nostdin", "-loglevel", "info", "-copyts",
+        "-seek_timestamp", "1", "-ss", seekSec.toFixed(6), "-t", readSec.toFixed(6), ...inputOptions, "-i", sourcePath,
         "-vf", `showinfo,select='${windows}'`, "-an", "-fps_mode", "passthrough",
         join(destDir, `${prefix}-%06d.png`)],
       options,
@@ -631,11 +633,12 @@ export async function extractFramesExact(
   let decoded: { counter: number; ptsTimeSec: number }[];
   try {
     // showinfo BEFORE select: its counter is the global decode index.
+    // copyts prevents FFmpeg from subtracting the input's starting timestamp.
     // -frames:v stops the pipeline once every requested frame has passed
     // through select, so decode does not grind on to the end of the file.
     const { stderr } = await runToolProcess(
       ffmpeg,
-      ["-hide_banner", "-nostdin", "-loglevel", "info", ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
+      ["-hide_banner", "-nostdin", "-loglevel", "info", "-copyts", ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
         "-vf", `showinfo,${expr}`, "-an", "-fps_mode", "passthrough",
         "-frames:v", String(indices.length), join(destDir, "tmp-%06d.png")],
       options,
@@ -693,7 +696,7 @@ async function extractFramesOrdered(
   try {
     ({ stderr } = await runToolProcess(
       ffmpeg,
-      ["-hide_banner", "-nostdin", "-loglevel", "info", ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
+      ["-hide_banner", "-nostdin", "-loglevel", "info", "-copyts", ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
         "-vf", "showinfo", "-an", "-fps_mode", "passthrough",
         "-frames:v", String(maxIndex + 1), "-f", "null", "-"],
       options,
@@ -748,7 +751,7 @@ async function extractFramesOrderedPng(
   try {
     ({ stderr } = await runToolProcess(
       ffmpeg,
-      ["-hide_banner", "-nostdin", "-loglevel", "info", ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
+      ["-hide_banner", "-nostdin", "-loglevel", "info", "-copyts", ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
         "-vf", "showinfo", "-an", "-fps_mode", "passthrough",
         "-frames:v", String(maxIndex + 1), join(destDir, "tmp-%06d.png")],
       options,

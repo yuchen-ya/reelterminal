@@ -155,6 +155,20 @@ describe("resolveTargetFrames + buildSelectExpr", () => {
 });
 
 describe("extractFramesExact", () => {
+  it.skipIf(skip())("preserves actual nonzero source PTS in sequential and sparse extraction", async () => {
+    const source = join(dir, "offset-start.mp4");
+    await runToolProcess(binaries!.ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", "-i", samplePath,
+      "-c", "copy", "-output_ts_offset", "5", source]);
+    const { stdout } = await runToolProcess(binaries!.ffprobe, ["-v", "error", "-select_streams", "v:0",
+      "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", source]);
+    const truth = (JSON.parse(stdout) as { frames: { best_effort_timestamp_time: string }[] }).frames;
+    expect(Number(truth[0].best_effort_timestamp_time)).toBeGreaterThan(4);
+    for (const indices of [[0, 4], [74]]) {
+      const extracted = await extractFramesExact(binaries!.ffmpeg, source, indices, join(dir, `offset-${indices.join("-")}`), { ffprobe: binaries!.ffprobe });
+      for (const frame of extracted.frames) expect(frame.ptsTimeSec).toBeCloseTo(Number(truth[frame.frame].best_effort_timestamp_time), 4);
+    }
+  });
+
   it.skipIf(skip())("extracts exactly the requested frames with verified PTS mapping", async () => {
     const outDir = join(dir, "ex1");
     const { frames, limitations } = await extractFramesExact(binaries!.ffmpeg, samplePath, [3, 40, 41, 42], outDir);

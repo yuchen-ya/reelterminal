@@ -740,7 +740,7 @@ export const frameToolsPlugin = definePlugin({
           outputDir: { type: "string" },
           requestedCount: { type: "integer", minimum: 1 },
           facts: FACTS_OUTPUT,
-          frames: { type: "array", minItems: 1, items: { type: "object", additionalProperties: false, properties: { frame: { type: "integer", minimum: 0 }, ptsTimeSec: { type: "number", minimum: 0 }, artifact: artifactOutput }, required: ["frame", "ptsTimeSec", "artifact"] } },
+          frames: { type: "array", minItems: 1, items: { type: "object", additionalProperties: false, properties: { frame: { type: "integer", minimum: 0 }, ptsTimeSec: { type: "number" }, artifact: artifactOutput }, required: ["frame", "ptsTimeSec", "artifact"] } },
           limitations: { type: "array", items: { type: "string" } },
         },
         required: ["coordinateSpace", "revision", "sourceRevision", "sourcePath", "outputDir", "requestedCount", "facts", "frames", "limitations"],
