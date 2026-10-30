@@ -839,7 +839,7 @@ function ReviewNodeEditor({
             paginated={state.hasPrevious || state.hasNext}
             pageKey={state.pageNumber}
             independent
-            loading={state.loading && !state.controller.currentItem}
+            loading={state.loading}
             onImport={() => browserDemo ? toast.error("请使用桌面版导入文件") : setImportOpen(true)}
               paginationFooter={
                 (state.hasPrevious || state.hasNext || (state.loading && !state.controller.currentItem)) ? (

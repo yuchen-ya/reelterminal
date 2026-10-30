@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test, vi } from "vitest";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ReviewContext, ReviewNode } from "@reelterminal/core/review/types";
 import { launchApp, type LaunchedApp } from "./harness/launch";
@@ -59,6 +59,21 @@ describe("review navigation and decision loop", () => {
     await body.getByRole("heading", { name: "正文1", exact: true }).waitFor();
     const dock = page.getByTestId("workbench-bottom-dock");
     const statuses = async () => value(await agent.callCommand<{ items: Array<{ id: string; status: string }> }>("review.get", { target })).items;
+    // Observe each actual DOM commit, including a transient completed banner
+    // that a later textContent read could otherwise miss.
+    await page.evaluate(({ itemId, expected }) => {
+      const probe = { samples: 0, staleRows: [] as string[], stop: (): void => undefined };
+      const observer = new MutationObserver(() => {
+        const complete = document.querySelector('[data-testid="review-complete"]');
+        if (!complete?.getClientRects().length) return;
+        probe.samples++;
+        const row = document.querySelector(`[data-tree-item-id="${itemId}"]`)?.textContent ?? "<missing>";
+        if (!row.includes(expected) && probe.staleRows.length < 10) probe.staleRows.push(row);
+      });
+      observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+      probe.stop = () => observer.disconnect();
+      (window as unknown as { reviewCompletionFrames: typeof probe }).reviewCompletionFrames = probe;
+    }, { itemId: ids[1], expected: "✓ 保留" });
     await dock.getByRole("button", { name: "返工", exact: true }).click();
     const reason = page.getByRole("textbox", { name: /共同修改要求/ });
     await reason.waitFor(); await page.keyboard.press("Escape");
@@ -71,6 +86,16 @@ describe("review navigation and decision loop", () => {
     await body.getByRole("heading", { name: "正文2", exact: true }).waitFor();
     await dock.getByRole("button", { name: "保留", exact: true }).click();
     await page.getByTestId("review-complete").waitFor();
+    const frames = await page.evaluate(() => {
+      const probe = (window as unknown as { reviewCompletionFrames: { samples: number; staleRows: string[]; stop(): void } }).reviewCompletionFrames;
+      probe.stop();
+      return { samples: probe.samples, staleRows: probe.staleRows };
+    });
+    await mkdir(ARTIFACTS_DIR, { recursive: true });
+    await writeFile(path.join(ARTIFACTS_DIR, "review-completion-frames.json"), JSON.stringify(frames, null, 2));
+    if (frames.staleRows.length) await page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-completion-stale.png") });
+    expect(frames.samples).toBeGreaterThan(0);
+    expect(frames.staleRows).toEqual([]);
     expect(await tree.locator(`[data-tree-item-id="${ids[0]}"]`).textContent()).toContain("↺ 返工");
     expect(await tree.locator(`[data-tree-item-id="${ids[1]}"]`).textContent()).toContain("✓ 保留");
     await page.getByRole("button", { name: "发布本批结果", exact: true }).click();
