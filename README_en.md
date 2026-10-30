@@ -49,9 +49,9 @@ AI video models make it easier to create footage, but turning **a collection of 
 
 ### 🆕 What's new in v1.3.9
 
-- **Pitch-preserving audio speed and project management:** constant-speed audio retiming now preserves pitch by default across preview and export via Signalsmith Stretch WASM (with an explicit opt-out for varispeed); the project menu adds Save Project File As and Reveal Saved File, bulk permanent deletion cleans corresponding recovery slots, and cleanup previews enforce a select → preview → confirm flow that blocks empty plans in both the UI and service API.
-- **Target-bound startup and on-demand CLI discovery:** copied startup prompts now emit a single-line `start --target <ref>` command (binding the exact workspace or review task without exposing credentials), paired with `tools` and `describe` for selective capability and schema discovery without probing unrelated environments.
-- **Review Workspace and Private Free Boards (experimental):** review tasks and private Excalidraw-based free boards (supporting images, text, video, GLB, Markdown, local HTML, and isolated web browsing) now share a unified reorderable tab strip, alongside scoped pixel repair, multi-step repair draft CLI commands, and exact zero-based video frame capture. See the standalone 🧪 **[Review Workspace & Free Boards guide](README_review_en.md)**.
+- **Audio retiming and project management:** constant-speed retiming preserves pitch by default, with an explicit opt-out. Fixes duplicate audio starts after seeking; adds project-file actions, recovery management, and cleanup preview and confirmation.
+- **Target-bound CLI discovery:** a single `start --target <ref>` command binds the workspace or review task without credentials. Use `tools` and `describe` to discover capabilities and commands on demand.
+- **Review and private free boards (experimental):** unified tabs support images, text, video, GLB, Markdown, HTML, and isolated web browsing, with improved narrow-window editing, undo, and media interaction. See the 🧪 **[standalone guide](README_review_en.md)** for repair, frame capture, and explicit exports.
 
 See the [1.3.9 build notes](docs/RELEASE-1.3.9.md), [1.3.8 build notes](docs/RELEASE-1.3.8.md), [1.3.6 build notes](docs/RELEASE-1.3.6.md), and [Releases](https://github.com/yuchen-ya/reelterminal/releases) for full details.
 

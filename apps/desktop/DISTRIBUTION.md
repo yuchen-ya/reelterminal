@@ -1,10 +1,11 @@
 # Desktop distribution
 
-## Current local build: 1.3.9
+## Current version: 1.3.9
 
-The current application version is 1.3.9. Windows x64 installer and portable ZIP
-builds are local only; they have not been publicly released. See the [1.3.9 build
-scope](../../docs/RELEASE-1.3.9.md) and [release notes draft](../../docs/RELEASE-NOTES-DRAFT.md).
+The current application version is 1.3.9. This release targets a Windows x64
+installer and portable ZIP; available downloads are listed on
+[Releases](https://github.com/yuchen-ya/reelterminal/releases). See the
+[1.3.9 build scope](../../docs/RELEASE-1.3.9.md).
 Confirm the source, signing status, checksums and packaged validation for the actual
 release artifacts before publication. See the [upgrade guide](../../docs/WINDOWS-UPGRADE.md)
 before replacing an existing installation. Legacy unsafe uninstallers are blocked;

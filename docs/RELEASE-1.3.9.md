@@ -1,11 +1,12 @@
 # ReelTerminal 1.3.9
 
-2026-10-30。Windows x64 本地安装包与便携 ZIP；不安装、替换用户实例或公开发布。
+2026-10-30。Windows x64 安装包与便携 ZIP。可用下载以 [Releases](https://github.com/yuchen-ya/reelterminal/releases) 为准；构建和验收不替换用户正在运行的实例。
 
 ## 本次更新
 
 本包在 `windows-1.3.8-8f014a28` 之后的源码上重新构建，包含：
 
+- 发布前修复音频 seek 重复调度、画板选中后的场景位移、macOS 撤销快捷键及窄窗口文档编辑；更新相关回归断言。
 - 私有自由画板扩展到图片、文本、视频、GLB、Markdown、HTML 与网页；原生隔离浏览、文档源与相对资源保存、快照和主动导出。画板默认不进入 Agent 上下文。
 - 审阅任务和自由画板合并到可排序标签栏，支持关闭后重开和重启恢复；打开/管理对话框集中管理任务分类与画板。地址栏复制当前审阅任务的显式 `start --target` 命令。
 - 审阅图像连续更新保留已解码画面、视口和焦点；显示目标隔离的 CLI 活动记录。首张修补图不可用时显示原图及真实失败原因，新修补再次尝试。
@@ -47,4 +48,4 @@ pnpm --filter @reelterminal/desktop exec electron-builder --win nsis zip --x64 -
 产物位于 `apps/desktop/release/windows-1.3.9-<short-sha>/`，包括
 `ReelTerminal-1.3.9-x64.exe`、`ReelTerminal-1.3.9-x64.zip`、解包应用和更新元数据。
 `dist/performance-build.json` 记录完整源 SHA 与 clean 状态；独立输出目录保留旧包。
-本地构建不上传更新源、不创建 GitHub Release。升级前见 [Windows 升级说明](WINDOWS-UPGRADE.md)。
+上述构建命令不上传更新源；公开发布需另行核对最终提交、CI 与资产。升级前见 [Windows 升级说明](WINDOWS-UPGRADE.md)。
