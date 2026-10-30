@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 2
       matrix:
         os: [macos-latest, windows-latest]
 
@@ -115,7 +115,7 @@ jobs:
       - name: Disk usage report
         shell: bash
         run: df -h /
-      - name: Release regression gate (native audio, board controls and image decode)
+      - name: Release regression gate (audio, board, review completion and image decode)
         env:
           REELTERMINAL_E2E_SMALL_WINDOW: "1"
         shell: bash
@@ -124,7 +124,8 @@ jobs:
           pnpm --filter @reelterminal/desktop exec vitest run --config e2e/vitest.config.ts \
           e2e/audio-pitch.e2e.ts e2e/free-board-documents.e2e.ts \
           e2e/human-board-acceptance.e2e.ts e2e/review-update-continuity.e2e.ts \
-          -t 'packaged pitch-preserving playback|HTTP and local HTML|video/model interactions|CLI image revisions retain'
+          e2e/review-interaction.e2e.ts \
+          -t 'packaged pitch-preserving playback|HTTP and local HTML|video/model interactions|CLI image revisions retain|reveals the opened item'
       - name: Run Electron E2E (flows A+B, cross-cutting, endpoint safety)
         env:
           REELTERMINAL_E2E_SMALL_WINDOW: "1"

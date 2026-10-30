@@ -219,3 +219,53 @@ it("retains the selected detail through an external repair refresh and blocks ed
   expect(result.current.controller.currentItem).toBeNull();
   await waitFor(() => expect(result.current.controller.currentItem?.id).toBe(first.itemIds[1]));
 });
+
+it.each(["ready", "failed"] as const)("keeps a completed batch busy until the selected decision detail read is %s", async readState => {
+  const { target, batches } = await imageBatches();
+  const first = batches[0];
+  const renders: Array<{ pending: number | undefined; loading: boolean; status: string | undefined; error: string | null }> = [];
+  const { result } = renderHook(() => {
+    const state = useReviewController(target);
+    if (state.overview?.node.revision === 3) renders.push({
+      pending: state.controller.activeBatch?.pendingCount,
+      loading: state.loading,
+      status: state.controller.currentItem?.status,
+      error: state.error,
+    });
+    return state;
+  });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  act(() => result.current.controller.setActiveBatchId(first.batchId));
+  await waitFor(() => expect(result.current.controller.currentItem?.id).toBe(first.itemIds[0]));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const readItem = reviewService.getItem.bind(reviewService);
+  vi.spyOn(reviewService, "getItem").mockImplementation(async (scope, id) => {
+    const item = await readItem(scope, id);
+    if (item.node.revision === 3) {
+      await pending;
+      if (readState === "failed") throw new Error("Synthetic decision detail read failed");
+    }
+    return item;
+  });
+  try {
+    await act(async () => {
+      expect(await result.current.controller.commitDecision("kept", first.itemIds, { advance: false })).toEqual({ ok: true });
+    });
+    await waitFor(() => expect(result.current.overview?.node.revision).toBe(3));
+    expect(result.current.controller.activeBatch?.pendingCount).toBe(0);
+    expect(result.current.controller.currentItem?.status).toBe("pending");
+    const stale = renders.filter(frame => frame.pending === 0 && frame.status === "pending" && !frame.error);
+    expect(stale.length).toBeGreaterThan(0);
+    expect(stale.every(frame => frame.loading)).toBe(true);
+  } finally { await act(async () => finish()); }
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  if (readState === "failed") {
+    expect(result.current.error).toContain("Synthetic decision detail read failed");
+    expect(result.current.controller.currentItem?.status).toBe("pending");
+  } else {
+    expect(result.current.controller.currentItem?.status).toBe("kept");
+    expect(result.current.controller.batchItems.every(item => item.status === "kept")).toBe(true);
+  }
+});

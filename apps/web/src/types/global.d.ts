@@ -459,7 +459,7 @@ interface ReelTerminalDesktopBridge {
         resize(input: { id: string; bounds: { x: number; y: number; width: number; height: number } }): Promise<void>;
         close(id: string): Promise<void>;
         capture(id: string): Promise<{ png: Uint8Array; url: string }>;
-        captureEditor(bounds: { x: number; y: number; width: number; height: number }): Promise<Uint8Array>;
+        captureEditor(bounds: { x: number; y: number; width: number; height: number; frameToken: number }): Promise<Uint8Array>;
         onLoadError(callback: (error: { id: string; message: string }) => void): () => void;
       };
       reviewFiles?: {

@@ -8,9 +8,12 @@ const native = vi.hoisted(() => {
   const beforeRequest = vi.fn();
   const contents = { on: vi.fn((name, listener) => navigation.set(name, listener)), setWindowOpenHandler: vi.fn(),
     loadFile: vi.fn(async () => undefined), focus: vi.fn() };
-  const editor = { webContents: { on: vi.fn() }, contentView: { addChildView: vi.fn() },
+  let present: (frame: unknown) => void = () => undefined;
+  const editor = { webContents: { on: vi.fn(), once: vi.fn(), removeListener: vi.fn(), isDestroyed: () => false,
+    getZoomFactor: () => 1, invalidate: vi.fn(), endFrameSubscription: vi.fn(),
+    beginFrameSubscription: vi.fn((_dirty, callback: (frame: unknown) => void) => { present = callback; }) }, contentView: { addChildView: vi.fn() },
     getContentSize: () => [800, 600], once: vi.fn() };
-  return { handlers, navigation, beforeRequest, contents, editor };
+  return { handlers, navigation, beforeRequest, contents, editor, present: (frame: unknown) => present(frame) };
 });
 vi.mock("electron", () => ({ app: { getPath: () => "C:\\Temp" },
   session: { fromPartition: () => ({ setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(),
@@ -19,7 +22,7 @@ vi.mock("electron", () => ({ app: { getPath: () => "C:\\Temp" },
 }));
 vi.mock("node:fs/promises", () => ({ mkdtemp: async () => "C:\\Temp\\reelterminal-board-test", mkdir: vi.fn(), writeFile: vi.fn() }));
 vi.mock("../editor-window", () => ({ getEditorWindow: () => native.editor }));
-vi.mock("./index", () => ({ handle: (channel: string, _schema: unknown, handler: (input: unknown) => Promise<unknown>) => native.handlers.set(channel, handler) }));
+vi.mock("./index", () => ({ handle: (channel: string, schema: { parse(input: unknown): unknown }, handler: (input: unknown) => Promise<unknown>) => native.handlers.set(channel, async input => handler(schema.parse(input))) }));
 vi.mock("./review-files", () => ({ getReviewFileStore: vi.fn() }));
 
 import { registerHumanBoardDocumentsIpc } from "./human-board-documents";
@@ -41,4 +44,43 @@ it("rejects malformed local navigation and always completes the web request call
   const local = pathToFileURL(path.join("C:\\Temp\\reelterminal-board-test", "image.png")).href;
   request({ url: local }, callback);
   expect(callback).toHaveBeenCalledExactlyOnceWith({ cancel: false });
+});
+
+function editorFrame(token: number, scale: number, name: string) {
+  return { isEmpty: () => false, getSize: () => ({ width: 800 * scale, height: 600 * scale }),
+    crop: (bounds: { x: number; width: number; height: number }) => bounds.width === 1 && bounds.height === 1
+      ? { toBitmap: () => (token >>> Math.floor(bounds.x / (8 * scale))) & 1
+        ? Buffer.from([255, 255, 255, 255]) : Buffer.from([255, 0, 0, 0]) }
+      : { isEmpty: () => false, toPNG: () => Buffer.from(name) } };
+}
+
+it.each([0.25, 1, 1.25, 2])("rejects a queued document surface before accepting the current marker at scale %s", async scale => {
+  registerHumanBoardDocumentsIpc();
+  native.editor.webContents.endFrameSubscription.mockClear();
+  let resolved = false;
+  const capture = native.handlers.get(CHANNELS.boardDocumentCaptureEditor)!({ x: 0, y: 8, width: 640, height: 448, frameToken: 0x40000002 });
+  void capture.then(() => { resolved = true; }, () => undefined);
+  native.present(editorFrame(0x40000001, scale, "previous document"));
+  await new Promise(resolve => setImmediate(resolve));
+  expect(resolved).toBe(false);
+  native.present(editorFrame(0x40000002, scale, "current document"));
+  expect(await capture).toEqual(Buffer.from("current document"));
+  expect(native.editor.webContents.endFrameSubscription).toHaveBeenCalledOnce();
+});
+
+it("fails a capture whose current document never reaches presentation instead of returning the previous one", async () => {
+  vi.useFakeTimers();
+  try {
+    registerHumanBoardDocumentsIpc();
+    const capture = native.handlers.get(CHANNELS.boardDocumentCaptureEditor)!({ x: 0, y: 8, width: 640, height: 448, frameToken: 0x40000002 });
+    const failed = expect(capture).rejects.toThrow();
+    native.present(editorFrame(0x40000001, 1, "previous document"));
+    await vi.advanceTimersByTimeAsync(10001);
+    await failed;
+  } finally { vi.useRealTimers(); }
+});
+
+it.each([-1, 0x100000000, 0.5])("rejects an invalid frame token %s", async frameToken => {
+  registerHumanBoardDocumentsIpc();
+  await expect(native.handlers.get(CHANNELS.boardDocumentCaptureEditor)!({ x: 0, y: 8, width: 640, height: 448, frameToken })).rejects.toThrow();
 });

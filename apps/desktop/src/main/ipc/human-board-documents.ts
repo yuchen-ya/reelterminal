@@ -60,7 +60,21 @@ function requireGuest(id: string): Guest {
   return guest;
 }
 
-function capturePresentedFrame(contents: WebContents): Promise<NativeImage> {
+function frameHasDocumentToken(frame: NativeImage, frameToken: number, scale: number): boolean {
+  const size = frame.getSize();
+  for (let bit = 0; bit < 32; bit++) {
+    const x = Math.floor((bit * 8 + 4) * scale), y = Math.floor(4 * scale);
+    if (x >= size.width || y >= size.height) return false;
+    const pixel = frame.crop({ x, y, width: 1, height: 1 }).toBitmap({ scaleFactor: 1 });
+    // Native bitmap channel order is platform dependent. Black/white has the
+    // same three color bytes in every order; the fourth byte is opaque alpha.
+    const matches = [...pixel.subarray(0, 4)].filter(value => (frameToken >>> bit) & 1 ? value > 223 : value < 32).length;
+    if (matches < 3) return false;
+  }
+  return true;
+}
+
+function capturePresentedFrame(contents: WebContents, accepts: (frame: NativeImage) => boolean): Promise<NativeImage> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const cleanup = () => {
@@ -68,12 +82,22 @@ function capturePresentedFrame(contents: WebContents): Promise<NativeImage> {
       contents.removeListener("destroyed", cancelled);
       if (!contents.isDestroyed()) contents.endFrameSubscription();
     };
-    const fail = (error: Error) => { if (!settled) { settled = true; cleanup(); reject(error); } };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      setImmediate(() => { cleanup(); reject(error); });
+    };
     const cancelled = () => fail(new Error("文档截图已取消"));
     const timeout = setTimeout(() => fail(new Error("文档预览未完成绘制")), 10000);
     contents.once("destroyed", cancelled);
     contents.beginFrameSubscription(false, frame => {
       if (settled || frame.isEmpty()) return;
+      try {
+        if (!accepts(frame)) {
+          setImmediate(() => { if (!settled && !contents.isDestroyed()) contents.invalidate(); });
+          return;
+        }
+      } catch (error) { fail(error instanceof Error ? error : new Error(String(error))); return; }
       settled = true;
       // End the native subscription after its callback has unwound.
       setImmediate(() => { cleanup(); resolve(frame); });
@@ -95,12 +119,13 @@ export function registerHumanBoardDocumentsIpc(): void {
     if (image.isEmpty()) throw new Error("页面尚无可截图的视口");
     return { png: image.toPNG(), url: current.view.webContents.getURL() };
   });
-  handle(CHANNELS.boardDocumentCaptureEditor, rectangle, async bounds => {
+  handle(CHANNELS.boardDocumentCaptureEditor, rectangle.extend({ frameToken: z.number().int().min(0).max(0xffffffff) }), async bounds => {
     const editor = getEditorWindow()!;
     const contents = editor.webContents;
-    // rAF only orders renderer work; CopyFromSurface can still read the prior
-    // compositor surface. Capture one actual presentation after invalidation.
-    const frame = await capturePresentedFrame(contents);
+    // Presentation alone does not identify the renderer's current document.
+    // Accept only its paint receipt, then crop the receipt out of the result.
+    const frame = await capturePresentedFrame(contents, candidate => frameHasDocumentToken(candidate, bounds.frameToken,
+      candidate.getSize().width / editor.getContentSize()[0] * contents.getZoomFactor()));
     const size = frame.getSize();
     const scale = size.width / editor.getContentSize()[0] * contents.getZoomFactor();
     const x = Math.round(bounds.x * scale), y = Math.round(bounds.y * scale);

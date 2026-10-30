@@ -143,6 +143,11 @@ export function useReviewController(target: Target) {
   // Navigation and target changes must never borrow another item's picture.
   const loaded = loadedDetail?.targetKey === targetKey && loadedDetail.snapshot.item.id === requestedId
     ? loadedDetail.snapshot : null;
+  // The overview can publish a new decision before the detail-loading effect
+  // runs. Keep completion/actions busy during that render while retaining the
+  // previous picture. A failed read reports its error instead of spinning.
+  const awaitingCurrentDetail = !!requestedId && !!overview
+    && (!loaded || loaded.node.revision !== overview.node.revision) && !error;
 
   useEffect(() => {
     let cancelled = false;
@@ -369,7 +374,7 @@ export function useReviewController(target: Target) {
     saveModelObservation: async (input: import("../../services/review-workspace/model-feedback").SaveModelObservation): Promise<WorkbenchMutationResult> => {
     try { if (!overview) throw reviewError("CONFLICT", "节点未载入"); await saveModelObservation(target, overview.node.revision, input); return { ok: true }; }
     catch (problem) { refresh(); return outcome(problem); }
-  } }, overview, loading: loading || detailLoading || previewLoading, error, refresh, pageNumber: previousCursors.length + 1,
+  } }, overview, loading: loading || detailLoading || awaitingCurrentDetail || previewLoading, error, refresh, pageNumber: previousCursors.length + 1,
     hasPrevious: previousCursors.length > 0, hasNext: !!page.cursor,
     nextPage: () => { if (page.cursor) useWorkbenchUiStore.getState().setReviewPage(page.cursor, [...previousCursors, pageCursor]); },
     previousPage: () => { useWorkbenchUiStore.getState().setReviewPage(previousCursors.at(-1), previousCursors.slice(0, -1)); },

@@ -73,6 +73,7 @@ export function documentPreviewSource(binding: BoardDocumentBinding): string {
 }
 
 let documentCaptureQueue: Promise<void> = Promise.resolve();
+let documentCaptureToken = crypto.getRandomValues(new Uint32Array(1))[0];
 
 /** Concurrent region captures share one editor surface, so paint them in order. */
 export function captureBoardDocument(element: HTMLElement, width: number, height: number): Promise<Blob> {
@@ -89,11 +90,27 @@ async function captureDocumentViewport(element: HTMLElement, width: number, heig
   if (!bridge) throw new Error("文档截图需要桌面版");
   const viewport = document.createElement("div");
   viewport.className = "human-board-document-capture";
-  Object.assign(viewport.style, { position: "fixed", left: "0", top: "0", width: `${Math.min(width, window.innerWidth)}px`, height: `${Math.min(height, window.innerHeight)}px`, zIndex: "2147483647", background: "#fff", color: "#17202a", overflow: "hidden", pointerEvents: "none" });
+  // A 32-bit black/white paint receipt sits above the document and is excluded
+  // from the returned crop. It distinguishes this DOM surface from queued
+  // compositor frames belonging to a previous document.
+  documentCaptureToken = (documentCaptureToken + 1) & 0x3fffffff;
+  const frameToken = documentCaptureToken | 0x40000000;
+  const captureHeight = Math.max(1, Math.min(height, window.innerHeight - 8));
+  Object.assign(viewport.style, { position: "fixed", left: "0", top: "0", width: `${Math.min(width, window.innerWidth)}px`, height: `${captureHeight + 8}px`, zIndex: "2147483647", background: "#fff", color: "#17202a", overflow: "hidden", pointerEvents: "none" });
+  const marker = document.createElement("div");
+  Object.assign(marker.style, { display: "flex", position: "absolute", left: "0", top: "0", width: "256px", height: "8px" });
+  for (let bit = 0; bit < 32; bit++) {
+    const cell = document.createElement("span");
+    Object.assign(cell.style, { flex: "none", width: "8px", height: "8px", background: (frameToken >>> bit) & 1 ? "#fff" : "#000" });
+    marker.append(cell);
+  }
+  viewport.append(marker);
   const clone = element.cloneNode(true) as HTMLElement;
   clone.style.transform = "none";
+  clone.style.position = "absolute";
+  clone.style.top = "8px";
   clone.style.width = "100%";
-  clone.style.height = "100%";
+  clone.style.height = `${captureHeight}px`;
   clone.style.overflow = "hidden";
   viewport.append(clone);
   document.body.append(viewport);
@@ -107,7 +124,7 @@ async function captureDocumentViewport(element: HTMLElement, width: number, heig
       // Missing referenced assets remain visibly missing, like the live preview.
     })));
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    const png = await bridge.captureEditor({ x: 0, y: 0, width: viewport.offsetWidth, height: viewport.offsetHeight });
+    const png = await bridge.captureEditor({ x: 0, y: 8, width: viewport.offsetWidth, height: captureHeight, frameToken });
     return new Blob([new Uint8Array(png)], { type: "image/png" });
   } finally { viewport.remove(); }
 }
