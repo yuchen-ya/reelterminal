@@ -345,10 +345,16 @@ test("video/model interactions retain board geometry and freeze source views wit
     await page.mouse.dblclick(activeModelPoint.x, activeModelPoint.y);
     await vi.waitFor(async () => expect(await modelHost.evaluate(host => getComputedStyle(host.closest(".excalidraw__embeddable-container__inner")!).pointerEvents)).toBe("all"));
     const oldObservation = await observation();
-    const modelBounds = (await modelHost.boundingBox())!;
-    await page.mouse.move(modelBounds.x + modelBounds.width * 0.5, modelBounds.y + modelBounds.height * 0.5); await page.mouse.down();
-    await page.mouse.move(modelBounds.x + modelBounds.width * 0.65, modelBounds.y + modelBounds.height * 0.55, { steps: 10 }); await page.mouse.up();
-    await vi.waitFor(async () => expect(await observation()).not.toBe(oldObservation));
+    const modelCanvas = modelHost.locator("canvas");
+    const modelBounds = (await modelCanvas.boundingBox())!;
+    // Wait for the actual WebGL canvas to receive the pointer. The embed's
+    // pointer-events style can briefly precede Excalidraw's overlay transition;
+    // raw mouse.down then captures the drawing canvas for the entire gesture.
+    await modelCanvas.dragTo(modelCanvas, {
+      sourcePosition: { x: modelBounds.width * 0.5, y: modelBounds.height * 0.5 },
+      targetPosition: { x: modelBounds.width * 0.65, y: modelBounds.height * 0.55 },
+    });
+    await vi.waitFor(async () => expect(JSON.parse((await observation())!).camera).not.toEqual(JSON.parse(oldObservation!).camera));
     const afterInteraction = (await boards(page))[0];
     for (const element of [videoElement, modelElement]) expect(afterInteraction.elements.find(row => row.id === element.id)).toMatchObject({ x: element.x, y: element.y, width: element.width, height: element.height, angle: element.angle });
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("Escape"); await page.keyboard.press("Shift+1");
