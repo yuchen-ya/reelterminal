@@ -59,21 +59,19 @@
       "prepare": "准备导出", "newPlan": "准备另一份导出", "copy": "复制到文件夹…", "dragFolder": "拖出文件夹", "dragFiles": "拖出文件", "handed": "已交给系统，尚未验证目标应用是否接收。", "copied": "已复制并校验：{{directory}}",
       "state": { "queued": "等待准备", "preparing": "正在准备", "ready": "可以复制或拖出", "failed": "导出失败", "cancelled": "已取消" }
     },
-    "title": "审阅工作台", "nodes": "审阅任务", "newNode": "新建任务", "newNodeName": "任务名称", "expandSidebar": "展开审阅任务侧栏", "collapseSidebar": "收起侧栏", "nodeMenu": "任务操作", "adminMenu": "管理选项", "create": "创建", "searchNodes": "搜索任务", "nodeViews": "任务视图",
+    "title": "审阅工作台", "nodes": "审阅任务", "newNode": "新建任务", "newNodeName": "任务名称", "nodeMenu": "任务操作", "adminMenu": "管理选项", "create": "创建", "searchNodes": "搜索任务", "nodeViews": "任务视图",
     "recent": "最近", "pinned": "置顶", "archived": "归档", "trash": "回收站", "groups": "任务分类", "allGroups": "全部任务", "newGroupName": "新分类名称",
     "renameGroup": "重命名分类", "removeEmptyGroup": "删除空分类", "undoDirectory": "撤销目录操作", "redo": "重做", "noNodesInView": "此范围内还没有审阅任务", "loadMore": "加载更多",
     "moveToGroup": "移到任务分类", "ungrouped": "不分类", "rename": "重命名", "name": "名称", "save": "保存", "pin": "置顶", "unpin": "取消置顶", "archive": "归档", "unarchive": "取消归档", "restore": "还原", "moveToTrash": "移到回收站",
     "restoreBeforeEditing": "此任务在回收站中，还原后即可继续审阅。", "emptyWorkspace": "创建一个审阅任务，导入图片、视频、文字或数据表。审阅内容独立保存，无需打开视频项目。",
     "emptyNode": "把待审内容放到这个任务", "emptyNodeDescription": "导入本地文件或粘贴文字，也可以复制接入说明，让 Agent 将结果提交到这个任务。原件和审阅记录都会保留。",
-    "agentWrite": "Agent 可写审阅", "agentRead": "Agent 只读审阅", "copyStartup": "复制接入说明", "copied": "已复制", "retry": "重试", "loading": "正在读取…",
+    "agentWrite": "Agent 可写审阅", "agentRead": "Agent 只读审阅", "retry": "重试", "loading": "正在读取…",
     "legacyProject": "旧项目审阅：{{name}}", "backToNodes": "返回审阅任务", "legacyTools": "旧数据入口", "legacyMotion": "动态图形（旧）", "openProjectFirst": "请先打开对应的视频项目",
     "importTitle": "导入审阅内容", "importDescription": "在此任务中新建一个内容批次；已有内容会保留。", "files": "文件或文件夹", "pasteText": "粘贴文本", "batchName": "批次名称", "localFiles": "本地文件",
     "chooseFiles": "选择文件", "chooseFolder": "选择文件夹", "fileLimits": "每次 1–64 个文件。表格最多 5000 行、64 列；CSV 首行为列名，JSON 为平铺对象数组。文本支持 UTF-8 或带 BOM 的 UTF-16。原文件字节会同时保留。",
     "textBody": "文本正文（最多 200000 字符）", "readingFiles": "正在读取并检查文件…", "importing": "正在保存原件并提交内容…", "cancel": "取消", "import": "导入", "previous": "上一页", "next": "下一页", "pageScope": "列表每页最多 100 项；选择和批量操作仅作用于当前可见范围。",
     "kind": { "model3d": "3D 模型", "image": "图片", "video": "视频", "text": "文字", "data": "数据表" },
     "agentAccessLabel": "允许 Agent 修改审阅", "exportMenu": "\u5bfc\u51fa",
-    "copyTaskInstructions": "复制「{{name}}」的 Agent 启动提示词",
-    "startupPrompt": "立即执行：{{startCommand}}",
     "branch": {"label": "历史关联", "listTitle": "历史任务关联", "compareTitle": "比较并采纳分支结果", "baseRevision": "起点修订", "adoptHint": "选择要采纳的内容结果。保留源条目的决定与反馈，采纳时会再次检查源条目是否变化。", "select": "选择", "loading": "正在载入分支比较…", "refresh": "刷新比较", "adoptSelected": "采纳所选结果", "empty": "没有历史关联任务。新内容和返工请继续提交到当前任务。", "state": {"changed": "内容已修改", "added": "新增结果", "unchanged": "未修改", "adopted": "已采纳", "conflict": "源条目已变化"}}
   },
   "projectMediaFilters": {

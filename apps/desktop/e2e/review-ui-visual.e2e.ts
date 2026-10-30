@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 /**
  * Visual regression baseline spec for Review Workbench (isolated profile).
  *
@@ -166,6 +167,7 @@ describe("review workbench visual baseline captures", () => {
     // -------------------------------------------------------------
     // State 2: empty-node (node created, no items)
     // -------------------------------------------------------------
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel("任务名称").fill("视频与全格式审阅");
     await page.getByTestId("review-create-node").click();
@@ -469,15 +471,12 @@ describe("review workbench visual baseline captures", () => {
     await activeVideo.waitFor({ state: "visible", timeout: 20_000 });
     await vi.waitFor(async () => expect(await activeVideo.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(2), { timeout: 20_000 });
 
-    const expandSidebarBtn = page.getByRole("button", { name: /展开数据节点侧栏|展开侧栏/i }).first();
-    if (await expandSidebarBtn.isVisible()) {
-      await expandSidebarBtn.click();
-    }
+    await openWorkspaceDirectory(page);
     await page.locator('[data-review-directory="true"]').waitFor({
       state: "visible",
       timeout: 10_000,
     });
-    await captureScreenshot(page, "sidebar-expanded");
+    await captureScreenshot(page, "workspace-manager");
 
     // -------------------------------------------------------------
     // State: node-menu-open (node action dropdown menu open)
@@ -488,10 +487,7 @@ describe("review workbench visual baseline captures", () => {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 
-    // The action button belongs to the expanded sidebar; collapse only after
-    // capturing its menu.
-    const collapseBtn = page.getByRole("button", { name: /收起侧栏/i }).first();
-    if (await collapseBtn.isVisible()) await collapseBtn.click();
+    await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
 
     // -------------------------------------------------------------

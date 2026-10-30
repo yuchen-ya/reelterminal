@@ -77,8 +77,8 @@ export function useReviewController(target: Target) {
   const markSeen = useReviewSeenStore(state => state.markSeen);
   const [overview, setOverview] = useState<ReviewOverview | null>(null);
   const [page, setPage] = useState<{ items: readonly ReviewItemSummary[]; cursor?: string }>({ items: [] });
-  const [pageCursor, setPageCursor] = useState<string | undefined>();
-  const [previousCursors, setPreviousCursors] = useState<Array<string | undefined>>([]);
+  const pageCursor = useWorkbenchUiStore(state => state.reviewPageCursor);
+  const previousCursors = useWorkbenchUiStore(state => state.reviewPreviousCursors);
   const [loadedDetail, setLoadedDetail] = useState<{ targetKey: string; snapshot: LoadedItem } | null>(null);
   const [resources, setResources] = useState<readonly FileResource[]>([]);
   const [extraLoaded, setExtraLoaded] = useState<ReadonlyMap<string, LoadedItem>>(new Map());
@@ -110,8 +110,6 @@ export function useReviewController(target: Target) {
   }, [extraLoadScope]);
 
   useEffect(() => reviewService.subscribe(refresh), [refresh]);
-  useEffect(() => { useWorkbenchUiStore.getState().resetProjectScopedState(); }, [target.nodeId]);
-  useEffect(() => { setPageCursor(undefined); setPreviousCursors([]); }, [activeBatchId, type, query]);
 
   useEffect(() => {
     let cancelled = false;
@@ -373,7 +371,7 @@ export function useReviewController(target: Target) {
     catch (problem) { refresh(); return outcome(problem); }
   } }, overview, loading: loading || detailLoading || previewLoading, error, refresh, pageNumber: previousCursors.length + 1,
     hasPrevious: previousCursors.length > 0, hasNext: !!page.cursor,
-    nextPage: () => { if (page.cursor) { setPreviousCursors(previous => [...previous, pageCursor]); setPageCursor(page.cursor); } },
-    previousPage: () => { setPageCursor(previousCursors.at(-1)); setPreviousCursors(previous => previous.slice(0, -1)); },
+    nextPage: () => { if (page.cursor) useWorkbenchUiStore.getState().setReviewPage(page.cursor, [...previousCursors, pageCursor]); },
+    previousPage: () => { useWorkbenchUiStore.getState().setReviewPage(previousCursors.at(-1), previousCursors.slice(0, -1)); },
   };
 }

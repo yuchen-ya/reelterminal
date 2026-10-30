@@ -14,8 +14,6 @@ export interface ReviewAdminMenuProps {
   contextLoaded?: boolean;
   hasProject: boolean;
   projectName?: string;
-  copied: boolean;
-  onCopyInstructions: () => void;
   onOpenMigration: () => void;
   onOpenBackup: () => void;
   onOpenRestore: () => void;
@@ -27,8 +25,6 @@ export function ReviewAdminMenu({
   contextLoaded = true,
   hasProject,
   projectName = "",
-  copied,
-  onCopyInstructions,
   onOpenMigration,
   onOpenBackup,
   onOpenRestore,
@@ -71,9 +67,6 @@ export function ReviewAdminMenu({
           onSelect={onOpenRestore}
         >
           {t("review.restorePackage.title")}
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled={!contextLoaded} onSelect={onCopyInstructions}>
-          {t(copied ? "review.copied" : "review.copyStartup")}
         </DropdownMenuItem>
         {hasProject && (
           <>

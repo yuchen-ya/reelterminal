@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { value } from "./harness/cli-client";
 import { expect, test, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -49,6 +50,7 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
     expect(Number(fixtures[2].probe.streams[0].start_time)).toBe(5);
     expect(fixtures[1].probe.streams[0].side_data_list?.some(data => Math.abs(data.rotation ?? 0) === 90)).toBe(true);
     await page.getByRole("tab", { name: /Review Workspace/i }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel("Task name").fill("A7 decoded video acceptance");
     await page.getByTestId("review-create-node").click();

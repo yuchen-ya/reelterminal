@@ -8,6 +8,7 @@ import type { WorkbenchItem } from "@reelterminal/core/types/workbench";
 import { LEGACY_IDB_MATERIAL_LIBRARY } from "@reelterminal/core/legacy/physical-identifiers";
 import { modelFixture } from "../../../packages/core/src/review/glb-fixtures.test-helper";
 import { launchApp } from "./harness/launch";
+import { openOrCreateBoard, openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { connectExternalAgent, value } from "./harness/cli-client";
 import { createEvidence } from "./harness/evidence";
 import { ARTIFACTS_DIR } from "./harness/paths";
@@ -37,7 +38,8 @@ async function saved(page: Page) {
 
 async function elementPoint(page: Page, element: BoardElement) {
   await saved(page);
-  const board = (await boards(page))[0];
+  const boardId = await page.getByTestId("human-board-canvas").getAttribute("data-board-id");
+  const board = (await boards(page)).find(board => board.id === boardId)!;
   const bounds = await page.getByTestId("human-board-scene").locator(".excalidraw").boundingBox();
   if (!bounds) throw new Error("Human board surface is absent");
   const zoom = board.appState.zoom?.value ?? 1;
@@ -52,8 +54,8 @@ test("private mixed-media board appends in one scene, exports one frozen contain
   try {
     let page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-    await page.getByTestId("human-board-tab").click();
-    await page.getByTestId("human-board-empty").waitFor();
+    await openOrCreateBoard(page);
+    await page.getByTestId("human-board-canvas").waitFor();
     const fixture = createRepairAcceptanceFixture(path.join(launched.runDir, "board-input"));
     const text = path.join(launched.runDir, "private-notes.txt");
     const privateText = "Private board text 👀\nCurrent unshared body";
@@ -64,7 +66,7 @@ test("private mixed-media board appends in one scene, exports one frozen contain
     await page.evaluate(() => {
       const files = (document.querySelector('[data-testid="acceptance-drop-files"]') as HTMLInputElement).files!;
       const transfer = new DataTransfer(); for (const file of files) transfer.items.add(file);
-      document.querySelector('[data-testid="human-board-empty"]')!.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      document.querySelector('[data-testid="human-board-scene"]')!.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
       document.querySelector('[data-testid="acceptance-drop-files"]')!.remove();
     });
     await page.getByTestId("human-board-canvas").waitFor({ timeout: 30_000 });
@@ -184,16 +186,16 @@ test("private mixed-media board appends in one scene, exports one frozen contain
     agent = await connectExternalAgent(launched.endpointFile);
     page = launched.page; evidence.bindPage(page);
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-    await page.getByTestId("human-board-tab").click();
+    await openOrCreateBoard(page);
     await page.getByTestId("human-board-canvas").waitFor({ timeout: 30_000 });
     await saved(page);
     expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(5);
     const reopenedImages = await page.evaluate(async ids => Promise.all(ids.map(id => window.reelterminal!.reviewFiles!.resolve(id, true))), initial.resourceIds);
     expect(reopenedImages.every(result => result.ok)).toBe(true);
+    await openWorkspaceDirectory(page);
     page.once("dialog", dialog => dialog.accept());
     await page.getByTestId(`human-board-delete-${boardId}`).click();
-    await page.getByTestId("human-board-empty").waitFor();
-    expect(await boards(page)).toEqual([]);
+    await vi.waitFor(async () => expect(await boards(page)).toEqual([]));
     const shared = await page.evaluate(async id => window.reelterminal!.reviewFiles!.resolve(id, true), snapshot.content.mediaId);
     expect(shared.ok).toBe(true);
     await mkdir(ARTIFACTS_DIR, { recursive: true });
@@ -214,18 +216,23 @@ test("plain-text paste creates one board and path-backed drop uses the actual sc
   try {
     const page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-    await page.getByTestId("human-board-tab").click();
-    await page.getByTestId("human-board-empty").waitFor();
+    await openOrCreateBoard(page);
+    const blankBoardId = await page.getByTestId("human-board-canvas").getAttribute("data-board-id");
+    await page.getByTestId(`close-tab-board-${blankBoardId}`).click();
+    await page.getByTestId("workbench-empty").waitFor();
     await launched.app.evaluate(({ clipboard }) => clipboard.writeText("Plain pasted board text"));
-    await page.getByTestId("human-board-home").focus(); await page.keyboard.press("Control+V");
+    await page.keyboard.press("Control+V");
     await page.getByTestId("human-board-canvas").waitFor({ timeout: 30_000 });
-    await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(1), { timeout: 20_000 });
-    expect((await boards(page))[0].elements[0].text).toBe("Plain pasted board text");
+    const pastedBoardId = await page.getByTestId("human-board-canvas").getAttribute("data-board-id");
+    expect(pastedBoardId).not.toBe(blankBoardId);
+    const activeBoard = async () => (await boards(page)).find(board => board.id === pastedBoardId)!;
+    await vi.waitFor(async () => expect((await activeBoard()).elements.filter(element => !element.isDeleted)).toHaveLength(1), { timeout: 20_000 });
+    expect((await activeBoard()).elements[0].text).toBe("Plain pasted board text");
     await launched.app.evaluate(({ clipboard }) => clipboard.writeText("Appended native Excalidraw text"));
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("Control+V");
-    await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(2), { timeout: 20_000 });
+    await vi.waitFor(async () => expect((await activeBoard()).elements.filter(element => !element.isDeleted)).toHaveLength(2), { timeout: 20_000 });
     const fixture = createRepairAcceptanceFixture(path.join(launched.runDir, "position-input"));
-    const board = (await boards(page))[0];
+    const board = (await activeBoard());
     const stage = (await page.getByTestId("human-board-scene").locator(".excalidraw").boundingBox())!;
     const dropPoint = { x: stage.x + stage.width * 0.25, y: stage.y + stage.height * 0.75 };
     const expected = { x: (dropPoint.x - stage.x) / board.appState.zoom!.value - board.appState.scrollX!, y: (dropPoint.y - stage.y) / board.appState.zoom!.value - board.appState.scrollY! };
@@ -236,23 +243,23 @@ test("plain-text paste creates one board and path-backed drop uses the actual sc
       document.querySelector('[data-testid="human-board-scene"]')!.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer, clientX: point.x, clientY: point.y }));
       document.querySelector('[data-testid="position-drop"]')!.remove();
     }, dropPoint);
-    await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(3), { timeout: 20_000 });
-    expect(await boards(page)).toHaveLength(1);
-    const image = (await boards(page))[0].elements.find(element => element.type === "image")!;
+    await vi.waitFor(async () => expect((await activeBoard()).elements.filter(element => !element.isDeleted)).toHaveLength(3), { timeout: 20_000 });
+    expect(await boards(page)).toHaveLength(2);
+    const image = (await activeBoard()).elements.find(element => element.type === "image")!;
     expect(Math.abs(image.x - expected.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(image.y - expected.y)).toBeLessThanOrEqual(1);
     const point = await elementPoint(page, image);
     await page.mouse.move(point.x, point.y); await page.mouse.down(); await page.mouse.move(point.x + 40, point.y - 20, { steps: 8 }); await page.mouse.up();
-    await vi.waitFor(async () => expect((await boards(page))[0].elements.find(element => element.id === image.id)!.x).toBeGreaterThan(image.x + 20), { timeout: 20_000 });
-    const moved = (await boards(page))[0].elements.find(element => element.id === image.id)!;
+    await vi.waitFor(async () => expect((await activeBoard()).elements.find(element => element.id === image.id)!.x).toBeGreaterThan(image.x + 20), { timeout: 20_000 });
+    const moved = (await activeBoard()).elements.find(element => element.id === image.id)!;
     await saved(page);
-    const after = (await boards(page))[0];
+    const after = (await activeBoard());
     const corner = { x: stage.x + (moved.x + moved.width + after.appState.scrollX!) * after.appState.zoom!.value, y: stage.y + (moved.y + moved.height + after.appState.scrollY!) * after.appState.zoom!.value };
     await page.mouse.move(corner.x, corner.y); await page.mouse.down(); await page.mouse.move(corner.x + 40, corner.y + 30, { steps: 8 }); await page.mouse.up();
-    await vi.waitFor(async () => expect((await boards(page))[0].elements.find(element => element.id === image.id)!.width).toBeGreaterThan(moved.width), { timeout: 20_000 });
+    await vi.waitFor(async () => expect((await activeBoard()).elements.find(element => element.id === image.id)!.width).toBeGreaterThan(moved.width), { timeout: 20_000 });
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("a");
     await page.mouse.move(stage.x + 300, stage.y + 180); await page.mouse.down(); await page.mouse.move(stage.x + 390, stage.y + 230, { steps: 8 }); await page.mouse.up();
-    await vi.waitFor(async () => expect((await boards(page))[0].elements.some(element => element.type === "arrow" && !element.isDeleted)).toBe(true), { timeout: 20_000 });
+    await vi.waitFor(async () => expect((await activeBoard()).elements.some(element => element.type === "arrow" && !element.isDeleted)).toBe(true), { timeout: 20_000 });
     await page.getByRole("button", { name: /置于底层/ }).click();
     evidence.record("input", { sameBoard: true, initialPlainTextPaste: true, appendPlainTextPaste: true, dropPoint, expected, actual: { x: image.x, y: image.y }, pointerMove: true, pointerResize: true, arrowAnnotation: true, layerControl: true });
   } finally {
@@ -270,7 +277,7 @@ test("video/model interactions retain board geometry and freeze source views wit
   try {
     const page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-    await page.getByTestId("human-board-tab").click();
+    await openOrCreateBoard(page);
     const videoFile = createVideoFixture(launched.runDir, "visible-video.mp4");
     const modelFile = path.join(launched.runDir, "visible-model.glb");
     const textFile = path.join(launched.runDir, "visible-text.txt");
@@ -373,7 +380,7 @@ test.skipIf(process.env.REELTERMINAL_HUMAN_BOARD_NATIVE_DRAG !== "1")("native bo
     const page = launched.page;
     await mkdir(output);
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-    await page.getByTestId("human-board-tab").click();
+    await openOrCreateBoard(page);
     const fixture = createRepairAcceptanceFixture(path.join(launched.runDir, "native-input"));
     await page.getByTestId("human-board-import-files").setInputFiles(fixture.damagedPath);
     await page.getByTestId("human-board-single-file").waitFor({ timeout: 30_000 });
@@ -425,7 +432,7 @@ test("region PNG preserves source resolution, image crop/rotation/alpha and text
   try {
     const page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-    await page.getByTestId("human-board-tab").click();
+    await openOrCreateBoard(page);
     const fixture = createRepairAcceptanceFixture(path.join(launched.runDir, "region-fixture"));
     const overlay = Buffer.alloc(128 * 128 * 4);
     for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) overlay.set(x < 64 ? [255, 0, 255, 128] : y < 64 ? [0, 255, 0, 128] : [255, 255, 0, 128], (y * 128 + x) * 4);
@@ -438,8 +445,8 @@ test("region PNG preserves source resolution, image crop/rotation/alpha and text
     await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(3), { timeout: 20_000 });
     await saved(page);
     const boardId = (await boards(page))[0].id;
-    await page.getByRole("button", { name: "空白入口 · 拖入或粘贴", exact: true }).click();
-    await page.getByTestId("human-board-empty").waitFor();
+    await page.getByTestId(`close-tab-board-${boardId}`).click();
+    await page.getByTestId("human-board-canvas").waitFor({ state: "hidden" });
     // A saved-document fixture isolates rendering geometry from pointer placement.
     // Imports above use real files; the test now reopens a known cropped/rotated scene.
     await page.evaluate(async ({ name, boardId }) => {
@@ -460,6 +467,10 @@ test("region PNG preserves source resolution, image crop/rotation/alpha and text
         transaction.oncomplete = () => resolve(); transaction.onabort = () => reject(transaction.error);
       }); } finally { database.close(); }
     }, { name: LEGACY_IDB_MATERIAL_LIBRARY, boardId });
+    // The fixture writes storage outside the UI's normal save notifications.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId(`human-board-open-${boardId}`).click();
     await page.getByTestId("human-board-canvas").waitFor();
     await saved(page);

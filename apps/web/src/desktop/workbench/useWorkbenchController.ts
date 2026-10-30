@@ -315,6 +315,8 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
   const cursorByBatch = useWorkbenchUiStore((s) => s.cursorByBatch);
   const selectionByBatch = useWorkbenchUiStore((s) => s.selectionByBatch);
   const ui = useWorkbenchUiStore.getState;
+  const isCurrentScope = useCallback(() => !source.managesBatchSelection || ui().scopeId === source.scopeId,
+    [source.managesBatchSelection, source.scopeId, ui]);
 
   // Resolve the effective active batch (first batch when none selected).
   const effectiveBatchId = activeBatchId ?? workbench.batches[0]?.id ?? null;
@@ -440,12 +442,14 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
         items,
       });
       if (!result.ok) return result;
-      ui().setActiveBatchId(batchId);
-      ui().setCursor(batchId, itemIds[0]);
-      ui().setSelection(batchId, [itemIds[0]]);
+      if (isCurrentScope()) {
+        ui().setActiveBatchId(batchId);
+        ui().setCursor(batchId, itemIds[0]);
+        ui().setSelection(batchId, [itemIds[0]]);
+      }
       return { ok: true, batchId, itemIds };
     },
-    [mediaLookup, storeApi, ui],
+    [mediaLookup, storeApi, ui, isCurrentScope],
   );
 
   const rawBatchItems = useMemo(
@@ -674,7 +678,7 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
 
   const advanceAfterDecision = useCallback(
     (decidedIds: readonly string[]) => {
-      if (!effectiveBatchId || !autoAdvance) return;
+      if (!effectiveBatchId || !autoAdvance || !isCurrentScope()) return;
       const decided = new Set(decidedIds);
       const lastOrder = Math.max(
         ...batchItems.filter((i) => decided.has(i.id)).map((i) => i.orderIndex),
@@ -690,7 +694,7 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
         ui().setSelection(effectiveBatchId, []);
       }
     },
-    [effectiveBatchId, autoAdvance, batchItems, pendingItems, ui],
+    [effectiveBatchId, autoAdvance, batchItems, pendingItems, ui, isCurrentScope],
   );
 
   const commitDecision = useCallback(
@@ -784,13 +788,13 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
   const retrieveToPending = useCallback(
     async (itemId: string): Promise<WorkbenchMutationResult> => {
       const result = await storeApi().revertWorkbenchItems([itemId]);
-      if (result.ok && effectiveBatchId) {
+      if (result.ok && effectiveBatchId && isCurrentScope()) {
         ui().setCursor(effectiveBatchId, itemId);
         ui().setSelection(effectiveBatchId, [itemId]);
       }
       return result;
     },
-    [storeApi, effectiveBatchId, ui],
+    [storeApi, effectiveBatchId, ui, isCurrentScope],
   );
 
   const undoLast = source.undo;

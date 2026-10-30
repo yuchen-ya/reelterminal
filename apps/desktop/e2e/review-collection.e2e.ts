@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -29,6 +30,7 @@ describe("review collection scopes", () => {
     await page.evaluate(() => localStorage.setItem("openreel-locale", "zh-CN"));
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/ }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel("任务名称").fill("集合交互回归");
     await page.getByTestId("review-create-node").click();

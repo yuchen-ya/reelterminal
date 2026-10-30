@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { expect, test, vi } from "vitest";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -22,6 +23,7 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     const network: string[] = [];
     page.on("request", request => { if (/^https?:/.test(request.url())) network.push(request.url()); });
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel(/Task name|任务名称/).fill("GLB acceptance");
     await page.getByTestId("review-create-node").click(); await page.getByTestId("review-node-title").waitFor();
@@ -144,6 +146,7 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     expect(restoredItem.item.content.type).toBe("model3d");expect(restoredItem.feedback[0].target).not.toEqual(saved.target);
     if(restoredItem.feedback[0].target?.kind!=="model-view")throw new Error("Restored observation missing");
     expect(restoredItem.feedback[0].target.observation).toEqual((await readItem()).feedback[0].target!.observation);
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-node-list").getByRole("button").filter({hasText:"GLB acceptance"}).first().click();
     await vi.waitFor(async()=>expect(await page.getByTestId("review-node-title").getAttribute("data-node-id")).toBe(restored.node.id));
     await ready();await page.getByTestId("model-saved-observation").click();await ready();
@@ -174,7 +177,7 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
  const network:string[]=[];page.on("request",request=>{if(/^https?:/.test(request.url()))network.push(request.url());});
  let failed=false;
  try {
-  await page.getByRole("tab",{name:/Review Workspace|审阅工作台/i}).click();await page.getByTestId("review-new-task").click();
+  await page.getByRole("tab",{name:/Review Workspace|审阅工作台/i}).click();await openWorkspaceDirectory(page); await page.getByTestId("review-new-task").click();
     await page.getByLabel(/Task name|任务名称/).fill("GLB budgets");await page.getByTestId("review-create-node").click();await page.getByTestId("review-node-title").waitFor();await page.getByTestId("review-access-toggle").click();
   const context=value(await agent.callCommand<ReviewContext>("review.context"));const node=value(await agent.callCommand<{nodes:ReviewNode[]}>("review.nodes.list",{target:context.target})).nodes[0];const target={...context.target,nodeId:node.id};
   const base=modelFixture({animated:false});

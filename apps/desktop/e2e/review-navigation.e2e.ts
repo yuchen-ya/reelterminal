@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { ARTIFACTS_DIR } from "./harness/paths";
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 
 describe("review tasks, categories and content batches", () => {
   let launched: LaunchedApp;
@@ -22,18 +23,20 @@ describe("review tasks, categories and content batches", () => {
     await page.getByRole("tab", { name: "审阅工作台", exact: true }).click();
     expect(await page.getByLabel("任务名称", { exact: true }).count()).toBe(0);
     expect(await page.getByRole("button", { name: "全部任务", exact: true }).count()).toBe(0);
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel("任务名称", { exact: true }).fill("取消的任务");
     await page.getByRole("button", { name: "取消", exact: true }).click();
     expect(await page.getByTestId("review-node-list").locator("button").count()).toBe(0);
 
     for (const name of ["角色动画审阅", "场景审阅"]) {
+      if (!await page.getByTestId("workbench-open-dialog").count()) await openWorkspaceDirectory(page);
       await page.getByTestId("review-new-task").click();
       await page.getByLabel("任务名称", { exact: true }).fill(name);
       await page.getByTestId("review-create-node").click();
       await vi.waitFor(async () => expect(await page.getByTestId("review-node-title").textContent()).toBe(name), { timeout: 15_000 });
     }
-    await page.getByTestId("review-node-list").getByText("角色动画审阅", { exact: true }).click();
+    await openWorkspaceDirectory(page);
     await page.getByRole("button", { name: "撤销目录操作", exact: true }).click();
     await page.getByRole("menuitem", { name: "管理分类", exact: true }).click();
     await page.getByLabel("新分类名称").fill("角色动画");
@@ -48,6 +51,7 @@ describe("review tasks, categories and content batches", () => {
     await page.getByRole("button", { name: "角色动画", exact: true }).click();
     await vi.waitFor(async () => expect(await page.getByTestId("review-node-list").locator(":scope > div.group").count()).toBe(1));
     expect(await page.getByTestId("review-node-list").innerText()).toContain("角色动画审阅");
+    await page.getByTestId("review-node-list").getByText("角色动画审阅", { exact: true }).click();
 
     const names = ["运动连续性：接缝证据与修改设计（第一轮完整审阅材料）", "当前监督修订版：运动审查基线（第二轮完整审阅材料）"];
     const bodies = ["第一批的审阅内容", "第二批的审阅内容"];
@@ -63,8 +67,6 @@ describe("review tasks, categories and content batches", () => {
       await dialog.waitFor({ state: "hidden" });
       await vi.waitFor(async () => expect(await page.getByTestId("text-body").innerText()).toContain(bodies[index]));
     }
-    const expand = page.getByRole("button", { name: "展开审阅任务侧栏", exact: true });
-    if (await expand.count()) await expand.first().click();
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.getByTestId("workbench-batch-select").click();
     const menu = page.getByTestId("workbench-batch-menu");

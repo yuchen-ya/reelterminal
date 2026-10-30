@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -18,6 +19,7 @@ describe("compact batch picker updates", () => {
     await page.evaluate(() => localStorage.setItem("openreel-locale", "zh-CN"));
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("tab", { name: "审阅工作台", exact: true }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel("任务名称").fill("模式识别1");
     await page.getByTestId("review-create-node").click();
@@ -43,8 +45,6 @@ describe("compact batch picker updates", () => {
     expect(badge!.x).toBeGreaterThan(button!.x);
     expect(badge!.x + badge!.width).toBeLessThan(button!.x + button!.width);
     await mkdir(ARTIFACTS_DIR, { recursive: true });
-    const expand = page.getByRole("button", { name: "展开审阅任务侧栏", exact: true });
-    if (await expand.count()) await expand.click();
     await page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-batch-picker.png"), animations: "disabled" });
     await picker.click();
     const menu = page.getByTestId("workbench-batch-menu");

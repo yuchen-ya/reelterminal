@@ -59,21 +59,19 @@
       "prepare": "Prepare export", "newPlan": "Prepare another export", "copy": "Copy to folder…", "dragFolder": "Drag out folder", "dragFiles": "Drag out files", "handed": "Handed to the system. Receipt by the destination application has not been verified.", "copied": "Copied and verified: {{directory}}",
       "state": { "queued": "Queued", "preparing": "Preparing", "ready": "Ready to copy or drag", "failed": "Export failed", "cancelled": "Cancelled" }
     },
-    "title": "Review Workspace", "nodes": "Review tasks", "newNode": "New task", "newNodeName": "Task name", "expandSidebar": "Expand review tasks sidebar", "collapseSidebar": "Collapse sidebar", "nodeMenu": "Task actions", "adminMenu": "Admin Options", "create": "Create", "searchNodes": "Search tasks", "nodeViews": "Task views",
+    "title": "Review Workspace", "nodes": "Review tasks", "newNode": "New task", "newNodeName": "Task name", "nodeMenu": "Task actions", "adminMenu": "Admin Options", "create": "Create", "searchNodes": "Search tasks", "nodeViews": "Task views",
     "recent": "Recent", "pinned": "Pinned", "archived": "Archived", "trash": "Recycle bin", "groups": "Task categories", "allGroups": "All tasks", "newGroupName": "New category name",
     "renameGroup": "Rename category", "removeEmptyGroup": "Delete empty category", "undoDirectory": "Undo directory change", "redo": "Redo", "noNodesInView": "No review tasks in this view", "loadMore": "Load more",
     "moveToGroup": "Move to task category", "ungrouped": "Uncategorized", "rename": "Rename", "name": "Name", "save": "Save", "pin": "Pin", "unpin": "Unpin", "archive": "Archive", "unarchive": "Unarchive", "restore": "Restore", "moveToTrash": "Move to recycle bin",
     "restoreBeforeEditing": "Restore this task from the recycle bin to continue reviewing.", "emptyWorkspace": "Create a review task and import images, videos, text or tables. Review content is saved independently and works without a video project.",
     "emptyNode": "Add content to review", "emptyNodeDescription": "Import local files, paste text, or copy the connection instructions for an Agent. Originals and review records are retained in this task.",
-    "agentWrite": "Agent can edit review", "agentRead": "Agent can read review", "copyStartup": "Copy connection instructions", "copied": "Copied", "retry": "Retry", "loading": "Loading…",
+    "agentWrite": "Agent can edit review", "agentRead": "Agent can read review", "retry": "Retry", "loading": "Loading…",
     "legacyProject": "Legacy project review: {{name}}", "backToNodes": "Back to review tasks", "legacyTools": "Legacy tools", "legacyMotion": "Motion design (legacy)", "openProjectFirst": "Open the corresponding video project first",
     "importTitle": "Import review content", "importDescription": "Create a content batch in this task. Existing content is retained.", "files": "Files or folder", "pasteText": "Paste text", "batchName": "Batch name", "localFiles": "Local files",
     "chooseFiles": "Choose files", "chooseFolder": "Choose folder", "fileLimits": "Select 1–64 files. Tables support up to 5,000 rows and 64 columns. CSV uses the first row as headers; JSON uses an array of flat records. Text supports UTF-8 or UTF-16 with a BOM. Exact source bytes are retained.",
     "textBody": "Text body (up to 200,000 characters)", "readingFiles": "Reading and checking files…", "importing": "Saving originals and committing content…", "cancel": "Cancel", "import": "Import", "previous": "Previous", "next": "Next", "pageScope": "Up to 100 items per page. Selection and bulk actions apply to the currently visible scope.",
     "kind": { "model3d": "3D model", "image": "Image", "video": "Video", "text": "Text", "data": "Table" },
     "agentAccessLabel": "Allow Agent to edit reviews", "exportMenu": "Export",
-    "copyTaskInstructions": "Copy Agent instructions for {{name}}",
-    "startupPrompt": "Run now: {{startCommand}}",
     "branch": {"label": "Historical link", "listTitle": "Historical task links", "compareTitle": "Compare and adopt branch results", "baseRevision": "Starting revision", "adoptHint": "Select content results to adopt. Source decisions and feedback are preserved; source changes are checked again when adopting.", "select": "Select", "loading": "Loading branch comparison…", "refresh": "Refresh comparison", "adoptSelected": "Adopt selected results", "empty": "No historical task links. Continue new submissions and revisions in this task.", "state": {"changed": "Changed", "added": "New result", "unchanged": "Unchanged", "adopted": "Already adopted", "conflict": "Source changed"}}
   },
   "projectMediaFilters": {

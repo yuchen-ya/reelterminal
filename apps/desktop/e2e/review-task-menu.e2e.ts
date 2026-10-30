@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -15,13 +16,13 @@ describe("review task context menu", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("tab", { name: "审阅工作台", exact: true }).click();
     for (const name of ["待删除任务", "保留任务"]) {
+      await openWorkspaceDirectory(page);
       await page.getByTestId("review-new-task").click();
       await page.getByLabel("任务名称", { exact: true }).fill(name);
       await page.getByTestId("review-create-node").click();
       await vi.waitFor(async () => expect(await page.getByTestId("review-node-title").textContent()).toBe(name));
     }
-    const expand = page.getByRole("button", { name: "展开审阅任务侧栏", exact: true });
-    if (await expand.count()) await expand.click();
+    await openWorkspaceDirectory(page);
     const list = page.getByTestId("review-node-list");
     await list.getByText("待删除任务", { exact: true }).click({ button: "right" });
     await page.getByRole("menuitem", { name: "移到回收站", exact: true }).waitFor();
@@ -31,7 +32,7 @@ describe("review task context menu", () => {
     await page.getByRole("menuitem", { name: "移到回收站", exact: true }).click();
     const confirmation = page.getByTestId("review-trash-dialog");
     await confirmation.waitFor();
-    expect(await page.getByRole("dialog").innerText()).toContain("待删除任务");
+    expect(await page.getByRole("dialog").filter({ has: confirmation }).innerText()).toContain("待删除任务");
     expect(await list.getByText("待删除任务", { exact: true }).count()).toBe(1);
     await confirmation.getByRole("button", { name: "取消", exact: true }).click();
     expect(await list.getByText("待删除任务", { exact: true }).count()).toBe(1);

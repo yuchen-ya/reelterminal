@@ -1,5 +1,6 @@
 import { buildWorkbenchIngestActions, buildWorkbenchTextRevisionActions } from "@reelterminal/core/actions/workbench-actions";
 import { getReviewContext } from "../services/review-workspace/context";
+import { useWorkbenchTabsStore } from "../stores/workbench-tabs-store";
 import { reviewService } from "../services/review-workspace/service";
 
 const SAMPLE_KEY = "reelterminal.showcase.review.sample";
@@ -49,5 +50,5 @@ export async function ensureReviewSample(): Promise<void> {
     },
   });
   localStorage.setItem(SAMPLE_KEY, node.id);
-  localStorage.setItem("reelterminal.review.activeNodeId", node.id);
+  useWorkbenchTabsStore.getState().open({ kind: "review", id: node.id, name: node.name });
 }

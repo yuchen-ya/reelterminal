@@ -18,6 +18,7 @@ describe("review navigation and decision loop", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("tab", { name: "审阅工作台", exact: true }).click();
     await page.getByTestId("review-empty-create").click();
+    await page.getByTestId("review-new-task").click();
     await page.getByLabel("任务名称").fill("交互回归");
     await page.getByTestId("review-create-node").click();
     await page.getByTestId("review-node-title").waitFor();

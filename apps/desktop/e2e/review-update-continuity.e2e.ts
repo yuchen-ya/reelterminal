@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { expect, test, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -43,6 +44,7 @@ test("CLI image revisions retain decoded pixels, view state and explicit failure
   };
   try {
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel(/Task name|任务名称/).fill("Image continuity isolated acceptance");
     await page.getByTestId("review-create-node").click();
@@ -236,10 +238,12 @@ test("CLI image revisions retain decoded pixels, view state and explicit failure
     await evidence.screenshot("actual-capture-command");
     const newContext = value(await call<ReviewContext>("review.context"));
     const empty = value(await call<ReviewNode>("review.nodes.create", { target: newContext.target, expectedWorkspaceRevision: newContext.revision, requestId: randomUUID(), name: "Empty command isolation target" }));
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-node-list").getByText(empty.name, { exact: true }).click();
     await vi.waitFor(async () => expect(await page.getByTestId("review-command-current").count()).toBe(0));
     expect(await page.getByTestId("review-command-entry").count()).toBe(0);
     expect(await page.getByTestId("image-stage-image").count()).toBe(0);
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-node-list").getByText(node.name, { exact: true }).click();
     await vi.waitFor(async () => expect(await page.locator('[data-testid="review-command-entry"][data-verb="review.repair.apply"]').count()).toBe(6));
     const observedEvents = await page.evaluate(() => (window as unknown as { reviewObservedEvents: Array<{ verb: string; phase: string; callId?: string }> }).reviewObservedEvents);

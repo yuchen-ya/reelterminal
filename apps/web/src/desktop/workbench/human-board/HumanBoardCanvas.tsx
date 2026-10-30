@@ -14,7 +14,7 @@ import { decodeReviewText } from "../../../services/review-workspace/table-impor
 import { BoardDocument, BoardBrowser } from "./BoardDocument";
 import { BoardMedia } from "./BoardMedia";
 import { BoardFileOutput, type BoardOutput } from "./BoardFileOutput";
-import type { BoardIncoming } from "./HumanBoardHome";
+import type { BoardIncoming } from "./HumanBoardView";
 import { BoardImageRepair } from "./BoardImageRepair";
 import { wbButton } from "../wb-button";
 import "@excalidraw/excalidraw/index.css";

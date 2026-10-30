@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from "react";
+import type { JSX } from "react";
 import type React from "react";
 import { useTranslation } from "react-i18next";
 import { Bot, Download, GitBranch, Layers } from "lucide-react";
@@ -24,7 +24,6 @@ export interface ReviewNodeHeaderProps {
   context: ReviewContext | null;
   busy: boolean;
   onToggleAccess: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  adminMenu: ReactNode;
   browserDemo?: boolean;
 }
 
@@ -41,7 +40,6 @@ export function ReviewNodeHeader({
   context,
   busy,
   onToggleAccess,
-  adminMenu,
   browserDemo = false,
 }: ReviewNodeHeaderProps): JSX.Element {
   const { t } = useTranslation();
@@ -50,7 +48,7 @@ export function ReviewNodeHeader({
     <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-bg-1 px-2.5">
       {node ? (
         <>
-          {/* 任务名称；管理入口集中在左侧任务栏 */}
+          {/* 当前任务；打开与管理入口位于顶部标签栏。 */}
           <div className="flex min-w-0 items-center gap-0.5">
             <h1
               className="truncate text-xs font-semibold text-fg max-w-[220px]"
@@ -178,8 +176,6 @@ export function ReviewNodeHeader({
         </span>
       </label>}
 
-      {/* ⋯ 管理菜单 */}
-      {adminMenu}
     </div>
   );
 }

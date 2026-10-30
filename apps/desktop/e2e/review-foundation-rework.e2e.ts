@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { value } from "./harness/cli-client";
 import { expect, test, vi } from "vitest";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -19,6 +20,7 @@ test("four independent content types complete human review, partial rework, hist
   try {
     let page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel(/Task name|任务名称/).fill("Four-type rework acceptance");
     await page.getByTestId("review-create-node").click();

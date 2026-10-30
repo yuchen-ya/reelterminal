@@ -526,8 +526,8 @@ export function WorkbenchPanel({
             source.revision !== destination.revision || source.batchId !== batchId) {
             throw new Error("只能在同一任务、同一批次和同一版本中归类；请刷新后重新拖放");
           }
-          await moveReviewItems(destination.target, destination.revision, { batchId: source.batchId, itemIds: source.itemIds, groupId, targetItemId });
-          showToast("归类完成，原始来源链已保留");
+          const changed = await moveReviewItems(destination.target, destination.revision, { batchId: source.batchId, itemIds: source.itemIds, groupId, targetItemId });
+          if (changed) showToast("归类完成，原始来源链已保留");
         } else if (files.length) {
           const plan = await planReviewFiles(files);
           await importReviewFiles(destination.target, destination.revision, "拖入文件", plan, { batchId, groupId });
@@ -543,7 +543,7 @@ export function WorkbenchPanel({
 
   return (
     <CollectionInteractionContext.Provider value={{ action: collectionAction, busy,
-      selectedItems: (effectiveBoard ? effectiveBoardItems : visibleItems).filter(item => controller.selectedIds.includes(item.id)),
+      selectedItems: visibleItems.filter(item => controller.selectedIds.includes(item.id)),
       ...(exportTarget ? { prepareDrag: quickExport.prepare, drag: quickExport.drag } : {}),
       ...(reviewTarget ? { moveDrag, drop, acceptsDrop: (event: DragEvent) => isReviewDrop(event.dataTransfer) } : {}) }}>
     <div

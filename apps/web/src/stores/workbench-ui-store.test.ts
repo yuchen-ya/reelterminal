@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyWorkbenchSelection,
   pruneWorkbenchSelection,
+  useWorkbenchUiStore,
 } from "./workbench-ui-store";
 
 describe("workbench selection semantics", () => {
@@ -45,4 +46,26 @@ describe("workbench selection semantics", () => {
     const unchanged = ["a", "b"];
     expect(pruneWorkbenchSelection(unchanged, ["b", "a"])).toBe(unchanged);
   });
+});
+
+it("restores each review tab's filters, group, item selection, page and process view", () => {
+  const store = useWorkbenchUiStore.getState();
+  store.resetProjectScopedState();
+  store.setSearchQuery("video project");
+  store.activateScope("review:a");
+  store.setActiveBatchId("group-a");
+  store.setSearchQuery("opening");
+  store.setTypeFilter("text");
+  store.setCursor("group-a", "item-a");
+  store.setSelection("group-a", ["item-a"]);
+  store.setReviewPage("page-2", [undefined]);
+  store.setReviewView("process");
+  store.activateScope("review:b");
+  expect(useWorkbenchUiStore.getState()).toMatchObject({ activeBatchId: null, searchQuery: "", typeFilter: "all", selectionByBatch: {}, reviewView: "content", reviewPreviousCursors: [] });
+  store.setSearchQuery("closing");
+  store.activateScope("review:a");
+  expect(useWorkbenchUiStore.getState()).toMatchObject({ activeBatchId: "group-a", searchQuery: "opening", typeFilter: "text", cursorByBatch: { "group-a": "item-a" }, selectionByBatch: { "group-a": ["item-a"] }, reviewView: "process", reviewPageCursor: "page-2", reviewPreviousCursors: [undefined] });
+  store.activateScope("project");
+  expect(useWorkbenchUiStore.getState().searchQuery).toBe("video project");
+  store.resetProjectScopedState();
 });

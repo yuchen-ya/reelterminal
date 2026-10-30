@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { value } from "./harness/cli-client";
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { open, stat, unlink, mkdir, writeFile } from "node:fs/promises";
@@ -52,6 +53,7 @@ describe("independent review adopted project copies", () => {
     const box = Buffer.alloc(8); box.writeUInt32BE(size - originalSize); box.write("free", 4, "ascii");
     await handle.write(box, 0, box.length, originalSize); await handle.truncate(size); await handle.close();
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel(/Task name|任务名称/).fill("Project copy acceptance");
     await page.getByTestId("review-create-node").click();

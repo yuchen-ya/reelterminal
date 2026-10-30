@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { value } from "./harness/cli-client";
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -37,6 +38,7 @@ describe("independent review GUI without a video project", () => {
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
     await page.getByTestId("review-page").waitFor({ state: "visible" });
     expect((await agent.callCommand("editor.get_context")).error?.message).toBe("No project is open");
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel(/Task name|任务名称/).fill("Independent GUI node");
     await page.getByTestId("review-create-node").click();
@@ -190,6 +192,7 @@ describe("independent review GUI without a video project", () => {
     expect(await page.getByTestId("review-backup-progress").textContent()).toContain("3 / 3");
     await page.keyboard.press("Escape");
     expect(await page.getByTestId("review-node-title").getAttribute("data-node-id")).toBe(restoredNodeId!);
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-node-list").locator("div.group").filter({ has: page.locator('button[aria-current="true"]') }).getByTestId("review-node-menu-trigger").click();
     await page.getByRole("menuitem", { name: /Move to recycle bin|移到回收站/ }).click();
     await page.getByTestId("review-trash-submit").click();

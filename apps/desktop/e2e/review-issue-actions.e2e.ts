@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -28,14 +29,14 @@ describe("review issue quick actions and Agent details", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.setViewportSize({ width: 1600, height: 1000 });
     await page.getByRole("tab", { name: "审阅工作台", exact: true }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel("任务名称", { exact: true }).fill("问题卡片与审阅说明");
     await page.getByTestId("review-create-node").click();
     await page.getByTestId("review-node-title").waitFor();
-    await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
-    const sidebarOpener = page.getByRole("button", { name: "展开审阅任务侧栏", exact: true });
-    expect(await sidebarOpener.count()).toBe(1);
-    await sidebarOpener.click();
+    await openWorkspaceDirectory(page);
+    expect(await page.getByTestId("workbench-open-dialog").isVisible()).toBe(true);
+    await page.keyboard.press("Escape");
     await page.getByTestId("review-access-toggle").click();
     let context: ReviewContext;
     await vi.waitFor(async () => {

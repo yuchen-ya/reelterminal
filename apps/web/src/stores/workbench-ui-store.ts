@@ -65,6 +65,14 @@ export function pruneWorkbenchSelection(
  * selection state across batches.
  */
 export interface WorkbenchUiState {
+  scopeId: string;
+  viewsByScope: Record<string, WorkbenchViewState>;
+  activateScope: (scopeId: string) => void;
+  reviewView: "content" | "process";
+  setReviewView: (view: "content" | "process") => void;
+  reviewPageCursor: string | undefined;
+  reviewPreviousCursors: Array<string | undefined>;
+  setReviewPage: (cursor: string | undefined, previous: Array<string | undefined>) => void;
   activeBatchId: string | null;
   typeFilter: WorkbenchContentType | "all";
   searchQuery: string;
@@ -89,7 +97,23 @@ export interface WorkbenchUiState {
   resetProjectScopedState: () => void;
 }
 
+type WorkbenchViewState = Pick<WorkbenchUiState, "activeBatchId" | "typeFilter" | "searchQuery" | "autoAdvance" | "leftCollapsed" | "cursorByBatch" | "selectionByBatch" | "reviewView" | "reviewPageCursor" | "reviewPreviousCursors">;
+const emptyView = (): WorkbenchViewState => ({ activeBatchId: null, typeFilter: "all", searchQuery: "", autoAdvance: true, leftCollapsed: false, cursorByBatch: {}, selectionByBatch: {}, reviewView: "content", reviewPageCursor: undefined, reviewPreviousCursors: [] });
+const snapshotView = (state: WorkbenchUiState): WorkbenchViewState => ({ activeBatchId: state.activeBatchId, typeFilter: state.typeFilter, searchQuery: state.searchQuery, autoAdvance: state.autoAdvance, leftCollapsed: state.leftCollapsed, cursorByBatch: state.cursorByBatch, selectionByBatch: state.selectionByBatch, reviewView: state.reviewView, reviewPageCursor: state.reviewPageCursor, reviewPreviousCursors: state.reviewPreviousCursors });
+
 export const useWorkbenchUiStore = create<WorkbenchUiState>((set) => ({
+  scopeId: "project",
+  viewsByScope: {},
+  activateScope: (scopeId) => set(state => state.scopeId === scopeId ? state : ({
+    ...emptyView(), ...state.viewsByScope[scopeId], scopeId,
+    viewsByScope: { ...state.viewsByScope, [state.scopeId]: snapshotView(state) },
+    mindMapModalOpen: false, handoffDialogOpen: false,
+  })),
+  reviewView: "content",
+  setReviewView: (reviewView) => set({ reviewView }),
+  reviewPageCursor: undefined,
+  reviewPreviousCursors: [],
+  setReviewPage: (reviewPageCursor, reviewPreviousCursors) => set({ reviewPageCursor, reviewPreviousCursors }),
   activeBatchId: null,
   typeFilter: "all",
   searchQuery: "",
@@ -100,9 +124,9 @@ export const useWorkbenchUiStore = create<WorkbenchUiState>((set) => ({
   cursorByBatch: {},
   selectionByBatch: {},
 
-  setActiveBatchId: (batchId) => set({ activeBatchId: batchId }),
-  setTypeFilter: (filter) => set({ typeFilter: filter }),
-  setSearchQuery: (query) => set({ searchQuery: query }),
+  setActiveBatchId: (batchId) => set(state => state.activeBatchId === batchId ? state : { activeBatchId: batchId, reviewPageCursor: undefined, reviewPreviousCursors: [] }),
+  setTypeFilter: (filter) => set({ typeFilter: filter, reviewPageCursor: undefined, reviewPreviousCursors: [] }),
+  setSearchQuery: (query) => set({ searchQuery: query, reviewPageCursor: undefined, reviewPreviousCursors: [] }),
   setAutoAdvance: (enabled) => set({ autoAdvance: enabled }),
   setLeftCollapsed: (collapsed) => set({ leftCollapsed: collapsed }),
   setMindMapModalOpen: (open) => set({ mindMapModalOpen: open }),
@@ -123,6 +147,11 @@ export const useWorkbenchUiStore = create<WorkbenchUiState>((set) => ({
     }),
   resetProjectScopedState: () =>
     set({
+      scopeId: "project",
+      viewsByScope: {},
+      reviewView: "content",
+      reviewPageCursor: undefined,
+      reviewPreviousCursors: [],
       activeBatchId: null,
       cursorByBatch: {},
       selectionByBatch: {},

@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { expect, test, vi } from "vitest";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -14,6 +15,7 @@ test("review row drag moves a complete subtree, keeps original content, undoes o
   try {
     await page.evaluate(() => localStorage.setItem("openreel-locale", "zh-CN")); await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/ }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click(); await page.getByLabel("任务名称", { exact: true }).fill("拖放归类验收");
     await page.getByTestId("review-create-node").click(); await page.getByTestId("review-node-title").waitFor();
     await page.getByTestId("review-access-toggle").click();
@@ -73,6 +75,7 @@ test("review row drag moves a complete subtree, keeps original content, undoes o
     evidence.record("placement", { ids, moved: moved.map(item => ({ id: item.id, placement: item.placement, lineage: item.lineage })), imported: { id: imported.id, batchId: importedItem.batchId, placement: importedItem.placement }, undoRestoredCompleteSubtree: true });
     await evidence.screenshot("external-file-appended");
     const beforeCategory = await details();
+    await openWorkspaceDirectory(page);
     await page.getByRole("button", { name: "撤销目录操作", exact: true }).click();
     await page.getByRole("menuitem", { name: "管理分类", exact: true }).click();
     await page.getByLabel("新分类名称").fill("目录拖放目标"); await page.getByRole("button", { name: "创建", exact: true }).click();

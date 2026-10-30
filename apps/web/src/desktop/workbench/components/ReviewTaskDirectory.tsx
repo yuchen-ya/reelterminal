@@ -1,11 +1,9 @@
 import type { JSX, ReactNode } from "react";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   MoreHorizontal,
-  PanelLeftClose,
-  PanelLeftOpen,
   Pencil,
   Plus,
   Search,
@@ -33,10 +31,7 @@ import { reviewSeenKey, useReviewSeenStore } from "../../../stores/review-seen-s
 
 export type DirectoryView = "recent" | "pinned" | "archived" | "trash";
 
-export interface ReviewNodeSidebarProps {
-  creationRequest?: number;
-  open: boolean;
-  onToggleOpen: (open: boolean) => void;
+export interface ReviewTaskDirectoryProps {
   nodes: readonly ReviewNode[];
   selectedId: string | null;
   onSelectNode: (nodeId: string) => void;
@@ -47,8 +42,6 @@ export interface ReviewNodeSidebarProps {
   onRenameNode: (node: ReviewNode) => void;
   onPurgeNode: (node: ReviewNode) => void;
   onBranches?: (node: ReviewNode) => void;
-  onCopyInstructions?: (node: ReviewNode) => Promise<void>;
-  copiedNodeId?: string | null;
   directory: {
     groups: readonly ReviewGroup[];
     canUndo: boolean;
@@ -77,10 +70,7 @@ const textEntry = (element: Element | null) =>
   element instanceof HTMLTextAreaElement ||
   (element instanceof HTMLElement && element.isContentEditable);
 
-export function ReviewNodeSidebar({
-  creationRequest = 0,
-  open,
-  onToggleOpen,
+export function ReviewTaskDirectory({
   nodes,
   selectedId,
   onSelectNode,
@@ -91,8 +81,6 @@ export function ReviewNodeSidebar({
   onRenameNode,
   onPurgeNode,
   onBranches,
-  onCopyInstructions,
-  copiedNodeId,
   directory,
   view,
   onSelectView,
@@ -108,11 +96,10 @@ export function ReviewNodeSidebar({
   cursor,
   onLoadMore,
   busy,
-}: ReviewNodeSidebarProps): JSX.Element {
+}: ReviewTaskDirectoryProps): JSX.Element {
   const { t } = useTranslation();
   const seen = useReviewSeenStore(state => state.seen);
   const [creatingNode, setCreatingNode] = useState(false);
-  useEffect(() => { if (creationRequest > 0) setCreatingNode(true); }, [creationRequest]);
   const [newNodeName, setNewNodeName] = useState("");
   const [managingGroups, setManagingGroups] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -120,7 +107,6 @@ export function ReviewNodeSidebar({
   const [draggingNode, setDraggingNode] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const nodeInputRef = useRef<HTMLInputElement>(null);
   const hasActiveFilter = Boolean(query) || view !== "recent" || Boolean(groupId) || managingGroups;
   const showFilterDrawer = filtersOpen || hasActiveFilter || draggingNode;
   const nodeDrag = (event: React.DragEvent, node: ReviewNode) => {
@@ -179,7 +165,7 @@ export function ReviewNodeSidebar({
     const SubContent = context ? ContextMenuSubContent : DropdownMenuSubContent;
     return <>
         <Item disabled={busy} onSelect={() => onRenameNode(node)}>{t("review.rename")}</Item>
-        <Sub><SubTrigger disabled={busy}>{t("review.moveToGroup")}</SubTrigger><SubContent>
+        <Sub><SubTrigger disabled={busy}>{t("review.moveToGroup")}</SubTrigger><SubContent className="z-[9999]">
           <Item onSelect={() => onUpdateNode(node.id, { groupId: null })}>{t("review.ungrouped")}</Item>
           {directory.groups.map(group => <Item key={group.id} onSelect={() => onUpdateNode(node.id, { groupId: group.id })}>{group.name}</Item>)}
         </SubContent></Sub>
@@ -189,7 +175,6 @@ export function ReviewNodeSidebar({
         {!node.trashedAt && <Item disabled={busy} onSelect={() => onUpdateNode(node.id, { archived: !node.archivedAt })}>
           {t(node.archivedAt ? "review.unarchive" : "review.archive")}
         </Item>}
-        {onCopyInstructions && !node.trashedAt && <Item onSelect={() => { void onCopyInstructions(node); }}>{t(copiedNodeId === node.id ? "review.copied" : "review.copyTaskInstructions", { name: node.name })}</Item>}
         {onBranches && <Item disabled={busy} onSelect={() => onBranches(node)} data-testid="review-branches-open">查看历史任务关联</Item>}
         <Separator />
         <Item disabled={busy} onSelect={() => onUpdateNode(node.id, { trashed: !node.trashedAt })}>
@@ -203,7 +188,7 @@ export function ReviewNodeSidebar({
   const taskMenu = (node: ReviewNode, children: ReactNode) => (
     <ContextMenu key={node.id}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent className="w-52">{menuItems(node, true)}</ContextMenuContent>
+      <ContextMenuContent className="z-[9999] w-52">{menuItems(node, true)}</ContextMenuContent>
     </ContextMenu>
   );
 
@@ -223,88 +208,9 @@ export function ReviewNodeSidebar({
     onDirectoryHistory(key === "y" || event.shiftKey ? "redo" : "undo");
   };
 
-  // Collapsed state: 48px icon strip
-  if (!open) {
-    return (
-      <aside
-        className="flex w-12 shrink-0 flex-col items-center gap-3 border-r border-border bg-bg-1 py-2.5 select-none"
-        data-review-directory="true"
-        onKeyDownCapture={handleKeyDown}
-      >
-        <button
-          type="button"
-          className={wbButton.ghost}
-          onClick={() => onToggleOpen(true)}
-          title={t("review.expandSidebar", "展开审阅任务侧栏")}
-          aria-label={t("review.expandSidebar", "展开审阅任务侧栏")}
-        >
-          <PanelLeftOpen className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          className={wbButton.ghost}
-          onClick={() => {
-            onToggleOpen(true);
-            setCreatingNode(true);
-          }}
-          data-testid="review-new-task"
-          title={t("review.newNode")}
-          aria-label={t("review.newNode", "新建节点")}
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          className={wbButton.ghost}
-          onClick={() => {
-            onToggleOpen(true);
-            setFiltersOpen(true);
-            setTimeout(() => searchRef.current?.focus(), 50);
-          }}
-          title={t("review.searchNodes")}
-          aria-label={t("review.searchNodes")}
-        >
-          <Search className="h-4 w-4" />
-        </button>
-        <div className="h-px w-6 bg-border" />
-        <span className="text-[11px] font-bold text-fg-3">{nodes.length}</span>
-
-        <div
-          className="flex flex-col items-center gap-1.5 overflow-y-auto w-full px-1 pt-0.5"
-          data-testid="review-node-list"
-        >
-          {nodes.map((node) => {
-            const isCurrent = selectedId === node.id;
-            return taskMenu(node, (
-              <button
-                key={node.id}
-                type="button"
-                className={`flex h-7 w-7 items-center justify-center rounded-[6px] border text-[11px] font-semibold transition-colors ${
-                  isCurrent
-                    ? "border-accent/60 bg-accent/15 text-accent"
-                    : "border-border bg-bg-2 text-fg-3 hover:border-border-strong hover:text-fg"
-                }`}
-                onClick={() => onSelectNode(node.id)}
-                title={node.name}
-                draggable={!!onMoveNode && !busy && !node.trashedAt}
-                onDragStart={event => nodeDrag(event, node)} onDragEnd={() => setDraggingNode(false)}
-                onDragOver={event => nodeFileOver(event, node)} onDrop={event => nodeFileDrop(event, node)} data-review-node-drop={node.id}
-                aria-label={node.name}
-              >
-                <span aria-hidden="true">{node.name.slice(0, 1)}</span>
-                <span className="sr-only">{node.name}</span>
-              </button>
-            ));
-          })}
-        </div>
-      </aside>
-    );
-  }
-
-  // Expanded state: compact structured sidebar
   return (
     <aside
-      className="flex w-[208px] shrink-0 flex-col gap-1.5 border-r border-border bg-bg-1 p-2 text-xs"
+      className="flex min-h-0 flex-1 flex-col gap-1.5 p-2 text-xs"
       data-review-directory="true"
       onKeyDownCapture={handleKeyDown}
     >
@@ -367,15 +273,6 @@ export function ReviewNodeSidebar({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <button
-            type="button"
-            className={compactIconButton}
-            onClick={() => onToggleOpen(false)}
-            title={t("review.collapseSidebar", "收起侧栏")}
-            aria-label={t("review.collapseSidebar", "收起侧栏")}
-          >
-            <PanelLeftClose className="h-3.5 w-3.5" />
-          </button>
         </div>
       </div>
 
@@ -392,7 +289,6 @@ export function ReviewNodeSidebar({
         }}
       >
         <input
-          ref={nodeInputRef}
           autoFocus={creatingNode}
           className="flex-1 min-w-0 rounded-[6px] border border-border bg-bg-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
           aria-label={t("review.newNodeName")}
@@ -656,4 +552,4 @@ export function ReviewNodeSidebar({
   );
 }
 
-export default ReviewNodeSidebar;
+export default ReviewTaskDirectory;

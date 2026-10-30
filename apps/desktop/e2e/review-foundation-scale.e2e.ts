@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { value } from "./harness/cli-client";
 import { expect, test, vi } from "vitest";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -44,6 +45,7 @@ test("measures the actual paged UI with 1,000 text items and 110 declared proces
     }
     const settled = async () => page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const started = performance.now();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-node-list").locator('button:not([data-testid="review-node-menu-trigger"])').filter({ hasText: "Scale acceptance 1000 / 110" }).click();
     await page.getByTestId("text-body").waitFor();
     const nextPage = page.getByTestId("review-item-pagination").getByTitle("Next", { exact: true });
@@ -111,6 +113,7 @@ test("pages a 1,000 by 20 table without losing last-page editing or full-column 
       batchId: crypto.randomUUID(), name: "Large table", items: [{ id: itemId, title: "Large table", type: "data",
         content: { type: "data", datasetId: crypto.randomUUID(), columns, rows, proposals: [] } }] }));
     const opened = performance.now();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-node-list").locator('button:not([data-testid="review-node-menu-trigger"])').filter({ hasText: "Large table audit" }).click();
     const pagination = page.getByTestId("workbench-data-pagination");
     await pagination.waitFor();

@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { value } from "./harness/cli-client";
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -32,6 +33,7 @@ describe("recorded review processing and native version comparisons", () => {
     await page.getByRole("tab", { name: /Review Workspace/i }).click();
     let context: ReviewContext;
     await vi.waitFor(async () => { context = value(await agent.callCommand<ReviewContext>("review.context")); }, { timeout: 15_000 });
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel("Task name").fill("Eight-stage pixel fixture");
     await page.getByTestId("review-create-node").click();
@@ -176,6 +178,7 @@ describe("recorded review processing and native version comparisons", () => {
     expect(exportButton!.y).toBeGreaterThanOrEqual(0); expect(exportButton!.y + exportButton!.height).toBeLessThanOrEqual(701);
     await launched.page.screenshot({ path: path.join(ARTIFACTS_DIR, "review-process-minimum-window.png") });
     await launched.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900));
+    await openWorkspaceDirectory(launched.page);
     await launched.page.getByTestId("review-new-task").click();
     await launched.page.getByLabel("Task name").fill("Final-only fixture");
     await launched.page.getByTestId("review-create-node").click();
@@ -191,6 +194,7 @@ describe("recorded review processing and native version comparisons", () => {
     await launched.page.getByTestId("review-content-tab").click();
     await launched.page.getByTestId("workbench-content").locator("img").first().waitFor();
     expect(value(await agent.callCommand<{ steps: ReviewStep[] }>("review.steps.list", { target: finalTarget })).steps).toHaveLength(0);
+    await openWorkspaceDirectory(launched.page);
     await launched.page.getByTestId("review-node-list").locator('button:not([data-testid="review-node-menu-trigger"])').filter({ hasText: "Eight-stage pixel fixture" }).click();
     await launched.page.getByTestId("review-process-tab").click();
     await launched.page.getByTestId("review-process-view").waitFor();

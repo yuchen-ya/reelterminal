@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { expect, test, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -23,6 +24,7 @@ test("image repair drafts preview real pixels and save one version with durable 
   const call = <T = unknown>(name: string, input: Record<string, unknown>) => agent.callCommand<T>(name, input);
   try {
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel(/Task name|任务名称/).fill("Isolated repair draft");
     await page.getByTestId("review-create-node").click();

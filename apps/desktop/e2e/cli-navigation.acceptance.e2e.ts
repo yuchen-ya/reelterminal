@@ -1,3 +1,4 @@
+import { openOrCreateBoard, openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { expect, test, vi } from "vitest";
@@ -65,6 +66,7 @@ test("compact navigation stays bound to explicit GUI targets and local discovery
     const beforeReview = await agent.callCommand("project.get_state", videoIdentity);
     await launched.page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
     const createNode = async (name: string) => {
+      await openWorkspaceDirectory(launched.page);
       await launched.page.getByTestId("review-new-task").click();
       await launched.page.getByLabel(/Task name|任务名称/).fill(name);
       await launched.page.getByTestId("review-create-node").click();
@@ -75,14 +77,14 @@ test("compact navigation stays bound to explicit GUI targets and local discovery
     const nodes = value(await agent.callCommand<{ nodes: ReviewNode[] }>("review.nodes.list", { target: reviewContext.target })).nodes;
     const node = nodes.find(candidate => candidate.name === "Bootstrap task A")!;
     const reviewTarget = { ...reviewContext.target, nodeId: node.id };
-    await launched.page.getByRole("button", { name: "Copy connection instructions", exact: true }).click();
+    await launched.page.getByTestId("review-start-command").click();
     await vi.waitFor(async () => {
       const text = await launched.page.evaluate(() => navigator.clipboard.readText());
       expect(text).toContain(`--target rt1.`);
       expect(decodeAgentTarget(text.split("--target ")[1])).toEqual(reviewTarget);
     });
     const copied = await launched.page.evaluate(() => navigator.clipboard.readText());
-    expect(copied).toMatch(/^Run now: node '.+dist[\\/]reelctl[\\/]index\.js' start --target rt1\.[A-Za-z0-9_-]+$/);
+    expect(copied).toBe((await launched.page.evaluate(target => window.reelterminal!.collabControl!.getStartupInfo(target), reviewTarget)).startCommand);
     const reviewRef = copied.split("--target ")[1];
     expect(decodeAgentTarget(reviewRef)).toEqual(reviewTarget);
     const baselineNodes = await agent.callCommand("review.nodes.list", { target: reviewContext.target });
@@ -98,11 +100,11 @@ test("compact navigation stays bound to explicit GUI targets and local discovery
     expect(bound.result.value.target).toEqual(reviewTarget);
     expect(bound.result.value.name).toBe("Bootstrap task A");
     expect(await launched.page.getByTestId("review-node-title").textContent()).toBe("Bootstrap task B");
-    await launched.page.getByTestId("human-board-tab").click();
-    await launched.page.getByTestId("human-board-home").waitFor();
+    await openOrCreateBoard(launched.page);
     expect((await cli(launched.endpointFile, ["start", "--target", videoRef])).result.value.target).toEqual(videoTarget);
     expect((await cli(launched.endpointFile, ["start", "--target", reviewRef])).result.value.target).toEqual(reviewTarget);
-    expect(await launched.page.getByTestId("human-board-tab").getAttribute("class")).toContain("bg-accent");
+    expect(await launched.page.locator('[data-testid^="board-tab-"]').first().getAttribute("aria-selected")).toBe("true");
+    expect(await launched.page.getByTestId("review-start-command").count()).toBe(0);
     await evidence.screenshot("background-target-on-private-board");
     const fullEdit = await cli(launched.endpointFile, ["schema", "edit.apply"]);
     sizes["schema edit.apply"] = fullEdit.bytes;

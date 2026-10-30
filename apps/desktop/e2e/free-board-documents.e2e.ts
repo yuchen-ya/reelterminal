@@ -6,6 +6,7 @@ import type { ReviewContext, ReviewNode } from "@reelterminal/core/review/types"
 import type { WorkbenchItem } from "@reelterminal/core/types/workbench";
 import { LEGACY_IDB_MATERIAL_LIBRARY } from "@reelterminal/core/legacy/physical-identifiers";
 import { launchApp } from "./harness/launch";
+import { openOrCreateBoard } from "./harness/workspace-tabs";
 import { createEvidence } from "./harness/evidence";
 import { connectExternalAgent, value } from "./harness/cli-client";
 import { copyReadmeFixture, localHtmlSource, startBoardPageServer } from "./harness/board-document-fixtures";
@@ -37,7 +38,7 @@ async function saved(page: Page) {
 }
 async function openBoard(page: Page) {
   await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-  await page.getByTestId("human-board-tab").click();
+  await openOrCreateBoard(page);
 }
 async function fit(page: Page) {
   await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("Escape"); await page.keyboard.press("Shift+1"); await saved(page);
@@ -61,19 +62,19 @@ async function nativePaste(launched: Awaited<ReturnType<typeof launchApp>>, text
     const bounds = (await canvas.boundingBox())!;
     await launched.page.mouse.click(bounds.x + bounds.width - 24, bounds.y + bounds.height - 80);
     await canvas.focus();
-  } else await launched.page.getByTestId("human-board-home").focus();
+  } else throw new Error("Board canvas is absent");
   const clipboardValue = await launched.app.evaluate(async ({ clipboard }, value) => { await clipboard.writeText(value); return await clipboard.readText(); }, text);
   expect(clipboardValue).toBe(text);
   await launched.page.keyboard.press("Control+V");
 }
 
-test("native text paste stays text and URI drops use the resized scene coordinates after sidebar collapse", async () => {
+test("native text paste stays text and URI drops use the full scene coordinates", async () => {
   const launched = await launchApp(), page = launched.page;
   const evidence = createEvidence("free-board-input", page);
   try {
     await openBoard(page);
     await nativePaste(launched, '{"elements":[],"type":"excalidraw/clipboard"}');
-    expect(await page.getByTestId("human-board-empty").isVisible()).toBe(true);
+    expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(0);
     const paragraph = "Notes with https://example.com/reference\nThe second line remains plain text.";
     await nativePaste(launched, paragraph);
     await page.getByTestId("human-board-canvas").waitFor({ timeout: 30_000 }); await saved(page);
@@ -81,7 +82,6 @@ test("native text paste stays text and URI drops use the resized scene coordinat
     let board = (await boards(page))[0];
     expect(board.elements.filter(element => !element.isDeleted)).toHaveLength(1);
     expect(board.elements[0].text).toBe(paragraph);
-    await page.getByTestId("human-board-sidebar-toggle").click();
     const bounds = (await page.getByTestId("human-board-scene").locator(".excalidraw").boundingBox())!;
     board = (await boards(page))[0];
     const dropPoint = { x: Math.round(bounds.x + bounds.width * 0.3), y: Math.round(bounds.y + bounds.height * 0.7) };
@@ -102,7 +102,7 @@ test("native text paste stays text and URI drops use the resized scene coordinat
     await page.keyboard.press("Control+A"); await page.keyboard.press("Control+V"); await page.keyboard.press("Escape"); await saved(page);
     expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(2);
     expect((await boards(page))[0].elements.find(element => element.id === text.id)?.originalText).toBe("Edit this text only https://example.com/inside-editor");
-    evidence.record("drop", { expected, actual: { x: web.x, y: web.y }, sidebar: "collapsed", syntheticUriEvent: true, nativeClipboard: true });
+    evidence.record("drop", { expected, actual: { x: web.x, y: web.y }, sidebar: "removed", syntheticUriEvent: true, nativeClipboard: true });
     await evidence.screenshot("collapsed-uri-drop");
   } finally {
     evidence.record("rendererConsole", launched.output.rendererConsole);
@@ -110,7 +110,7 @@ test("native text paste stays text and URI drops use the resized scene coordinat
   }
 });
 
-test("free board preserves rich Markdown source, managed relative assets, editing undo and sidebar state", async () => {
+test("free board preserves rich Markdown source, managed relative assets and editing undo", async () => {
   let launched = await launchApp();
   await launched.waitForEndpointFile();
   const agent = await connectExternalAgent(launched.endpointFile);
@@ -118,7 +118,7 @@ test("free board preserves rich Markdown source, managed relative assets, editin
   try {
     let page = launched.page;
     await openBoard(page);
-    expect(await page.getByTestId("human-board-tab").innerText()).toContain("自由画板");
+    expect(await page.locator('[data-testid^="board-tab-"]').count()).toBe(1);
     const fixtureDir = path.join(launched.runDir, "readme-fixture"), readme = await copyReadmeFixture(fixtureDir);
     const englishSource = await readFile(path.join(fixtureDir, "README_en.md"), "utf8");
     await page.getByTestId("human-board-import-files").setInputFiles(readme.filename);
@@ -146,20 +146,9 @@ test("free board preserves rich Markdown source, managed relative assets, editin
     expect(value(await agent.callCommand<{ nodes: ReviewNode[] }>("review.nodes.list", { target: context.target })).nodes).toEqual([]);
     expect(JSON.stringify(context)).not.toContain("Generate anywhere; finish here.");
     await select(page, markdown);
-    await page.evaluate(() => { (window as unknown as { acceptanceCanvas: Element | null }).acceptanceCanvas = document.querySelector('[data-testid="human-board-scene"] .excalidraw'); });
-    board = (await boards(page))[0];
-    const expanded = await page.getByTestId("human-board-list").boundingBox();
-    expect(Math.round(expanded!.width)).toBe(192);
-    await page.getByTestId("human-board-sidebar-toggle").click();
-    expect(Math.round((await page.getByTestId("human-board-list").boundingBox())!.width)).toBe(48);
-    await saved(page);
-    expect((await boards(page))[0].revision).toBe(board.revision);
-    expect(await page.evaluate(() => (window as unknown as { acceptanceCanvas: Element | null }).acceptanceCanvas === document.querySelector('[data-testid="human-board-scene"] .excalidraw'))).toBe(true);
+    expect(await page.getByTestId("human-board-list").count()).toBe(0);
     expect(await page.getByTestId("human-board-export-review").isEnabled()).toBe(true);
-    await evidence.screenshot("sidebar-collapsed");
-    await page.getByTestId("human-board-sidebar-toggle").click();
-    expect(Math.round((await page.getByTestId("human-board-list").boundingBox())!.width)).toBe(192);
-    expect((await boards(page))[0].revision).toBe(board.revision);
+    await evidence.screenshot("unified-board");
     await select(page, markdown);
     await page.getByTestId("human-board-document-export-mode").selectOption("source");
     await page.getByTestId("human-board-export-review").click();
@@ -215,6 +204,8 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     evidence.record("phase", "local-html-imported"); evidence.flush();
     await select(page, local); await page.getByTestId("human-board-document-browse").click();
     await vi.waitFor(async () => expect(await page.getByTestId("human-board-browser").getAttribute("data-state")).toBe("ready"), { timeout: 30_000 });
+    expect(await page.getByTestId("review-workspace-open").isDisabled()).toBe(true);
+    expect(await page.locator('[data-testid^="board-tab-"]').first().isDisabled()).toBe(true);
     const guestFacts = await launched.app.evaluate(async ({ webContents, BrowserWindow, session }) => {
       const main = BrowserWindow.getAllWindows()[0].webContents;
       const guest = webContents.getAllWebContents().find(contents => contents.id !== main.id && contents.getURL().startsWith("file:"));
@@ -243,6 +234,11 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     await vi.waitFor(async () => expect(await launched.app.evaluate(({ webContents }, origin) => webContents.getAllWebContents().some(contents => contents.getURL() === origin), server.url)).toBe(true), { timeout: 15_000 });
     await page.getByTestId("human-board-browser-capture").click();
     await page.getByTestId("human-board-browser").waitFor({ state: "hidden" }); await saved(page);
+    await vi.waitFor(async () => expect(await launched.app.evaluate(({ webContents, BrowserWindow }) => {
+      const main = BrowserWindow.getAllWindows()[0].webContents;
+      return webContents.getAllWebContents().filter(contents => contents.id !== main.id && /^(file:|https?:)/.test(contents.getURL())).length;
+    })).toBe(0));
+    expect(await page.getByTestId("review-workspace-open").isEnabled()).toBe(true);
     local = (await boards(page))[0].elements.find(element => element.id === local.id)!;
     expect(local.customData?.snapshotResourceId).toBeTruthy();
     await select(page, local); await page.getByTestId("human-board-document-edit").click();
@@ -328,11 +324,10 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
         }
       }).observe(document.body, { childList: true });
     });
-    await page.getByTestId("human-board-sidebar-toggle").click();
     await fit(page);
     await page.getByTestId("human-board-capture-region").click();
     await page.getByTestId("human-board-capture-overlay").waitFor({ timeout: 30_000 });
-    expect(await page.getByTestId("human-board-sidebar-toggle").isDisabled()).toBe(true);
+    expect(await page.getByTestId("review-workspace-open").isDisabled()).toBe(true);
     const current = (await boards(page))[0], stage = (await page.getByTestId("human-board-capture-overlay").boundingBox())!;
     const left = Math.min(...visible.map(element => element.x)) - 6, top = Math.min(...visible.map(element => element.y)) - 6;
     const right = Math.max(...visible.map(element => element.x + element.width)) + 6, bottom = Math.max(...visible.map(element => element.y + element.height)) + 6;

@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { value } from "./harness/cli-client";
 import { expect, test, vi } from "vitest";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -16,6 +17,7 @@ test("a real pointer gesture on each formal handle reaches the native drag bound
   const page = launched.page;
   try {
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel(/Task name|任务名称/).fill("Gesture regression");
     await page.getByTestId("review-create-node").click();

@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { expect, test, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir } from "node:fs/promises";
@@ -38,6 +39,7 @@ test("repair CLI repairs visible defects atomically and preserves source pixels,
   try {
     let page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
+    await openWorkspaceDirectory(page);
     await page.getByTestId("review-new-task").click();
     await page.getByLabel(/Task name|任务名称/).fill("Repair pixel acceptance");
     await page.getByTestId("review-create-node").click();

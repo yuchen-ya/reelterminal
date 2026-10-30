@@ -1,3 +1,4 @@
+import { openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { value } from "./harness/cli-client";
 import { expect, test, vi } from "vitest";
 import { existsSync } from "node:fs";
@@ -49,6 +50,7 @@ test.skipIf(process.env.REELTERMINAL_REVIEW_NATIVE_DRAG !== "1")("manual Explore
       };
     });
     const create = async (name: string, entries: Array<{ title: string; text: string }>) => {
+      await openWorkspaceDirectory(page);
       await page.getByTestId("review-new-task").click();
     await page.getByLabel(/Task name|任务名称/).fill(name);
       await page.getByTestId("review-create-node").click();
