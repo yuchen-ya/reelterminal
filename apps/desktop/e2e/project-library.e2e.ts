@@ -76,6 +76,7 @@ test("library saves and reveals a durable project file and permanently deletes a
     await library().getByText("Selected 2", { exact: true }).waitFor();
     await library().getByRole("button", { name: "Delete permanently", exact: true }).click();
     await confirm();
+    await library().getByRole("searchbox").fill("");
     await library().getByText("The recycle bin is empty.", { exact: true }).waitFor();
     expect(JSON.parse(readFileSync(filePath, "utf8")).id).toBe(saved.id);
     launched = await launched.relaunch();
