@@ -161,7 +161,7 @@ describe("extractFramesExact", () => {
       "-c", "copy", "-output_ts_offset", "5", source]);
     const { stdout } = await runToolProcess(binaries!.ffprobe, ["-v", "error", "-select_streams", "v:0",
       "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", source]);
-    const truth = (JSON.parse(stdout) as { frames: { best_effort_timestamp_time: string }[] }).frames;
+    const truth = (JSON.parse(stdout.toString("utf8")) as { frames: { best_effort_timestamp_time: string }[] }).frames;
     expect(Number(truth[0].best_effort_timestamp_time)).toBeGreaterThan(4);
     for (const indices of [[0, 4], [74]]) {
       const extracted = await extractFramesExact(binaries!.ffmpeg, source, indices, join(dir, `offset-${indices.join("-")}`), { ffprobe: binaries!.ffprobe });
