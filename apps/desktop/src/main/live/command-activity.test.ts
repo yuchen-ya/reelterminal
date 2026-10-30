@@ -14,3 +14,14 @@ it("projects real arguments without credentials, image payloads or unbounded geo
   expect(details.argumentSummary).toContain("itemId=image");
   expect(activityText("Failed: token=private-token Bearer private-secret")).not.toMatch(/private-token|private-secret/);
 });
+
+it("omits free-form content and redacts quoted credentials embedded in text", () => {
+  const details = commandActivityDetails({ itemId: "image-a", opacity: 0.5,
+    updates: [{ content: { text: "naked-private-secret", opacity: 0.8 }, feedback: "another-private-secret" }],
+    note: 'Failed with {"token":"quoted private token", "api_key": "key-with-\\"quote"}',
+  });
+  expect(JSON.parse(details.arguments)).toMatchObject({ itemId: "image-a", opacity: 0.5,
+    updates: [{ content: "[content omitted]", feedback: "[content omitted]" }] });
+  expect(details.arguments).not.toMatch(/naked-private-secret|another-private-secret|quoted private token|key-with/);
+  expect(activityText("password='secret with spaces' credential=plain-secret")).not.toMatch(/secret with spaces|plain-secret/);
+});

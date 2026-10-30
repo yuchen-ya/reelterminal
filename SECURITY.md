@@ -14,6 +14,15 @@ latest release before checking whether a vulnerability still applies.
 Agent Access credentials authorize operations on the local editor. Keep endpoint
 descriptors and tokens private. Do not attach them to issues or logs.
 
+The desktop `app://reelterminal/review-media/<uuid>` protocol resolves registered
+resources by UUID for the trusted renderer; it does not enforce review-node
+ownership. Agent media commands enforce that boundary before resolving bytes:
+`review.media.inspect` and `review.frames.extract` use `ReviewService.freezeExport`
+to check the explicit target, node revision and retained resource/version.
+Private free-board resources become Agent-readable only through the user's
+explicit export to a review node. Do not treat a resource UUID or this renderer
+protocol as an independently authorized Agent content API.
+
 Motion expressions use a restricted interpreter, not a JavaScript execution
 context. Arithmetic, Math helpers, animation scope references, conditional
 expressions and local const/let values with return are supported. Browser and

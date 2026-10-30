@@ -14,7 +14,7 @@ export function workbenchPlacementGroup(item: Pick<WorkbenchItem, "placement" | 
   return item.placement ? item.placement.groupId : item.lineage?.upstreamGroupId ?? null;
 }
 
-/** Classification changes metadata only; the source graph remains the authority for descendants. */
+/** Classification moves the visible placement subtree without changing its source graph. */
 export function buildWorkbenchPlacementActions(state: WorkbenchProjectState, input: {
   batchId: string;
   itemIds: readonly string[];
@@ -33,11 +33,13 @@ export function buildWorkbenchPlacementActions(state: WorkbenchProjectState, inp
     fail("归类目标必须是当前完整批次中已有的组");
   }
   const moving = new Set(input.itemIds);
+  const itemById = new Map(items.map(item => [item.id, item]));
   if (input.itemIds.some(id => !items.some(item => item.id === id))) fail("不能跨任务或批次移动条目");
   for (let size = -1; size !== moving.size;) {
     size = moving.size;
     for (const item of items) {
-      if (item.lineage?.parentNodeId && moving.has(item.lineage.parentNodeId)) moving.add(item.id);
+      const parent = item.lineage?.parentNodeId ? itemById.get(item.lineage.parentNodeId) : undefined;
+      if (parent && moving.has(parent.id) && workbenchPlacementGroup(item) === workbenchPlacementGroup(parent)) moving.add(item.id);
     }
   }
   if (input.targetItemId && (moving.has(input.targetItemId) || !items.some(item => item.id === input.targetItemId))) {

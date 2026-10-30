@@ -19,7 +19,7 @@
 | 内部媒体链接 | 只隐藏内部 embed 标识的链接提示，点击不打开外部页面；普通链接未被全局隐藏，媒体交互不受影响 |
 | repair CLI | 独立 reelctl 进程 inspect/apply，真实局部 PNG 与坐标；ETag 式 baseline 无变化不重复图、作用域不符刷新；stale 版本明确拒绝；发布反馈按 exact handoff、版本和 ROI 分页，草稿及区外问题不回传 |
 | 像素与事务 | brush、仅修补层 eraser、软边 clone、透明 patch；选区外变化 0；失败整批不提交；requestId 重试、undo/redo、重开后的回执路径可用，actor=agent |
-| 视频来源 | VFR、90°旋转、5s 非零起点均逐帧比对 FFmpeg RGBA 和 ffprobe 真实 PTS；VFR 相邻帧 3/4/5 关联相同源且图像不同，不用 nominal FPS 推算 |
+| 视频来源 | VFR、90°旋转、5s 非零起点均采样帧 4，比对 FFmpeg RGBA 和 ffprobe 真实 PTS；VFR 另采样相邻帧 3/5，三帧关联相同源且图像不同，不用 nominal FPS 推算；未比较整个视频的每一帧 |
 
 画板撤销是 **Excalidraw 会话内历史**，不承诺重启后恢复 undo 栈。
 模型截图以实际视口比例从场景重新渲染，宽 1920；区域限制为单边 16384、总面积 64MP。
@@ -84,3 +84,5 @@ pnpm --filter @reelterminal/desktop exec vitest run --config e2e/vitest.config.t
 本任务代码归属统计为 42 个源码文件 +1717/-38、9 个测试/fixture 文件 +1104/-2；
 排除其他聊天的音频、ExportCleanup、ProjectLibrary、autosave、共享锁文件和生成许可证变化。
 逐文件统计见证据 JSON；文档和字体许可证不计入有效代码规模。
+
+后续提交 `e12e9932` 将测试中的 ffprobe Buffer 显式转为 UTF-8 字符串再交给 `JSON.parse`，属于测试类型与写法整理。正常 UTF-8 Buffer 的运行时解析本就有效，生产路径原已使用 `toString("utf8")`；该提交不是生产截帧故障修复，也不扩大上表的采样验证范围。

@@ -12,7 +12,7 @@ import { WorkbenchPage, WorkbenchPanel } from "./WorkbenchPage";
 import { EditorBootstrapGate } from "../editor/EditorBootstrapGate";
 import { useReviewController } from "../workbench/useReviewController";
 import { projectHistory } from "../workbench/useWorkbenchController";
-import { importReviewFiles, planReviewFiles } from "../../services/review-workspace/file-import";
+import { importReviewFiles, planReviewFiles, prepareReviewFileImport } from "../../services/review-workspace/file-import";
 import { ReviewImportDialog } from "../workbench/components/ReviewImportDialog";
 import { ReviewExportDialog } from "../workbench/components/ReviewExportDialog";
 import { ReviewAttachDialog } from "../workbench/components/ReviewAttachDialog";
@@ -403,10 +403,15 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
         setBusy(true);
         void (async () => {
           const plan = await planReviewFiles(files);
+          const resources = await prepareReviewFileImport(plan);
           const created = await reviewService.directory.commit({ target: captured.target, expectedWorkspaceRevision: captured.revision,
             requestId: crypto.randomUUID(), actor: "human", commands: [{ kind: "node.create", name: files[0].name.replace(/\.[^.]+$/, "") || "拖入文件" }] });
           const node = created.nodes[0];
-          await importReviewFiles({ ...captured.target, nodeId: node.id }, node.revision, "拖入文件", plan, { groupId: null });
+          try {
+            await importReviewFiles({ ...captured.target, nodeId: node.id }, node.revision, "拖入文件", plan, { groupId: null }, resources);
+          } catch (error) {
+            throw new Error(`任务“${node.name}”已创建，但文件导入失败：${error instanceof Error ? error.message : String(error)}`);
+          }
           await openReview(node.id);
         })().catch(report).finally(() => setBusy(false));
       }}

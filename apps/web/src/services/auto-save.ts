@@ -594,10 +594,6 @@ export class AutoSaveManager {
     return records.map((record) => ({ id: record.id, project: JSON.parse(record.data) as Project }));
   }
 
-  async clearProjectSaves(projectId: string): Promise<void> {
-    await this.clearProjectsSaves([projectId]);
-  }
-
   async clearProjectsSaves(projectIds: readonly string[]): Promise<void> {
     for (const id of projectIds) await this.suspendProject(id);
     await this.initialize();

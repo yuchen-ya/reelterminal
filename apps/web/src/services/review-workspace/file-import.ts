@@ -1,4 +1,4 @@
-import type { ReviewContext, ReviewStep } from "@reelterminal/core/review/types";
+import type { FileResource, ReviewContext, ReviewStep } from "@reelterminal/core/review/types";
 import { buildWorkbenchIngestActions } from "@reelterminal/core/actions/workbench-actions";
 import { WORKBENCH_MAX_TEXT_LENGTH } from "@reelterminal/core/types/workbench";
 import { validWorkbenchPlacement } from "@reelterminal/core/review/placement";
@@ -63,21 +63,23 @@ export async function planReviewFiles(files: readonly File[]): Promise<ReviewFil
   return { batchId: crypto.randomUUID(), requestId: crypto.randomUUID(), runId: crypto.randomUUID(), entries };
 }
 
+export async function prepareReviewFileImport(plan: ReviewFileImportPlan): Promise<readonly FileResource[]> {
+  const resources = await prepareReviewFiles(plan.entries.map(entry => entry.file), plan.requestId, "user");
+  for (const entry of plan.entries) if (entry.expectedHash && resources.find(resource => resource.id === entry.file.resourceId)!.sha256 !== entry.expectedHash) {
+    throw reviewError("CONFLICT", "原文件在解析和复制之间发生变化，请重新选择文件");
+  }
+  return resources;
+}
+
 export function importReviewFiles(target: ReviewContext["target"], expectedNodeRevision: number, name: string, plan: ReviewFileImportPlan,
-  destination?: { batchId?: string; groupId: string | null }) {
+  destination?: { batchId?: string; groupId: string | null }, resources?: readonly FileResource[]) {
   if (destination && !validWorkbenchPlacement({ groupId: destination.groupId })) throw reviewError("INVALID_PARAMS", "归类目标无效");
   const batchId = destination?.batchId ?? plan.batchId;
   const startedAt = Date.now();
   const stepIds = plan.entries.map(() => crypto.randomUUID());
   return reviewService.commit({ target, expectedNodeRevision, requestId: plan.requestId, actor: "human", label: "导入审阅文件",
     request: { name, batchId, entries: plan.entries, destination },
-    prepareResources: async () => {
-      const resources = await prepareReviewFiles(plan.entries.map(entry => entry.file), plan.requestId, "user");
-      for (const entry of plan.entries) if (entry.expectedHash && resources.find(resource => resource.id === entry.file.resourceId)!.sha256 !== entry.expectedHash) {
-        throw reviewError("CONFLICT", "原文件在解析和复制之间发生变化，请重新选择文件");
-      }
-      return resources;
-    },
+    ...(resources ? { resources } : { prepareResources: () => prepareReviewFileImport(plan) }),
     build: (state, resources) => {
       if (destination?.batchId && !state.batches.some(batch => batch.id === destination.batchId)) throw reviewError("CONFLICT", "目标批次已不存在，请重新拖放");
       if (destination?.groupId && !state.items.some(item => item.batchId === batchId && (item.lineage?.upstreamGroupId === destination.groupId || item.placement?.groupId === destination.groupId))) throw reviewError("INVALID_PARAMS", "目标分组不属于该批次");

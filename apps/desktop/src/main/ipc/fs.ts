@@ -197,6 +197,7 @@ export async function writeTextFile(args: { path: string; data: string }): Promi
 }
 
 export async function revealInFolder(args: { path: string }): Promise<void> {
+  await fs.stat(args.path);
   shell.showItemInFolder(args.path);
 }
 

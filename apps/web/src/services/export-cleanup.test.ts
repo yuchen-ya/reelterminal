@@ -296,6 +296,14 @@ describe("shared export cleanup service", () => {
     expect(state.guardedDeleteCalls).toHaveLength(0);
   });
 
+  it.each(["purge-media", "purge-cache"] as const)("blocks an empty %s plan through the service API", async (action) => {
+    const plan = await createCleanupPlan(target, action);
+    expect(plan.status).toBe("review-required");
+    expect(plan.blockers).toContainEqual(expect.stringContaining("No "));
+    const result = await executeCleanupPlan(confirm(plan));
+    expect(result).toMatchObject({ status: "blocked", reclaimedBytes: 0 });
+  });
+
   it("requires explicit work-file selection, retains adopted files and outputs, and rechecks references before deletion", async () => {
     const artifact = (fileId: string, kind: "work" | "output" = "work"): ProjectLibraryTrackedArtifactFile => ({
       fileId, kind, path: `C:\\artifacts\\${fileId}.mp4`, purpose: "generation-attempt", origin: "agent", rebuildable: false,

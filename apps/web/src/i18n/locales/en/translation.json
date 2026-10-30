@@ -1206,8 +1206,6 @@
     "toast": "Switched to \"{{name}}\"",
     "copyPrompt": "Copy Agent prompt",
     "copied": "Agent prompt copied",
-    "promptBody": "Run now: {{startCommand}}",
-    "promptBodyLocal": "Copy this workspace’s Agent startup prompt in the desktop app.",
     "actionsSection": "Project actions"
   },
   "previewClipboard": {

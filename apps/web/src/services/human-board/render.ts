@@ -8,7 +8,7 @@ export interface FrozenBoardScene { elements: readonly ExcalidrawElement[]; appS
 export type MediaCapture = () => Promise<Blob>;
 
 /** Freeze playback and render media from source pixels/3D scene, never screen pixels. */
-export async function freezeBoardScene(elements: readonly ExcalidrawElement[], _appState: AppState, files: BinaryFiles, captures: ReadonlyMap<string, MediaCapture>): Promise<FrozenBoardScene> {
+export async function freezeBoardScene(elements: readonly ExcalidrawElement[], files: BinaryFiles, captures: ReadonlyMap<string, MediaCapture>): Promise<FrozenBoardScene> {
   const snapshot = structuredClone(elements.filter(element => !element.isDeleted));
   const binaryFiles = { ...files };
   const frozen = await Promise.all(snapshot.map(async element => {

@@ -109,9 +109,13 @@ let stretchEngine: Promise<Pick<SignalsmithStretch | SignalsmithStretchWorkerCli
 function getStretchEngine() {
   // Browser preparation must keep the editor responsive. Node has no Web
   // Worker and uses the same WASM directly for offline tools and PCM tests.
-  stretchEngine ??= typeof Worker !== "undefined"
+  stretchEngine ??= (typeof Worker !== "undefined"
     ? import("signalsmith-stretch-js/worker").then(({ SignalsmithStretchWorkerClient }) => SignalsmithStretchWorkerClient.create())
-    : import("signalsmith-stretch-js").then(({ createSignalsmithStretch }) => createSignalsmithStretch());
+    : import("signalsmith-stretch-js").then(({ createSignalsmithStretch }) => createSignalsmithStretch()))
+    .catch((error) => {
+      stretchEngine = undefined;
+      throw error;
+    });
   return stretchEngine;
 }
 

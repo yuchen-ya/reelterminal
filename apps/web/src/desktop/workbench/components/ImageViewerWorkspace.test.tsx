@@ -506,16 +506,49 @@ it.each(["item", "source"] as const)("never retains an old image across a differ
 });
 
 it("retries a failed image after leaving and returning to its item without remounting the workspace", async () => {
-  const item = repairedItem(2);
+  const item = imageItem();
   const { update } = renderUpdatingImage(item);
   fireEvent.error(screen.getByTestId("image-stage-pending-image"));
-  expect(screen.getByText("图片解码失败")).toBeInTheDocument();
+  expect(screen.getByText("图片加载失败")).toBeInTheDocument();
   update({ ...imageItem(), id: "another-item" });
   update(item);
   const retry = screen.getByTestId("image-stage-pending-image") as HTMLImageElement;
   loadImage(retry);
   await waitFor(() => expect(screen.getByTestId("image-stage-image")).toBe(retry));
   expect(screen.queryByTestId("image-update-status")).toBeNull();
+});
+
+it("falls back from an unreadable first repair, then tries a newer repair without overriding an explicit choice", async () => {
+  const { update } = renderUpdatingImage(repairedItem(2, "error"));
+  expect(screen.getByTestId("repair-notice")).toHaveTextContent("已回退原图：cannot read file");
+  loadImage(screen.getByTestId("image-stage-pending-image") as HTMLImageElement);
+  const original = await screen.findByTestId("image-stage-image");
+  expect(original).toHaveAttribute("data-display-mode", "original");
+  update(repairedItem(3));
+  expect(screen.getByTestId("image-stage-image")).toBe(original);
+  loadImage(screen.getByTestId("image-stage-pending-image") as HTMLImageElement);
+  await waitFor(() => expect(screen.getByTestId("image-stage-image")).toHaveAttribute("data-display-mode", "repaired"));
+  fireEvent.click(screen.getByTestId("image-display-original"));
+  loadImage(screen.getByTestId("image-stage-pending-image") as HTMLImageElement);
+  await waitFor(() => expect(screen.getByTestId("image-stage-image")).toHaveAttribute("data-display-mode", "original"));
+  update(repairedItem(4));
+  expect(screen.queryByTestId("image-stage-pending-image")).toBeNull();
+});
+
+it("reports a first repair's wrong dimensions and lets an explicit repaired choice show the same real error", async () => {
+  renderUpdatingImage(repairedItem(2));
+  const wrongSize = () => {
+    const pending = screen.getByTestId("image-stage-pending-image");
+    Object.defineProperty(pending, "naturalWidth", { configurable: true, value: 200 });
+    Object.defineProperty(pending, "naturalHeight", { configurable: true, value: 50 });
+    fireEvent.load(pending);
+  };
+  wrongSize();
+  expect(await screen.findByTestId("repair-notice")).toHaveTextContent("已回退原图：修补结果尺寸与源图不一致");
+  expect(screen.getByTestId("image-stage-pending-image")).toHaveAttribute("src", "blob:test-image");
+  fireEvent.click(screen.getByTestId("image-display-repaired"));
+  expect(await screen.findByText("修补结果尺寸与源图不一致")).toBeInTheDocument();
+  expect(screen.queryByTestId("repair-notice")).toBeNull();
 });
 
 it("requires the remounted image to decode when returning through an item that never became ready", async () => {

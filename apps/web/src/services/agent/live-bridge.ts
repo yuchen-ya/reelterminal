@@ -1032,9 +1032,9 @@ export async function handleLiveBridgeRequest(
           return { ok: true, result: { target, revision: node?.revision ?? context.revision, ...(node ? { name: node.name } : {}) } };
         }
         if (target?.kind !== "video") throw codedError("INVALID_PARAMS", "An explicit video or review target is required");
-        const runtime = await workspaceManager.getWorkspaceContext({ projectId: target.projectId, workspaceId: target.workspaceId });
-        const state = runtime.store.getState();
-        return { ok: true, result: { target: { ...target, instanceId: runtime.instanceId }, name: state.project.name, revision: state.workspaceRevision } };
+        const runtime = await workspaceManager.getWorkspaceRevisionGuard({ projectId: target.projectId, workspaceId: target.workspaceId });
+        if (!runtime.instanceId) throw codedError("CONFLICT", "Workspace runtime is closed; open the same workspace and copy a fresh startup prompt");
+        return { ok: true, result: { target: { ...target, instanceId: runtime.instanceId }, name: runtime.name, revision: runtime.revision } };
       }
       case "getIdentity": {
         const runtime = await targetRuntime(req);

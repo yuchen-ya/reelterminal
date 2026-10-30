@@ -11,8 +11,9 @@ export function readReviewItemDrag(data: DataTransfer): ReviewItemDrag {
   if (!value || !value.target || value.target.kind !== "review" || !UUID.test(value.target.reviewWorkspaceId) ||
     !UUID.test(value.target.instanceId) || !value.target.nodeId || !UUID.test(value.target.nodeId) ||
     !Number.isInteger(value.revision) || value.revision < 0 || !UUID.test(value.batchId) ||
-    !Array.isArray(value.itemIds) || !value.itemIds.length || value.itemIds.length > 500 || value.itemIds.some(id => typeof id !== "string" || !UUID.test(id))) {
+    !Array.isArray(value.itemIds) || !value.itemIds.length || value.itemIds.some(id => typeof id !== "string" || !UUID.test(id))) {
     throw new Error("无效的审阅拖放数据");
   }
+  if (value.itemIds.length > 500) throw new Error("每次最多拖动 500 个审阅条目，请分批归类");
   return value;
 }

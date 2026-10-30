@@ -51,6 +51,19 @@ const item = (
   }) as WorkbenchItemView;
 
 describe("buildWorkbenchLineageGroups & parent modes", () => {
+  it("splits separately classified descendants into roots and retains their empty source group", () => {
+    const groups = buildWorkbenchLineageGroups([
+      item("parent", "source-a", undefined, { placement: { groupId: "source-b" } }),
+      item("child", "source-a", "parent", { placement: { groupId: null } }),
+      item("grandchild", "source-a", "child", { placement: { groupId: null } }),
+      item("other", "source-b"),
+    ]);
+    expect(groups.find(group => group.id === "source-a")?.roots).toEqual([]);
+    expect(groups.find(group => group.id === "source-b")?.roots.map(root => root.item.id)).toEqual(["parent", "other"]);
+    const ungrouped = groups.find(group => group.isUngrouped)!;
+    expect(ungrouped.roots.map(root => root.item.id)).toEqual(["child"]);
+    expect(ungrouped.roots[0].children.map(child => child.item.id)).toEqual(["grandchild"]);
+  });
   it("orders parent groups by their latest descendant edit while retaining leaf order", () => {
     const groups = buildWorkbenchLineageGroups([
       item("a", "old", undefined, { updatedAt: 10 }),

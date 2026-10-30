@@ -118,6 +118,18 @@ function frequency(data: Float32Array, rate: number): number {
 const rms = (data: Float32Array) => Math.sqrt(data.reduce((sum, value) => sum + value * value, 0) / data.length);
 
 describe("Signalsmith pitch-preserving PCM", () => {
+  it("reverses the full trim including silent source overrun before stretching", async () => {
+    const source = tone(1, 1);
+    const rendered = await prepareAudioSpeed(context, source,
+      { id: "reverse-overrun", inPoint: 0, outPoint: 2, reversed: true, speed: 2 });
+    const pcm = rendered.buffer.getChannelData(0);
+    const rate = source.sampleRate;
+    // Reverse enters at outPoint=2, so the missing [1,2) source audio plays
+    // first. Moving padding to the tail would shift audible content by 0.5s.
+    expect(rms(pcm.subarray(Math.round(0.1 * rate), Math.round(0.4 * rate)))).toBeLessThan(0.005);
+    expect(rms(pcm.subarray(Math.round(0.6 * rate), Math.round(0.9 * rate)))).toBeGreaterThan(0.1);
+  });
+
   it.each([0.5, 1.5, 2, 20])("preserves independent stereo pitches and exact duration at %sx", async (speed) => {
     const source = tone();
     const timing = { id: `pitch-${speed}`, inPoint: 0.25, outPoint: 2.75, speed };

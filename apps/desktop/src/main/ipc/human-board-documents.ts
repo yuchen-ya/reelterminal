@@ -133,10 +133,15 @@ export function registerHumanBoardDocumentsIpc(): void {
     view.setVisible(!args.preview);
     view.setBackgroundColor("#ffffff");
     const allowed = (target: string) => {
-      const url = new URL(target);
-      if (["data:", "blob:", "about:"].includes(url.protocol)) return true;
-      if (["http:", "https:"].includes(url.protocol)) return !args.preview;
-      return url.protocol === "file:" && !!current.directory && isDocumentPathWithin(current.directory, fileURLToPath(url));
+      try {
+        const url = new URL(target);
+        if (["data:", "blob:", "about:"].includes(url.protocol)) return true;
+        if (["http:", "https:"].includes(url.protocol)) return !args.preview;
+        return url.protocol === "file:" && !!current.directory && isDocumentPathWithin(current.directory, fileURLToPath(url));
+      } catch (error) {
+        if (!(error instanceof TypeError)) throw error;
+        return false;
+      }
     };
     isolated.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !allowed(details.url) }));
     view.webContents.on("will-frame-navigate", event => { if (!allowed(event.url)) event.preventDefault(); });

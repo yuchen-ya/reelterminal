@@ -398,7 +398,10 @@ export async function probeRasterSize(ffprobe: string, filePath: string): Promis
   return { width: stream.width, height: stream.height };
 }
 
-/** Verified-CFR-only seconds→frame conversion; VFR/unknown returns null. */
+/** Verified-CFR-only media-relative seconds→frame conversion; VFR/unknown returns null.
+ * Detection rebases timestamps through input seeking without -copyts. Absolute
+ * source PTS returned by exact extraction must not be passed to this helper.
+ */
 export function frameIndexFromPts(ptsSec: number, facts: VideoFacts): number | null {
   if (facts.timing.timing !== "cfr" || facts.timing.fps === null) return null;
   return Math.round(ptsSec * facts.timing.fps);
@@ -875,7 +878,7 @@ export function parseShowinfo(stderr: string): { counter: number; ptsTimeSec: nu
 export interface SceneCandidate {
   /** Zero-based index of the first frame AFTER the cut; null when timing is not verified CFR. */
   readonly frameIndex: number | null;
-  /** Absolute source seconds of the boundary (frame's own PTS). */
+  /** Media-relative seconds of the boundary, with the detection range offset restored. */
   readonly ptsTimeSec: number;
   readonly score: number;
 }
@@ -929,7 +932,7 @@ export async function detectSceneCandidates(
   ];
   if (facts.timing.timing !== "cfr") {
     limitations.push(
-      `Frame timing is ${facts.timing.timing} (${facts.timing.method}); candidates carry absolute PTS seconds and frameIndex is null rather than converted through a nominal rate.`,
+      `Frame timing is ${facts.timing.timing} (${facts.timing.method}); candidates carry media-relative seconds and frameIndex is null rather than converted through a nominal rate.`,
     );
   }
   return {

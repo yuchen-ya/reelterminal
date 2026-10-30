@@ -1,4 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, rm, stat } from "node:fs/promises";
+import { FacadeError } from "@reelterminal/agent-facade/errors";
 import { inspectGlb, MODEL_PREVIEW_BUDGET } from "@reelterminal/core/review/glb";
 import { app } from "electron";
 import path from "node:path";
@@ -22,7 +23,7 @@ export async function fileReply<T>(operation: () => Promise<T>): Promise<{ ok: t
   try { return { ok: true, value: await operation() }; }
   catch (error) {
     const problem = error as { reason?: string; code?: string; name?: string };
-    const reason = problem.reason ?? (problem.code && ["INVALID_PARAMS", "NOT_FOUND", "CONFLICT", "UNSUPPORTED"].includes(problem.code) ? problem.code : problem.code === "ENOENT" ? "MISSING_FILE" : problem.code === "ENOSPC" ? "NO_SPACE" : problem.name === "AbortError" ? "CANCELLED" : undefined);
+    const reason = problem.reason ?? (error instanceof FacadeError ? error.code : problem.code && ["INVALID_PARAMS", "NOT_FOUND", "CONFLICT", "UNSUPPORTED"].includes(problem.code) ? problem.code : problem.code === "ENOENT" ? "MISSING_FILE" : problem.code === "ENOSPC" ? "NO_SPACE" : problem.name === "AbortError" ? "CANCELLED" : undefined);
     if (!reason) throw error;
     return { ok: false, error: { code: reason === "CONFLICT" || reason === "SOURCE_CHANGED" ? "CONFLICT" : ["INVALID_PARAMS", "NOT_FOUND", "UNSUPPORTED"].includes(reason) ? reason : "ACTION_FAILED", message: error instanceof Error ? error.message : String(error), reason } };
   }
@@ -37,6 +38,9 @@ export function registerReviewFilesIpc(mediaRoots: () => readonly string[]): voi
     const resource = await store.prepare({ operationId: args.operationId, resourceId: args.outputResourceId, sourcePath: frame.artifact.path,
       originalFileName: `frame-${frame.frame}.png`, mime: "image/png", source: "agent", inspect: file => inspectReviewMedia(file, "image/png") });
     const resolved = await store.resolve(resource.id, true);
+    // prepare() publishes a managed copy; the candidate PNG is no longer used
+    // by this saved capture. Read-only extraction keeps its candidate job.
+    await rm(decoded.jobDirectory, { recursive: true });
     return { resource, path: resolved.path, frameIndex: frame.frame, ptsTimeSec: frame.ptsTimeSec,
       timing: decoded.facts.frameTiming.timing, sourceResourceId: args.resourceId };
   }));

@@ -51,3 +51,18 @@ it("moves selected items to ungrouped and rejects invalid targets and self/desce
   ]) expect(() => buildWorkbenchPlacementActions(initial, input)).toThrow();
   expect(initial.items.map(workbenchPlacementGroup)).toEqual(["source-a", "source-a", "source-a", "source-b"]);
 });
+
+it("moves only attached placement descendants and preserves separately classified branches", () => {
+  const initial = fixture();
+  const separated = reduceReviewActions(initial, buildWorkbenchPlacementActions(initial, {
+    batchId: "batch", itemIds: ["child"], groupId: "source-b",
+  })).state;
+  const moved = reduceReviewActions(separated, buildWorkbenchPlacementActions(separated, {
+    batchId: "batch", itemIds: ["parent"], groupId: null,
+  })).state;
+  expect(moved.items.map(workbenchPlacementGroup)).toEqual([null, "source-b", "source-b", "source-b"]);
+  const explicit = reduceReviewActions(separated, buildWorkbenchPlacementActions(separated, {
+    batchId: "batch", itemIds: ["parent", "child"], groupId: null,
+  })).state;
+  expect(explicit.items.map(workbenchPlacementGroup)).toEqual([null, null, null, "source-b"]);
+});

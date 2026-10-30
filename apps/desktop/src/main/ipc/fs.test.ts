@@ -2,13 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pathStatus, readFileBytes, showOpenDialog } from "./fs";
+import { pathStatus, readFileBytes, revealInFolder, showOpenDialog } from "./fs";
 import { openDialogArgsSchema } from "../../shared/ipc-contract";
 
 const openDialog = vi.hoisted(() => vi.fn());
+const showItemInFolder = vi.hoisted(() => vi.fn());
 vi.mock("electron", () => ({
   dialog: { showOpenDialog: openDialog },
-  shell: {},
+  shell: { showItemInFolder },
   BrowserWindow: { getFocusedWindow: () => undefined },
 }));
 
@@ -52,6 +53,15 @@ describe("readFileBytes", () => {
       "4-byte read limit",
     );
   });
+});
+
+it("reveals existing files and reports missing paths before asking the OS to reveal them", async () => {
+  const file = await tempFile(new Uint8Array([1]));
+  await revealInFolder({ path: file });
+  expect(showItemInFolder).toHaveBeenCalledWith(file);
+  showItemInFolder.mockClear();
+  await expect(revealInFolder({ path: `${file}.missing` })).rejects.toMatchObject({ code: "ENOENT" });
+  expect(showItemInFolder).not.toHaveBeenCalled();
 });
 
 describe("pathStatus", () => {

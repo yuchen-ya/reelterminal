@@ -1,6 +1,8 @@
 # CLI 分层与图像修复草稿验收（2026-10-30）
 
-本轮在唯一开发 checkout 中完成独立验收。当前源码构建、15 个定向单元测试文件的 1749 项测试，以及 3 个隔离桌面 E2E 文件的 6 项测试通过，共 1755 项。测试使用临时 Electron 用户目录和私有 endpoint，不连接用户正在使用的桌面或项目。
+本轮在唯一开发 checkout 中完成独立验收。当时源码构建、15 个定向单元测试文件的 1749 项测试，以及 3 个隔离桌面 E2E 文件的 6 项测试通过，共 1755 项。测试使用临时 Electron 用户目录和私有 endpoint，不连接用户正在使用的桌面或项目。
+
+本报告记录当时 `8f014a28` 加未提交改动的验证快照，测试数量和构建结论不等于该提交或后续 HEAD 单独可复现。后续复核发现当时 video start 在 runtime 缺失时会懒重建项目并可能恢复迁移；以下“小输出”和权限结论不能据此扩大为绝对无写。当前源码已改用不创建 runtime 的 revision guard，关闭的 runtime 返回 `CONFLICT`，复制提示也要求该工作区已打开。review context 首次读取仍会创建 singleton 身份元数据，不导入用户内容或授予写权限。
 
 ## 范围与归属
 
@@ -70,6 +72,6 @@ pnpm --filter @reelterminal/desktop exec vitest run --config e2e/vitest.config.t
 - `apps/desktop/e2e/.artifacts/cli-navigation-acceptance--background-target-on-private-board.png`：后台 start 后自由画板仍是所选 UI；截取的是隔离空画板。
 - `apps/desktop/e2e/.artifacts/review-repair-draft.json`：正式图无 reload/mutation/replacement、CLI 五种 action 事件、commit 与重启回执证据。
 - `apps/desktop/e2e/.artifacts/review-repair-draft--unsaved-draft-preview.png` 与 `--saved-result.png`：实际查看过图像，分别显示未保存独立黑白预览与已保存的两个白色 patch。
-- `apps/desktop/dist/performance-build.json`：正常构建的 production/dirty 标记；当前 HEAD 为 `8f014a28f81dcc7c295f06f820c77bf496cb03b1`。dirty checkout 包含上文明确排除的前轮修改。
+- `apps/desktop/dist/performance-build.json`：当时正常构建的 production/dirty 标记；当时 HEAD 为 `8f014a28f81dcc7c295f06f820c77bf496cb03b1`，dirty checkout 包含上文明确排除的前轮修改。该标记未保存完整源码快照，不能仅检出这个提交严格重现 1755 项结果；后续构建也可能覆盖该文件。
 
 本轮验证源码构建下的隔离 Electron/CLI；未重新打包或安装，Windows packaged CLI 前缀只有单元测试验证。未运行真实模型/GPU/API、用户项目、全部桌面功能或长时间压力测试。证据中的临时资源文件在 harness 结束后删除，保留 JSON 和截图；不把资源路径存在当作交付文件仍存在的证明。

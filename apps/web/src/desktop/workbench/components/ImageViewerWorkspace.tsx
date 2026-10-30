@@ -122,7 +122,9 @@ export function ImageViewerWorkspace({
   const imageScope = JSON.stringify([currentItem.id, originalMedia?.mediaId]);
 
   const [displayChoice, setDisplayChoice] = useState<{ scope: string; mode: ImageDisplayMode } | null>(null);
-  const displayMode = displayChoice?.scope === imageScope ? displayChoice.mode : payload?.initialDisplayMode ?? "original";
+  const [repairFallback, setRepairFallback] = useState<{ scope: string; mediaId: string; message: string } | null>(null);
+  const fallback = repairFallback?.scope === imageScope && repairFallback.mediaId === repair?.mediaId ? repairFallback : null;
+  const displayMode = displayChoice?.scope === imageScope ? displayChoice.mode : fallback ? "original" : payload?.initialDisplayMode ?? "original";
   const setDisplayMode = useCallback((mode: ImageDisplayMode) => setDisplayChoice({ scope: imageScope, mode }), [imageScope]);
   const [repairBase, setRepairBase] = useState<"latest" | "source">("latest");
   const [repairNotice, setRepairNotice] = useState<string | null>(null);
@@ -144,6 +146,12 @@ export function ImageViewerWorkspace({
   const imgError = activeUrl !== null && failedImage?.request === requestedImage;
   const imageCurrent = natural !== null && natural.url === activeUrl && activeMedia?.status === "ready" && !imgError;
   const imageLoadFailed = imgError || activeMedia?.status === "error" || activeMedia?.status === "unavailable";
+
+  useEffect(() => {
+    if (natural || !usingRepair || !repair || !imageLoadFailed || workMode === "repair" || displayChoice?.scope === imageScope) return;
+    setRepairFallback({ scope: imageScope, mediaId: repair.mediaId,
+      message: imgError ? failedImage!.message : activeMedia?.error ?? "修补媒体不可用" });
+  }, [natural, usingRepair, repair, imageLoadFailed, workMode, displayChoice, imageScope, imgError, failedImage, activeMedia]);
 
   const draftKey = `${currentItem.id}:${currentItem.version}`;
   const draftStrokes = draftsByItemVersion[draftKey]?.strokes ?? EMPTY_STROKES;
@@ -168,6 +176,7 @@ export function ImageViewerWorkspace({
     setFailedImage(null);
     setRepairBase("latest");
     setRepairNotice(null);
+    setRepairFallback(null);
   }, [imageScope]);
 
   const measureArea = useCallback((): void => {
@@ -574,6 +583,7 @@ export function ImageViewerWorkspace({
           activeUrl={activeUrl}
           displayedUrl={natural?.url ?? null}
           imgError={imgError}
+          imageError={imgError ? failedImage?.message : undefined}
           currentItemTitle={currentItem.title}
           usingRepair={natural?.repaired ?? usingRepair}
           natural={natural}
@@ -666,20 +676,20 @@ export function ImageViewerWorkspace({
         </div>
       )}
 
-      {repairNotice && (
+      {(repairNotice || (fallback && displayChoice?.scope !== imageScope)) && (
         <div
           className="flex shrink-0 items-center justify-between gap-2 border-b border-status-warning/40 bg-status-warning/10 px-3 py-1.5 text-xs text-status-warning"
           data-testid="repair-notice"
         >
-          <span className="truncate">{repairNotice}</span>
-          <button
+          <span className="truncate">{repairNotice ?? `修补结果不可用，已回退原图：${fallback?.message}`}</span>
+          {repairNotice && <button
             type="button"
             onClick={() => setRepairNotice(null)}
             className="shrink-0 hover:opacity-80"
             title="关闭"
           >
             <X className="h-3.5 w-3.5" />
-          </button>
+          </button>}
         </div>
       )}
 

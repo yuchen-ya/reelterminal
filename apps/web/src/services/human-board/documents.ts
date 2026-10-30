@@ -50,7 +50,12 @@ export function boardTransferInput(data: Pick<DataTransfer, "files" | "getData">
 
 export function resolveDocumentAsset(binding: BoardDocumentBinding, href: string): BoardDocumentAsset | undefined {
   const path = new URL(href, `https://board-document.invalid/${binding.documentPath ?? "document.md"}`).pathname.slice(1);
-  return binding.assets?.find(asset => asset.path === decodeURIComponent(path));
+  let decodedPath: string;
+  try { decodedPath = decodeURIComponent(path); }
+  catch (error) { if (!(error instanceof URIError)) throw error; return undefined; }
+  // A malformed reference can share its recorded path with a valid encoded one.
+  return binding.assets?.find(asset => asset.path === decodedPath && asset.resourceId)
+    ?? binding.assets?.find(asset => asset.path === decodedPath);
 }
 
 export function documentPreviewSource(binding: BoardDocumentBinding): string {

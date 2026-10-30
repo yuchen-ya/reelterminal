@@ -1,5 +1,5 @@
 // Real IndexedDB stores exercise migration and shared-media reclamation together.
-import { beforeAll, expect, it } from "vitest";
+import { beforeAll, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import { Blob as NodeBlob } from "node:buffer";
 import { createEmptyProject } from "../../stores/project/project-helpers";
@@ -109,8 +109,42 @@ it("protects shared media in copies and the recycle bin, reclaiming bytes only a
     mediaLibrary: { items: [] },
   });
   expect(await previewLibraryPurge([copyId])).toBe(0);
-  await autoSaveManager.clearProjectSaves(legacyRecovery.id);
+  await autoSaveManager.clearProjectsSaves([legacyRecovery.id]);
   expect(await previewLibraryPurge([copyId])).toBe(blob.size);
   expect((await purgeLibraryProjects([copyId])).reclaimedBytes).toBe(blob.size);
   expect(await loadMediaRecord(mediaId)).toBeNull();
+});
+
+it.each(["legacy deletion", "late deletion guard"])("retains recovery slots when batch purge fails during %s", async (failure) => {
+  const projects = [createEmptyProject("Purge first"), createEmptyProject("Purge second")];
+  for (const project of projects) {
+    await workspaceManager.createProject(project, { loadRuntime: false });
+    await projectManager.addToRecent(project);
+    await autoSaveManager.forceSave(project);
+  }
+  const ids = projects.map(project => project.id);
+  await recycleLibraryProjects(ids);
+  const originalDelete = projectManager.deleteStoredProject.bind(projectManager);
+  const exportOwner = Symbol("late-purge-export");
+  const deletion = vi.spyOn(projectManager, "deleteStoredProject").mockImplementation(async id => {
+    if (id === ids[1] && failure === "legacy deletion") throw new Error("Legacy store unavailable");
+    await originalDelete(id);
+    if (id === ids[1] && failure === "late deletion guard") beginProjectExport(exportOwner, projects[1]);
+  });
+  try {
+    await expect(purgeLibraryProjects(ids)).rejects.toThrow(failure === "legacy deletion" ? "Legacy store unavailable" : "export");
+    for (const id of ids) {
+      expect(await autoSaveManager.checkForRecovery(id)).not.toHaveLength(0);
+      expect((await loadProjectLibrary()).projects.find(project => project.id === id)?.recycledAt).toBeTypeOf("number");
+    }
+  } finally {
+    deletion.mockRestore();
+    endProjectExport(exportOwner);
+  }
+  await purgeLibraryProjects(ids);
+  for (const id of ids) expect(await autoSaveManager.checkForRecovery(id)).toHaveLength(0);
+  // A stale writer cannot restore a project after its tombstone has committed.
+  await autoSaveManager.forceSave(projects[1]);
+  expect((await loadProjectLibrary()).projects.some(project => project.id === ids[1])).toBe(false);
+  await autoSaveManager.clearProjectsSaves(ids);
 });

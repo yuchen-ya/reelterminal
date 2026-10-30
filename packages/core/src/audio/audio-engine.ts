@@ -627,7 +627,12 @@ export class AudioEngine {
         entry = { signature, buffer: this.applySourceNoiseProfiles(audioBuffer, profileAwareNoiseEffects) };
         entries.set(clipInfo.clipId, entry);
       }
-      audioBuffer = await entry.buffer;
+      try {
+        audioBuffer = await entry.buffer;
+      } catch (error) {
+        if (entries.get(clipInfo.clipId) === entry) entries.delete(clipInfo.clipId);
+        throw error;
+      }
       clipInfo = { ...clipInfo, effects: realtimeEffects };
     }
 

@@ -1210,6 +1210,7 @@ export class WorkspaceManager {
   async getWorkspaceRevisionGuard(target: WorkspaceTarget): Promise<{
     projectId: string;
     workspaceId: string;
+    name: string;
     revision: number;
     persistedRevision: number;
     instanceId: string | null;
@@ -1220,6 +1221,7 @@ export class WorkspaceManager {
     return {
       projectId: record.projectId,
       workspaceId: record.id,
+      name: runtime?.getState().project.name ?? record.project.name,
       revision: runtime?.getState().workspaceRevision ?? record.revision,
       persistedRevision: record.revision,
       instanceId: this.runtimeIds.get(record.id) ?? null,

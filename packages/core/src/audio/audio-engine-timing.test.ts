@@ -98,6 +98,29 @@ describe("offline audio timeline/source timing", () => {
     expect(source.playbackRate.value).toBe(1);
     expect(source.start).toHaveBeenCalledWith(0, 0, 1);
   });
+  it("retries source noise processing after a failed render and caches the successful result", async () => {
+    vi.stubGlobal("OfflineAudioContext", FakeContext);
+    const audioContext = new FakeContext();
+    const clean = audioContext.createBuffer(1, 8000, 8000);
+    const applyNoiseReductionWithProfileData = vi.fn().mockRejectedValueOnce(new Error("profile unavailable"))
+      .mockResolvedValue(clean);
+    const engine = new AudioEngine();
+    Object.assign(engine, { initialized: true, audioContext,
+      mediaBuffers: new Map([["media:0", audioContext.createBuffer(1, 8000, 8000)]]),
+      effectsEngine: { applyNoiseReductionWithProfileData } });
+    const clip = { id: "clip", trackId: "track", mediaId: "media", startTime: 0, inPoint: 0, outPoint: 1,
+      duration: 1, speed: 1, volume: 1, effects: [], audioEffects: [{ id: "noise", type: "noiseReduction", enabled: true,
+        params: { profile: { frequencyBins: [0, 4000], magnitudes: [0.01, 0.01], sampleRate: 8000 } } }] } as unknown as Clip;
+    const project = { settings: { sampleRate: 8000, channels: 1 },
+      timeline: { tracks: [{ id: "track", type: "audio", clips: [clip], transitions: [] }] },
+      mediaLibrary: { items: [{ id: "media", metadata: { duration: 1 } }] } } as unknown as Project;
+    await expect(engine.renderAudio(project, 0, 1)).rejects.toThrow("profile unavailable");
+    await engine.renderAudio(project, 0, 1);
+    await engine.renderAudio(project, 0, 1);
+    expect(applyNoiseReductionWithProfileData).toHaveBeenCalledTimes(2);
+    expect(FakeContext.renders.at(-1)!.sources[0].buffer).toBe(clean);
+  });
+
   it("reports unsupported varying-curve pitch preservation and freeze sound", async () => {
     await expect(render(2, 5, 1, { pitchCorrection: true, speedKeyframes: [
       { id: "a", time: 0, speed: 1, easing: "linear" }, { id: "b", time: 8, speed: 2, easing: "linear" },

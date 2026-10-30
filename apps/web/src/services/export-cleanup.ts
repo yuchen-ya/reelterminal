@@ -824,6 +824,8 @@ export async function createCleanupPlan(
     cacheKeys = [];
   }
   if (action === "purge-failed-jobs" && (!review.failedJobs.scanReady || !review.scanReady)) jobIds = [];
+  if (action === "purge-media" && mediaIds.length === 0) blockers.push("No media is available for this cleanup action");
+  if (action === "purge-cache" && cacheKeys.length === 0) blockers.push("No cache entries are available for this cleanup action");
 
   const reclaimableBytes = mediaIds.reduce((total, id) => total + mediaSize(snapshot.mediaEntries.get(id)!), 0) +
     cacheKeys.reduce((total, key) => total + (snapshot.cacheEntries.get(key)?.sizeBytes ?? 0), 0) +

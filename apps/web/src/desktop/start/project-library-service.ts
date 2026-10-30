@@ -104,13 +104,13 @@ export async function purgeLibraryProjects(
         .flatMap((record) => record.purgedMediaIds ?? []),
     ]),
   ];
-  await autoSaveManager.clearProjectsSaves(ids);
   for (const id of ids) {
     await projectManager.deleteStoredProject(id);
   }
   // Legacy cleanup happens while the project is still recoverable in the bin.
   // The workspace transaction retains tombstones against stale recovery imports.
   await workspaceManager.purgeProjects(ids, mediaIds);
+  await autoSaveManager.clearProjectsSaves(ids);
   // Scope the cleanup to every purged project, not just the first: media of
   // the other projects must be eligible as candidates too or their blobs are
   // orphaned in storage forever.

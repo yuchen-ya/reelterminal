@@ -186,7 +186,7 @@ export function getLiveSessionHost(): LiveSessionHost {
         };
       },
       createFacade: config => createLiveFacade({ ...config, ...(config.reviewCommand ? {
-        reviewCommand: createReviewMediaBridge(config.reviewCommand, getReviewFileStore, agentWorkspaceScopes().review),
+        reviewCommand: createReviewMediaBridge(config.reviewCommand, getReviewFileStore),
       } : {}) }),
       emitEvent: (event) => {
         const contents = liveTargetWebContents();

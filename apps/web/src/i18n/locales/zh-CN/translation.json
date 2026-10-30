@@ -1206,8 +1206,6 @@
     "toast": "已切换到「{{name}}」",
     "copyPrompt": "复制 Agent 提示词",
     "copied": "Agent 提示词已复制",
-    "promptBody": "立即执行：{{startCommand}}",
-    "promptBodyLocal": "请在桌面应用中复制此工作区的 Agent 启动提示。",
     "actionsSection": "项目操作"
   },
   "previewClipboard": {

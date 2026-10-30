@@ -24,6 +24,7 @@ export interface ImageStageProps {
   readonly activeUrl: string | null;
   readonly displayedUrl: string | null;
   readonly imgError: boolean;
+  readonly imageError?: string;
   readonly currentItemTitle: string;
   readonly usingRepair: boolean;
   readonly natural: { readonly w: number; readonly h: number } | null;
@@ -58,6 +59,7 @@ export function ImageStage({
   activeUrl,
   displayedUrl,
   imgError,
+  imageError,
   currentItemTitle,
   usingRepair,
   natural,
@@ -122,6 +124,7 @@ export function ImageStage({
         payload={payload}
         originalMedia={activeMedia}
         imgError={imgError}
+        imageError={imageError}
         currentItemTitle={currentItemTitle}
       />
     );

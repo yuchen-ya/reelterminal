@@ -289,6 +289,31 @@ describe("seek-addressed extraction", () => {
 });
 
 describe("candidate detection", () => {
+  it.skipIf(skip())("keeps detection positions relative to the media start for offset-PTS sources", async () => {
+    const offsetPath = join(dir, "offset-detection.mp4");
+    await runToolProcess(binaries!.ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", "-i", samplePath,
+      "-c", "copy", "-output_ts_offset", "5", offsetPath]);
+    const facts = await probeVideoFacts(binaries!.ffprobe, offsetPath);
+    expect(facts.timing.timing).toBe("cfr");
+    // Detection uses input seeking without -copyts: its returned seconds are
+    // media-relative, unlike extraction's absolute source PTS.
+    for (const sourcePath of [samplePath, offsetPath]) {
+      const range = { startSec: 1, endSec: 7.5 };
+      const scene = await detectSceneCandidates(binaries!.ffmpeg, sourcePath, range, { threshold: 0.2 }, facts);
+      for (const frame of [20, 40, 45, 55]) {
+        expect(scene.candidates).toContainEqual(expect.objectContaining({ frameIndex: frame, ptsTimeSec: frame / 10 }));
+      }
+      const black = await detectBlackCandidates(binaries!.ffmpeg, sourcePath, range,
+        { minDurationSec: 0.08, pixelThreshold: 0.1 }, facts);
+      expect(black.candidates).toContainEqual(expect.objectContaining({ startFrameIndex: 45, endFrameIndexExclusive: 55,
+        startSec: 4.5, endSec: 5.5 }));
+      const freeze = await detectFreezeCandidates(binaries!.ffmpeg, sourcePath, range,
+        { minDurationSec: 0.3, noiseThreshold: 0.001 }, facts);
+      expect(freeze.candidates).toContainEqual(expect.objectContaining({ startFrameIndex: 64, startSec: 6.4,
+        endFrameIndexExclusive: 75, endSec: 7.5, closedAtStreamEnd: true }));
+    }
+  });
+
   it.skipIf(skip())("finds the hard cuts, flash and black/freeze segments as candidates", async () => {
     const facts = await probeVideoFacts(binaries!.ffprobe, samplePath);
     const scene = await detectSceneCandidates(binaries!.ffmpeg, samplePath, { startSec: 0, endSec: 7.5 }, { threshold: 0.2 }, facts);

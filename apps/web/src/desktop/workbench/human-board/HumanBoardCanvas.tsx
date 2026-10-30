@@ -257,7 +257,7 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
       const [left, top, right, bottom] = getCommonBounds([element]);
       return right >= topLeft.x && bottom >= topLeft.y && left <= bottomRight.x && top <= bottomRight.y;
     });
-    return freezeBoardScene(visible, state, api!.getFiles(), captures.current);
+    return freezeBoardScene(visible, api!.getFiles(), captures.current);
   };
   const produceImage = async (blob: Blob, title: string) => {
     const resource = await retainBoardBlob(board.current.id, blob, title);

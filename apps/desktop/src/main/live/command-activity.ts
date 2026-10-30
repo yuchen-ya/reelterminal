@@ -1,12 +1,13 @@
 import type { DesktopCommandActivity } from "@reelterminal/agent-facade/desktop-protocol";
 
 const privateKey = /token|secret|password|credential|authorization|api[-_]?key|cookie|base64|imageData|dataUrl/i;
+const contentKey = /^(?:text|body|content|prompt|message|description|feedback|value)$/i;
 
 export function activityText(value: string, limit = 512): string {
   return value
     .replace(/data:[^\s"']+/gi, "[image/data omitted]")
     .replace(/Bearer\s+[^\s"']+/gi, "Bearer [redacted]")
-    .replace(/((?:token|secret|password|credential|api[-_]?key)\s*[=:]\s*)[^\s,"']+/gi, "$1[redacted]")
+    .replace(/(["']?(?:token|secret|password|credential|authorization|api[-_]?key|cookie)["']?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,"']+)/gi, "$1[redacted]")
     .slice(0, limit);
 }
 
@@ -28,7 +29,7 @@ export function commandActivityDetails(params: unknown): Omit<DesktopCommandActi
     }
     const entries = Object.entries(value).slice(0, 30);
     remaining -= entries.length * 16;
-    return Object.fromEntries(entries.map(([key, item]) => [key, privateKey.test(key) ? "[redacted]" : project(item, depth + 1)]));
+    return Object.fromEntries(entries.map(([key, item]) => [key, privateKey.test(key) ? "[redacted]" : contentKey.test(key) ? "[content omitted]" : project(item, depth + 1)]));
   };
   const record = params && typeof params === "object" && !Array.isArray(params) ? params as Record<string, unknown> : {};
   const target = record.target as Record<string, unknown> | undefined;

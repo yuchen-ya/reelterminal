@@ -402,10 +402,6 @@ function cryptoRandomId(): string {
   return randomUUID();
 }
 
-export function catalogCommand(catalog: CommandCatalog, name: string): CommandCatalogEntry | undefined {
-  return catalog.commands.find((entry) => entry.name === name);
-}
-
 export function hasSchemaProperty(entry: CommandCatalogEntry, property: string): boolean {
   const schema = entry.inputSchema;
   return isRecord(schema.properties) && Object.prototype.hasOwnProperty.call(schema.properties, property);
