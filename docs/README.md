@@ -2,11 +2,13 @@
 
 ## Product and usage
 
-- [RELEASE-NOTES-DRAFT.md](RELEASE-NOTES-DRAFT.md) — unpublished summary of the latest pushed changes and release checks.
-- [RELEASE-1.3.6.md](RELEASE-1.3.6.md) — latest local Windows build record; [1.3.1](RELEASE-1.3.1.md), [1.3.2](RELEASE-1.3.2.md), [1.3.3](RELEASE-1.3.3.md), [1.3.4](RELEASE-1.3.4.md) and [1.3.5](RELEASE-1.3.5.md) document earlier builds and their individual validation limits.
+- [RELEASE-NOTES-DRAFT.md](RELEASE-NOTES-DRAFT.md) — unpublished summary of the latest changes and release checks.
+- [RELEASE-1.3.9.md](RELEASE-1.3.9.md) — latest local Windows build record; [1.3.8](RELEASE-1.3.8.md), [1.3.6](RELEASE-1.3.6.md), [1.3.5](RELEASE-1.3.5.md), [1.3.4](RELEASE-1.3.4.md), [1.3.3](RELEASE-1.3.3.md), [1.3.2](RELEASE-1.3.2.md) and [1.3.1](RELEASE-1.3.1.md) document earlier builds and their individual validation limits.
 
 - [`PROJECT-ASSETS-FILTERS.md`](PROJECT-ASSETS-FILTERS.md) — project media types, save-point scope and SRT/VTT import.
 - [`../README.md`](../README.md) — product overview and quick start.
+- [`../README_review.md`](../README_review.md) and [`../README_review_en.md`](../README_review_en.md) — experimental Review Workspace and Private Free Boards overview.
+- [`HUMAN-BOARDS.zh-CN.md`](HUMAN-BOARDS.zh-CN.md) — private mixed-media Free Boards, isolated document/web browsing, pixel repair, region PNG freeze and review snapshot export.
 - [`USER-GUIDE.md`](USER-GUIDE.md) — desktop onboarding, editor help, and save-versus-retain basics.
 - [`AGENT-GUIDE.md`](AGENT-GUIDE.md) — connecting an external Agent.
 - [`COMMAND-API.md`](COMMAND-API.md) — live command service and CLI contract.
@@ -30,7 +32,7 @@
 - [`AUDIO-DENOISE.md`](AUDIO-DENOISE.md) — tiered local FFmpeg denoise, measured delay compensation, alignment verification and derived-asset lifecycle.
 - [`AUDIO-TRANSCRIPT.md`](AUDIO-TRANSCRIPT.md) — optional local SenseVoice transcription, external-VAD timestamps, model consent and record-driven subtitle import.
 - [`AUDIO-SEPARATION-DIARIZATION.md`](AUDIO-SEPARATION-DIARIZATION.md) — anonymous CAM++ speaker clustering and optional Demucs vocal/instrumental separation, timing and limits.
-- [`AUDIO-SPEED.md`](AUDIO-SPEED.md) — audio speed behavior and rendering limits.
+- [`AUDIO-SPEED.md`](AUDIO-SPEED.md) — audio speed behavior (including constant-speed Signalsmith Stretch WASM pitch preservation) and rendering limits.
 - [`MEDIA-REVIEW-WORKFLOWS.md`](MEDIA-REVIEW-WORKFLOWS.md) — reference comparison and media
   replacement workflows.
 - [`PRODUCTION-MANAGEMENT.md`](PRODUCTION-MANAGEMENT.md) — source history, candidates, review tasks, and persistent analysis batches.
@@ -68,6 +70,7 @@
 - [`AI-MATERIAL-WORKBENCH-ACCEPTANCE-HOTFIX.md`](AI-MATERIAL-WORKBENCH-ACCEPTANCE-HOTFIX.md) — acceptance fixes and historical verification limits.
 - [`REVIEW-3D-PREVIEW-DESIGN.md`](REVIEW-3D-PREVIEW-DESIGN.md) and [`REVIEW-3D-PREVIEW-DELIVERY.md`](REVIEW-3D-PREVIEW-DELIVERY.md) — GLB observation, snapshots, rework and delivery evidence.
 - [`REVIEW-AUDIT-FIX-ROUND1.md`](REVIEW-AUDIT-FIX-ROUND1.md), [`REVIEW-AUDIT-REMAINING.md`](REVIEW-AUDIT-REMAINING.md) and [`REVIEW-AUDIT-VERIFICATION.md`](REVIEW-AUDIT-VERIFICATION.md) — audit fixes, independent verification and remaining manual acceptance boundaries.
+- [`HUMAN-BOARD-REPAIR-ACCEPTANCE-2026-10-30.md`](HUMAN-BOARD-REPAIR-ACCEPTANCE-2026-10-30.md), [`FREE-BOARD-REVIEW-ACCEPTANCE-2026-10-30.md`](FREE-BOARD-REVIEW-ACCEPTANCE-2026-10-30.md), [`REVIEW-UPDATE-CLI-ACCEPTANCE-2026-10-30.md`](REVIEW-UPDATE-CLI-ACCEPTANCE-2026-10-30.md) and [`CLI-LAYERING-ACCEPTANCE-2026-10-30.md`](CLI-LAYERING-ACCEPTANCE-2026-10-30.md) — 2026-10-30 acceptance records for private Free Boards, scoped image repair and repair drafts, exact frame capture, continuous image updates, CLI activity visibility, and on-demand CLI capability layering.
 
 Delivery and round records remain at their active linked paths as historical evidence; current behavior is described by the implementation and current contract.
 

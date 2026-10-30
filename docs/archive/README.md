@@ -26,5 +26,16 @@ original content and are not rewritten by later rounds.
   commits and validation evidence.
 - [`AUDIO-BACKLOG-COMPLETE.md`](AUDIO-BACKLOG-COMPLETE.md) — the retired audio
   TODO; every item is implemented and checked off.
+- [`local-acceptance-2026-10-20.md`](local-acceptance-2026-10-20.md) — 2026-10-20
+  local desktop acceptance record.
+- [`export-cleanup-acceptance-2026-10-25.md`](export-cleanup-acceptance-2026-10-25.md),
+  [`export-cleanup-independent-review-2026-10-25.md`](export-cleanup-independent-review-2026-10-25.md),
+  [`legacy-job-migration-audit-2026-10-25.md`](legacy-job-migration-audit-2026-10-25.md),
+  [`legacy-job-usage-organization-2026-10-25.md`](legacy-job-usage-organization-2026-10-25.md) —
+  the 2026-10-25 export cleanup and legacy job migration/organization records.
+- [`review-workspace-tabs-acceptance-2026-10-30.md`](review-workspace-tabs-acceptance-2026-10-30.md),
+  [`review-findings-followup-2026-10-30.md`](review-findings-followup-2026-10-30.md) —
+  the 2026-10-30 unified review/free-board workspace tabs acceptance and audited
+  findings follow-up records.
 - [`performance/`](performance/) — the 1.1.x/1.2.0-era performance and release
   validation evidence (scenario docs, runbooks, dated measurement records).

@@ -54,7 +54,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.7.9" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.8.0" as const;
 export const GUI_MANUAL_APP_VERSION = "1.3.9" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -116,11 +116,11 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     title: { zh: "审阅工作台", en: "Review Workspace" },
     // @source apps/web/src/desktop/pages/ReviewPage.tsx
     // @source apps/web/src/desktop/workbench/components/ReviewProcessView.tsx
-    summary: { zh: "无需视频项目，独立保存和审阅图片、文字、数据与视频节点，查看实际处理步骤并导出精确版本。", en: "Review independent image, text, data and video nodes without a video project; inspect recorded processing and export exact versions." },
-    entry: [{ zh: "点击顶栏“审阅工作台”，创建数据节点，再导入文件、文件夹、CSV/JSON 或粘贴文本。", en: "Choose Review Workspace in the top tabs, create a data node, then import files, a folder, CSV/JSON or pasted text." }],
+    summary: { zh: "无需视频项目，在统一标签栏中并排管理图片、文字、数据、视频、3D GLB 审阅任务与私有自由画板，查看处理过程并导出精确版本。", en: "Manage independent image, text, data, video and 3D GLB review tasks alongside private free boards in unified tabs without a video project; inspect recorded processing and export exact versions." },
+    entry: [{ zh: "点击顶栏“审阅工作台”，在顶部统一标签栏新建或通过“打开 / 管理”选择审阅任务或自由画板，再导入文件、文件夹、CSV/JSON 或粘贴内容。", en: "Choose Review Workspace in the top bar, create or open a review task or free board from the unified tab strip and Open / Manage dialog, then import files, a folder, CSV/JSON or pasted content." }],
     steps: [
       { zh: "候选图、分镜及需同屏审阅的低密度图文可组织成父节点画板；普通分类目录只用于分组。Agent 可预绑定基准视频并排比较，播放时钟映射仍需单独提供。", en: "Group candidate images, storyboards or sparse text/data into a parent board for same-screen review; use category folders for organization. Agents can prebind a baseline video for side-by-side comparison; playback-time mappings are supplied separately." },
-      { zh: "任务管理集中在最左侧：右键或任务卡片的更多菜单提供重命名、分类、置顶、归档与回收；移到回收站前需要确认，底部提供回收站入口。第二栏使用紧凑的批次下拉框，名称和箭头之间的 NEW 表示有未查看的 Agent 内容更新；展开后定位具体批次。查看状态会保存，不会自动切走当前批次。任务内的正文和处理步骤按页读取。", en: "Manage tasks in the left sidebar through right-click or each task's menu; moving to the recycle bin requires confirmation. The bottom entry opens the recycle bin. A compact batch picker occupies the second sidebar. NEW between its name and arrow indicates unseen Agent content; open it to find the updated batch. Read state persists and incoming updates never switch your active batch. Item bodies and processing steps are paged." },
+      { zh: "顶部可排序标签栏混排审阅任务与私有自由画板，关闭标签保留实体并在重启后恢复；“打开 / 管理”对话框集中管理任务分类、置顶、归档、回收站与已保存画板。审阅任务内部使用紧凑批次下拉框，NEW 表示有未查看的 Agent 更新；查看状态会保存且不自动切走当前批次。正文和步骤按页读取。", en: "The reorderable tab strip holds both review tasks and private free boards; closing a tab retains its entity and restores on relaunch. The Open / Manage dialog organizes task categories, pins, archive, recycle bin and saved boards. Inside a task, the compact batch picker shows NEW for unseen Agent updates without switching your active batch. Item bodies and processing steps are paged." },
       { zh: "任务代表独立目标，Agent 在指定任务内持续提交。分组是组织树的父节点，可按批次、类型或阶段组织，按最新修改时间排序；备注有内容才显示。新建任务分支已停用，既有关系在任务菜单的历史关联中查看。", en: "Tasks represent independent goals. Agents continue in the specified task. Parent groups organize batches, types, stages or other meaningful trees and sort by latest modification; remarks appear only when present. New task branches are retired; existing links remain in the task menu." },
       { zh: "文本默认以 Markdown 排版阅读；集合展示紧凑摘要，打开后仅阅读当前条目。直接改文使用开源轻量编辑器及实时预览；切换原文与批注可精确选取原文区间，保存产生新版本。", en: "Text opens in Markdown reading mode; collections show compact excerpts and opening an item shows only that document. Edit with the open-source lightweight editor and live preview; switch to Source and comments for exact source selections. Saving creates a new version." },
       { zh: "保留、丢弃与返工可撤销。返工先填写原因，Enter 提交后才自动推进，Shift+Enter 换行，Esc 取消。本批待审清零后显示发布入口。图片修补、改文和单元格修改保留版本；交回本轮决策由人工发布不可变快照，等待 Agent 真实读取与回报。", en: "Keep, discard and rework decisions are undoable. Rework prompts for a reason: Enter submits and advances, Shift+Enter inserts a newline, and Escape cancels. A completed batch shows a publication entry. Repairs, text edits and cell changes retain versions. A human publishes an immutable decision snapshot, then waits for real Agent acknowledgement." },
@@ -128,7 +128,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       { zh: "点击分组打开统一集合，进入单项时侧栏自动展开定位，可返回原集合并保留选择与位置。集合方向键移动焦点、Enter 打开；单项上下键用于滚动，使用上一项/下一项或 J/K 切换条目。选中项与本组待审项分别操作；父节点右键或更多菜单支持返工、重审和导出，分页时范围标为本页。", en: "Open a group as a collection; opening an item reveals its sidebar ancestors. Return to preserve selection and position. Collection arrows move focus and Enter opens; item arrows scroll, while Previous/Next or J/K switch items. Selection and pending-item actions have separate scopes. Parent context menus offer rework, re-review and export; paginated scopes are labelled as the current page." },
       { zh: "可直接拖出条目或分组；未准备好时先显示进度，就绪后再次拖出文件或文件夹。默认导出当前已保存版本；导出对话框还可选初始原件、人工采用版本或含历史的完整节点包。", en: "Drag items or groups out directly. If preparation is still running, wait for progress and drag the ready files or folder again. Quick export uses current saved versions; the export dialog also offers originals, human-adopted versions and full node packages with history." },
       { zh: "添加采用版本到项目时明确选定目标视频工作区，生成独立媒体副本，不加入时间线。迁移旧项目须预览确认，旧工作台保留为只读备份；永久清空须确认删除节点全部历史。", en: "Attach adopted media to an explicit video workspace as independent media without adding timeline clips. Preview and confirm legacy migration; keep the old workbench read-only. Permanent clearing requires deleting all node history." },
-      { zh: "复制工作台接入说明；Agent 审阅写权限与视频写权限分开。人工操作不依赖 Agent，审阅使用 review.*，旧项目工作台使用 workbench.*。", en: "Copy the review connection instructions. Review and video Agent-write grants are separate; human editing needs neither. Independent review uses review.* and the legacy project workbench uses workbench.*." },
+      { zh: "审阅任务地址栏一键复制显式 start --target 启动命令；切换到私有自由画板时显示无 Agent 目标说明。自由画板支持图片、文本、视频、GLB、Markdown、HTML 与隔离网页浏览，支持像素修补与区域冻结 PNG；仅主动导出单个容器快照才创建审阅节点。审阅图片点击“加入自由画板”会新建一张含该图的自由画板标签页，任务内还提供目标隔离的 CLI 活动记录。", en: "The task address bar copies an explicit start --target command, while private free boards indicate no Agent target. Free boards support images, text, video, GLB, Markdown, HTML and isolated web browsing, with pixel repair and region PNG freeze; only explicitly exporting a single container creates a review node. Adding a review image to Free Board opens a new board tab, and tasks display target-isolated CLI activity logs." },
     ],
     limitations: [
       { zh: "不从最终文件推测处理历史，不自动执行模型。区域和时间标记不会裁剪导出；无明确映射时不假装视频同步或图片对齐。", en: "No processing history is inferred from a final file and no model runs automatically. Region/time marks do not crop exports; missing mappings do not imply alignment or synchronized video." },
@@ -174,7 +174,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       { zh: "搜索名称，按修改时间、创建时间、项目名称或工程大小排序，切换升降序与列表/网格。工程大小只统计当前编辑数据。", en: "Search by name; sort by modification, creation, name or project size; switch direction and list/grid. Project size counts current edit data only." },
       { zh: "每个条目的更多菜单提供重命名、创建副本、移动到文件夹和删除。副本共享素材，编辑、版本和撤销历史独立。", en: "Each project menu offers Rename, Duplicate, Move to folder and Delete. Copies share media safely and start with independent edits, version history and undo history." },
       { zh: "文件夹仅用于本地分组，不移动素材。删除文件夹后，项目进入“未分组”。点击“管理”进行批量移动或删除；全选只选择当前筛选结果。", en: "Folders group projects without moving source files. Deleting a folder ungroups its projects. Manage enables bulk move/delete; Select all results selects only the current filtered results." },
-      { zh: "删除先移入回收站，可单项或批量恢复。永久删除前会显示预计可回收的无引用应用素材缓存大小。原片、单独保存的工程文件和导出成片会保留。", en: "Delete moves projects into the recycle bin for individual or bulk restore. Permanent deletion previews unreferenced application cache bytes. External originals, separately saved project files and exports remain." },
+      { zh: "删除先移入回收站，可单项或批量恢复。永久删除前会显示预计可回收的无引用应用素材缓存大小，并在成功后一并清理对应项目的自动恢复槽。原片、单独保存的工程文件和导出成片会保留。", en: "Delete moves projects into the recycle bin for individual or bulk restore. Permanent deletion previews unreferenced application cache bytes and clears matching autosave recovery slots upon completion. External originals, separately saved project files and exports remain." },
     ],
     limitations: [
       { zh: "管理只作用于当前本机存储，不扫描其他目录，也不包含云端功能。运行中的导出或 Agent 任务会阻止删除。", en: "Management covers this local storage only, without scanning other folders or using cloud services. Running exports or Agent jobs block deletion." },
@@ -243,12 +243,12 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
         en: "After a successful switch a self-fading notification \"Switched to \\\"name\\\"\" appears with a Copy Agent prompt button; copying happens only on click — never automatically, and nothing is sent to any Agent session. Back-to-back switches keep only the last notification.",
       },
       {
-        zh: "提示词包含这次切换后的项目 ID、编辑目标 ID、连接方式和外部工作目录，不含凭据；通知消失后可从项目菜单“复制 Agent 提示词”再次复制。已提交的后台任务不因 GUI 切换改变目标。",
-        en: "The prompt carries the switched-to project id, editing-target id, connection command, and external workspace root, with no credentials; after the notification fades, copy it again via the project menu's Copy Agent prompt. Already-submitted tasks keep their original target.",
+        zh: "提示词为单行 start --target 命令，固定绑定这次切换后的项目与工作区运行时，不含凭据；通知消失后可从项目菜单“复制 Agent 提示词”再次复制。已提交的后台任务不因 GUI 切换改变目标。",
+        en: "The prompt is a single-line start --target command bound to the switched-to project and workspace runtime, with no credentials; after the notification fades, copy it again via the project menu's Copy Agent prompt. Already-submitted tasks keep their original target.",
       },
       {
-        zh: "项目菜单的其他操作：有多个编辑方案时出现“编辑方案”列表切换查看对象；“找回之前的编辑”列出可恢复的草稿；“试试另一种剪法”基于当前编辑隔离一个新方案。",
-        en: "Other project-menu actions: with more than one editing plan a Plans list switches the view; Recover previous edits lists restorable drafts; Try another cut starts an isolated alternative based on the current edit.",
+        zh: "项目菜单的其他操作：支持“另存工程文件”与“定位已保存文件”（文件缺失时报错）；有多个编辑方案时出现“编辑方案”列表切换查看对象；“找回之前的编辑”列出可恢复的草稿；“试试另一种剪法”基于当前编辑隔离一个新方案。",
+        en: "Other project-menu actions: Save Project File As and Reveal Saved File (reporting an error if missing); with more than one editing plan a Plans list switches the view; Recover previous edits lists restorable drafts; Try another cut starts an isolated alternative based on the current edit.",
       },
       {
         zh: "恢复：从自动保存快照恢复未预期的丢失。",

@@ -11,6 +11,12 @@ keyframe. Reverse reflects the moving source offset across the trimmed span.
 - Constant speed and reverse consume the correct source span, including seek,
   pause/resume and partial offline render ranges. A completed source is not
   rescheduled within the same playback pass.
+- With `pitchCorrection` enabled (the default `true` or omitted), constant speed
+  (including constant-valued speed keyframes) preserves pitch using Signalsmith
+  Stretch WASM. Browser preview prepares stretched PCM in a Web Worker to keep
+  the UI responsive; Node/offline rendering uses the same WASM directly, and
+  both preview and export consume the same prepared PCM. Set
+  `pitchCorrection: false` explicitly to use native varispeed.
 - With `pitchCorrection: false`, speed curves use shared, asynchronously prepared
   PCM in preview and offline rendering. A windowed-sinc resampler applies a
   rate-dependent low-pass filter before accelerated resampling. This is
@@ -21,24 +27,25 @@ keyframe. Reverse reflects the moving source offset across the trimmed span.
   final buffer frame rounded up and playback stopped at the clip boundary.
 - Cache identity includes source buffer, clip identity, trim, reverse, keyframes
   and pitch/freeze configuration. An edit invalidates the prior configuration;
-  a late older preparation cannot overwrite the newer one.
-  Preparations for removed clips are pruned while retained clips can reuse PCM.
+  a late older preparation cannot overwrite the newer one, and a failed
+  preparation or WASM/worker initialization releases its cache entry so a later
+  call can retry. Preparations for removed clips are pruned while retained clips
+  can reuse PCM.
 
 The realtime graph exposes `prepareClip(schedule)`. Prepare audible curve clips
-before starting the audio clock. `AudioEngine.renderAudio` performs preparation
-itself. `startScheduler` accepts an error callback and stops scheduling when a
-clip cannot be rendered, instead of continuing with incorrect base-speed audio.
+and non-1x pitch-preserving clips before starting the audio clock.
+`AudioEngine.renderAudio` performs preparation itself. `startScheduler` accepts
+an error callback and stops scheduling when a clip cannot be rendered, instead
+of continuing with incorrect base-speed audio.
 
 ## Explicit capability limits
 
-`pitchCorrection` defaults to true in canonical speed configuration. This build
-has no validated pitch-preserving time-stretch DSP. Any audible change from 1x
-with pitch correction true **or omitted** fails with
-`AUDIO_PITCH_CORRECTION_UNAVAILABLE`. Disable Pitch Correction to use varispeed,
-or keep the effective speed at 1x. A constant 1x curve can retain this flag even
-if its unused base speed differs from 1. The flag is not silently treated as
-false. This replaces the previous misleading behavior that persisted the flag
-but ignored it during rendering.
+`pitchCorrection` defaults to true in canonical speed configuration. Constant
+speeds (including keyframes whose speeds are all equal) support pitch
+preservation via Signalsmith Stretch WASM. Varying speed curves with pitch
+correction true **or omitted** fail with `AUDIO_PITCH_CORRECTION_UNAVAILABLE`:
+use constant speed, or explicitly set `pitchCorrection: false` to use varispeed
+for a curve. The flag is never silently treated as false.
 
 Freeze frames currently define a held **video frame**, not a sound policy.
 Audible frozen clips fail with `AUDIO_FREEZE_UNDEFINED`. No DC sample hold,
@@ -47,10 +54,11 @@ use media with no audio stream, or remove the freeze to render. Adding silence,
 continued source audio, or a loop during a freeze needs a product decision and
 matching preview/offline implementation.
 
-Attempting to schedule an unprepared or edited curve fails with
-`AUDIO_CURVE_NOT_PREPARED`. The editor displays the playback error and pauses;
-offline rendering rejects the unsupported range. Storing/editing a video speed
-configuration remains valid even when its audio rendering is unsupported.
+Attempting to schedule an unprepared or edited clip fails with
+`AUDIO_CURVE_NOT_PREPARED` (for speed curves) or `AUDIO_SPEED_NOT_PREPARED` (for
+pitch-preserving constant speed). The editor displays the playback error and
+pauses; offline rendering rejects the unsupported range. Storing/editing a video
+speed configuration remains valid even when its audio rendering is unsupported.
 Capabilities report these distinctions under
 `professionalEditing.speedRamping.details.audioPlayback`.
 
@@ -60,14 +68,15 @@ Switching project tracks drops stale solo routing before scheduling.
 
 ## Validation boundary
 
-Regression tests include constant and curved speed, source trims, reverse,
-start/middle/end positions, chunk continuity, cache revisions, preparation
-cancellation, scheduling failures, and anti-alias suppression at 2x and 20x.
-Isolated Chromium tests decode synthetic WAV and inspect real
-`OfflineAudioContext` PCM against an analytical signal/mapping, including
-preview/offline agreement. These verify timing and signal calculations;
-they do not certify subjective voice quality, preserved formants, every audio
-effect chain, hardware playback, or completed movie exports.
+Regression tests include constant pitch-preserving and varispeed playback, curved
+speed, source trims, reverse, start/middle/end positions, chunk continuity,
+cache revisions, preparation cancellation, failed-cache retry, scheduling
+failures, and anti-alias suppression at 2x and 20x. Isolated Chromium tests
+decode synthetic WAV and inspect real `OfflineAudioContext` PCM against an
+analytical signal/mapping, including preview/offline agreement. These verify
+timing and signal calculations; they do not certify subjective voice quality,
+preserved formants, every audio effect chain, hardware playback, or completed
+movie exports.
 
 This work does not change TTS generation or previously processed audio files.
 It is not evidence that a narration whose clips are all 1x was caused by this

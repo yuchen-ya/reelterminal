@@ -118,10 +118,12 @@ start beyond the moving playback duration after preceding freezes are removed.
 `clip.split` and `clip.trim` currently reject speed-ramped or frozen clips;
 `ReviewRange` currently requires forward constant-speed clips.
 The GUI's linear split/trim/slip/roll/neighbor-trim paths also reject curves
-and freezes. Current audio schedulers use constant speed and do not evaluate
-nonlinear curves or freeze holds; pitch-correction state is persisted but is
-not consumed by these schedulers. The audio policy for freezes and nonlinear
-retiming remains to be designed.
+and freezes. Constant speeds (including constant-valued keyframes) preserve
+pitch by default via Signalsmith Stretch WASM in both preview and offline
+rendering, or use native varispeed when `pitchCorrection: false`; varying speed
+curves support varispeed (`pitchCorrection: false`) and reject pitch correction
+with `AUDIO_PITCH_CORRECTION_UNAVAILABLE`, while audible freeze holds fail with
+`AUDIO_FREEZE_UNDEFINED` (see `docs/AUDIO-SPEED.md`).
 
 `timeline.mapSourceTimes` maps 1–64 explicit absolute timeline times for one
 clip through the same Core `SpeedEngine` used by rendering. It returns the

@@ -179,6 +179,21 @@ Available command families (query their schemas for exact arguments):
   and business arguments after an uncertain response; after restart rediscover
   the runtime target, preserving the workspace/node/item identities. Retries
   return the retained result without creating a new version or reviving an undo.
+- `review.repair.draft.create/apply/inspect/commit/discard` stages multi-step
+  pixel repairs on an explicitly targeted review image without mutating the
+  saved item version or node revision until `commit`. `create` binds the explicit
+  `target`, `expectedNodeRevision`, `itemId`, `expectedItemVersion` and
+  `requestId`; `apply` appends validated brush/eraser/clone/patch operations to
+  the in-memory draft (guarded by `expectedDraftRevision` and `requestId`) while
+  keeping the formal viewer image untouched; `inspect` renders a real cropped
+  draft-preview PNG and displays a separate unsaved-draft preview in the GUI;
+  `commit` publishes the accumulated draft as a single new item version, one
+  bounded processing record and one undo unit (with durable `requestId` replay
+  across undo and app restarts, and conflict rejection if the base item or node
+  changed); `discard` drops the unsaved draft without touching saved content.
+  Uncommitted drafts are in-memory session state and report `NOT_FOUND` after an
+  app restart. Discover exact schemas with `reelctl tools review.image-repair`
+  and `reelctl describe <verb>`.
 - `reelctl review frames capture --file frame.json` (`review.frames.capture`)
   explicitly creates a source-linked image in the same review node from a video
   `itemId`/`expectedItemVersion`. Supply the same target and revision guards,

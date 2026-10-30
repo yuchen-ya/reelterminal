@@ -1,6 +1,6 @@
 <div align="center">
 
-[English](README_en.md) | **简体中文**
+[English](README_en.md) | **简体中文** &nbsp;·&nbsp; 🧪 [审阅工作台 (实验性)](README_review.md)
 
 <img src="docs/assets/logo.png" alt="ReelTerminal Logo" width="100" height="100" style="border-radius: 20px;" />
 
@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-475569?style=flat-square" alt="License" /></a>
 </p>
 
-[**🚀 快速开始**](#-快速开始-quick-start) • [**✨ 核心特点**](#-核心特点-core-features) • [**🤖 Agent 指引**](#-面向-ai-agent-的快速指引-for-ai-agents) • [**🏗️ 架构概览**](#-系统架构-architecture) • [**📚 详细文档**](#-详细文档-documentations)
+[**🚀 快速开始**](#-快速开始-quick-start) • [**✨ 核心特点**](#-核心特点-core-features) • [**🧪 审阅工作台**](README_review.md) • [**🤖 Agent 指引**](#-面向-ai-agent-的快速指引-for-ai-agents) • [**🏗️ 架构概览**](#-系统架构-architecture) • [**📚 详细文档**](#-详细文档-documentations)
 
 </div>
 
@@ -49,13 +49,13 @@
 | 🌿 **不可变版本节点与画面对比** | 🔒 **本地优先与受控素材存储** |
 | 工作区保存与版本留存分开：保存当前编辑，或建立存档点用于只读预览、画面对比和后续采用。每个工作区保有独立状态，创作者决定是否采用 Agent 的试剪结果。 | 工程、素材缓存、编解码和渲染在本机处理，素材通过哈希引用与受控存储管理。模型、字体下载及可选在线服务按配置联网，外部 AI 助手由用户自行选择。 |
 
-### 🆕 v1.3.6 更新概览
+### 🆕 v1.3.9 更新概览
 
-- **项目模板与素材管理**：支持将本地工程快照保存为模板，一键衍生独立新项目（需源媒体与字体可用）；素材面板新增外部资源原站溯源入口，以及经确认的导出副本清理与产物归属管理。
-- **解码与桌面稳定性**：优化视频解码、帧资源释放、音频环境探测与原生渲染超时控制；加强桌面导出参数校验与目标文件保护（仅在导出成功后替换目标文件），并保留暂时离线的最近项目记录。
-- **审阅工作台（迭代中）**：新增面向图片、文本与视频的批次审阅及 Agent 返工面板。该模块按个人偏好与工作流定制，目前仍处于持续打磨与迭代阶段。
+- **恒定速度音频保音高与工程管理**：恒定速度的音频变速默认保留音高（预览与导出复用 Signalsmith Stretch WASM 处理结果，可显式关闭保音高）；本地项目菜单新增另存工程文件与定位已保存文件，批量永久删除项目时同步清理自动恢复记录；整理页遵循「选择存档 → 预览清理内容 → 确认执行」并在界面与服务层阻止空清理计划执行。
+- **轻量目标绑定启动与 CLI 按需发现**：启动提示词精简为单行 `start --target <ref>`（固定绑定目标工作区或审阅任务，不含凭据），配合 `tools` 与 `describe` 按需检索能力包与命令 Schema，无需探测无关环境或加载全量 Schema。
+- **审阅工作台与私有自由画板（实验性）**：将审阅任务与私有自由画板（支持图片、文本、视频、GLB、Markdown、HTML 与隔离网页浏览 7 类输入）合并至统一可排序标签栏，新增区域像素修补、多步修补草稿 CLI 与视频 0-based 准确截帧。详见 🧪 **[审阅工作台与自由画板独立说明](README_review.md)**。
 
-详细变更与验证记录请参阅 [1.3.6 构建说明](docs/RELEASE-1.3.6.md) 与 [Releases 页面](https://github.com/yuchen-ya/reelterminal/releases)。
+详细变更与验证记录请参阅 [1.3.9 构建说明](docs/RELEASE-1.3.9.md)、[1.3.8 构建说明](docs/RELEASE-1.3.8.md)、[1.3.6 构建说明](docs/RELEASE-1.3.6.md) 与 [Releases 页面](https://github.com/yuchen-ya/reelterminal/releases)。
 
 ### 🎙️ 本地字幕与音频整理
 
@@ -79,11 +79,11 @@ flowchart LR
 1. 前往 **[Releases 页面](https://github.com/yuchen-ya/reelterminal/releases)** 下载对应系统的安装包。
 2. 打开视频工程。需要 AI 助手修改时间线时，在时间线上方将协作权限由只读切换为 **`可编辑`**（可随时切回只读）。
 3. 点击通知中的 **「复制启动提示词」**，粘贴给具备本机命令行能力的 AI 助手。
-4. 助手会根据提示词中的命令路径读取工程上下文，在与你确认目标工程与工作区后执行剪辑；你可在同一界面实时预览、微调或对比版本。
+4. 助手会运行提示词中的 `start --target` 命令读取绑定的工程上下文，按需发现工具并在与你确认目标工程与工作区后执行剪辑；你可在同一界面实时预览、微调或对比版本。
 
 #### 安装与升级须知
 
-- **平台支持**：v1.3.6 提供 **Windows x64** 安装版与便携版 ZIP（请完整解压后运行 `ReelTerminal.exe`）。macOS Apple Silicon 用户可暂用历史版本 [v1.2.1](https://github.com/yuchen-ya/reelterminal/releases/tag/v1.2.1)（不含 1.3.6 更新）。
+- **平台支持**：最新本地构建为 **v1.3.9 Windows x64** 安装版与便携版 ZIP（请完整解压后运行 `ReelTerminal.exe`），公开下载版本以 [Releases 页面](https://github.com/yuchen-ya/reelterminal/releases) 为准。macOS Apple Silicon 用户可暂用历史版本 [v1.2.1](https://github.com/yuchen-ya/reelterminal/releases/tag/v1.2.1)（不含后续更新）。
 - **旧版升级与安全提示**：旧版 Windows 用户升级前请务必阅读 [Windows 升级与备份指南](docs/WINDOWS-UPGRADE.md)，建议先备份并优先将新版 ZIP 解压至全新目录使用。Windows 构建可能未附带商业代码签名，若遇 SmartScreen 提示，请确认包文件来自官方 Releases 并核对 SHA-256。
 - **可选本地工具**：部分导出、媒体分析与光流修补功能依赖本机 `FFmpeg/ffprobe` 或含 `cv2`/`numpy` 的 Python 环境，详见 [外部依赖说明](docs/EXTERNAL-DEPENDENCIES.md)。
 
@@ -117,7 +117,7 @@ corepack pnpm dev
 
 | 任务场景 | 适用规范与入口 | 核心执行契约 |
 | :--- | :--- | :--- |
-| **🎬 视频剪辑与内容生产**<br>（协同操作桌面端工程） | • [Agent 协作指南](docs/AGENT-GUIDE.md)<br>• [任务工作区规程](docs/AGENT-WORKSPACE.md)<br>• [Command API 规范](docs/COMMAND-API.md) | 1. **连接与鉴权**：通过客户端执行 `reelctl status` 与 `reelctl context --compact`；严禁打印或泄露 `live-endpoint.json` 及其 Token。未开启写权限时请提示用户将界面切换为「可编辑」。<br>2. **显式目标绑定**：读写命令须绑定明确的 `projectId`、`workspaceId` 及版本锁（`expectedRevision`），勿因 GUI 焦点切换而静默变更目标。<br>3. **产物隔离**：调用 `reelctl call capabilities.get` 获取 `mediaImport.recommendedRoot`，将生成媒体、抽帧与中间脚本统一置于 `jobs/<YYYY-MM-DD>-<slug>/` 下，**严禁写入源码仓库目录**。 |
+| **🎬 视频剪辑与多模态审阅**<br>（协同操作桌面端工程或审阅任务） | • [Agent 协作指南](docs/AGENT-GUIDE.md)<br>• [任务工作区规程](docs/AGENT-WORKSPACE.md)<br>• [Command API 规范](docs/COMMAND-API.md)<br>• [审阅工作台指南](README_review.md) | 1. **连接与按需发现**：优先执行复制的 `start --target <ref>`（或 `reelctl status` / `context --compact`），再用 `tools <domain>` 与 `describe <verb>` 按需查询契约；严禁打印或泄露 `live-endpoint.json` 及其 Token。未开启写权限时请提示用户开启。<br>2. **显式目标绑定**：读写命令须绑定明确的 `projectId`/`workspaceId`（或审阅 `target`）及版本锁（`expectedRevision`），勿因 GUI 焦点或标签切换而静默变更目标。私有自由画板默认不对 Agent 开放。<br>3. **产物隔离**：调用 `reelctl call capabilities.get` 获取 `mediaImport.recommendedRoot`，将生成媒体、抽帧与中间脚本统一置于 `jobs/<YYYY-MM-DD>-<slug>/` 下，**严禁写入源码仓库目录**。 |
 | **🛠️ 仓库源码开发与测试**<br>（修改代码、修复 Bug、打包） | • [仓库 Agent 规则 (AGENTS.md)](AGENTS.md)<br>• [贡献与开发指南](CONTRIBUTING.md)<br>• [桌面端 E2E 测试](apps/desktop/e2e/README.md) | 1. **与用户实例隔离**：源码修改、单元测试与构建无需连接或探测用户正在运行的桌面端；GUI 回归测试必须使用 `apps/desktop/e2e` 提供的隔离配置。<br>2. **历史与状态边界**：整工程替换须走 `ProjectState.loadProject`；持久化状态修改须通过 Store 的标准提交通道（保留 `ActionHistory.nextSequence` 顺序），切勿滥用 `rawSet`。<br>3. **单工作区协作**：不擅自新建 Git worktree；修改前先检查 `git status`，保留工作区内已有的未提交变更。 |
 
 > 📌 **重要状态边界提示**：
@@ -175,6 +175,7 @@ ReelTerminal 面向需要整理、修补并交付 AI 视频的创作者，由独
 使用指南、开发说明与发行信息：
 
 - 📖 [**桌面端用户手册**](docs/USER-GUIDE.md) — 桌面端安装、界面导览与常用操作。
+- 🧪 [**审阅工作台与私有自由画板 (实验性)**](README_review.md) — 多模态批次审阅、像素修补、Handoff 返工与 [自由画板操作说明](docs/HUMAN-BOARDS.zh-CN.md)。
 - 🌿 [**多项目与版本节点指南**](docs/MULTI-PROJECT-USAGE.md) — 紧凑版本轨道、保存与留存分离（Save vs Retain）、只读预览与画面对比。
 - 📐 [**版本节点交互规范**](docs/VERSION-NODES-UX.md) — 存档树、采用（Adopt）、回收与冲突保护设计准则。
 - 🤖 [**外部 Agent 协作指南**](docs/AGENT-GUIDE.md) — 权限机制、CLI 详解与进阶接口。

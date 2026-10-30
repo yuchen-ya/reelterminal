@@ -33,8 +33,10 @@ package carries these license texts in
 
 | Package | Version | License | License text |
 |---|---:|---|---|
+| `@excalidraw/excalidraw` | 0.18.1 | MIT (code) + OFL/MIT/PD (bundled fonts) | [`Excalidraw-MIT.txt`](apps/desktop/LICENSES/excalidraw/Excalidraw-MIT.txt) and [`SOURCES.md`](apps/desktop/LICENSES/excalidraw/SOURCES.md) |
 | `@paper-design/shaders` | 0.0.72 | MIT | [`PAPER-DESIGN-SHADERS-0.0.72-MIT.txt`](apps/desktop/LICENSES/PAPER-DESIGN-SHADERS-0.0.72-MIT.txt) |
 | `mediabunny` | 1.55.4 | MPL-2.0 | [`MEDIABUNNY-1.55.4-MPL-2.0.txt`](apps/desktop/LICENSES/MEDIABUNNY-1.55.4-MPL-2.0.txt) |
+| `signalsmith-stretch-js` | 0.2.0 | MIT | [`signalsmith-stretch-js-0.2.0.txt`](apps/desktop/LICENSES/npm-upstream/signalsmith-stretch-js-0.2.0.txt) |
 
 ## Fonts
 
@@ -44,6 +46,12 @@ copyright notices, and full license texts are in
 [`apps/web/public/fonts/licenses/manifest.json`](apps/web/public/fonts/licenses/manifest.json)
 and its adjacent license files. Helvetiker carries the Magenta/MgOpen license
 embedded in its typeface metadata.
+
+The independent Free Board embeds Excalidraw 0.18.1 and copies its bundled
+Assistant, Cascadia Code, Comic Shanns, Excalifont, Liberation Sans, Lilita One,
+Nunito, Virgil, and Xiaolai font files without alteration to
+`renderer/excalidraw-assets/fonts/`. Their upstream notices and license texts are
+in [`apps/desktop/LICENSES/excalidraw/`](apps/desktop/LICENSES/excalidraw/).
 
 ## Optional desktop sidecars
 

@@ -1,6 +1,6 @@
 <div align="center">
 
-**English** | [简体中文](README.md)
+**English** | [简体中文](README.md) &nbsp;·&nbsp; 🧪 [Review Workspace (Experimental)](README_review_en.md)
 
 <img src="docs/assets/logo.png" alt="ReelTerminal Logo" width="100" height="100" style="border-radius: 20px;" />
 
@@ -17,7 +17,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-475569?style=flat-square" alt="License" /></a>
 </p>
 
-[**🚀 Quick start**](#-quick-start) • [**✨ Core features**](#-core-features) • [**🤖 For AI Agents**](#-for-ai-agents) • [**🏗️ Architecture**](#-architecture) • [**📚 Documentation**](#-documentation)
+[**🚀 Quick start**](#-quick-start) • [**✨ Core features**](#-core-features) • [**🧪 Review Workspace**](README_review_en.md) • [**🤖 For AI Agents**](#-for-ai-agents) • [**🏗️ Architecture**](#-architecture) • [**📚 Documentation**](#-documentation)
 
 </div>
 
@@ -47,13 +47,13 @@ AI video models make it easier to create footage, but turning **a collection of 
 | 🌿 **Immutable version nodes & comparison** | 🔒 **Local-first media storage** |
 | Save the current workspace or retain a version node for read-only preview, comparison, and adoption. Each workspace has independent state; the creator decides whether to adopt an assistant’s trial edit. | Projects, media caches, decoding, and rendering are processed locally. Hash references and controlled storage manage media. Model/font downloads and optional online services use the network as configured; external AI assistants are chosen by the user. |
 
-### 🆕 What's new in v1.3.6
+### 🆕 What's new in v1.3.9
 
-- **Project templates and media management:** save local project snapshots as templates to spin up independent projects (referenced source media and fonts must remain available); trace external assets back to their original sites from the media panel, and manage artifact ownership and reviewed export cleanup.
-- **Decoding and desktop stability:** improved video decoding, frame resource cleanup, audio environment probing, and native render timeout control; strengthened export validation and target-file protection (replacing target files only after a successful export) while preserving temporarily offline recent projects.
-- **Review workspace (iterating):** added a batch review and Agent rework workspace for images, text, and video. Designed around personal workflow preferences and currently under active iteration.
+- **Pitch-preserving audio speed and project management:** constant-speed audio retiming now preserves pitch by default across preview and export via Signalsmith Stretch WASM (with an explicit opt-out for varispeed); the project menu adds Save Project File As and Reveal Saved File, bulk permanent deletion cleans corresponding recovery slots, and cleanup previews enforce a select → preview → confirm flow that blocks empty plans in both the UI and service API.
+- **Target-bound startup and on-demand CLI discovery:** copied startup prompts now emit a single-line `start --target <ref>` command (binding the exact workspace or review task without exposing credentials), paired with `tools` and `describe` for selective capability and schema discovery without probing unrelated environments.
+- **Review Workspace and Private Free Boards (experimental):** review tasks and private Excalidraw-based free boards (supporting images, text, video, GLB, Markdown, local HTML, and isolated web browsing) now share a unified reorderable tab strip, alongside scoped pixel repair, multi-step repair draft CLI commands, and exact zero-based video frame capture. See the standalone 🧪 **[Review Workspace & Free Boards guide](README_review_en.md)**.
 
-See the [1.3.6 build notes](docs/RELEASE-1.3.6.md) and [Releases](https://github.com/yuchen-ya/reelterminal/releases) for full details.
+See the [1.3.9 build notes](docs/RELEASE-1.3.9.md), [1.3.8 build notes](docs/RELEASE-1.3.8.md), [1.3.6 build notes](docs/RELEASE-1.3.6.md), and [Releases](https://github.com/yuchen-ya/reelterminal/releases) for full details.
 
 ### 🎙️ Local captions and audio cleanup
 
@@ -77,11 +77,11 @@ flowchart LR
 1. Visit **[Releases](https://github.com/yuchen-ya/reelterminal/releases)** and download the package for your system.
 2. Open a video project. When you want your AI assistant to modify the timeline, switch collaboration access above the timeline from read-only to **`Editable`** (you can switch back at any time).
 3. Click **“Copy startup prompt”** in the notification and send it to an AI assistant with local CLI access.
-4. The assistant uses the prompt's command paths to inspect project context, confirm the target project and workspace with you, and apply edits while you review, fine-tune, and compare versions in the same UI.
+4. The assistant runs the prompt's `start --target` command to inspect the bound project context, discovers required tools on demand, confirms the target project and workspace with you, and applies edits while you review, fine-tune, and compare versions in the same UI.
 
 #### Installation and upgrade notes
 
-- **Platform availability:** v1.3.6 provides a **Windows x64** installer and portable ZIP (extract the entire archive before running `ReelTerminal.exe`). macOS Apple Silicon users can use the earlier [v1.2.1](https://github.com/yuchen-ya/reelterminal/releases/tag/v1.2.1) build (does not include 1.3.6 changes).
+- **Platform availability:** the latest local build is **v1.3.9 Windows x64** (installer and portable ZIP; extract the entire archive before running `ReelTerminal.exe`), while publicly published downloads are listed on [Releases](https://github.com/yuchen-ya/reelterminal/releases). macOS Apple Silicon users can use the earlier [v1.2.1](https://github.com/yuchen-ya/reelterminal/releases/tag/v1.2.1) build (does not include later updates).
 - **Upgrading and security:** existing Windows users should read [Windows upgrade and backup](docs/WINDOWS-UPGRADE.md#english) before upgrading—back up first and prefer extracting the new portable ZIP into a fresh directory. Windows builds may be unsigned; if SmartScreen appears, verify that the download came from official Releases and check its SHA-256 checksum.
 - **Optional local tools:** some export, media-analysis, and optical-flow repair tools require local `FFmpeg/ffprobe` or Python with `cv2` and `numpy`. See [external dependencies](docs/EXTERNAL-DEPENDENCIES.md) for details.
 
@@ -118,7 +118,7 @@ If you are an AI assistant (Claude, Cursor, Antigravity, Codex, etc.) reading th
 
 | Task scenario | Primary references | Core execution contracts |
 | :--- | :--- | :--- |
-| **🎬 Video editing & production**<br>(Collaborating on a live desktop project) | • [External Agent guide](docs/AGENT-GUIDE.md)<br>• [Agent workspace guide](docs/AGENT-WORKSPACE.md)<br>• [Command API spec](docs/COMMAND-API.md) | 1. **Connection & auth:** inspect state via `reelctl status` and `reelctl context --compact`. Never print or log `live-endpoint.json` or its token. Ask the user to enable `Editable` mode if write access is required.<br>2. **Explicit target binding:** bind reads and edits to explicit `projectId`, `workspaceId`, and `expectedRevision` guards; never silently retarget when GUI selection changes.<br>3. **Workspace isolation:** query `reelctl call capabilities.get` for `mediaImport.recommendedRoot` and place all generated media, frames, and helper scripts under `jobs/<YYYY-MM-DD>-<slug>/`—**never inside the source tree**. |
+| **🎬 Video editing & multimodal review**<br>(Collaborating on a live desktop project or review task) | • [External Agent guide](docs/AGENT-GUIDE.md)<br>• [Agent workspace guide](docs/AGENT-WORKSPACE.md)<br>• [Command API spec](docs/COMMAND-API.md)<br>• [Review Workspace guide](README_review_en.md) | 1. **Connection & discovery:** run the copied single-line `start --target <ref>` (or `reelctl status` / `context --compact`), then use `tools <domain>` and `describe <verb>` for selective schema discovery. Never print or log `live-endpoint.json` or its token. Ask the user to enable write access if required.<br>2. **Explicit target binding:** bind reads and edits to explicit `projectId`/`workspaceId` (or review `target`) and `expectedRevision` guards; never silently retarget when GUI selection or tabs change. Private Free Boards are never exposed to Agents.<br>3. **Workspace isolation:** query `reelctl call capabilities.get` for `mediaImport.recommendedRoot` and place all generated media, frames, and helper scripts under `jobs/<YYYY-MM-DD>-<slug>/`—**never inside the source tree**. |
 | **🛠️ Repository development & testing**<br>(Code edits, bug fixes, builds) | • [Agent rules (AGENTS.md)](AGENTS.md)<br>• [Contributing guide](CONTRIBUTING.md)<br>• [Desktop E2E harness](apps/desktop/e2e/README.md) | 1. **Do not probe user instances:** source edits, unit tests, and builds do not require connecting to a live desktop app. Use the isolated harness in `apps/desktop/e2e` for GUI regressions.<br>2. **History & state boundaries:** whole-project replacement must go through `ProjectState.loadProject`; persisted edits must use the store's recorded commit boundary (`ActionHistory.nextSequence`), reserving `rawSet` for replay/recovery/transient previews.<br>3. **Single checkout:** do not create extra Git worktrees without an explicit request; inspect `git status` first and preserve existing uncommitted work. |
 
 > 📌 **Key state boundaries:**
@@ -176,6 +176,7 @@ Please share them through **[GitHub Issues](https://github.com/yuchen-ya/reelter
 Some guides are currently in Chinese; command names and code examples are shared across both interfaces.
 
 * 📖 [**Desktop user guide**](docs/USER-GUIDE.md) — installation, interface tour, and common operations. Desktop builds include English and Chinese offline manuals.
+* 🧪 [**Review Workspace & Private Free Boards (Experimental)**](README_review_en.md) — multimodal batch curation, pixel repair, handoff rework, and the [Free Boards guide](docs/HUMAN-BOARDS.zh-CN.md).
 * 🌿 [**Multi-project & version nodes guide**](docs/MULTI-PROJECT-USAGE.md) — compact version track, save-versus-retain workflows, read-only preview, and comparison.
 * 📐 [**Version nodes UX specification**](docs/VERSION-NODES-UX.md) — save-point tree, branch adoption, recycling, and conflict rules.
 * 🤖 [**External Agent guide**](docs/AGENT-GUIDE.md) — access modes, CLI usage, and advanced commands.

@@ -20,7 +20,12 @@ Independent review workspaces store review nodes, batches, version-bound feedbac
 and recorded processing without requiring a video project. They use explicit
 review targets and a separate Agent-write grant. Parent boards/categories organize
 review items; a baseline video binding selects a comparison item without inventing
-a time mapping. See [the command contract](COMMAND-API.md).
+a time mapping. Private Free Boards share the Review Workspace tab strip for human
+mixed-media ideation, region PNG freeze and local pixel repair, but remain strictly
+private by default—they never enter Agent context, change feeds or repair CLI
+commands unless the user explicitly exports a single container snapshot as a review
+node. See [the command contract](COMMAND-API.md) and
+[Free Boards guide](HUMAN-BOARDS.zh-CN.md).
 
 ## Feature scope
 

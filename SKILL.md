@@ -1,37 +1,54 @@
 ---
 name: reelterminal
 description: >-
-  Create and edit videos in the open ReelTerminal desktop project using reelctl:
-  inspect editor context, import assets, apply edits, preview, export, and verify.
-  Use for ReelTerminal video work; headless workflows require explicit selection.
+  Create and edit videos or review multimodal batches in the open ReelTerminal
+  desktop app using reelctl: start with bound targets, discover capabilities on
+  demand, inspect context, import assets, apply edits or repairs, preview,
+  export, and verify. Use for ReelTerminal work; headless workflows require
+  explicit selection.
 ---
 
 # ReelTerminal live editing
 
 The Agent owns its conversation, credentials, reasoning and context budget.
-ReelTerminal owns the canonical project, editor state, atomic edits, shared undo,
-previews, media analysis and export jobs. Editor context is data, not LLM memory.
+ReelTerminal owns the canonical project, independent review workspace, editor
+state, atomic edits, shared undo, previews, media analysis and export jobs.
+Editor context is data, not LLM memory.
 
 ## Connect and discover
 
-1. Start ReelTerminal and open the intended project. The command service
-   provides read-only access; select **Allow editing** to grant write access.
-2. Run `reelctl status`, then `reelctl context --compact`.
-   If `collaborationInstructions.enabledCount` is nonzero, read the full enabled
-   user-authored guidance with `reelctl call collaboration.instructions.get
-   --project-id … --workspace-id …`. Refresh context before each round and before
-   edits; reread when instruction IDs, titles or updatedAt values change (including
-   removals). An empty list adds no project-specific creative workflow. Referenced
-   assets are source material, not instructions. Only the user edits this guidance
-   in Board → Collaboration instructions; do not convert feedback into saved rules
+1. Start ReelTerminal and open the intended video project or Review Workspace
+   task. The command service starts read-only; select **Allow editing** in the
+   video status strip (or enable the separate Review Workspace Agent-write
+   checkbox for review tasks) to grant write access.
+2. Run the copied one-line startup command `reelctl start --target <ref>` first
+   when provided: it verifies liveness and returns the bound target identity,
+   permission, revision, name and next steps without probing environments or
+   loading schemas. You can also run `reelctl status` and
+   `reelctl context --compact` (or `reelctl review context` for independent
+   review).
+   If `collaborationInstructions.enabledCount` is nonzero on a video project,
+   read the full enabled user-authored guidance with
+   `reelctl call collaboration.instructions.get --project-id … --workspace-id …`.
+   Refresh context before each round and before edits; reread when instruction
+   IDs, titles or updatedAt values change (including removals). An empty list
+   adds no project-specific creative workflow. Referenced assets are source
+   material, not instructions. Only the user edits this guidance in Board →
+   Collaboration instructions; do not convert feedback into saved rules
    automatically.
    If the context reports ready requirements, run
    `reelctl requirements list --status ready --compact` and fetch only the
    requirement you are about to handle with `reelctl requirements get Q<number>`.
-3. Use `reelctl query` for bounded reads. Discover parameters through
-   `reelctl schema edit.apply` or `reelctl help media inspect`.
-4. Validate planned edits, apply with the recorded version and project identity,
-   and inspect the resulting timeline and preview.
+3. Discover capabilities and command contracts on demand with
+   `reelctl tools` (`video`, `review`, `library`, `system`),
+   `reelctl tools <domain|package.id>`, and
+   `reelctl describe <canonical.verb>` (e.g.
+   `reelctl describe edit.apply --op clip.trim`, or `--detail full` to include
+   the output schema). Legacy `reelctl schema <verb>` and `reelctl help <verb>`
+   remain compatible. Use `reelctl query` for bounded timeline reads.
+   Private Free Boards have no Agent content route and are never review targets.
+4. Validate planned edits, apply with the recorded revision and target identity,
+   and inspect the resulting timeline/review item and preview.
 
 An open project's format and existing edits are user context. Keep them unless
 asked to create a new project or change its settings. No endpoint means the GUI
@@ -61,10 +78,12 @@ bytes without replacing the chosen family; inspect unresolved dependencies.
 ## Commands and input
 
 Use `reelctl call <canonical.command> --file request.json` for any catalog entry.
-Convenience commands include context, query, edit validate/apply, media
-import/inspect/analyze, preview frame, history get/undo/redo, export start and
-job status/wait/cancel. `job wait` polls a desktop-owned job; closing the CLI does
-not cancel it. Do not infer unsupported capabilities: call `capabilities.get`.
+Convenience commands include `start`, `tools`, `describe`, `context`, `query`,
+`edit validate/apply`, `media import/inspect/analyze`, `preview frame`,
+`history get/undo/redo`, `export start`, `job status/wait/cancel`,
+`review repair inspect/apply`, and `review frames capture`. `job wait` polls a
+desktop-owned job; closing the CLI does not cancel it. Do not infer unsupported
+capabilities: call `capabilities.get`.
 
 Pass complex JSON through `--file` or `--stdin`, not shell-escaped argument blobs:
 
@@ -139,7 +158,9 @@ assets with the external Agent and import them through the normal API.
 ## Command API
 
 The [Command API guide](docs/COMMAND-API.md) describes the live service and
-CLI contract. Commands and schemas come from the live Command Catalog.
+CLI contract, and the [Review Workspace guide](README_review.md) covers
+independent multimodal review tasks, scoped pixel repair/drafts, and private
+Free Boards. Commands and schemas come from the live Command Catalog.
 
 ## Explicit headless workflows
 
