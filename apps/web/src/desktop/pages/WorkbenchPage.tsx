@@ -1,12 +1,15 @@
 import { ModelViewerWorkspace } from "../workbench/components/ModelViewerWorkspace";
 import "../workbench/workbench.css";
-import type { JSX, ReactNode } from "react";
+import type { JSX, ReactNode, DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronUp, LayoutGrid, PanelLeftOpen } from "lucide-react";
 import type { WorkbenchDecision } from "@reelterminal/core";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
 import { CollectionInteractionContext, type CollectionAction, type CollectionScope } from "../workbench/components/CollectionActions";
 import { useCollectionExport, type CollectionExportTarget } from "../workbench/useCollectionExport";
+import { REVIEW_ITEM_DRAG, isReviewDrop, readReviewItemDrag } from "../workbench/review-drag";
+import { moveReviewItems } from "../../services/review-workspace/placement";
+import { importReviewFiles, planReviewFiles } from "../../services/review-workspace/file-import";
 import { ReviewExportDialog } from "../workbench/components/ReviewExportDialog";
 import { wbButton } from "../workbench/wb-button";
 import {
@@ -120,6 +123,7 @@ export function WorkbenchPanel({
   loading = false,
   paginationFooter,
   exportTarget,
+  reviewTarget,
   paginated = false,
   pageKey,
   browserDemo = false,
@@ -131,6 +135,7 @@ export function WorkbenchPanel({
   loading?: boolean;
   paginationFooter?: ReactNode;
   exportTarget?: CollectionExportTarget;
+  reviewTarget?: CollectionExportTarget;
   paginated?: boolean;
   pageKey?: number;
   browserDemo?: boolean;
@@ -484,16 +489,66 @@ export function WorkbenchPanel({
   const filteredEmpty =
     hasBatch && batchItems.length > 0 && visibleItems.length === 0;
 
+  const moveDrag = reviewTarget ? (event: DragEvent, scope: CollectionScope) => {
+    if (!controller.activeBatch) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(REVIEW_ITEM_DRAG, JSON.stringify({ ...reviewTarget,
+      batchId: controller.activeBatch.id, itemIds: scope.items.map(item => item.id) }));
+  } : undefined;
+  const drop = reviewTarget ? (event: DragEvent, groupId: string | null, targetItemId?: string) => {
+    const destination = reviewTarget;
+    const batchId = controller.activeBatch?.id;
+    const files = Array.from(event.dataTransfer.files);
+    let source: ReturnType<typeof readReviewItemDrag> | null = null;
+    try {
+      if (event.dataTransfer.types.includes(REVIEW_ITEM_DRAG)) source = readReviewItemDrag(event.dataTransfer);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    const perform = async () => {
+      if (committing.current) return;
+      committing.current = true;
+      setBusy(true);
+      try {
+        if (source) {
+          if (source.target.nodeId !== destination.target.nodeId ||
+            source.target.reviewWorkspaceId !== destination.target.reviewWorkspaceId ||
+            source.target.instanceId !== destination.target.instanceId ||
+            source.revision !== destination.revision || source.batchId !== batchId) {
+            throw new Error("只能在同一任务、同一批次和同一版本中归类；请刷新后重新拖放");
+          }
+          await moveReviewItems(destination.target, destination.revision, { batchId: source.batchId, itemIds: source.itemIds, groupId, targetItemId });
+          showToast("归类完成，原始来源链已保留");
+        } else if (files.length) {
+          const plan = await planReviewFiles(files);
+          await importReviewFiles(destination.target, destination.revision, "拖入文件", plan, { batchId, groupId });
+          showToast(`已导入 ${files.length} 个文件`);
+        }
+      } finally {
+        committing.current = false;
+        setBusy(false);
+      }
+    };
+    void perform().catch(error => showToast(error instanceof Error ? error.message : String(error)));
+  } : undefined;
+
   return (
     <CollectionInteractionContext.Provider value={{ action: collectionAction, busy,
       selectedItems: (effectiveBoard ? effectiveBoardItems : visibleItems).filter(item => controller.selectedIds.includes(item.id)),
-      ...(exportTarget ? { prepareDrag: quickExport.prepare, drag: quickExport.drag } : {}) }}>
+      ...(exportTarget ? { prepareDrag: quickExport.prepare, drag: quickExport.drag } : {}),
+      ...(reviewTarget ? { moveDrag, drop, acceptsDrop: (event: DragEvent) => isReviewDrop(event.dataTransfer) } : {}) }}>
     <div
       className="relative flex h-full min-h-0 flex-col bg-bg text-fg"
       data-testid="workbench-page"
       data-workbench-scope="true"
       data-review-content-scope={independent ? "true" : undefined}
       tabIndex={-1}
+      onDragOver={event => { if (drop && !busy && isReviewDrop(event.dataTransfer)) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = event.dataTransfer.types.includes("Files") ? "copy" : "move"; } }}
+      onDrop={event => { if (drop && !busy && isReviewDrop(event.dataTransfer)) { event.preventDefault(); event.stopPropagation(); drop(event, null); } }}
     >
       {/* Agent access / live status (shared with the editor shell) */}
       {!independent && (
@@ -634,7 +689,7 @@ export function WorkbenchPanel({
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
           {quickExport.feedback}
           {independent && currentItem?.type === "image" && <div className="flex shrink-0 justify-end border-b border-border px-3 py-1">
-            <button className={wbButton.secondary} data-testid="review-image-add-to-human-board" onClick={() => window.dispatchEvent(new CustomEvent("reelterminal:add-to-human-board", { detail: currentItem }))}>加入人工画板</button>
+            <button className={wbButton.secondary} data-testid="review-image-add-to-human-board" onClick={() => window.dispatchEvent(new CustomEvent("reelterminal:add-to-human-board", { detail: currentItem }))}>加入自由画板</button>
           </div>}
           {!loading && controller.activeBatch && controller.activeBatch.totalCount > 0 && controller.activeBatch.pendingCount === 0 && (
             <div role="status" data-testid="review-complete" className="flex shrink-0 items-center gap-3 border-b border-accent/30 bg-accent/10 px-3 py-2 text-xs">
@@ -756,6 +811,8 @@ export function WorkbenchPanel({
             currentItem={effectiveBoard ? null : currentItem}
             canUndo={controller.canUndo}
             canRedo={controller.canRedo}
+            undoDisabledReason={controller.undoDisabledReason}
+            redoDisabledReason={controller.redoDisabledReason}
             selectedIds={effectiveBoard ? decisionTargets : undefined}
             onSelectItemById={(itemId) => handleSelectItemFromTree(itemId)}
             onCommitDecision={commit}

@@ -4,7 +4,7 @@ import {
   ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuLabel,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 } from "@reelterminal/ui";
-import { MoreHorizontal } from "lucide-react";
+import { FolderOutput, MoreHorizontal } from "lucide-react";
 import type { WorkbenchItemView } from "../types";
 
 export type CollectionAction = "select" | "keep-pending" | "discard-pending" | "keep-all" | "discard-all" | "rework" | "retrieve" | "export";
@@ -12,6 +12,8 @@ export interface CollectionScope {
   readonly title: string;
   readonly items: readonly WorkbenchItemView[];
   readonly folder: boolean;
+  readonly rootItemId?: string;
+  readonly placementGroupId?: string | null;
 }
 export interface CollectionInteraction {
   action: (action: CollectionAction, scope: CollectionScope) => void;
@@ -19,6 +21,9 @@ export interface CollectionInteraction {
   drag?: (event: DragEvent, scope: CollectionScope) => void;
   selectedItems: readonly WorkbenchItemView[];
   busy: boolean;
+  moveDrag?: (event: DragEvent, scope: CollectionScope) => void;
+  drop?: (event: DragEvent, groupId: string | null, targetItemId?: string) => void;
+  acceptsDrop?: (event: DragEvent) => boolean;
 }
 export const CollectionInteractionContext = createContext<CollectionInteraction | null>(null);
 
@@ -52,7 +57,11 @@ export function CollectionActions({ scope, children }: { scope: CollectionScope;
       </Item>)}
     </>;
   };
-  const menu = <DropdownMenu>
+  const menu = <div className="flex">{interaction.drag && <button type="button" draggable={!interaction.busy && scope.items.length > 0} disabled={interaction.busy || scope.items.length === 0}
+    aria-label={`拖出${scope.title}的副本`} title="拖出副本到其他程序（原件保留）" data-testid="collection-native-drag"
+    className="shrink-0 cursor-grab rounded p-1 text-fg-3 hover:bg-bg-3 hover:text-fg"
+    onClick={event => event.stopPropagation()} onPointerDown={event => { event.stopPropagation(); interaction.prepareDrag?.(dragScope); }}
+    onDragStart={event => { event.stopPropagation(); interaction.drag?.(event, dragScope); }}><FolderOutput className="h-3.5 w-3.5" /></button>}<DropdownMenu>
     <DropdownMenuTrigger asChild>
       <button type="button" aria-label={`${scope.title}的操作`} title="更多操作（也可右键）"
         onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()}
@@ -61,14 +70,17 @@ export function CollectionActions({ scope, children }: { scope: CollectionScope;
       </button>
     </DropdownMenuTrigger>
     <DropdownMenuContent onClick={event => event.stopPropagation()}>{contents(false)}</DropdownMenuContent>
-  </DropdownMenu>;
+  </DropdownMenu></div>;
   if (!children) return menu;
   return <ContextMenu>
     <ContextMenuTrigger asChild>
-      <div className="relative min-w-0" draggable={!!interaction.drag && !interaction.busy}
-        onPointerDown={event => { if (event.button === 0 && !(event.target as HTMLElement).closest("button,input,select,textarea")) interaction.prepareDrag?.(dragScope); }}
-        onDragStart={event => { event.stopPropagation(); interaction.drag?.(event, dragScope); }}>
-        <div className="pr-7">{children}</div>
+      <div className="relative min-w-0" draggable={!!interaction.moveDrag && !!scope.rootItemId && !interaction.busy}
+        title={interaction.moveDrag ? scope.rootItemId ? "拖动可归类到当前批次的其他组；原始来源链保持不变" : "拖入条目以归类到此组，或拖入支持的文件" : undefined}
+        data-review-drop-group={scope.placementGroupId === null ? "ungrouped" : scope.placementGroupId}
+        onDragOver={event => { if (!interaction.busy && interaction.acceptsDrop?.(event)) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = event.dataTransfer.types.includes("Files") ? "copy" : "move"; } }}
+        onDrop={event => { if (!interaction.busy && interaction.acceptsDrop?.(event)) { event.preventDefault(); event.stopPropagation(); interaction.drop?.(event, scope.placementGroupId ?? null, scope.rootItemId); } }}
+        onDragStart={event => { event.stopPropagation(); interaction.moveDrag?.(event, dragScope); }}>
+        <div className={interaction.drag ? "pr-12" : "pr-7"}>{children}</div>
         <div className="absolute right-0 top-0">{menu}</div>
       </div>
     </ContextMenuTrigger>

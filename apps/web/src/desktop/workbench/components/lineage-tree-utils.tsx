@@ -133,17 +133,29 @@ export function buildWorkbenchLineageGroups(
   for (const item of items) entries.set(item.id, { item, children: [] });
 
   const groups = new Map<string, WorkbenchLineageGroup>();
+  // Source groups remain available as drop targets after their last item moves.
+  for (const item of items) {
+    const lineage = item.lineage;
+    if (lineage && !groups.has(lineage.upstreamGroupId)) {
+      groups.set(lineage.upstreamGroupId, {
+        id: lineage.upstreamGroupId,
+        baseName: lineage.upstreamGroupTitle || lineage.upstreamSourceNode || lineage.upstreamGroupId,
+        isUngrouped: false,
+        roots: [],
+      });
+    }
+  }
   const groupOfItem = new Map<string, WorkbenchLineageGroup>();
   const ensureGroup = (item: WorkbenchItemView): WorkbenchLineageGroup => {
-    const groupId = item.lineage?.upstreamGroupId ?? options.ungroupedId;
+    const placementGroup = item.placement ? item.placement.groupId : item.lineage?.upstreamGroupId ?? null;
+    const groupId = placementGroup ?? options.ungroupedId;
     const existing = groups.get(groupId);
     if (existing) return existing;
     const group: WorkbenchLineageGroup = {
       id: groupId,
-      baseName: item.lineage
-        ? item.lineage.upstreamGroupTitle || item.lineage.upstreamSourceNode || groupId
-        : options.ungroupedLabel,
-      isUngrouped: !item.lineage,
+      baseName: placementGroup === null ? options.ungroupedLabel
+        : items.find(candidate => candidate.lineage?.upstreamGroupId === placementGroup)?.lineage?.upstreamGroupTitle || placementGroup,
+      isUngrouped: placementGroup === null,
       roots: [],
     };
     groups.set(groupId, group);
@@ -155,7 +167,7 @@ export function buildWorkbenchLineageGroups(
     groupOfItem.set(id, group);
     const parentId = entry.item.lineage?.parentNodeId;
     const parent = parentId && parentId !== id ? entries.get(parentId) : undefined;
-    if (parent) parent.children.push(entry);
+    if (parent && ensureGroup(parent.item).id === group.id) parent.children.push(entry);
     else group.roots.push(entry);
   });
 

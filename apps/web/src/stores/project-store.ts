@@ -685,8 +685,8 @@ export interface ProjectState {
   updateClipKeyframes: (clipId: string, keyframes: Keyframe[]) => boolean;
 
   // Undo/Redo
-  undo: (options?: { alreadySerialized?: boolean }) => Promise<ActionResult>;
-  redo: (options?: { alreadySerialized?: boolean }) => Promise<ActionResult>;
+  undo: (options?: { alreadySerialized?: boolean; scope?: "workbench" }) => Promise<ActionResult>;
+  redo: (options?: { alreadySerialized?: boolean; scope?: "workbench" }) => Promise<ActionResult>;
   canUndo: () => boolean;
   canRedo: () => boolean;
 

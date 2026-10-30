@@ -452,6 +452,16 @@ interface ReelTerminalDesktopBridge {
         copy(input: { exportId: string; nodeId: string; directory: string; source: "user" | "agent" }): Promise<ReviewNativeReply<{ directory: string; files: readonly { relativePath: string; size: number; sha256: string }[] }>>;
         startDrag(exportId: string, folder: boolean): Promise<{ state: "handed-to-system" }>;
       };
+      humanBoardDocuments?: {
+        import(sourcePath: string): Promise<{ source: string; assets: import("../services/human-board/documents").BoardDocumentAsset[]; resources: import("@reelterminal/core/review/types").FileResource[] }>;
+        open(input: { id: string; bounds: { x: number; y: number; width: number; height: number }; url?: string; source?: string; documentPath?: string; assets?: readonly import("../services/human-board/documents").BoardDocumentAsset[] }): Promise<void>;
+        preview(input: { id: string; bounds: { x: number; y: number; width: number; height: number }; source: string; documentPath?: string; assets?: readonly import("../services/human-board/documents").BoardDocumentAsset[] }): Promise<Uint8Array>;
+        resize(input: { id: string; bounds: { x: number; y: number; width: number; height: number } }): Promise<void>;
+        close(id: string): Promise<void>;
+        capture(id: string): Promise<{ png: Uint8Array; url: string }>;
+        captureEditor(bounds: { x: number; y: number; width: number; height: number }): Promise<Uint8Array>;
+        onLoadError(callback: (error: { id: string; message: string }) => void): () => void;
+      };
       reviewFiles?: {
         captureFrame(args: { resourceId: string; frameIndex: number; nodeRevision: number; operationId: string; outputResourceId: string }): Promise<ReviewNativeReply<{
           resource: import("@reelterminal/core/review/types").FileResource; path: string; frameIndex: number; ptsTimeSec: number; timing: "cfr" | "vfr" | "unknown"; sourceResourceId: string;

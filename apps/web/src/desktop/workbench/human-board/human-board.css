@@ -3,3 +3,12 @@
 [data-testid="human-board-canvas"] .excalidraw-hyperlinkContainer:has(input[value^="https://human-board.invalid/"]) {
   display: none;
 }
+.human-board-document, .human-board-document-capture {
+  --fg: #17202a;
+  --fg-2: #475569;
+  --fg-3: #64748b;
+  --bg: #ffffff;
+  --bg-2: #f1f5f9;
+  --border: #cbd5e1;
+  --accent: #1d4ed8;
+}

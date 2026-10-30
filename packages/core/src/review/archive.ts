@@ -3,6 +3,7 @@ import { v5 as uuidv5 } from "uuid";
 import type { WorkbenchItemContent, WorkbenchProjectState } from "../types/workbench";
 import type { FileResource, ReviewNode, ReviewStep } from "./types";
 import { validateReviewSteps } from "./steps";
+import { validWorkbenchPlacement } from "./placement";
 
 export interface ReviewArchivedVersion {
   readonly nodeId: string;
@@ -135,6 +136,7 @@ export function validateReviewNodeArchive(value: unknown): asserts value is Revi
     unique(batch.itemIds, "batch members");
   }
   for (const item of archive.state.items) {
+    if (item.placement !== undefined && !validWorkbenchPlacement(item.placement)) invalid("invalid item placement");
     if (!id(item.id) || !batches.get(item.batchId)?.itemIds.includes(item.id) || !integer(item.version, 1) || !string(item.title, 1000) || !versions.has(`${item.id}:${item.version}`) || !["pending", "kept", "discarded", "modified", "rework"].includes(item.status) || !Array.isArray(item.decisionLog) || !Array.isArray(item.revisions) || !Array.isArray(item.provenanceTags) || !Array.isArray(item.userTags)) invalid("invalid review item");
     content(item.content, item.version);
     if (!versions.get(`${item.id}:${item.version}`)?.content) invalid("current item version must have real content");

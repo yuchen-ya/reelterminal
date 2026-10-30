@@ -1,6 +1,7 @@
 import type { ReviewContext, ReviewStep } from "@reelterminal/core/review/types";
 import { buildWorkbenchIngestActions } from "@reelterminal/core/actions/workbench-actions";
 import { WORKBENCH_MAX_TEXT_LENGTH } from "@reelterminal/core/types/workbench";
+import { validWorkbenchPlacement } from "@reelterminal/core/review/placement";
 import { reviewIngestInput, type ReviewIngestItem } from "@reelterminal/agent-facade/review";
 import { reviewError } from "./guards";
 import { prepareReviewFiles, type ReviewSourceFile } from "./files";
@@ -62,11 +63,14 @@ export async function planReviewFiles(files: readonly File[]): Promise<ReviewFil
   return { batchId: crypto.randomUUID(), requestId: crypto.randomUUID(), runId: crypto.randomUUID(), entries };
 }
 
-export function importReviewFiles(target: ReviewContext["target"], expectedNodeRevision: number, name: string, plan: ReviewFileImportPlan) {
+export function importReviewFiles(target: ReviewContext["target"], expectedNodeRevision: number, name: string, plan: ReviewFileImportPlan,
+  destination?: { batchId?: string; groupId: string | null }) {
+  if (destination && !validWorkbenchPlacement({ groupId: destination.groupId })) throw reviewError("INVALID_PARAMS", "归类目标无效");
+  const batchId = destination?.batchId ?? plan.batchId;
   const startedAt = Date.now();
   const stepIds = plan.entries.map(() => crypto.randomUUID());
   return reviewService.commit({ target, expectedNodeRevision, requestId: plan.requestId, actor: "human", label: "导入审阅文件",
-    request: { name, batchId: plan.batchId, entries: plan.entries },
+    request: { name, batchId, entries: plan.entries, destination },
     prepareResources: async () => {
       const resources = await prepareReviewFiles(plan.entries.map(entry => entry.file), plan.requestId, "user");
       for (const entry of plan.entries) if (entry.expectedHash && resources.find(resource => resource.id === entry.file.resourceId)!.sha256 !== entry.expectedHash) {
@@ -75,6 +79,8 @@ export function importReviewFiles(target: ReviewContext["target"], expectedNodeR
       return resources;
     },
     build: (state, resources) => {
+      if (destination?.batchId && !state.batches.some(batch => batch.id === destination.batchId)) throw reviewError("CONFLICT", "目标批次已不存在，请重新拖放");
+      if (destination?.groupId && !state.items.some(item => item.batchId === batchId && (item.lineage?.upstreamGroupId === destination.groupId || item.placement?.groupId === destination.groupId))) throw reviewError("INVALID_PARAMS", "目标分组不属于该批次");
       const items = plan.entries.map(({ item }) => {
         const content = item.content;
         if (content.type !== "image" && content.type !== "video") return item;
@@ -83,7 +89,9 @@ export function importReviewFiles(target: ReviewContext["target"], expectedNodeR
           ? { ...content, naturalWidth: facts.width, naturalHeight: facts.height }
           : { ...content, durationSec: facts.durationSec, resolution: `${facts.width}x${facts.height}` } };
       });
-      const built = buildWorkbenchIngestActions(state, reviewIngestInput({ batchId: plan.batchId, name, items }, Date.now()));
+      const converted = reviewIngestInput({ batchId, name, items }, Date.now());
+      const built = buildWorkbenchIngestActions(state, { ...converted, items: converted.items.map(item => ({ ...item,
+        ...(destination ? { placement: { groupId: destination.groupId } } : {}) })) }, Date.now());
       if (!built.ok) throw reviewError(built.code, built.message);
       return built.actions;
     },

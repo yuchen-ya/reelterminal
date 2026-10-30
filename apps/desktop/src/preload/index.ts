@@ -42,6 +42,20 @@ const api = {
       ipcRenderer.send(CHANNELS.reviewExportDrag, { requestId, exportId, folder });
     }),
   },
+  humanBoardDocuments: {
+    import: (sourcePath: string) => ipcRenderer.invoke(CHANNELS.boardDocumentImport, { sourcePath }),
+    open: (input: unknown) => ipcRenderer.invoke(CHANNELS.boardDocumentOpen, input),
+    preview: (input: unknown) => ipcRenderer.invoke(CHANNELS.boardDocumentOpen, { ...(input as object), preview: true }),
+    resize: (input: unknown) => ipcRenderer.invoke(CHANNELS.boardDocumentResize, input),
+    close: (id: string) => ipcRenderer.invoke(CHANNELS.boardDocumentClose, { id }),
+    capture: (id: string) => ipcRenderer.invoke(CHANNELS.boardDocumentCapture, { id }),
+    captureEditor: (bounds: unknown) => ipcRenderer.invoke(CHANNELS.boardDocumentCaptureEditor, bounds),
+    onLoadError: (callback: (error: { id: string; message: string }) => void) => {
+      const listener = (_event: IpcRendererEvent, error: { id: string; message: string }) => callback(error);
+      ipcRenderer.on(CHANNELS.boardDocumentLoadError, listener);
+      return () => ipcRenderer.removeListener(CHANNELS.boardDocumentLoadError, listener);
+    },
+  },
   reviewFiles: {
     collectUnregistered: (registeredIds: readonly string[]) => ipcRenderer.invoke(CHANNELS.reviewFilesCollect, { registeredIds }),
     prepare: (args: { operationId: string; resourceId: string; sourcePath: string; mime: string; originalFileName?: string; expectedHash?: string; mode?: "managed" | "external"; source?: "user" | "agent" | "migration"; generated?: boolean }) => ipcRenderer.invoke(CHANNELS.reviewFilesPrepare, args),

@@ -1,4 +1,11 @@
 export const CHANNELS = {
+  boardDocumentImport: "reelterminal:boardDocument:import",
+  boardDocumentOpen: "reelterminal:boardDocument:open",
+  boardDocumentClose: "reelterminal:boardDocument:close",
+  boardDocumentResize: "reelterminal:boardDocument:resize",
+  boardDocumentCapture: "reelterminal:boardDocument:capture",
+  boardDocumentCaptureEditor: "reelterminal:boardDocument:captureEditor",
+  boardDocumentLoadError: "reelterminal:boardDocument:loadError",
   reviewExportPrepare: "reelterminal:reviewExport:prepare",
   reviewExportStatus: "reelterminal:reviewExport:status",
   reviewExportCancel: "reelterminal:reviewExport:cancel",

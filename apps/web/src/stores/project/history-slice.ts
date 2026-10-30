@@ -4,6 +4,7 @@ import type { ProjectState } from "../project-store";
 import type { ProjectStoreHelpers } from "./store-helpers";
 import { useUIStore } from "../ui-store";
 import { getTimelineSelectionItem } from "../../utils/timeline-item-actions";
+import { workbenchHistoryAvailability } from "./workbench-history";
 import type {
   EditingTemplateHistoryEntry,
   EditingTemplateApplicationState,
@@ -81,6 +82,10 @@ export function createHistorySlice(
 
     undo: async (options) => {
       const operation = async (): Promise<ActionResult> => {
+      if (options?.scope === "workbench") {
+        const availability = workbenchHistoryAvailability(get(), "undo");
+        if (!availability.allowed) return { success: false, error: { code: "INVALID_PARAMS", message: availability.reason } };
+      }
       const {
         project,
         actionExecutor,
@@ -155,6 +160,10 @@ export function createHistorySlice(
 
     redo: async (options) => {
       const operation = async (): Promise<ActionResult> => {
+      if (options?.scope === "workbench") {
+        const availability = workbenchHistoryAvailability(get(), "redo");
+        if (!availability.allowed) return { success: false, error: { code: "INVALID_PARAMS", message: availability.reason } };
+      }
       const {
         project,
         actionExecutor,

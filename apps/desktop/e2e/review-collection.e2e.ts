@@ -107,7 +107,7 @@ describe("review collection scopes", () => {
 
     // Collapse revealed children before dragging the group, so its label remains a stable target.
     await tree.getByText("分组甲", { exact: true }).locator("..").getByTitle("收拢分类子项").click();
-    const groupBounds = await tree.getByText("分组甲", { exact: true }).boundingBox();
+    const groupBounds = await tree.getByRole("button", { name: "拖出分组甲的副本", exact: true }).boundingBox();
     await page.mouse.move(groupBounds!.x + 10, groupBounds!.y + groupBounds!.height / 2);
     await page.mouse.down();
     await page.mouse.move(groupBounds!.x + 90, groupBounds!.y + 45, { steps: 5 });

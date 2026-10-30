@@ -410,6 +410,8 @@ export interface WorkbenchItem {
   readonly userTags: readonly string[];
   readonly agentGuidance?: WorkbenchAgentGuidance;
   readonly lineage?: WorkbenchLineage;
+  /** Presentation classification; omission preserves the original lineage group. */
+  readonly placement?: { readonly groupId: string | null };
   readonly reworkOrigin?: {
     readonly fromHandoffId: string;
     readonly previousVersion: number;

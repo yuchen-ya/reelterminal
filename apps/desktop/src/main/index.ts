@@ -51,6 +51,7 @@ import { registerCaptionIpc } from "./ipc/captions";
 import { registerControlledMediaIpc } from "./ipc/controlled-media";
 import { getReviewFileStore, registerReviewFilesIpc } from "./ipc/review-files";
 import { registerReviewExportIpc } from "./ipc/review-export";
+import { registerHumanBoardDocumentsIpc } from "./ipc/human-board-documents";
 import { registerReviewPackageIpc } from "./ipc/review-package";
 import {
   disposeLiveSessionHost,
@@ -308,6 +309,7 @@ app.whenReady().then(async () => {
   handle(CHANNELS.mediaFetchUrl, fetchUrlArgsSchema, fetchUrl);
   registerControlledMediaIpc();
   registerReviewFilesIpc(liveMediaRoots);
+  registerHumanBoardDocumentsIpc();
   registerReviewExportIpc(liveMediaRoots);
   registerReviewPackageIpc(liveMediaRoots);
   registerCaptionIpc();

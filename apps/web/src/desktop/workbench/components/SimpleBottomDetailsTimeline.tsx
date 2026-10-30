@@ -35,6 +35,8 @@ export interface SimpleBottomDetailsTimelineProps {
   /** From the controller — the host history has undoable entries. */
   readonly canUndo: boolean;
   readonly canRedo: boolean;
+  readonly undoDisabledReason?: string;
+  readonly redoDisabledReason?: string;
   /**
    * Current selection ids. When more than one item is selected the standard
    * decision buttons act on the whole selection; optional, defaults to the
@@ -101,6 +103,8 @@ export function SimpleBottomDetailsTimeline({
   currentItem,
   canUndo,
   canRedo,
+  undoDisabledReason,
+  redoDisabledReason,
   selectedIds,
   onSelectItemById,
   onCommitDecision,
@@ -313,7 +317,7 @@ export function SimpleBottomDetailsTimeline({
             onClick={handleUndo}
             disabled={!canUndo || busy}
             className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border bg-bg-2 text-fg-2 hover:text-fg hover:bg-bg-3 disabled:opacity-30 transition-colors shrink-0"
-            title="撤销上一次审阅操作"
+            title={undoDisabledReason || "撤销上一次审阅操作"}
             aria-label="撤销上一次审阅操作"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -323,7 +327,7 @@ export function SimpleBottomDetailsTimeline({
             onClick={handleRedo}
             disabled={!canRedo || busy}
             className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border bg-bg-2 text-fg-2 hover:text-fg hover:bg-bg-3 disabled:opacity-30 transition-colors shrink-0"
-            title="重做审阅操作"
+            title={redoDisabledReason || "重做审阅操作"}
             aria-label="重做审阅操作"
             data-testid="workbench-redo"
           >

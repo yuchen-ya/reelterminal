@@ -244,7 +244,7 @@ export function AdaptiveBoardWorkspace({
             const markerCount = item.videoPayload?.markers.length ?? 0;
 
             return (
-              <CollectionActions key={item.id} scope={{ title: item.title, items: [item], folder: false }}>
+              <CollectionActions key={item.id} scope={{ title: item.title, items: [item], folder: false, rootItemId: item.id, placementGroupId: item.placement ? item.placement.groupId : item.lineage?.upstreamGroupId ?? null }}>
               <div
                 tabIndex={0}
                 data-board-card

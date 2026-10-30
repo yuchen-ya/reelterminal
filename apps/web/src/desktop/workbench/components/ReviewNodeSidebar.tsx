@@ -11,7 +11,9 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import type { ReviewGroup, ReviewNode } from "@reelterminal/core/review/types";
+import type { ReviewContext, ReviewGroup, ReviewNode } from "@reelterminal/core/review/types";
+import { REVIEW_NODE_DRAG } from "../review-drag";
+import { UUID } from "../../../services/review-workspace/guards";
 import type { DirectoryCommand } from "../../../services/review-workspace/directory";
 import {
   ContextMenu,
@@ -38,6 +40,9 @@ export interface ReviewNodeSidebarProps {
   nodes: readonly ReviewNode[];
   selectedId: string | null;
   onSelectNode: (nodeId: string) => void;
+  directoryScope?: { target: ReviewContext["target"]; revision: number };
+  onMoveNode?: (nodeId: string, groupId: string | null, revision: number) => void;
+  onDropFiles?: (node: ReviewNode, files: readonly File[]) => void;
   onUpdateNode: (nodeId: string, patch: Extract<DirectoryCommand, { kind: "node.update" }>["patch"]) => void;
   onRenameNode: (node: ReviewNode) => void;
   onPurgeNode: (node: ReviewNode) => void;
@@ -79,6 +84,9 @@ export function ReviewNodeSidebar({
   nodes,
   selectedId,
   onSelectNode,
+  directoryScope,
+  onMoveNode,
+  onDropFiles,
   onUpdateNode,
   onRenameNode,
   onPurgeNode,
@@ -109,10 +117,59 @@ export function ReviewNodeSidebar({
   const [managingGroups, setManagingGroups] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [draggingNode, setDraggingNode] = useState(false);
+  const [dropError, setDropError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nodeInputRef = useRef<HTMLInputElement>(null);
   const hasActiveFilter = Boolean(query) || view !== "recent" || Boolean(groupId) || managingGroups;
-  const showFilterDrawer = filtersOpen || hasActiveFilter;
+  const showFilterDrawer = filtersOpen || hasActiveFilter || draggingNode;
+  const nodeDrag = (event: React.DragEvent, node: ReviewNode) => {
+    if (!directoryScope || busy) {
+      event.preventDefault();
+      return;
+    }
+    setDraggingNode(true);
+    setDropError(null);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(REVIEW_NODE_DRAG, JSON.stringify({ ...directoryScope, nodeId: node.id, groupId: node.groupId ?? null }));
+  };
+  const groupDrop = (event: React.DragEvent, destination: string | null) => {
+    if (busy || !directoryScope || !event.dataTransfer.types.includes(REVIEW_NODE_DRAG)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingNode(false);
+    try {
+      const source = JSON.parse(event.dataTransfer.getData(REVIEW_NODE_DRAG));
+      if (!source || !UUID.test(source.nodeId) || source.target?.kind !== "review" ||
+        source.target.reviewWorkspaceId !== directoryScope.target.reviewWorkspaceId ||
+        source.target.instanceId !== directoryScope.target.instanceId || source.revision !== directoryScope.revision) {
+        throw new Error("审阅目录已更新，请重新拖放任务");
+      }
+      if (source.groupId !== destination) onMoveNode?.(source.nodeId, destination, directoryScope.revision);
+    } catch (error) {
+      setDropError(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const groupOver = (event: React.DragEvent) => {
+    if (!busy && onMoveNode && event.dataTransfer.types.includes(REVIEW_NODE_DRAG)) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "move";
+    }
+  };
+  const nodeFileDrop = (event: React.DragEvent, node: ReviewNode) => {
+    if (busy || node.trashedAt || !onDropFiles || !event.dataTransfer.files.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onDropFiles(node, Array.from(event.dataTransfer.files));
+  };
+  const nodeFileOver = (event: React.DragEvent, node: ReviewNode) => {
+    if (!busy && !node.trashedAt && onDropFiles && event.dataTransfer.types.includes("Files")) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "copy";
+    }
+  };
 
   const menuItems = (node: ReviewNode, context: boolean) => {
     const Item = context ? ContextMenuItem : DropdownMenuItem;
@@ -229,6 +286,9 @@ export function ReviewNodeSidebar({
                 }`}
                 onClick={() => onSelectNode(node.id)}
                 title={node.name}
+                draggable={!!onMoveNode && !busy && !node.trashedAt}
+                onDragStart={event => nodeDrag(event, node)} onDragEnd={() => setDraggingNode(false)}
+                onDragOver={event => nodeFileOver(event, node)} onDrop={event => nodeFileDrop(event, node)} data-review-node-drop={node.id}
                 aria-label={node.name}
               >
                 <span aria-hidden="true">{node.name.slice(0, 1)}</span>
@@ -368,6 +428,7 @@ export function ReviewNodeSidebar({
       </form>}
 
       {/* 3 & 4 & 5. On-demand Filter/Search/Groups Drawer */}
+      {dropError && <p role="alert" className="text-xs text-status-error">{dropError}</p>}
       <div className={showFilterDrawer ? "space-y-1.5" : "sr-only"}>
         <div className="relative px-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-fg-3 pointer-events-none" />
@@ -404,7 +465,7 @@ export function ReviewNodeSidebar({
           ))}
         </div>
 
-        {(directory.groups.length > 0 || managingGroups) && (
+        {(directory.groups.length > 0 || managingGroups || draggingNode) && (
           <div className="space-y-1 border-t border-border pt-1">
             <div className="flex h-6 items-center justify-between px-1">
               <span className="text-[11px] font-medium text-fg-3">
@@ -453,7 +514,10 @@ export function ReviewNodeSidebar({
               </form>
             )}
 
-            {directory.groups.length > 0 && <div className="flex max-h-24 flex-col gap-0.5 overflow-y-auto px-0.5">
+            {(directory.groups.length > 0 || draggingNode) && <div className="flex max-h-24 flex-col gap-0.5 overflow-y-auto px-0.5">
+              <button type="button" className="rounded px-1.5 py-1 text-left text-xs text-fg-2 hover:bg-bg-2"
+                data-review-node-drop-group="ungrouped" onDragOver={groupOver} onDrop={event => groupDrop(event, null)}
+                onClick={() => { onSelectGroup(""); onSelectView("recent"); }}>{t("review.ungrouped")}</button>
               <button
                 type="button"
                 onClick={() => {
@@ -473,6 +537,10 @@ export function ReviewNodeSidebar({
                 return (
                   <div
                     key={group.id}
+                    data-review-node-drop-group={group.id}
+                    title="拖入审阅任务以更改分类"
+                    onDragOver={groupOver}
+                    onDrop={event => groupDrop(event, group.id)}
                     className={`group flex items-center justify-between rounded px-1.5 py-1 text-xs transition-colors ${
                       isSelected
                         ? "bg-bg-2 text-accent font-medium"
@@ -526,7 +594,9 @@ export function ReviewNodeSidebar({
           {nodes.map((node) => {
             const isCurrent = selectedId === node.id;
             return taskMenu(node, (
-              <div key={node.id} className="group relative">
+              <div key={node.id} className="group relative" draggable={!!onMoveNode && !busy && !node.trashedAt}
+                onDragStart={event => nodeDrag(event, node)} onDragEnd={() => setDraggingNode(false)}
+                onDragOver={event => nodeFileOver(event, node)} onDrop={event => nodeFileDrop(event, node)} data-review-node-drop={node.id}>
                 <button
                   type="button"
                   className={`w-full flex min-w-0 flex-col rounded pl-2 pr-8 py-1.5 text-left transition-colors border-l-2 ${

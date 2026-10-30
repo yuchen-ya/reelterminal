@@ -12,6 +12,8 @@ import { useUIStore } from "../../stores/ui-store";
 import { WorkbenchPage, WorkbenchPanel } from "./WorkbenchPage";
 import { EditorBootstrapGate } from "../editor/EditorBootstrapGate";
 import { useReviewController } from "../workbench/useReviewController";
+import { projectHistory } from "../workbench/useWorkbenchController";
+import { importReviewFiles, planReviewFiles } from "../../services/review-workspace/file-import";
 import { ReviewImportDialog } from "../workbench/components/ReviewImportDialog";
 import { ReviewExportDialog } from "../workbench/components/ReviewExportDialog";
 import { ReviewAttachDialog } from "../workbench/components/ReviewAttachDialog";
@@ -231,13 +233,16 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
       if (surface === "human") { window.dispatchEvent(new CustomEvent("reelterminal:human-board-history", { detail: direction })); return; }
       const active = document.activeElement;
       if (textEntry(active) || active?.closest('[role="dialog"]')) return;
-      if (legacy) void useProjectStore.getState()[direction]();
+      if (legacy) {
+        if (migrated) { report(new Error("迁移备份为只读，请在独立审阅任务中操作历史")); return; }
+        void projectHistory(direction).then(result => { if (!result.ok) report(new Error(result.message)); });
+      }
       else if (active?.closest("[data-review-directory]")) void directoryHistory(direction).catch(report);
       else window.dispatchEvent(new CustomEvent("reelterminal:review-content-history", { detail: direction }));
     };
     window.addEventListener("reelterminal:review-history", listener);
     return () => window.removeEventListener("reelterminal:review-history", listener);
-  }, [legacy, directoryHistory, surface]);
+  }, [legacy, migrated, directoryHistory, surface]);
 
   const copyInstructions = async (node?: ReviewNode) => {
     if (!context) throw reviewError("CONFLICT", "审阅服务尚未载入");
@@ -306,12 +311,28 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
       className="flex h-full min-h-0 flex-col bg-bg text-fg"
       data-testid="review-page"
       data-workbench-scope="true"
+      onDragOver={event => { if (surface === "review" && !legacy && context && !busy && event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
+      onDrop={event => {
+        if (surface !== "review" || legacy || !context || busy || !event.dataTransfer.files.length) return;
+        event.preventDefault();
+        const files = Array.from(event.dataTransfer.files);
+        const captured = context;
+        setBusy(true);
+        void (async () => {
+          const plan = await planReviewFiles(files);
+          const created = await reviewService.directory.commit({ target: captured.target, expectedWorkspaceRevision: captured.revision,
+            requestId: crypto.randomUUID(), actor: "human", commands: [{ kind: "node.create", name: files[0].name.replace(/\.[^.]+$/, "") || "拖入文件" }] });
+          const node = created.nodes[0];
+          await importReviewFiles({ ...captured.target, nodeId: node.id }, node.revision, "拖入文件", plan, { groupId: null });
+          chooseNode(node.id);
+        })().catch(report).finally(() => setBusy(false));
+      }}
     >
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-bg-1 px-3 text-xs">
         <button className={surface === "review" ? wbButton.primary : wbButton.ghost} data-testid="review-surface-tab" onClick={() => chooseSurface("review")}>审阅节点</button>
-        <button className={surface === "human" ? wbButton.primary : wbButton.ghost} data-testid="human-board-tab" onClick={() => chooseSurface("human")}>人工画板</button>
+        <button className={surface === "human" ? wbButton.primary : wbButton.ghost} data-testid="human-board-tab" onClick={() => chooseSurface("human")}>自由画板</button>
       </div>
-      {surface === "human" ? <Suspense fallback={<div className="p-8 text-sm">正在载入人工画板…</div>}><div className="min-h-0 flex-1"><HumanBoardHome incomingItem={boardIncoming} onIncomingConsumed={() => setBoardIncoming(null)} onOpenReview={nodeId => { chooseNode(nodeId); chooseSurface("review"); }} /></div></Suspense> : legacy && hasProject ? (
+      {surface === "human" ? <Suspense fallback={<div className="p-8 text-sm">正在载入自由画板…</div>}><div className="min-h-0 flex-1"><HumanBoardHome incomingItem={boardIncoming} onIncomingConsumed={() => setBoardIncoming(null)} onOpenReview={nodeId => { chooseNode(nodeId); chooseSurface("review"); }} /></div></Suspense> : legacy && hasProject ? (
         <>
           <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3">
             <button
@@ -350,6 +371,16 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
             copiedNodeId={copiedNodeId}
             onCopyInstructions={browserDemo ? undefined : node => copyInstructions(node).catch(problem => { report(problem); })}
             onSelectNode={chooseNode}
+            directoryScope={context ? { target: context.target, revision: context.revision } : undefined}
+            onMoveNode={(nodeId, nextGroupId, revision) => { void mutate([{ kind: "node.update", nodeId, patch: { groupId: nextGroupId } }], revision).catch(report); }}
+            onDropFiles={(node, files) => {
+              if (!context) return;
+              const capturedTarget = { ...context.target, nodeId: node.id };
+              const revision = node.revision;
+              setBusy(true);
+              void planReviewFiles(files).then(plan => importReviewFiles(capturedTarget, revision, "拖入文件", plan))
+                .catch(report).finally(() => setBusy(false));
+            }}
             onUpdateNode={(nodeId, patch) => {
               if (patch.trashed) {
                 const node = nodes.find(node => node.id === nodeId);
@@ -701,6 +732,7 @@ function ReviewNodeEditor({
             browserDemo={browserDemo}
             controller={state.controller}
             exportTarget={!browserDemo && state.overview ? { target, revision: state.overview.node.revision } : undefined}
+            reviewTarget={state.overview ? { target, revision: state.overview.node.revision } : undefined}
             paginated={state.hasPrevious || state.hasNext}
             pageKey={state.pageNumber}
             independent

@@ -227,7 +227,7 @@ export function PendingLineagePanel({
         )}
 
         <div className={`py-px ${item.lineage ? "pl-3" : ""}`}>
-          <CollectionActions scope={{ title: scopeTitle(label), items: subtreeItems, folder: hasChildren }}>
+          <CollectionActions scope={{ title: scopeTitle(label), items: subtreeItems, folder: hasChildren, rootItemId: item.id, placementGroupId: item.placement ? item.placement.groupId : item.lineage?.upstreamGroupId ?? null }}>
           <div
             data-tree-item-id={item.id}
             aria-current={isCurrent ? "true" : undefined}
@@ -404,7 +404,7 @@ export function PendingLineagePanel({
 
           return (
             <div key={group.id} className="space-y-px">
-              <CollectionActions scope={{ title: scopeTitle(group.baseName), items: groupItems, folder: true }}>
+              <CollectionActions scope={{ title: scopeTitle(group.baseName), items: groupItems, folder: true, placementGroupId: group.isUngrouped ? null : group.id }}>
               <div
                 className={`group flex min-h-[24px] w-full items-center justify-between gap-1 rounded-[5px] px-1.5 py-0.5 text-[11px] font-semibold transition-colors ${
                   isGroupBoardActive

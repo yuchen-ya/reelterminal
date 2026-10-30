@@ -216,19 +216,25 @@ describe("AdaptiveBoardWorkspace", () => {
     expect(screen.getByTestId("board-discard-all")).toBeDisabled();
   });
 
-  it("uses selected siblings for a child drag and the explicit whole scope for a parent drag", () => {
+  it("moves rows internally and reserves native copy dragging for its explicit handle", () => {
     const a = item("a"), b = item("b"), outside = item("outside");
-    const drag = vi.fn();
-    render(<CollectionInteractionContext.Provider value={{ action: vi.fn(), drag, selectedItems: [a, b], busy: false }}>
-      <CollectionActions scope={{ title: "a", items: [a], folder: false }}><div>child</div></CollectionActions>
-      <CollectionActions scope={{ title: "group", items: [a, b, outside], folder: true }}><div>parent</div></CollectionActions>
-      <CollectionActions scope={{ title: "outside", items: [outside], folder: false }}><div>unselected</div></CollectionActions>
+    const drag = vi.fn(), moveDrag = vi.fn(), prepareDrag = vi.fn();
+    render(<CollectionInteractionContext.Provider value={{ action: vi.fn(), drag, moveDrag, prepareDrag, selectedItems: [a, b], busy: false }}>
+      <CollectionActions scope={{ title: "a", items: [a], folder: false, rootItemId: "a" }}><div>child</div></CollectionActions>
+      <CollectionActions scope={{ title: "group", items: [a, b, outside], folder: true, rootItemId: "a" }}><div>parent</div></CollectionActions>
+      <CollectionActions scope={{ title: "outside", items: [outside], folder: false, rootItemId: "outside" }}><div>unselected</div></CollectionActions>
     </CollectionInteractionContext.Provider>);
     fireEvent.dragStart(screen.getByText("child"));
+    expect(moveDrag.mock.calls.at(-1)?.[1]).toMatchObject({ items: [a, b], folder: false });
+    expect(drag).not.toHaveBeenCalled();
+    const handles = screen.getAllByTestId("collection-native-drag");
+    fireEvent.pointerDown(handles[0]);
+    expect(prepareDrag).toHaveBeenCalledWith(expect.objectContaining({ items: [a, b] }));
+    fireEvent.dragStart(handles[0]);
     expect(drag.mock.calls.at(-1)?.[1]).toMatchObject({ items: [a, b], folder: false });
-    fireEvent.dragStart(screen.getByText("parent"));
+    fireEvent.dragStart(handles[1]);
     expect(drag.mock.calls.at(-1)?.[1]).toMatchObject({ items: [a, b, outside], folder: true });
-    fireEvent.dragStart(screen.getByText("unselected"));
+    fireEvent.dragStart(handles[2]);
     expect(drag.mock.calls.at(-1)?.[1]).toMatchObject({ items: [outside], folder: false });
   });
 

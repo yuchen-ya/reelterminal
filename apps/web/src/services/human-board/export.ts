@@ -16,20 +16,22 @@ export function boardBinding(element: ExcalidrawElement): BoardBinding | undefin
 }
 
 /** A user action creates a normal immutable review item; the board stays private. */
-export async function exportBoardObjectToReview(name: string, element: ExcalidrawElement, resource?: FileResource): Promise<string> {
-  const context = await getReviewContext();
-  const directory = await reviewService.directory.get(context.target);
-  const node = await reviewService.createNode({ target: context.target, name: name.slice(0, 200), expectedWorkspaceRevision: directory.revision, requestId: crypto.randomUUID() });
-  const target = { ...context.target, nodeId: node.id };
+export async function exportBoardObjectToReview(name: string, element: ExcalidrawElement, resource?: FileResource, document?: { text: string } | { image: true }): Promise<string> {
   const binding = boardBinding(element);
   const id = crypto.randomUUID();
   let item: ReviewIngestItem;
-  if (element.type === "text") item = { id, title: name, type: "text", content: { type: "text", entryId: crypto.randomUUID(), title: name, speakerOrContext: "", text: element.text } };
+  if (document && "text" in document) item = { id, title: name, type: "text", content: { type: "text", entryId: crypto.randomUUID(), title: name, speakerOrContext: "", text: document.text } };
+  else if (document && "image" in document && resource) item = { id, title: name, type: "image", content: { type: "image", mediaId: resource.id, naturalWidth: resource.metadata?.width, naturalHeight: resource.metadata?.height } };
+  else if (element.type === "text") item = { id, title: name, type: "text", content: { type: "text", entryId: crypto.randomUUID(), title: name, speakerOrContext: "", text: element.text } };
   else if (resource && binding?.kind === "model3d") item = { id, title: name, type: "model3d", content: { type: "model3d", resourceId: resource.id } };
   else if (resource && binding?.kind === "video") item = { id, title: name, type: "video", content: { type: "video", mediaId: resource.id, durationSec: resource.metadata?.durationSec, resolution: resource.metadata ? `${resource.metadata.width}x${resource.metadata.height}` : undefined } };
   else if (resource && element.type === "image") item = { id, title: name, type: "image", content: { type: "image", mediaId: resource.id, naturalWidth: resource.metadata?.width, naturalHeight: resource.metadata?.height } };
   else throw new Error("请选择一个文本、图片、视频或 3D 内容容器");
-  await reviewService.commit({ target, expectedNodeRevision: node.revision, requestId: crypto.randomUUID(), actor: "human", label: "从人工画板导出内容快照", request: { item },
+  const context = await getReviewContext();
+  const directory = await reviewService.directory.get(context.target);
+  const node = await reviewService.createNode({ target: context.target, name: name.slice(0, 200), expectedWorkspaceRevision: directory.revision, requestId: crypto.randomUUID() });
+  const target = { ...context.target, nodeId: node.id };
+  await reviewService.commit({ target, expectedNodeRevision: node.revision, requestId: crypto.randomUUID(), actor: "human", label: "从自由画板导出内容快照", request: { item },
     build: state => {
       const built = buildWorkbenchIngestActions(state, reviewIngestInput({ batchId: crypto.randomUUID(), name, items: [item] }, Date.now()));
       if (!built.ok) throw new Error(built.message);

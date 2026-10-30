@@ -6,9 +6,12 @@ import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw
 import type { FileResource } from "@reelterminal/core/review/types";
 import type { ModelObservation } from "@reelterminal/core/types/workbench";
 import { humanBoardStorage, type HumanBoard } from "../../../services/human-board/storage";
-import { hydrateBoardFiles, imageSize, importBoardFiles, resourceImage, retainBoardBlob, type BoardImport } from "../../../services/human-board/media";
+import { hydrateBoardFiles, imageSize, importBoardFiles, importBoardImageUrl, prepareBoardHtmlPreview, cancelBoardHtmlPreviews, resourceImage, retainBoardBlob, type BoardImport } from "../../../services/human-board/media";
 import { boardBinding, exportBoardObjectToReview } from "../../../services/human-board/export";
 import { freezeBoardScene, renderBoardRegion, type BoardRegion, type FrozenBoardScene, type MediaCapture } from "../../../services/human-board/render";
+import { boardDocumentBinding, boardTransferInput, resolveDocumentAsset, singleBoardUrl, type BoardDocumentBinding } from "../../../services/human-board/documents";
+import { decodeReviewText } from "../../../services/review-workspace/table-import";
+import { BoardDocument, BoardBrowser } from "./BoardDocument";
 import { BoardMedia } from "./BoardMedia";
 import { BoardFileOutput, type BoardOutput } from "./BoardFileOutput";
 import type { BoardIncoming } from "./HumanBoardHome";
@@ -21,11 +24,12 @@ const BOARD_MEDIA_LINK_PREFIX = "https://human-board.invalid/";
 
 interface CaptureSession { scene: FrozenBoardScene; state: AppState; region?: BoardRegion; start?: { x: number; y: number }; screen?: { x: number; y: number; width: number; height: number } }
 
-export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingConsumed, onImport, onSaved, onFlush, onOpenReview }: {
+export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingConsumed, onImport, onSaved, onFlush, onOpenReview, onLayoutLockChange }: {
   initialBoard: HumanBoard; incoming: BoardIncoming | null; onIncomingConsumed: () => void;
   onImport: () => void; onSaved: () => void;
   onFlush: (callback: () => Promise<void>) => void;
   onOpenReview: (nodeId: string) => void;
+  onLayoutLockChange: (locked: boolean) => void;
 }) {
   const [api, setApi] = useState<ExcalidrawImperativeAPI>();
   const apiRef = useRef(api); apiRef.current = api;
@@ -36,10 +40,14 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
   const [saveState, setSaveState] = useState("saved");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState("正在处理…");
   const [capture, setCapture] = useState<CaptureSession | null>(null);
   const [output, setOutput] = useState<BoardOutput | null>(null);
   const [repair, setRepair] = useState<ExcalidrawElement | null>(null);
   const [exportedNodeId, setExportedNodeId] = useState("");
+  const [browser, setBrowser] = useState<ExcalidrawElement | null>(null);
+  const [documentExport, setDocumentExport] = useState("source");
+  useEffect(() => { onLayoutLockChange(busy || !!capture || !!browser); return () => onLayoutLockChange(false); }, [busy, capture, browser, onLayoutLockChange]);
   const board = useRef(initialBoard);
   const host = useRef<HTMLDivElement>(null);
   const dirty = useRef(false);
@@ -67,6 +75,8 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
     }).catch(report);
     return () => { cancelled = true; };
   }, [initialBoard, report]);
+
+  useEffect(() => () => { void cancelBoardHtmlPreviews(initialBoard.id).catch(report); }, [initialBoard.id, report]);
 
   const persist = useCallback(async () => {
     if (!api || !dirty.current) return;
@@ -137,7 +147,16 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
     await humanBoardStorage.retain(board.current.id, entries.flatMap(entry => entry.resource ? [entry.resource] : []));
     for (const [index, entry] of entries.entries()) {
       const x = start.x + (index % 3) * 720, y = start.y + Math.floor(index / 3) * 620;
-      if (entry.text !== undefined) {
+      if (entry.document) {
+        let document = entry.document;
+        if (document.kind === "html" && !document.snapshotResourceId) {
+          const preview = await prepareBoardHtmlPreview(document, board.current.id);
+          await humanBoardStorage.retain(board.current.id, [preview]);
+          document = { ...document, snapshotResourceId: preview.id };
+        }
+        const frame = convertToExcalidrawElements([{ type: "rectangle", x, y, width: 640, height: 480 }])[0];
+        added.push({ ...frame, type: "embeddable", link: `${BOARD_MEDIA_LINK_PREFIX}${frame.id}`, customData: { ...document } });
+      } else if (entry.text !== undefined) {
         if (!entry.text || entry.text.length > 200000) throw new Error("请输入 1–200000 字符的文本");
         added.push(...convertToExcalidrawElements([{ type: "text", text: entry.text, x, y, fontSize: 20, fontFamily: 2, width: 380, autoResize: false, customData: { name: entry.name } }]));
       } else if (entry.kind === "image") {
@@ -161,9 +180,10 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
   };
   const receive = async (content: BoardIncoming, point?: { x: number; y: number }) => {
     if (!api || importing.current) return;
+    setBusyLabel(content.files?.some(file => /\.html?$/i.test(file.name)) ? "正在生成 HTML 预览…" : "正在处理…");
     importing.current = true; setBusy(true);
     try {
-      const entries = content.entries ?? (content.files ? await importBoardFiles(board.current.id, content.files) : [{ name: "粘贴文本", text: content.text! }]);
+      const entries = content.entries ?? (content.files ? await importBoardFiles(board.current.id, content.files) : content.imageUrl ? await importBoardImageUrl(board.current.id, content.imageUrl) : [{ name: "粘贴文本", text: content.text! }]);
       await append(entries, point);
     } finally { importing.current = false; setBusy(false); }
   };
@@ -197,6 +217,32 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
     return () => window.removeEventListener("reelterminal:human-board-history", listener);
   }, [history]);
   const one = selected.length === 1 ? selected[0] : undefined;
+  const selectedDocument = one && boardDocumentBinding(one);
+  useEffect(() => { setDocumentExport(selectedDocument?.kind === "markdown" ? "source" : "preview"); }, [one?.id]);
+  const updateDocument = useCallback(async (id: string, patch: Partial<BoardDocumentBinding>) => {
+    const current = api!.getSceneElements().find(element => element.id === id)!;
+    const binding = boardDocumentBinding(current)!;
+    if (binding.kind === "html" && patch.source !== undefined) {
+      const preview = await prepareBoardHtmlPreview({ ...binding, ...patch }, board.current.id);
+      await humanBoardStorage.retain(board.current.id, [preview]);
+      await refreshResources();
+      patch = { ...patch, snapshotResourceId: preview.id };
+    }
+    api!.updateScene({ elements: api!.getSceneElementsIncludingDeleted().map(element => element.id === id ? newElementWith(element, { customData: { ...element.customData, ...patch } }) : element), captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+  }, [api, refreshResources]);
+  const openDocumentLink = async (binding: BoardDocumentBinding, href: string) => {
+    const url = singleBoardUrl(href);
+    if (url) { await append([{ name: new URL(url).hostname, document: { kind: "webpage", name: new URL(url).hostname, url } }]); return; }
+    const asset = resolveDocumentAsset(binding, href);
+    if (!asset?.resourceId) throw new Error(`引用不可用：${href}${asset?.missing ? `（${asset.missing}）` : ""}`);
+    const resource = resources.get(asset.resourceId)!;
+    if (asset.mime?.startsWith("image/")) { await append([{ name: asset.path, kind: "image", resource }]); return; }
+    const kind = asset.mime === "text/markdown" ? "markdown" : asset.mime === "text/html" ? "html" : undefined;
+    if (!kind) throw new Error(`该引用不能作为文档打开：${href}`);
+    const response = await fetch(`app://reelterminal/review-media/${asset.resourceId}`);
+    if (!response.ok) throw new Error(`无法读取文档引用：${href}`);
+    await append([{ name: asset.path, document: { kind, name: asset.path, source: decodeReviewText(await response.arrayBuffer()), documentPath: asset.path, assets: binding.assets } }]);
+  };
   const contentSelected = one && ["text", "image", "embeddable"].includes(one.type);
   const patchSelected = (patch: Partial<Pick<ExcalidrawImageElement, "angle" | "scale">>) => {
     api!.updateScene({ elements: api!.getSceneElementsIncludingDeleted().map(element => element.id === one!.id ? newElementWith(element, patch) : element), captureUpdate: CaptureUpdateAction.IMMEDIATELY });
@@ -220,6 +266,10 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
   };
   const selectedResource = async () => {
     if (!one) throw new Error("请选择一个内容容器");
+    if (boardDocumentBinding(one)) {
+      if (documentExport === "source") return undefined;
+      return produceImage(await renderBoardRegion(await freeze([one])), `${String(one.customData?.name ?? "文档")}-视口.png`);
+    }
     if (one.type === "image") {
       const scene = await freeze([one]);
       scene.appState = { ...scene.appState, exportBackground: false };
@@ -243,7 +293,7 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
         const state = api!.getAppState();
         void freeze().then(scene => setCapture({ scene, state })).catch(report).finally(() => setBusy(false));
       }}>区域截图</button>
-      <span className="text-fg-3">拖入/粘贴追加 · 双击视频/模型进入交互 · 对象多选与区域截图独立</span>
+      <span className="text-fg-3">拖入/粘贴追加 · 双击容器进入交互 · 对象多选与区域截图独立</span>
     </div>
     {error && <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-border p-2 text-xs text-status-error">{error}<button onClick={() => setError("")}>关闭</button><button onClick={() => void persist().catch(report)}>重试保存</button></div>}
     {selected.length > 0 && <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-1 text-xs" data-testid="human-board-selection-tools">
@@ -256,39 +306,40 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
         <button className={wbButton.secondary} onClick={() => api!.updateScene({ appState: { croppingElementId: one.id }, captureUpdate: CaptureUpdateAction.NEVER })}>裁剪图片</button>
         <button className={wbButton.secondary} data-testid="human-board-image-repair" onClick={() => setRepair(one)}>像素修补</button>
       </>}
+      {selectedDocument && <select data-testid="human-board-document-export-mode" aria-label="文档导出内容" value={documentExport} onChange={event => setDocumentExport(event.target.value)}><option value="source">{selectedDocument.kind === "webpage" ? "URL 文本 → text" : selectedDocument.kind === "markdown" ? "Markdown 正文 → text" : "HTML 源码 → text"}</option><option value="preview">{selectedDocument.kind === "markdown" ? "可见预览 PNG → image" : "当前视口 PNG → image"}</option></select>}
       <button className={`${wbButton.secondary} ml-auto`} disabled={!contentSelected || busy} data-testid="human-board-single-file" onClick={() => {
         setBusy(true);
         void selectedResource().then(resource => {
-          if (one?.type === "text") setOutput({ name: `${String(one.customData?.name ?? "画板文本")}.txt`, text: one.text, image: false });
-          else if (resource && one?.type !== "image") setOutput({ name: resource.originalFileName, resource, image: false });
+          if (selectedDocument && documentExport === "source") setOutput({ name: `${selectedDocument.name}.${selectedDocument.kind === "markdown" ? "md" : selectedDocument.kind === "html" ? "html" : "txt"}`, text: selectedDocument.source ?? selectedDocument.url ?? "", image: false });
+          else if (one?.type === "text") setOutput({ name: `${String(one.customData?.name ?? "画板文本")}.txt`, text: one.text, image: false });
+          else if (resource && one?.type !== "image" && !selectedDocument) setOutput({ name: resource.originalFileName, resource, image: false });
         }).catch(report).finally(() => setBusy(false));
       }}>单个文件：拖出 / 保存</button>
       <button className={wbButton.primary} disabled={!contentSelected || busy} data-testid="human-board-export-review" onClick={() => {
         const element = one!;
         setBusy(true);
-        void selectedResource().then(resource => exportBoardObjectToReview(String(element.customData?.name ?? "画板内容"), element, resource))
+        void selectedResource().then(resource => exportBoardObjectToReview(String(element.customData?.name ?? "画板内容"), element, resource, selectedDocument ? documentExport === "source" ? { text: selectedDocument.source ?? selectedDocument.url ?? "" } : { image: true } : undefined))
           .then(nodeId => { setExportedNodeId(nodeId); setOutput(null); }).catch(report).finally(() => setBusy(false));
       }}>导出此内容为审阅节点</button>
       {exportedNodeId && <button className={wbButton.secondary} onClick={() => onOpenReview(exportedNodeId)}>打开导出的审阅节点</button>}
     </div>}
     <div className="relative min-h-0 flex-1" data-testid="human-board-scene"
-      onDragOverCapture={event => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.stopPropagation(); } }}
+      onDragOverCapture={event => {
+        if ((event.target as HTMLElement).closest("input,textarea,[contenteditable=true]")) return;
+        if (event.dataTransfer.types.some(type => ["Files", "text/plain", "text/uri-list", "text/html"].includes(type))) { event.preventDefault(); event.stopPropagation(); }
+      }}
       onDropCapture={event => {
-        if (!api || !event.dataTransfer.files.length) return;
+        if (!api || (event.target as HTMLElement).closest("input,textarea,[contenteditable=true]")) return;
+        const content = boardTransferInput(event.dataTransfer, true);
+        if (!content) return;
         event.preventDefault(); event.stopPropagation();
-        void receive({ files: Array.from(event.dataTransfer.files) }, viewportCoordsToSceneCoords({ clientX: event.clientX, clientY: event.clientY }, api.getAppState())).catch(report);
+        void receive(content, viewportCoordsToSceneCoords({ clientX: event.clientX, clientY: event.clientY }, api.getAppState())).catch(report);
       }}
       onPasteCapture={event => {
         if (!api || (event.target as HTMLElement).closest("input,textarea,[contenteditable=true]")) return;
-        if (event.clipboardData.files.length) {
-          event.preventDefault(); event.stopPropagation(); void receive({ files: Array.from(event.clipboardData.files) }).catch(report);
-          return;
-        }
-        const text = event.clipboardData.getData("text/plain");
-        if (!text) return;
-        // Keep Excalidraw's own element/file clipboard on its native path.
-        if (/^\s*\{\s*"type"\s*:\s*"excalidraw(?:-api)?\/clipboard"/.test(text)) return;
-        event.preventDefault(); event.stopPropagation(); void receive({ text }).catch(report);
+        const content = boardTransferInput(event.clipboardData);
+        if (!content) return;
+        event.preventDefault(); event.stopPropagation(); void receive(content).catch(report);
       }}>
       {initialFiles && <Excalidraw excalidrawAPI={setApi} initialData={{ elements: initialBoard.elements, appState: { ...initialBoard.appState, viewBackgroundColor: "#ffffff", theme: "light" }, files: initialFiles }}
         langCode="zh-CN" theme="light" aiEnabled={false} autoFocus handleKeyboardGlobally={false}
@@ -300,9 +351,10 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
         }}
         validateEmbeddable={link => link.startsWith(BOARD_MEDIA_LINK_PREFIX)}
         onLinkOpen={(element, event) => {
-          if (boardBinding(element) && element.link?.startsWith(BOARD_MEDIA_LINK_PREFIX)) event.preventDefault();
+          if ((boardBinding(element) || boardDocumentBinding(element)) && element.link?.startsWith(BOARD_MEDIA_LINK_PREFIX)) event.preventDefault();
         }}
         renderEmbeddable={element => {
+          if (boardDocumentBinding(element)) return <BoardDocument element={element} register={register} onUpdate={updateDocument} onBrowse={setBrowser} onLink={(binding, href) => { void openDocumentLink(binding, href).catch(report); }} onError={report} />;
           const binding = boardBinding(element);
           const resource = binding && resources.get(binding.resourceId);
           return resource ? <BoardMedia element={element} resource={resource} register={register} onObservation={observe} onCapture={(blob, title) => { void addBlob(blob, title).catch(report); }} onError={report} /> : null;
@@ -337,9 +389,14 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
         </div>
         {capture.screen && <div className="pointer-events-none absolute border-2 border-accent bg-accent/10" style={{ left: capture.screen.x, top: capture.screen.y, width: capture.screen.width, height: capture.screen.height }} />}
       </div>}
+      {browser && <BoardBrowser element={browser} onClose={() => { setBrowser(null); requestAnimationFrame(() => host.current?.querySelector<HTMLElement>(".excalidraw")?.focus()); }} onError={report} onSnapshot={async (blob, url) => {
+        const resource = await retainBoardBlob(board.current.id, blob, `${String(browser.customData?.name ?? "网页")}-视口.png`);
+        await refreshResources();
+        await updateDocument(browser.id, { snapshotResourceId: resource.id, ...(boardDocumentBinding(browser)?.kind === "webpage" && /^https?:\/\//i.test(url) ? { url } : {}) });
+      }} />}
       {output && <BoardFileOutput key={output.resource?.id ?? output.text} board={board.current} output={output} onClose={() => setOutput(null)} onError={report}
         onAddImage={() => { void append([{ name: output.name, kind: "image", resource: output.resource! }]).then(() => setOutput(null)).catch(report); }} />}
-      {busy && !capture && <div className="pointer-events-none absolute left-1/2 top-20 z-40 -translate-x-1/2 rounded bg-bg-1 px-4 py-2 text-xs shadow" role="status">正在处理…</div>}
+      {busy && !capture && <div className="pointer-events-none absolute left-1/2 top-20 z-40 -translate-x-1/2 rounded bg-bg-1 px-4 py-2 text-xs shadow" role="status">{busyLabel}</div>}
       {repair?.type === "image" && <BoardImageRepair element={repair} files={api!.getFiles()} onHistoryReady={setRepairHistory} onClose={() => setRepair(null)} onSave={async blob => {
         const resource = await retainBoardBlob(board.current.id, blob, "修补图片.png");
         const image = await resourceImage(resource);

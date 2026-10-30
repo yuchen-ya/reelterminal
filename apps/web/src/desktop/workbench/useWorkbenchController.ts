@@ -11,6 +11,7 @@ import type {
 } from "@reelterminal/core";
 import { emptyWorkbenchState, workbenchBatchItems } from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
+import { workbenchHistoryAvailability } from "../../stores/project/workbench-history";
 import {
   applyWorkbenchSelection,
   useWorkbenchUiStore,
@@ -209,6 +210,7 @@ export function toItemView(
     userCategoryTags: [...item.userTags],
     ...(item.agentGuidance ? { agentGuidance: item.agentGuidance } : {}),
     ...(item.lineage ? { lineage: item.lineage } : {}),
+    ...(item.placement ? { placement: item.placement } : {}),
     ...(item.reworkOrigin ? { reworkOrigin: item.reworkOrigin } : {}),
     ...(feedback
       ? { feedback: toFeedbackView(feedback) }
@@ -242,6 +244,8 @@ export interface WorkbenchControllerSource {
   readonly redo: () => Promise<WorkbenchMutationResult>;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
+  readonly undoDisabledReason?: string;
+  readonly redoDisabledReason?: string;
   readonly summaries?: readonly WorkbenchItemView[];
   readonly batchViews?: readonly WorkbenchBatchView[];
   readonly managesBatchSelection?: boolean;
@@ -268,8 +272,8 @@ export function useWorkbenchMedia(id: string | null, open: WorkbenchControllerSo
 }
 
 const projectWorkbench = () => useProjectStore.getState().project.workbench ?? emptyWorkbenchState();
-async function projectHistory(direction: "undo" | "redo"): Promise<WorkbenchMutationResult> {
-  const result = await useProjectStore.getState()[direction]();
+export async function projectHistory(direction: "undo" | "redo"): Promise<WorkbenchMutationResult> {
+  const result = await useProjectStore.getState()[direction]({ scope: "workbench" });
   return result.success ? { ok: true } : ERROR(result.error?.code ?? "HISTORY_FAILED", result.error?.message ?? "历史操作失败");
 }
 const projectUndo = () => projectHistory("undo");
@@ -285,8 +289,8 @@ async function importProjectRepair(file: File): Promise<WorkbenchMutationResult 
 /** Legacy project host, retained for reviewing data before migration. */
 export function useWorkbenchController(): WorkbenchController {
   const project = useProjectStore(state => state.project);
-  const canUndo = useProjectStore(state => state.canUndo());
-  const canRedo = useProjectStore(state => state.canRedo());
+  const undoDisabledReason = useProjectStore(state => workbenchHistoryAvailability(state, "undo").reason);
+  const redoDisabledReason = useProjectStore(state => workbenchHistoryAvailability(state, "redo").reason);
   const openMedia = useCallback(async (id: string) => {
     const blob = await loadMediaBlob(id, project.id);
     if (!blob) return null;
@@ -295,7 +299,8 @@ export function useWorkbenchController(): WorkbenchController {
   }, [project.id]);
   return useWorkbenchControllerSource({ scopeId: project.id, workbench: project.workbench ?? emptyWorkbenchState(),
     mediaItems: project.mediaLibrary.items, getWorkbench: projectWorkbench, commands: useProjectStore.getState,
-    openMedia, importRepair: importProjectRepair, undo: projectUndo, redo: projectRedo, canUndo, canRedo });
+    openMedia, importRepair: importProjectRepair, undo: projectUndo, redo: projectRedo,
+    canUndo: !undoDisabledReason, canRedo: !redoDisabledReason, undoDisabledReason, redoDisabledReason });
 }
 
 /** Shared interaction logic. Persistence and media access belong to the explicit host. */
@@ -1127,6 +1132,8 @@ type IssueFeedbackInput = {
     handoffs,
     canUndo,
     canRedo,
+    undoDisabledReason: source.undoDisabledReason,
+    redoDisabledReason: source.redoDisabledReason,
     typeFilter,
     searchQuery,
     autoAdvance,

@@ -62,7 +62,7 @@ export interface ReviewBranchCreateResult { node: ReviewNode; target: Target; wo
 type JournalSummary = Pick<JournalRow, "scopeId" | "sequence" | "actor" | "kind" | "relatedSequence">;
 interface OperationRow { operationId: string; requestDigest: string; scopeId: string; sequence: number; result: CommitResult }
 export interface ReviewNodeSnapshot { node: ReviewNode; state: WorkbenchProjectState; steps: readonly ReviewStep[] }
-export type ReviewItemSummary = Pick<WorkbenchItem, "id" | "batchId" | "title" | "subtitle" | "updatedAt" | "incomingRevision" | "type" | "version" | "status" | "orderIndex" | "provenanceTags" | "userTags" | "agentGuidance" | "lineage" | "reworkOrigin" | "groupMode" | "compareWithItemId" | "videoPayload"> & { readonly hasManualRevision: boolean };
+export type ReviewItemSummary = Pick<WorkbenchItem, "id" | "batchId" | "title" | "subtitle" | "updatedAt" | "incomingRevision" | "type" | "version" | "status" | "orderIndex" | "provenanceTags" | "userTags" | "agentGuidance" | "lineage" | "placement" | "reworkOrigin" | "groupMode" | "compareWithItemId" | "videoPayload"> & { readonly hasManualRevision: boolean };
 export interface ReviewOverview {
   node: ReviewNode; batches: readonly WorkbenchBatch[];
   counts: Readonly<Record<string, { total: number; pending: number }>>;
@@ -883,8 +883,8 @@ export class ReviewService {
           const row = cursor.value as ItemRow;
           if (!filterVisibleWorkbenchItems([row], options.type ?? "all", options.query ?? "").length) { cursor.continue(); return; }
           if (items.length === limit) { hasMore = true; return; }
-          const { id, batchId, title, subtitle, type, version, status, orderIndex, provenanceTags, userTags, agentGuidance, lineage, reworkOrigin } = row;
-          items.push({ id, batchId, title, subtitle, type, version, status, orderIndex, provenanceTags, userTags, agentGuidance, lineage, reworkOrigin,
+          const { id, batchId, title, subtitle, type, version, status, orderIndex, provenanceTags, userTags, agentGuidance, lineage, placement, reworkOrigin } = row;
+          items.push({ id, batchId, title, subtitle, type, version, status, orderIndex, provenanceTags, userTags, agentGuidance, lineage, placement, reworkOrigin,
             incomingRevision: row.incomingRevision,
             updatedAt: row.updatedAt ?? Math.max(row.createdAt, ...row.decisionLog.map(decision => decision.decidedAt)),
             groupMode: row.groupMode, compareWithItemId: row.compareWithItemId, videoPayload: row.videoPayload, hasManualRevision: row.revisionIds.length > 0 });

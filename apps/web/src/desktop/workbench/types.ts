@@ -180,6 +180,7 @@ export interface WorkbenchItemView {
   readonly agentGuidance?: WorkbenchAgentGuidance;
   /** Optional lineage — no fabricated tree edges. */
   readonly lineage?: WorkbenchLineage;
+  readonly placement?: { readonly groupId: string | null };
   readonly feedback?: FeedbackView;
   /** Every persisted feedback record, newest last (issue-level reads). */
   readonly feedbacks: readonly FeedbackView[];
@@ -282,6 +283,8 @@ export interface WorkbenchController {
   /** True when the store's undo stack has entries (host history, not a shadow stack). */
   readonly canUndo: boolean;
   readonly canRedo: boolean;
+  readonly undoDisabledReason?: string;
+  readonly redoDisabledReason?: string;
 
   // --- display state (workbench UI store, not persisted content) ------------
   readonly typeFilter: WorkbenchContentType | "all";

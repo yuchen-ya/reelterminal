@@ -1,5 +1,6 @@
 import { isModelObservation } from "../review/model-observation";
 import { v4 as uuidv4 } from "uuid";
+import { validWorkbenchPlacement } from "../review/placement";
 import type { Action } from "../types/actions";
 import type {
   WorkbenchBatch,
@@ -834,6 +835,7 @@ function validateWorkbenchActionOrThrow(action: Action, project: WorkbenchStateH
       ) {
         throw new WorkbenchActionError("workbench: restore params malformed");
       }
+      for (const item of params.items ?? []) if (item.placement !== undefined && !validWorkbenchPlacement(item.placement)) throw new WorkbenchActionError("workbench: invalid item placement");
       break;
     }
     default:
@@ -842,6 +844,7 @@ function validateWorkbenchActionOrThrow(action: Action, project: WorkbenchStateH
 }
 
 function validateItemContent(item: WorkbenchItem): void {
+  if (item.placement !== undefined && !validWorkbenchPlacement(item.placement)) throw new WorkbenchActionError("workbench: invalid item placement");
   for (const mode of [item.groupMode, item.lineage?.groupMode]) {
     if (mode !== undefined && mode !== "board" && mode !== "category") {
       throw new WorkbenchActionError("workbench: groupMode must be board or category");
@@ -1627,6 +1630,7 @@ export type WorkbenchBuilderResult =
     };
 
 export interface WorkbenchIngestItemInput {
+  readonly placement?: WorkbenchItem["placement"];
   readonly groupMode?: WorkbenchItem["groupMode"];
   readonly compareWithItemId?: string;
   readonly videoPayload?: WorkbenchItem["videoPayload"];
@@ -1705,6 +1709,7 @@ export function buildWorkbenchIngestActions(
       userTags: [...(input_.userTags ?? [])],
       ...(input_.agentGuidance ? { agentGuidance: input_.agentGuidance } : {}),
       ...(input_.lineage ? { lineage: input_.lineage } : {}),
+      ...(input_.placement ? { placement: input_.placement } : {}),
       ...(input_.reworkOrigin ? { reworkOrigin: input_.reworkOrigin } : {}),
       status: "pending",
       decisionLog: [],
