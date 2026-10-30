@@ -12,55 +12,13 @@ import i18n from "../i18n";
  * switches replace the previous notification instead of stacking.
  */
 
-interface ConnectionInfo {
-  cliCommand: string;
-  workspaceRoot: string;
-}
-
-/** Desktop preload connection hints; absent (or stale) in pure-web contexts. */
-async function getConnectionInfo(): Promise<ConnectionInfo | null> {
-  try {
-    const control = window.reelterminal?.collabControl;
-    if (!control) return null;
-    const info = await control.getStartupInfo();
-    if (!info?.cliCommand || !info?.workspaceRoot) return null;
-    return { cliCommand: info.cliCommand, workspaceRoot: info.workspaceRoot };
-  } catch {
-    return null;
-  }
-}
-
-/** Build the prompt text for a target; contains names and ids, never credentials. */
-export function buildProjectAgentPrompt(
-  target: WorkspaceTarget & { projectName: string; workspaceName: string },
-  connection: ConnectionInfo | null,
-): string {
-  const base = {
-    projectName: target.projectName,
-    projectId: target.projectId,
-    workspaceId: target.workspaceId,
-    workspaceName: target.workspaceName,
-  };
-  return connection
-    ? i18n.t("projectSwitch.promptBody", { ...base, ...connection })
-    : i18n.t("projectSwitch.promptBodyLocal", base);
-}
-
-/** Copy the Agent prompt for an explicit project/workspace target. */
+/** Copy an installation-generated startup command for this exact workspace. */
 export async function copyProjectAgentPrompt(target: WorkspaceTarget): Promise<void> {
-  const snapshot = workspaceManager.getSnapshot();
-  const project = snapshot.projects.find((entry) => entry.id === target.projectId);
-  const workspace = snapshot.workspaces.find((entry) => entry.id === target.workspaceId);
-  const connection = await getConnectionInfo();
-  const prompt = buildProjectAgentPrompt(
-    {
-      ...target,
-      projectName: project?.name ?? target.projectId,
-      workspaceName: workspace?.name ?? "",
-    },
-    connection,
-  );
-  await navigator.clipboard.writeText(prompt);
+  const control = window.reelterminal?.collabControl;
+  if (!control) throw new Error("Desktop startup information is unavailable");
+  const info = await control.getStartupInfo({ kind: "video", ...target });
+  if (!info.startCommand) throw new Error("The target startup command is unavailable");
+  await navigator.clipboard.writeText(i18n.t("desktop.collaboration.startupPrompt", info));
 }
 
 /** Project-menu entry: copy the prompt for the currently active edit target. */

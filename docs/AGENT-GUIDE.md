@@ -9,8 +9,13 @@ Do not open or modify a production project just to test a model environment.
 
 The first time you allow editing in each app launch, a notification appears at
 the top right. Click it to copy a startup prompt for your external Agent. It
-includes this installation's absolute CLI command, the Agent workspace, and
-initial status/context/capabilities commands. It contains no endpoint token.
+contains only an immediate `start --target` command using this installation's
+absolute CLI prefix and a reference for the exact workspace/runtime. It contains
+no endpoint token. Review task and project-menu copy entries use the same command.
+The lightweight result reports the bound identity, permission and revision; then
+use `tools <domain>`, `tools <package.id>`, `describe <canonical.verb>` and `call`.
+Discovery returns no unrelated schemas or environment probes. Resolve the same
+target again after a runtime conflict; a GUI selection change never retargets it.
 
 The prompt is generated when you click Copy, using the running installation's
 paths. Windows commands use PowerShell; macOS/Linux commands use a POSIX shell.
@@ -27,20 +32,19 @@ pointer. `capabilities.get` remains authoritative for the active media roots.
 
 Start ReelTerminal. The command service is available read-only even without a
 video project. For independent data review, choose **Review Workspace** and copy
-its connection instructions. Run `reelctl review context`, `reelctl review
-capabilities` and `reelctl review describe`; bind all work to the returned review
+its connection instructions. Immediately run the copied `start --target` command,
+then `tools review` and the required capability package; bind all work to that review
 workspace/runtime plus the explicit node ID. Review's own Agent-write checkbox
 is separate from the video grant. See the [review command contract](COMMAND-API.md#independent-review-workspace).
 
 For video edits, open a project and click the **Agent · Read-only** button in the status strip. It switches
-to **Agent · Editable**; click again to revoke write access. Run:
+to **Agent · Editable**; click again to revoke write access. Run the copied
+`start --target` command, then load only the needed discovery package:
 
 ```powershell
-reelctl status
-reelctl context --compact
-reelctl requirements list --status ready --compact
-reelctl schema edit.apply
-reelctl help media inspect
+reelctl tools video
+reelctl tools video.timeline
+reelctl describe edit.apply --op clip.trim
 ```
 
 Use [SKILL.md](../SKILL.md) for the editing workflow and

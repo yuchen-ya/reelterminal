@@ -46,6 +46,7 @@ export interface DesktopCollabSetAccessArgs {
 }
 
 export type DesktopLiveBridgeKind =
+  | "getStart"
   | "reviewContext"
   | "reviewCommand"
   | "getIdentity"
@@ -68,6 +69,9 @@ export type DesktopLiveBridgeKind =
 
 /** Main-to-renderer request on `reelterminal:live:request`. */
 export interface DesktopLiveBridgeRequest {
+  readonly startTarget?:
+    | { readonly kind: "video"; readonly projectId: string; readonly workspaceId: string }
+    | Extract<import("@reelterminal/core/review/types").WorkspaceTarget, { kind: "review" }>;
   readonly callId: string;
   readonly expectedProjectId?: string;
   readonly expectedProjectEpoch?: string;
@@ -198,6 +202,6 @@ export interface DesktopCollabControlApi {
   setAccess(access: AgentAccessMode): Promise<DesktopCollabStatus>;
   setReviewAccess?(input: { access: AgentAccessMode; reviewWorkspaceId: string; instanceId: string }): Promise<import("@reelterminal/core/review/types").ReviewContext>;
   openWorkspace(): Promise<string>;
-  getStartupInfo(): Promise<{ cliCommand: string; shell: string; workspaceRoot: string }>;
+  getStartupInfo(target?: NonNullable<DesktopLiveBridgeRequest["startTarget"]>): Promise<{ cliCommand: string; shell: string; workspaceRoot: string; startCommand?: string }>;
   getReviewAccess?(input: { reviewWorkspaceId: string; instanceId: string }): Promise<AgentAccessMode>;
 }

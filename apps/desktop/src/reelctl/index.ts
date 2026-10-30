@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { runEnvironment } from "./environment";
+import { describeCommand, getCapabilityTools, listCapabilities, listCapabilityDomains } from "@reelterminal/agent-facade/capability-registry";
+import { decodeAgentTarget } from "../shared/agent-target";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import {
   LiveCliError,
   LiveCommandClient,
-  catalogCommand,
   hasSchemaProperty,
   type CommandCatalog,
   type CommandCatalogEntry,
@@ -15,6 +16,8 @@ import {
 import {
   applyRequestEnvelope,
   commandHelp,
+  resolveCommandName,
+  aliasesForCommand,
   parseFlags,
   parseInvocation,
   REELCTL_HELP,
@@ -52,36 +55,6 @@ function withInput(invocation: ParsedInvocation): ParsedInvocation {
     throw new LiveCliError(invocation.file === undefined ? "cannot read JSON from stdin" : `cannot read request file ${path.resolve(invocation.file)}`, "args", 2);
   }
   return applyRequestEnvelope(invocation, parseJsonInput(raw, invocation.file ?? "stdin"));
-}
-
-function commandNameFromText(text: string): string {
-  const known: Readonly<Record<string, string>> = {
-    "review repair inspect": "review.repair.inspect",
-    "review repair apply": "review.repair.apply",
-    "review frames capture": "review.frames.capture",
-    "review context": "review.context",
-    "video context": "editor.get_context",
-    context: "editor.get_context",
-    query: "timeline.query",
-    "edit validate": "edit.validate",
-    "edit apply": "edit.apply",
-    "media import": "media.import",
-    "media inspect": "media.inspect",
-    "media analyze": "media.analyze_start",
-    "preview frame": "preview.render_frame",
-    "history get": "history.get",
-    "history undo": "history.control",
-    "history redo": "history.control",
-    "export start": "export.start",
-    "job status": "job.status",
-    "job wait": "job.status",
-    "job cancel": "job.cancel",
-    "frames extract": "frames.extract",
-    "frames sheet": "frames.contact_sheet",
-    "video compare": "video.compare",
-    "patch apply": "patch.apply",
-  };
-  return known[text] ?? text;
 }
 
 /**
@@ -133,6 +106,7 @@ function resultExitCode(result: FacadeResult<unknown>): number {
 }
 
 async function readCommandEntry(client: LiveCommandClient, command: string): Promise<CommandCatalogEntry> {
+  if (!command.includes(".")) throw new LiveCliError("Use a canonical dotted command or a documented compatibility alias; toolName is not an alias", "args", 2);
   return client.catalogEntry(command);
 }
 
@@ -250,7 +224,7 @@ async function runGenericCall(client: LiveCommandClient, argv: readonly string[]
   const command = argv[1];
   if (!command) throw new LiveCliError("Usage: reelctl call <command> [--file request.json | --stdin] [--name value]", "args", 2);
   const parsed = parseFlags(argv.slice(2));
-  const entry = await readCommandEntry(client, commandNameFromText(command));
+  const entry = await readCommandEntry(client, resolveCommandName(command));
   const { expectedProjectId: rawProjectId, expectedProjectEpoch: rawProjectEpoch, ...inputFlags } = parsed.flags;
   let args = { ...inputFlags };
   let expectedProjectId = typeof rawProjectId === "string" ? rawProjectId : undefined;
@@ -310,6 +284,31 @@ export function cliErrorEnvelope(error: unknown): FacadeResult<never> {
 
 export async function runReelctl(argv: readonly string[], options: RunOptions = {}): Promise<number> {
   const output = options.stdout ?? printLine;
+  if (argv[0] === "tools") {
+    if (argv.length > 2 || argv[1]?.startsWith("--")) throw new LiveCliError("Usage: reelctl tools [video|review|library|system|<package.id>]", "args", 2);
+    const name = argv[1];
+    try {
+      const value = name === undefined ? { domains: listCapabilityDomains() }
+        : name.includes(".") ? getCapabilityTools(name)
+        : { domain: name, capabilities: listCapabilities({ domain: name }).map(({ id, purpose, targets, activation }) => ({ id, purpose, targets, activation })) };
+      output(JSON.stringify({ ok: true, value }));
+    } catch (error) { throw new LiveCliError(error instanceof Error ? error.message : "Invalid capability", "args", 2); }
+    return 0;
+  }
+  if (argv[0] === "describe") {
+    const parsed = parseFlags(argv.slice(1));
+    if (parsed.positional.length !== 1 || parsed.file || parsed.stdin || Object.keys(parsed.flags).some(key => key !== "op" && key !== "detail") || parsed.flags.detail !== undefined && parsed.flags.detail !== "full") {
+      throw new LiveCliError("Usage: reelctl describe <canonical.verb> [--op <name> ...] [--detail full]", "args", 2);
+    }
+    const ops = parsed.flags.op === undefined ? undefined : Array.isArray(parsed.flags.op) ? parsed.flags.op : [parsed.flags.op];
+    if (ops?.some(op => typeof op !== "string")) throw new LiveCliError("--op requires an operation name", "args", 2);
+    try {
+      const entry = describeCommand(resolveCommandName(parsed.positional[0]!), { ...(ops ? { ops: ops as string[] } : {}) });
+      const { outputSchema, ...contract } = entry;
+      output(formatResult(successResult({ ...contract, aliases: aliasesForCommand(entry.name), ...(parsed.flags.detail === "full" ? { outputSchema } : {}) }), { human: parsed.human, compact: false }));
+    } catch (error) { throw new LiveCliError(error instanceof Error ? error.message : "Invalid command", "args", 2); }
+    return 0;
+  }
   if ((argv[0] === "review" || argv[0] === "video") && (argv[1] === "capabilities" || argv[1] === "describe")) {
     return runReelctl(["call", argv[1] === "capabilities" ? "capabilities.get" : "session.describe", "--kind", argv[0], ...argv.slice(2)], options);
   }
@@ -328,6 +327,16 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
     output(JSON.stringify({ ok: true, value }));
     return "ready" in value && !value.ready ? 3 : 0;
   }
+  if (argv[0] === "start") {
+    const parsed = parseFlags(argv.slice(1));
+    if (parsed.positional.length || Object.keys(parsed.flags).length !== 1 || typeof parsed.flags.target !== "string" || parsed.file || parsed.stdin) throw new LiveCliError("Usage: reelctl start --target <ref copied from the GUI>", "args", 2);
+    try { decodeAgentTarget(parsed.flags.target); }
+    catch { throw new LiveCliError("Invalid target reference; copy the startup prompt from the intended workspace", "args", 2); }
+    const result = await (options.client ?? new LiveCommandClient()).start(parsed.flags.target);
+    output(formatResult(result, { human: parsed.human, compact: false }));
+    return resultExitCode(result);
+  }
+
   const client = options.client ?? new LiveCommandClient();
 
   if (argv[0] === "schema" || argv[0] === "help" && argv.length > 1) {
@@ -338,6 +347,11 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
     if (argv[0] === "schema") {
       if (domain !== undefined && text) {
         throw new LiveCliError("choose either a command name or --domain for reelctl schema, not both", "args", 2);
+      }
+      if (text && domain === undefined) {
+        const entry = await readCommandEntry(client, resolveCommandName(text));
+        output(JSON.stringify({ ok: true, command: entry }));
+        return 0;
       }
       const catalog = await client.catalog();
       const domains = catalogDomains(catalog);
@@ -363,12 +377,8 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
         }));
         return 0;
       }
-      const entry = catalogCommand(catalog, commandNameFromText(text));
-      if (!entry) throw new LiveCliError(`Command "${text}" is not available in this ReelTerminal session`, "args", 2);
-      output(JSON.stringify({ ok: true, command: entry }));
-      return 0;
     }
-    const entry = await readCommandEntry(client, commandNameFromText(text));
+    const entry = await readCommandEntry(client, resolveCommandName(text));
     output(commandHelp(entry));
     return 0;
   }

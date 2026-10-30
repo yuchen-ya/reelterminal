@@ -2,6 +2,8 @@ import { ModelViewerWorkspace } from "../workbench/components/ModelViewerWorkspa
 import "../workbench/workbench.css";
 import type { JSX, ReactNode, DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useProjectStore } from "../../stores/project-store";
 import { ArrowLeft, ChevronDown, ChevronUp, LayoutGrid, PanelLeftOpen } from "lucide-react";
 import type { WorkbenchDecision } from "@reelterminal/core";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
@@ -44,7 +46,6 @@ import {
 import { WorkbenchQueueColumn } from "../workbench/components/WorkbenchQueueColumn";
 import {
   WorkbenchStartPanel,
-  AGENT_INGEST_INSTRUCTIONS,
 } from "../workbench/components/WorkbenchStartPanel";
 import { WorkbenchQueueState } from "../workbench/components/WorkbenchQueueState";
 import { VisualMindMapModal } from "../workbench/components/VisualMindMapModal";
@@ -141,6 +142,7 @@ export function WorkbenchPanel({
   browserDemo?: boolean;
 }): JSX.Element {
   const leftCollapsed = useWorkbenchUiStore((s) => s.leftCollapsed);
+  const { t } = useTranslation();
   const ui = useWorkbenchUiStore.getState;
   const [treeFilter, setTreeFilter] = useState<LineageTreeFilter>("all");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
@@ -453,8 +455,11 @@ export function WorkbenchPanel({
   );
 
   const copyInstructions = useCallback(async () => {
-    const text = AGENT_INGEST_INSTRUCTIONS;
     try {
+      const { project, workspaceId } = useProjectStore.getState();
+      if (!workspaceId) throw new Error("The project workspace is not ready");
+      const info = await window.reelterminal!.collabControl!.getStartupInfo({ kind: "video", projectId: project.id, workspaceId });
+      const text = t("desktop.collaboration.startupPrompt", info);
       if (!navigator.clipboard?.writeText) throw new Error("clipboard unavailable");
       await navigator.clipboard.writeText(text);
       setCopyState("copied");
@@ -463,7 +468,7 @@ export function WorkbenchPanel({
       setCopyState("failed");
       showToast("复制失败，请展开命令手动复制");
     }
-  }, [showToast]);
+  }, [showToast, t]);
 
   const openIngestHelp = useCallback(() => {
     const detail = document.querySelector<HTMLDetailsElement>(

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReviewContext } from "@reelterminal/core/review/types";
 import { installCollabEventListener, useCollabStore, type CommandActivity } from "../../../stores/collab-store";
+import { ReviewRepairDraftPreview } from "./ReviewRepairDraftPreview";
 
 const preference = "reelterminal.review.commandsOpen";
 const status = (entry: CommandActivity) => entry.phase === "start" ? "运行中" : entry.ok ? entry.replayed ? "成功 · 复用回执" : "成功" : "失败";
@@ -16,7 +17,7 @@ export function ReviewCommandActivity({ target }: { target: ReviewContext["targe
   [activity, target.reviewWorkspaceId, target.instanceId, target.nodeId]);
   const latest = entries.find(entry => entry.phase === "start") ?? entries[0];
 
-  return <><details open={open} onToggle={event => {
+  return <><ReviewRepairDraftPreview target={target} /><details open={open} onToggle={event => {
     setOpen(event.currentTarget.open);
     localStorage.setItem(preference, String(event.currentTarget.open));
   }} className="shrink-0 border-b border-border bg-bg-1 text-[11px]" data-testid="review-command-activity">

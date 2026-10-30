@@ -25,6 +25,8 @@ import { createAgentAccessPreferenceStore } from "./access-preference";
 import type { LiveStoreBridge } from "./renderer-store-adapter";
 import type { LiveEvent } from "../../shared/live";
 import { DurableTaskLedger } from "./task-ledger";
+import { encodeAgentTarget } from "../../shared/agent-target";
+import { LiveCommandClient } from "../../reelctl/client";
 
 /* ------------------------------- stubs ---------------------------------- */
 
@@ -256,6 +258,32 @@ afterEach(() => {
 /* -------------------------------- tests --------------------------------- */
 
 describe("live session host enable/status/disable", () => {
+  it("starts an explicit background target read-only without creating a facade and rejects stale runtimes", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    let runtime = "workspace-runtime-1";
+    const readStart = vi.fn(async (target: { kind: "video"; projectId: string; workspaceId: string } | { kind: "review" }) => ({
+      target: { ...target, instanceId: runtime }, name: "Background target", revision: 7,
+    }));
+    const bridge = { ...fixture.deps.installStoreBridge(), getStart: readStart } as LiveStoreBridge;
+    const host = createLiveSessionHost({ ...fixture.deps, installStoreBridge: () => bridge });
+    await host.enable();
+    try {
+      const target = await host.resolveStartupTarget({ kind: "video", projectId: "background-project", workspaceId: "background-workspace" });
+      const descriptor = JSON.parse(readFileSync(fixture.endpointFile, "utf8"));
+      const client = new LiveCommandClient(descriptor);
+      const result = await client.start(encodeAgentTarget(target));
+      expect(result).toMatchObject({ ok: true, value: { connected: true, access: "read-only", target, revision: 7 } });
+      expect(readStart).toHaveBeenLastCalledWith({ kind: "video", projectId: "background-project", workspaceId: "background-workspace" });
+      expect(fixture.factoryCalls).toHaveLength(0);
+      expect(JSON.stringify(result).length).toBeLessThan(1200);
+      runtime = "workspace-runtime-2";
+      expect(await client.start(encodeAgentTarget(target))).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+      if (target.kind !== "video") throw new Error("Expected video target");
+      expect(await client.start(encodeAgentTarget({ ...target, hostInstanceId: "older-host" }))).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+      expect(fixture.factoryCalls).toHaveLength(0);
+    } finally { await host.disable(); }
+  });
   it("reports interrupted task states for project deletion without enabling Agent Access", () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));

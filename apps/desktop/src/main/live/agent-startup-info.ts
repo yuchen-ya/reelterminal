@@ -1,4 +1,5 @@
 import path from "node:path";
+import { encodeAgentTarget, type AgentTarget } from "../../shared/agent-target";
 
 /** Commands contain paths, never the live endpoint's credentials. */
 export function agentStartupInfo(input: {
@@ -7,7 +8,8 @@ export function agentStartupInfo(input: {
   appPath: string;
   executablePath: string;
   workspaceRoot: string;
-}): { cliCommand: string; shell: string; workspaceRoot: string } {
+  target?: AgentTarget;
+}): { cliCommand: string; shell: string; workspaceRoot: string; startCommand?: string } {
   const paths = input.platform === "win32" ? path.win32 : path.posix;
   const quote = (value: string) => input.platform === "win32"
     ? `'${value.replaceAll("'", "''")}'`
@@ -25,5 +27,6 @@ export function agentStartupInfo(input: {
     cliCommand,
     shell: input.platform === "win32" ? "PowerShell" : "POSIX shell (sh/bash/zsh)",
     workspaceRoot: input.workspaceRoot,
+    ...(input.target ? { startCommand: `${cliCommand} start --target ${encodeAgentTarget(input.target)}` } : {}),
   };
 }

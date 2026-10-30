@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { commandProjectContext, type CommandProjectGuard } from "./command-context";
+import { agentTargetRequestSchema, type AgentTarget, type AgentTargetRequest } from "../../shared/agent-target";
 import { readVisualImageSet } from "./artifact-images";
 import { activityText, commandActivityDetails } from "./command-activity";
 /**
@@ -123,6 +124,8 @@ export interface LiveSessionHostDeps {
 }
 
 export interface LiveSessionHost {
+  resolveStartupTarget(target: AgentTargetRequest): Promise<AgentTarget>;
+  startTarget(target: AgentTarget): Promise<FacadeResult<unknown>>;
   enable(): Promise<LiveCollabStatus>;
   disable(): Promise<LiveCollabStatus>;
   getStatus(): Promise<LiveCollabStatus>;
@@ -525,6 +528,28 @@ export function createLiveSessionHost(
   };
 
   const host: LiveSessionHost = {
+    async resolveStartupTarget(input) {
+      const target = agentTargetRequestSchema.parse(input);
+      if (!enabled || !bridge?.getStart) throw new Error("The live workspace is not ready");
+      const snapshot = await bridge.getStart(target);
+      return snapshot.target.kind === "video" ? { ...snapshot.target, hostInstanceId: instanceId } : snapshot.target;
+    },
+    async startTarget(target) {
+      if (!enabled || !bridge?.getStart) return { ok: false, error: { code: "UNSUPPORTED", message: "The live workspace is not ready" } };
+      if (target.kind === "video" && target.hostInstanceId !== instanceId) return { ok: false, error: { code: "CONFLICT", message: "Desktop runtime changed; copy a fresh startup prompt for the same project and workspace" } };
+      const request: AgentTargetRequest = target.kind === "video"
+        ? { kind: "video", projectId: target.projectId, workspaceId: target.workspaceId }
+        : target;
+      const snapshot = await bridge.getStart(request);
+      if (snapshot.target.instanceId !== target.instanceId) return { ok: false, error: { code: "CONFLICT", message: "Workspace runtime changed; resolve the same target again before continuing" } };
+      const access = target.kind === "video" ? accessPreferenceStore.get().access : await host.getReviewAccess(target);
+      return { ok: true, value: {
+        connected: true, target, access, revision: snapshot.revision,
+        ...(snapshot.name ? { name: snapshot.name } : {}),
+        next: [`tools ${target.kind}`, "tools <package.id>", "describe <canonical.verb>", "call <canonical.verb> --file request.json"],
+        binding: "Keep this target fixed across GUI selection changes. Resolve the same target again after runtime changes or conflicts. Discovery does not grant content access or write permission.",
+      } };
+    },
     getTaskStates(jobIds) {
       const ledger = getTaskLedger();
       return Object.fromEntries(jobIds.map((id) => [id, ledger.getState(id)]));
@@ -561,6 +586,7 @@ export function createLiveSessionHost(
           endpoint = await startLiveEndpointServer({
             callVerb: (verb, params, guard) => host.callExternal(verb, params, guard),
             getStatus: getCommandStatus,
+            startTarget: target => host.startTarget(target),
             onExternalActivity,
             serverInfo: deps.serverInfo,
             artifactRoot: deps.artifactRoot,

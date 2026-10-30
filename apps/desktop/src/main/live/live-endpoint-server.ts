@@ -25,6 +25,7 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { decodeAgentTarget, type AgentTarget } from "../../shared/agent-target";
 import {
   canonicalEndpointPath,
   endpointOverridePath,
@@ -135,6 +136,7 @@ function removeEndpointFile(file: string): void {
 
 
 export interface LiveEndpointOptions {
+  readonly startTarget?: (target: AgentTarget) => Promise<FacadeResult<unknown>>;
   /** Routes one facade verb call to the external live session (host-owned). */
   readonly callVerb: (
     verb: FacadeVerb,
@@ -267,13 +269,14 @@ async function handleCommandApiRequest(
   options: LiveEndpointOptions,
 ): Promise<boolean> {
   const statusRoute = pathname === "/v1/status";
+  const startRoute = pathname === "/v1/start";
   const catalogRoute = pathname === "/v1/catalog";
   const commandRoute = pathname === "/v1/command";
   const catalogEntryRoute = pathname.startsWith("/v1/catalog/");
   const artifactRoute = pathname === "/v1/artifact";
-  if (!statusRoute && !catalogRoute && !commandRoute && !catalogEntryRoute && !artifactRoute) return false;
+  if (!startRoute && !statusRoute && !catalogRoute && !commandRoute && !catalogEntryRoute && !artifactRoute) return false;
 
-  const allowedMethod = (statusRoute || catalogRoute || catalogEntryRoute || artifactRoute)
+  const allowedMethod = (startRoute || statusRoute || catalogRoute || catalogEntryRoute || artifactRoute)
     ? req.method === "GET"
     : req.method === "POST";
   if (!allowedMethod) {
@@ -281,6 +284,19 @@ async function handleCommandApiRequest(
     return true;
   }
   options.onExternalActivity?.();
+
+  if (startRoute) {
+    let target: AgentTarget;
+    try { target = decodeAgentTarget(new URL(req.url!, "http://127.0.0.1").searchParams.get("target") ?? ""); }
+    catch { sendJson(res, 400, commandFailure("INVALID_PARAMS", "Invalid target reference; copy a startup prompt from the intended workspace")); return true; }
+    if (!options.startTarget) { sendJson(res, 200, commandFailure("UNSUPPORTED", "Target startup is unavailable")); return true; }
+    try { sendJson(res, 200, await options.startTarget(target)); }
+    catch (error) {
+      const code = isRecord(error) && (error.code === "CONFLICT" || error.code === "NOT_FOUND") ? error.code : "INTERNAL";
+      sendJson(res, 200, commandFailure(code, error instanceof Error ? error.message : "Target startup failed"));
+    }
+    return true;
+  }
 
   if (statusRoute) {
     const status = options.getStatus

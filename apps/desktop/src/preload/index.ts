@@ -265,7 +265,7 @@ const api = {
   },
   collabControl: {
     setReviewAccess: (input: { access: AgentAccessMode; reviewWorkspaceId: string; instanceId: string }) => ipcRenderer.invoke(CHANNELS.collabSetReviewAccess, input),
-    getStartupInfo: () => ipcRenderer.invoke(CHANNELS.collabGetStartupInfo, undefined),
+    getStartupInfo: (target?: NonNullable<import("@reelterminal/agent-facade/desktop-protocol").DesktopLiveBridgeRequest["startTarget"]>) => ipcRenderer.invoke(CHANNELS.collabGetStartupInfo, target),
     getReviewAccess: (input: { reviewWorkspaceId: string; instanceId: string }) => ipcRenderer.invoke(CHANNELS.collabGetReviewAccess, input),
     enable: (): Promise<LiveCollabStatus> =>
       ipcRenderer.invoke(CHANNELS.collabEnable, undefined),

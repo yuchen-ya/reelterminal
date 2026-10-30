@@ -67,6 +67,8 @@ const FILESYSTEM_VERBS = new Set<FacadeVerb>([
   "font.list",
   "review.repair.inspect",
   "review.repair.apply",
+  "review.repair.draft.inspect",
+  "review.repair.draft.commit",
   "review.frames.capture",
 ]);
 
@@ -92,7 +94,7 @@ function retryFor(verb: FacadeVerb, schema: JsonSchemaObject): CommandRetryPolic
   // an idempotency key exists, transports must make retry decisions explicit.
   if (effectsFor(verb).includes("task")) return "never";
   if (!effectsFor(verb).includes("write")) return "safe";
-  return hasIdempotencyKey(schema) || verb === "audio.process.register" || verb === "review.branches.create" || verb === "review.branches.submit" || verb === "review.items.submit" || verb === "review.repair.apply" || verb === "review.frames.capture" ? "idempotent" : "never";
+  return hasIdempotencyKey(schema) || verb === "audio.process.register" || verb === "review.branches.create" || verb === "review.branches.submit" || verb === "review.items.submit" || verb === "review.repair.apply" || verb.startsWith("review.repair.draft.") || verb === "review.frames.capture" ? "idempotent" : "never";
 }
 
 function entryFor(verb: FacadeVerb, mode: CommandCatalogMode): CommandCatalogEntry {
@@ -117,12 +119,17 @@ function entryFor(verb: FacadeVerb, mode: CommandCatalogMode): CommandCatalogEnt
   });
 }
 
-const LIVE_COMMANDS = Object.freeze(FACADE_VERBS.map((verb) => entryFor(verb, "live")));
-const HEADLESS_COMMANDS = Object.freeze(FACADE_VERBS.map((verb) => entryFor(verb, "headless")));
+const COMMAND_ENTRIES: Record<CommandCatalogMode, Map<FacadeVerb, CommandCatalogEntry>> = {
+  live: new Map(),
+  headless: new Map(),
+};
+const COMMAND_CATALOGS: Partial<Record<CommandCatalogMode, readonly CommandCatalogEntry[]>> = {};
 
 /** Return every registered command in stable facade order, including plugins. */
 export function getCommandCatalog(mode: CommandCatalogMode): readonly CommandCatalogEntry[] {
-  return mode === "live" ? LIVE_COMMANDS : HEADLESS_COMMANDS;
+  return COMMAND_CATALOGS[mode] ??= Object.freeze(
+    FACADE_VERBS.map(verb => getCommandCatalogEntry(verb, mode)!),
+  );
 }
 
 /** Return one canonical dotted command, or undefined when it is unknown. */
@@ -130,5 +137,12 @@ export function getCommandCatalogEntry(
   name: string,
   mode: CommandCatalogMode,
 ): CommandCatalogEntry | undefined {
-  return getCommandCatalog(mode).find((command) => command.name === name);
+  if (!(FACADE_VERBS as readonly string[]).includes(name)) return undefined;
+  const verb = name as FacadeVerb;
+  const entries = COMMAND_ENTRIES[mode];
+  const existing = entries.get(verb);
+  if (existing) return existing;
+  const entry = entryFor(verb, mode);
+  entries.set(verb, entry);
+  return entry;
 }

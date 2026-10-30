@@ -14,6 +14,7 @@ export const REVIEW_VERBS = [
   "review.steps.start", "review.steps.complete", "review.steps.fail", "review.steps.list",
   "review.package.inspect", "review.package.restore", "review.attach", "review.media.inspect", "review.frames.extract", "review.frames.capture",
   "review.repair.inspect", "review.repair.apply",
+  "review.repair.draft.create", "review.repair.draft.apply", "review.repair.draft.inspect", "review.repair.draft.commit", "review.repair.draft.discard",
   "review.items.submit", "review.branches.create", "review.branches.compare", "review.branches.submit",
 ] as const;
 export type ReviewVerb = typeof REVIEW_VERBS[number];
@@ -133,12 +134,19 @@ const repairOperations: readonly ObjectSchema[] = [
   { kind: kind("patch"), resourceId: uuidField(), x: signedCoordinate, y: signedCoordinate, width: finite(true), height: finite(true), opacity: unit },
 ];
 const repairIdentity: ObjectSchema = { target: target(true), expectedNodeRevision: revision, itemId: uuidField(), expectedItemVersion: positiveVersion };
+const draftIdentity: ObjectSchema = { target: target(true), itemId: uuidField(), draftId: uuidField() };
+const repairOperationsField: FieldRule = { check: value => Array.isArray(value) && value.length > 0 && value.length <= 100 && value.every(op => repairOperations.some(schema => matchesSchema(op, schema))), describe: "1–100 operations, prevalidated and clipped to region; patch resources must belong to this node", required: true, emits: { kind: "array", minItems: 1, maxItems: 100, items: { kind: "anyOfObjects", variants: repairOperations } } };
 const repairBaseline: ObjectSchema = { target: target(true), itemId: uuidField(), itemVersion: positiveVersion, nodeRevision: revision,
   region: repairRegionField, resourceId: uuidField(), imageSha256: boundedText(64), annotationsSha256: boundedText(64) };
 const submitResultsSchema: ObjectSchema = { ...nodeWrite, files, stepId: uuidField(false), results: objectArray({ itemId: uuidField(),
     expectedItemVersion: { ...revision, check: value => isNonNegativeInteger(value) && Number(value) > 0, emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } } }, content }, 1, 500,
     "existing items in the current task and complete replacement content; resource IDs must be retained by this task or imported atomically through files") };
 export const REVIEW_SCHEMAS: Record<ReviewVerb, ObjectSchema> = {
+  "review.repair.draft.create": { ...repairIdentity, draftId: { ...uuidField(), describe: "client-chosen draft UUID; retry with identical creation parameters in this renderer runtime" } },
+  "review.repair.draft.apply": { ...draftIdentity, requestId: uuidField(), expectedDraftRevision: revision, region: repairRegionField, operations: repairOperationsField },
+  "review.repair.draft.inspect": { ...draftIdentity, region: repairRegionField },
+  "review.repair.draft.commit": { ...draftIdentity, requestId: uuidField(), expectedDraftRevision: revision },
+  "review.repair.draft.discard": draftIdentity,
   "review.repair.inspect": { ...repairIdentity, region: repairRegionField, handoffId: { ...uuidField(false), describe: "optional explicit published handoff snapshot; returns only this current image version's region-relevant published issues, never unsubmitted draft/current feedback" }, ...page,
     baseline: { check: value => matchesSchema(value, repairBaseline), describe: "the exact conditional-read baseline returned by the preceding inspect for this target/item/region; not proof of visual observation; unchanged images are omitted, uncertain changes refresh the complete local crop", emits: { kind: "object", schema: repairBaseline } } },
   "review.repair.apply": { ...repairIdentity, requestId: uuidField(), region: repairRegionField,
@@ -203,6 +211,11 @@ export const REVIEW_SCHEMAS: Record<ReviewVerb, ObjectSchema> = {
   },
 };
 export const REVIEW_DESCRIPTIONS: Record<ReviewVerb, string> = {
+  "review.repair.draft.create": "Start a session-local image repair draft bound to an explicit review target, node revision and image version. No saved version or processing step is created. Reuse draftId for creation retries. Drafts expire on renderer restart; discover a new runtime and create a new draft explicitly.",
+  "review.repair.draft.apply": "Atomically apply one brush/eraser/clone/patch batch to the draft only. Reuse requestId for retries and pass expectedDraftRevision. Clone samples the composed draft at batch start. Formal item versions, node revisions and undo history stay unchanged. Inspect the real preview before committing.",
+  "review.repair.draft.inspect": "Export a real managed local PNG crop of the explicit image repair draft, with source-pixel mapping and unsaved status. Also displays a separately labelled draft preview in the review GUI. Does not save a formal version or processing step.",
+  "review.repair.draft.commit": "Save all accepted draft batches as one immutable image version, one undo action and one measured processing record. Compare-and-swap checks the original node/image baseline. Durable request receipt prevents duplicate commits; the draft handle is session-local. Inspect conflicts before starting a replacement draft.",
+  "review.repair.draft.discard": "Discard this exact session-local draft and its unsaved canvas/GUI preview, without editing formal content or history. Managed preview PNG candidates follow the existing unregistered-resource retention/collection policy; original and committed resources are preserved.",
   "review.repair.inspect": "Inspect one explicit image version and source-pixel region. Returns a real managed PNG crop, coordinate mapping and only intersecting version-bound annotations. Reuse the returned baseline; unchanged content omits the image, replacements/undo refresh the region. No observation database or all-layer/history dump.",
   "review.repair.apply": "Atomically execute brush, repair-layer eraser, soft-edge clone and transparent image patches inside an explicit repair region. Prevalidate the entire batch; keep source bytes and outside pixels intact. Returns one new immutable image version, measured change bounds and a true composed local PNG. Durable requestId retries do not create another version; actor is agent. No independent human-board access.",
   "review.frames.capture": "Capture one exact decoded frame from an explicit node-owned video item/version using the shared FFmpeg frame processor. Atomically create a source-linked image item with real decode index and PTS in the same node; inspect/repair it with review.repair.* and compare adjacent captures. Does not infer PTS from GUI currentTime, propagate repairs, or re-encode video.",

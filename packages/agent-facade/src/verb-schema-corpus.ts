@@ -40,6 +40,12 @@ export interface VerbSchemaCorpusCase {
 const reviewTarget = { kind: "review", reviewWorkspaceId: "11111111-1111-4111-8111-111111111111", instanceId: "22222222-2222-4222-8222-222222222222", nodeId: "33333333-3333-4333-8333-333333333333" };
 const reviewRequest = "44444444-4444-4444-8444-444444444444";
 const reviewValid: Record<typeof REVIEW_VERBS[number], Record<string, unknown>> = {
+  "review.repair.draft.create": { target: reviewTarget, expectedNodeRevision: 0, itemId: reviewRequest, expectedItemVersion: 1, draftId: reviewRequest },
+  "review.repair.draft.apply": { target: reviewTarget, itemId: reviewRequest, draftId: reviewRequest, requestId: reviewRequest, expectedDraftRevision: 0,
+    region: { space: "source-pixels", x: 0, y: 0, width: 64, height: 64 }, operations: [{ kind: "brush", size: 4, color: "#ff0000", points: [{ x: 4, y: 4, pressure: 1 }] }] },
+  "review.repair.draft.inspect": { target: reviewTarget, itemId: reviewRequest, draftId: reviewRequest, region: { space: "source-pixels", x: 0, y: 0, width: 64, height: 64 } },
+  "review.repair.draft.commit": { target: reviewTarget, itemId: reviewRequest, draftId: reviewRequest, requestId: reviewRequest, expectedDraftRevision: 1 },
+  "review.repair.draft.discard": { target: reviewTarget, itemId: reviewRequest, draftId: reviewRequest },
   "review.repair.inspect": { target: reviewTarget, expectedNodeRevision: 0, itemId: reviewRequest, expectedItemVersion: 1, region: { space: "source-pixels", x: 0, y: 0, width: 64, height: 64 } },
   "review.repair.apply": { target: reviewTarget, expectedNodeRevision: 0, requestId: reviewRequest, itemId: reviewRequest, expectedItemVersion: 1, region: { space: "source-pixels", x: 0, y: 0, width: 64, height: 64 }, operations: [{ kind: "brush", size: 4, color: "#ff0000", points: [{ x: 4, y: 4, pressure: 1 }] }] },
   "review.frames.capture": { target: reviewTarget, expectedNodeRevision: 0, requestId: reviewRequest, itemId: reviewRequest, expectedItemVersion: 1, frameIndex: 0 },

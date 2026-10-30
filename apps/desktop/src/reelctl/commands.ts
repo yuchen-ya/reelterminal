@@ -17,7 +17,7 @@ export interface ParsedInvocation {
   readonly requestTimeoutMs?: number;
 }
 
-const ALIASES: Readonly<Record<string, string>> = {
+export const COMMAND_ALIASES: Readonly<Record<string, string>> = {
   "review repair inspect": "review.repair.inspect",
   "review repair apply": "review.repair.apply",
   "review frames capture": "review.frames.capture",
@@ -47,6 +47,14 @@ const ALIASES: Readonly<Record<string, string>> = {
   "mask refine": "mask.refine",
   "patch propagate": "patch.propagate",
 };
+
+export function resolveCommandName(text: string): string {
+  return Object.hasOwn(COMMAND_ALIASES, text) ? COMMAND_ALIASES[text]! : text;
+}
+
+export function aliasesForCommand(name: string): readonly string[] {
+  return Object.entries(COMMAND_ALIASES).filter(([, canonical]) => canonical === name).map(([alias]) => alias);
+}
 
 function fail(message: string): never {
   throw new LiveCliError(message, "args", 2);
@@ -201,7 +209,7 @@ function commandFromWords(words: readonly string[]): { readonly commandName: str
   if (words.length === 0) fail("Missing command. Use `reelctl help` for usage.");
   for (let length = Math.min(3, words.length); length >= 1; length -= 1) {
     const joined = words.slice(0, length).join(" ");
-    const commandName = ALIASES[joined];
+    const commandName = Object.hasOwn(COMMAND_ALIASES, joined) ? COMMAND_ALIASES[joined] : undefined;
     if (commandName !== undefined) return { commandName, consumed: length };
   }
   fail(`Unknown command "${words.join(" ")}". Use reelctl help for usage.`);
@@ -342,86 +350,42 @@ export function commandHelp(entry: CommandCatalogEntry): string {
     `${entry.name} (${entry.toolName})`,
     "",
     entry.description,
+    `Canonical invocation: reelctl call ${entry.name} --file request.json`,
+    `Compatibility aliases: ${aliasesForCommand(entry.name).join(", ") || "none"}`,
     "",
     "Input schema:",
     JSON.stringify(entry.inputSchema, null, 2),
   ].join("\n");
 }
 
-export const REELCTL_HELP = `reelctl — operate projects and workspaces in ReelTerminal
+export const REELCTL_HELP = `reelctl — operate explicit ReelTerminal targets
 
-Application audio configuration (offline; no live access required):
-  environment get
-  environment set --file config.json   Replace configuration; use get first
-  environment check                   Verify runtime, models, VAD and FFmpeg
-  environment test --file speech.wav --duration 30 [--language auto] [--engine qwen|sensevoice]
+  start --target <ref>                 Run the target command copied by the GUI
+  tools                               List domain cards (offline, no probes)
+  tools video|review|library|system    List capability cards
+  tools <package.id>                  Load one capability's tools and workflow
+  describe <canonical.verb> [--op <name> ...] [--detail full]
+  call <canonical.verb> [--file request.json | --stdin] [--name value ...]
 
-Usage:
   reelctl status
-  reelctl context [--compact]
-  reelctl query --ref R3 --fields id,startTime,duration
-  reelctl edit validate --file request.json
-  reelctl edit apply --file request.json
-  reelctl media import --file request.json
-  reelctl media inspect --media-id m1 --start-sec 0 --end-sec 8
-  reelctl media analyze --media-id m1 --type audioSummary
-  reelctl media analyze --media-id m1 --type sceneCuts --type blackFrames
-  reelctl call audio.process.normalize --file normalize.json
-  reelctl job wait --job-id <job-id>
-  reelctl call audio.process.register --file register.json
-  reelctl frames extract --media-id m1 --start-frame 100 --end-frame 104
-  reelctl frames sheet --file frames.json
-  reelctl video compare --file compare.json
-  reelctl review context | capabilities | describe
-  reelctl video context | capabilities | describe
-  reelctl review call review.ingest --file review-input.json
-  reelctl review repair inspect --file inspect-region.json
-  reelctl review repair apply --file repair-batch.json
-  reelctl review frames capture --file exact-frame.json
-  reelctl patch apply --file patch.json
-  reelctl image align --file align.json
-  reelctl motion track --file track.json
-  reelctl mask refine --file mask.json
-  reelctl patch propagate --file propagate.json
-  reelctl preview frame --time 12.5
-  reelctl history get | undo | redo
-  reelctl requirements list [--status ready] [--compact]
-  reelctl requirements get Q1
-  reelctl requirements update Q1 --status in_progress [--agent-note text] [--result-media-id id]
-  reelctl export start --file request.json
-  reelctl job status --job-id <id> | wait <id> [--timeout-ms 1800000] | cancel --job-id <id>
-  reelctl schema <command>
-  reelctl schema --domain <domain>
-  reelctl call <command> [--file request.json | --stdin] [--name value ...]
+  job status|wait|cancel <job-id>       Keep job ownership bound to your target
+  environment get|set|check|test       Local audio environment; help via tools system.environment
+  help [command]                      Exact command help and compatibility aliases
 
-Complex requests use JSON files or stdin. For edits, include projectId,
-workspaceId, expectedRevision, and expectedProjectEpoch, or pass --project-id,
---workspace-id, and --project-epoch. project-id/workspace-id locate the target;
-expected-project-id is a separate view identity guard. reelctl call keeps
-all catalog commands available even before a dedicated shortcut exists.
-Long synchronous commands (frames extract, patch apply, ...) accept
---timeout-ms <milliseconds> for the HTTP request ceiling; the default is
-30 s or REELTERMINAL_REQUEST_TIMEOUT_MS. For 'job wait' the same flag sets
-the wait deadline instead.
-Use reelctl schema <command> or reelctl help <command> for exact arguments.
-For independent reviews, start with reelctl review describe for the workflow,
-then review context and review capabilities for identity, access and file roots.
-Review command schemas include usage guidance from the shared field declarations.
-reelctl schema --domain <domain> filters the command index by the command's
-leading name segment (audio, media, edit, ...); results come from the same
-catalog and unknown domains are rejected with the available domain list.
-normalize.json supplies mediaId, audioStream, startSec/endSec, targetLufs,
-truePeakDbtp, loudnessRangeLu, sampleRate:48000, channels:1|2, and idempotencyKey;
-register.json supplies the completed jobId and current expectedRevision.
+Use start, select a capability, describe its required command/ops, then call.
+Discovery is read-only and does not grant content access or write permission.
+Unknown dependency availability stays unprobed until execution needs it.
+Complex nested requests use JSON files or stdin. Reads and edits carry the same
+explicit target and supported revision/runtime guards; do not follow GUI selection.
+--timeout-ms controls an HTTP request ceiling, or the deadline for job wait.
+--human pretty-prints JSON. --result-fields projects output; --output-file saves it.
 
-Output is one compact JSON result on stdout. --human pretty-prints it. On context,
---compact returns a concise context while preserving identity, canvasPoint and
-revision fields. --result-fields projects result paths while retaining revision,
-identity and pagination metadata; --output-file writes the complete response.
-Diagnostics go to stderr. Exit codes: 0 success, 2
-invocation error, 3 command/business failure, 4 connection/API failure.
+Compatibility: existing action aliases and schema [command|--domain <prefix>]
+remain supported. Schema domains are API name prefixes (video means video.compare),
+not capability domains. Underscore toolName values are metadata, not CLI aliases.
+Exit codes: 0 success, 2 invocation error, 3 business failure, 4 connection failure.
 `;
 
 export function isKnownAlias(command: string): boolean {
-  return Object.prototype.hasOwnProperty.call(ALIASES, command);
+  return Object.prototype.hasOwnProperty.call(COMMAND_ALIASES, command);
 }

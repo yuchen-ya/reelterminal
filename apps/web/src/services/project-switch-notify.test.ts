@@ -68,7 +68,7 @@ describe("switchProjectView", () => {
     (window as { reelterminal?: unknown }).reelterminal = {
       collabControl: { getStartupInfo: fixture.getStartupInfo },
     };
-    fixture.getStartupInfo.mockResolvedValue({ cliCommand: "reel.cmd", shell: "pwsh", workspaceRoot: "C:/agent-ws" });
+    fixture.getStartupInfo.mockResolvedValue({ startCommand: "reel.cmd start --target rt1.project-b-workspace-b" });
 
     await switchProjectView({ projectId: "project-b", workspaceId: "workspace-b" });
     expect(fixture.switchView).toHaveBeenCalledWith({ projectId: "project-b", workspaceId: "workspace-b" });
@@ -84,12 +84,8 @@ describe("switchProjectView", () => {
     notifications[0].onClick?.();
     await waitFor(() => expect(fixture.writeText).toHaveBeenCalledTimes(1));
     const prompt = fixture.writeText.mock.calls[0][0] as string;
-    expect(prompt).toContain("Project B");
-    expect(prompt).toContain("project-b");
-    expect(prompt).toContain("workspace-b");
-    expect(prompt).toContain("Plan B");
-    expect(prompt).toContain("reel.cmd");
-    expect(prompt).toContain("C:/agent-ws");
+    expect(prompt).toBe("Run now: reel.cmd start --target rt1.project-b-workspace-b");
+    expect(fixture.getStartupInfo).toHaveBeenCalledWith({ kind: "video", projectId: "project-b", workspaceId: "workspace-b" });
 
     await waitFor(() =>
       expect(useNotificationStore.getState().notifications.some((entry) => entry.title === "Agent prompt copied")).toBe(true),
@@ -97,17 +93,9 @@ describe("switchProjectView", () => {
     expect(useNotificationStore.getState().notifications.some((entry) => entry.id === notifications[0].id)).toBe(false);
   });
 
-  it("falls back to the local prompt variant when desktop startup info is unavailable", async () => {
-    fixture.switchView.mockImplementation(async (target: { projectId: string; workspaceId: string }) => {
-      fixture.snapshot = snapshotWith({ activeProjectId: target.projectId, activeWorkspaceId: target.workspaceId });
-    });
-    await switchProjectView({ projectId: "project-b", workspaceId: "workspace-b" });
-    useNotificationStore.getState().notifications[0].onClick?.();
-    await waitFor(() => expect(fixture.writeText).toHaveBeenCalledTimes(1));
-    const prompt = fixture.writeText.mock.calls[0][0] as string;
-    expect(prompt).toContain("project-b");
-    expect(prompt).not.toContain("{{cliCommand}}");
-    expect(prompt).not.toContain("{{workspaceRoot}}");
+  it("reports unavailable desktop startup information without copying an unbound prompt", async () => {
+    await expect(copyCurrentProjectAgentPrompt()).rejects.toThrow("Desktop startup information is unavailable");
+    expect(fixture.writeText).not.toHaveBeenCalled();
   });
 
   it("does not notify for a same-project workspace switch", async () => {
@@ -143,12 +131,11 @@ describe("switchProjectView", () => {
 describe("copyCurrentProjectAgentPrompt", () => {
   it("copies the prompt for the currently active target", async () => {
     fixture.snapshot = snapshotWith();
+    (window as { reelterminal?: unknown }).reelterminal = { collabControl: { getStartupInfo: fixture.getStartupInfo } };
+    fixture.getStartupInfo.mockResolvedValue({ startCommand: "reel.cmd start --target rt1.project-a-workspace-a" });
     await copyCurrentProjectAgentPrompt();
-    expect(fixture.writeText).toHaveBeenCalledTimes(1);
-    const prompt = fixture.writeText.mock.calls[0][0] as string;
-    expect(prompt).toContain("Project A");
-    expect(prompt).toContain("workspace-a");
-    expect(prompt).toContain("Plan A");
+    expect(fixture.writeText).toHaveBeenCalledWith("Run now: reel.cmd start --target rt1.project-a-workspace-a");
+    expect(fixture.getStartupInfo).toHaveBeenCalledWith({ kind: "video", projectId: "project-a", workspaceId: "workspace-a" });
   });
 
   it("throws when no project is active", async () => {

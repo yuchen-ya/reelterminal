@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { agentStartupInfo } from "./agent-startup-info";
+import { decodeAgentTarget } from "../../shared/agent-target";
 
 describe("Agent startup command", () => {
+  it("generates a self-contained target reference with the real installation prefix", () => {
+    const target = { kind: "video" as const, projectId: "project-中文", workspaceId: "workspace-1", instanceId: "runtime-1", hostInstanceId: "host-1" };
+    const info = agentStartupInfo({ platform: "win32", packaged: true, appPath: "C:\\Editor", executablePath: "C:\\Editor\\ReelTerminal.exe", workspaceRoot: "E:\\Work", target });
+    expect(info.startCommand).toMatch(/^& 'C:\\Editor\\reelctl.cmd' start --target rt1\.[A-Za-z0-9_-]+$/);
+    expect(decodeAgentTarget(info.startCommand!.split("--target ")[1]!)).toEqual(target);
+    expect(() => decodeAgentTarget("rt1.not-json")).toThrow();
+  });
   it("uses the packaged Windows launcher with PowerShell-safe paths", () => {
     expect(agentStartupInfo({
       platform: "win32",

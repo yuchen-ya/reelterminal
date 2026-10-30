@@ -1,5 +1,6 @@
 import { currentProjectEpoch, projectGuardError, projectLedgerScope } from "./project-guard";
 import { getReviewContext } from "../review-workspace/context";
+import { reviewService } from "../review-workspace/service";
 import { recoverReviewMigration } from "../review-workspace/migration-records";
 import { handleReviewCommand } from "./review-bridge";
 import {
@@ -1020,6 +1021,21 @@ export async function handleLiveBridgeRequest(
     const conflict = projectGuardError(routeGuard(req));
     if (conflict) return conflict;
     switch (req.kind) {
+      case "getStart": {
+        const target = req.startTarget;
+        if (target?.kind === "review") {
+          const context = await getReviewContext();
+          if (target.reviewWorkspaceId !== context.target.reviewWorkspaceId || target.instanceId !== context.target.instanceId) {
+            throw codedError("CONFLICT", "Review runtime changed; resolve the same target again");
+          }
+          const node = target.nodeId ? await reviewService.getNodeMetadata(target) : undefined;
+          return { ok: true, result: { target, revision: node?.revision ?? context.revision, ...(node ? { name: node.name } : {}) } };
+        }
+        if (target?.kind !== "video") throw codedError("INVALID_PARAMS", "An explicit video or review target is required");
+        const runtime = await workspaceManager.getWorkspaceContext({ projectId: target.projectId, workspaceId: target.workspaceId });
+        const state = runtime.store.getState();
+        return { ok: true, result: { target: { ...target, instanceId: runtime.instanceId }, name: state.project.name, revision: state.workspaceRevision } };
+      }
       case "getIdentity": {
         const runtime = await targetRuntime(req);
         if (!runtime) return noProject();

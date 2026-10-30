@@ -116,3 +116,32 @@ active work. Preserve other people's uncommitted changes and evidence; do not
 reset, overwrite or discard them to simplify the task. If edits overlap, coordinate
 before changing the same files. Keep writes to the same module serial and do not
 start concurrent write sessions against it.
+
+## CLI capability extension contract
+
+The existing command catalog and parameter/edit-operation schemas are the single
+source of truth for CLI contracts. Define each capability with a stable ID,
+purpose, supported targets, activation rule (including user-explicit activation
+where needed), command and required operation membership, and a short workflow.
+Reuse command schemas, effects, permissions, dependencies and retry contracts;
+do not copy schemas or maintain another independent command inventory.
+
+Generate tools, describe/help/alias discovery and command UI information from
+these shared definitions. Adding a capability should normally change its
+definition, executor and behavior tests, without changing the startup prompt or
+adding business-specific branches to the generic CLI. Keep algorithm backends
+inside their capability rather than presenting them as top-level capabilities.
+Use a static capability registry unless current requirements demand more; do
+not introduce a plugin marketplace, hot-loading system or SDK speculatively.
+
+Catalog queries must remain cheap: do not initialize models or GPUs or probe the
+whole environment to describe registered tools. Probe the required dependency
+when execution needs it, and distinguish unprobed from unavailable. Discovery
+and activation rules do not grant permission to read or edit user content.
+
+Check meaningful contracts: aliases are unique; members, handlers and schemas
+exist; scopes and authority match; generated contracts are callable; retired
+commands are not advertised as available; selective queries omit unrelated
+schemas. Test observable discovery and execution behavior rather than copying
+the implementation into assertions. Preserve the private free-board boundary:
+capability registration does not create an Agent content access path.

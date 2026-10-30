@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cliErrorEnvelope, runReelctl } from "./index";
 import { LiveCliError, type CommandCatalog, type CommandCatalogEntry, type LiveCommandClient } from "./client";
 import { compactContextResult, formatResult } from "./output";
-import { parseInvocation, requireExplicitSafetyGuards } from "./commands";
+import { COMMAND_ALIASES, parseInvocation, requireExplicitSafetyGuards } from "./commands";
+import { encodeAgentTarget } from "../shared/agent-target";
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -45,6 +46,55 @@ function makeClient(commands: CommandCatalogEntry[], result: unknown = { ok: tru
 }
 
 describe("reelctl command parsing and safety", () => {
+  it("discovers short domain and capability cards offline and selects only the requested op contract", async () => {
+    const api = makeClient([]);
+    const stdout: string[] = [];
+    await runReelctl(["tools"], { client: api, stdout: line => stdout.push(line) });
+    await runReelctl(["tools", "review"], { client: api, stdout: line => stdout.push(line) });
+    await runReelctl(["tools", "review.image-repair"], { client: api, stdout: line => stdout.push(line) });
+    await runReelctl(["describe", "edit.apply", "--op", "clip.trim", "--op", "track.add"], { client: api, stdout: line => stdout.push(line) });
+    expect(JSON.parse(stdout[0]!).value.domains.map((domain: { id: string }) => domain.id)).toEqual(["video", "review", "library", "system"]);
+    expect(stdout[0]!.length).toBeLessThan(1000);
+    expect(stdout.slice(0, 3).join("\n")).not.toContain("inputSchema");
+    const contract = JSON.parse(stdout[3]!).value;
+    expect(contract.inputSchema.properties.ops.items.anyOf.map((variant: { properties: { op: { const: string } } }) => variant.properties.op.const).sort()).toEqual(["clip.trim", "track.add"]);
+    expect(contract.outputSchema).toBeUndefined();
+    expect(api.status).not.toHaveBeenCalled();
+    expect(api.catalog).not.toHaveBeenCalled();
+    expect(api.catalogEntry).not.toHaveBeenCalled();
+    expect(api.command).not.toHaveBeenCalled();
+    await expect(runReelctl(["tools", "unknown"])).rejects.toMatchObject({ exitCode: 2 });
+    await expect(runReelctl(["describe", "edit_apply"])).rejects.toMatchObject({ exitCode: 2 });
+  });
+
+  it("uses the same alias table for call, schema and help including frame-processing aliases", async () => {
+    const stdout: string[] = [];
+    const commands = [...new Set(Object.values(COMMAND_ALIASES))].map(name => entry(name, name.replaceAll(".", "_")));
+    const api = makeClient(commands);
+    for (const alias of ["image align", "motion track", "mask refine", "patch propagate"]) {
+      await runReelctl(["call", alias], { client: api, stdout: line => stdout.push(line) });
+      expect(api.command).toHaveBeenLastCalledWith(COMMAND_ALIASES[alias], {}, expect.any(Object));
+      await runReelctl(["schema", ...alias.split(" ")], { client: api, stdout: line => stdout.push(line) });
+      expect(JSON.parse(stdout.at(-1)!).command.name).toBe(COMMAND_ALIASES[alias]);
+      await runReelctl(["help", ...alias.split(" ")], { client: api, stdout: line => stdout.push(line) });
+      expect(stdout.at(-1)).toContain(`Compatibility aliases: ${alias}`);
+    }
+    await expect(runReelctl(["call", "image_align"], { client: api })).rejects.toMatchObject({ exitCode: 2 });
+    expect(api.catalog).not.toHaveBeenCalled();
+  });
+
+  it("starts only the copied target without fetching catalog or current selection", async () => {
+    const api = makeClient([]);
+    const start = vi.fn().mockResolvedValue({ ok: true, value: { connected: true, access: "read-only" } });
+    Object.assign(api, { start });
+    const target = encodeAgentTarget({ kind: "video", projectId: "fixed-project", workspaceId: "fixed-workspace", instanceId: "runtime", hostInstanceId: "host" });
+    const stdout: string[] = [];
+    expect(await runReelctl(["start", "--target", target], { client: api, stdout: line => stdout.push(line) })).toBe(0);
+    expect(start).toHaveBeenCalledWith(target);
+    expect(api.status).not.toHaveBeenCalled();
+    expect(api.catalog).not.toHaveBeenCalled();
+    await expect(runReelctl(["start", "--target", "current"], { client: api })).rejects.toMatchObject({ exitCode: 2 });
+  });
   it("resolves three-word repair commands without consuming flags or changing legacy commands", () => {
     expect(parseInvocation(["review", "repair", "inspect", "--file", "crop.json"])).toMatchObject({ commandName: "review.repair.inspect", file: "crop.json", arguments: {} });
     expect(parseInvocation(["review", "repair", "apply", "--file", "batch.json"])).toMatchObject({ commandName: "review.repair.apply", file: "batch.json" });

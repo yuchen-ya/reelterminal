@@ -25,14 +25,14 @@ export interface RepairIdentity {
   itemId: string;
   expectedItemVersion: number;
 }
-interface ImageSnapshot {
+export interface ImageSnapshot {
   item: WorkbenchItem;
   resource: FileResource;
   revision?: WorkbenchContentRevision;
   nodeRevision: number;
 }
 
-async function currentImage(input: RepairIdentity): Promise<ImageSnapshot> {
+export async function currentImage(input: RepairIdentity): Promise<ImageSnapshot> {
   const { node, item } = await reviewService.getItem(input.target, input.itemId);
   if (node.revision !== input.expectedNodeRevision || item.version !== input.expectedItemVersion) {
     throw reviewError("CONFLICT", "Review node or image version changed; inspect the explicit target again");
@@ -59,11 +59,11 @@ export async function loadRepairImage(resourceId: string): Promise<HTMLCanvasEle
   return canvas;
 }
 
-async function saveCanvas(canvas: HTMLCanvasElement, operationId: string, name: string): Promise<FileResource> {
+export async function saveCanvas(canvas: HTMLCanvasElement, operationId: string, name: string): Promise<FileResource> {
   return prepareReviewBlob(await canvasToPngBlob(canvas), name, operationId, crypto.randomUUID(), "agent", undefined, true);
 }
 
-async function cropResult(canvas: HTMLCanvasElement, region: ImageRepairRegion, operationId: string) {
+export async function cropResult(canvas: HTMLCanvasElement, region: ImageRepairRegion, operationId: string) {
   const crop = createImageCanvas(region.width, region.height);
   crop.getContext("2d")!.drawImage(canvas, region.x, region.y, region.width, region.height, 0, 0, region.width, region.height);
   const resource = await saveCanvas(crop, operationId, "repair-region.png");

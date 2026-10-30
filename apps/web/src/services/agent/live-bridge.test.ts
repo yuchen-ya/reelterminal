@@ -139,6 +139,20 @@ describe("live-bridge", () => {
     });
   });
 
+  it("starts the fixed project workspace after the GUI switches elsewhere without returning project content", async () => {
+    const target = workspaceManager.getActiveTarget()!;
+    const identity = await handleLiveBridgeRequest(req("getIdentity"));
+    const other = await workspaceManager.createProject(createEmptyProject("Other GUI project"));
+    await workspaceManager.switchView({ projectId: other.project.id, workspaceId: other.defaultWorkspaceId });
+    const result = await handleLiveBridgeRequest(req("getStart", { startTarget: { kind: "video", ...target } }));
+    expect(result).toEqual({ ok: true, result: {
+      target: { kind: "video", ...target, instanceId: (identity.result as { workspaceInstanceId: string }).workspaceInstanceId },
+      name: (identity.result as { projectName: string }).projectName, revision: expect.any(Number),
+    } });
+    expect(workspaceManager.getActiveTarget()).toEqual({ projectId: other.project.id, workspaceId: other.defaultWorkspaceId });
+    expect(JSON.stringify(result).length).toBeLessThan(600);
+  });
+
   it("reads requirement summaries and details without returning large project caches", async () => {
     const store = useProjectStore.getState();
     const requirement = {

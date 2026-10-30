@@ -921,6 +921,26 @@ export class ReviewService {
     } finally { database.close(); }
   }
 
+  /** Recover an already successful operation without requiring its disposable preparation state. */
+  async getCommitReceipt(target: Target, requestId: string): Promise<CommitResult | undefined> {
+    targetGuard(target, true);
+    if (!UUID.test(requestId)) throw reviewError("INVALID_PARAMS", "Review requestId must be a UUID");
+    const database = await openMaterialDatabase();
+    try {
+      return await new Promise((resolve, reject) => {
+        const transaction = database.transaction(["reviewOperations", "reviewNodes"], "readonly");
+        const operation = transaction.objectStore("reviewOperations").get(requestId) as IDBRequest<OperationRow | undefined>;
+        const node = transaction.objectStore("reviewNodes").get(target.nodeId!);
+        transaction.oncomplete = () => {
+          if (!node.result || node.result.workspaceId !== target.reviewWorkspaceId) { reject(reviewError("NOT_FOUND", "Review node does not belong to this workspace")); return; }
+          if (operation.result && operation.result.scopeId !== target.nodeId) { reject(reviewError("CONFLICT", "requestId belongs to another review target")); return; }
+          resolve(operation.result ? { ...operation.result.result, replayed: true } : undefined);
+        };
+        transaction.onabort = () => reject(transaction.error);
+      });
+    } finally { database.close(); }
+  }
+
   async commit(input: ReviewCommit): Promise<CommitResult> {
     if (!UUID.test(input.requestId) || !Number.isSafeInteger(input.expectedNodeRevision) || input.expectedNodeRevision < 0) throw reviewError("INVALID_PARAMS", "A UUID requestId and nonnegative expectedNodeRevision are required");
     if (input.readScope && (input.history || input.legacyImport)) throw reviewError("INVALID_PARAMS", "History and legacy imports require a complete review snapshot");

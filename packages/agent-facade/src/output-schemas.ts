@@ -45,6 +45,10 @@ const integerSchema = (minimum?: number, maximum?: number): OutputSchemaNode => 
   ...(maximum !== undefined ? { maximum } : {}),
 });
 const booleanSchema = (): OutputSchemaNode => ({ type: "boolean" });
+const repairDraftOutput = (extra: Readonly<Record<string, OutputSchemaNode>> = {}, required: readonly string[] = []): OutputSchemaObject => objectSchema({
+  target: openObject(), itemId: stringSchema(), draftId: stringSchema(), state: enumSchema(["open", "committed", "discarded"]),
+  draftRevision: integerSchema(0), nodeRevision: integerSchema(0), itemVersion: integerSchema(1), batchCount: integerSchema(0), replayed: booleanSchema(), ...extra,
+}, ["target", "itemId", "draftId", "state", "draftRevision", "nodeRevision", "itemVersion", "batchCount", "replayed", ...required]);
 const constSchema = (value: string | boolean | null): OutputSchemaNode => ({ const: value });
 const enumSchema = (values: readonly (string | number | boolean | null)[]): OutputSchemaNode => ({
   enum: values,
@@ -1080,6 +1084,11 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
     state: enumSchema(["initial", "unchanged", "refresh"]), region: openObject(), mapping: openObject(), annotations: arraySchema(openObject()), baseline: openObject(),
     image: openObject(), feedback: arraySchema(openObject(), { maxItems: 500 }), feedbackSource: openObject(), feedbackHasMore: booleanSchema(), feedbackCursor: stringSchema(),
     repairLayer: stringSchema(), limitations: arraySchema(stringSchema()) }, ["target", "nodeRevision", "itemId", "itemVersion", "state", "region", "mapping", "annotations", "baseline", "repairLayer", "limitations", "feedback", "feedbackHasMore"]),
+  "review.repair.draft.create": repairDraftOutput(),
+  "review.repair.draft.apply": repairDraftOutput(),
+  "review.repair.draft.inspect": repairDraftOutput({ unsaved: booleanSchema(), region: openObject(), mapping: openObject(), image: openObject() }, ["unsaved", "region", "mapping", "image"]),
+  "review.repair.draft.commit": repairDraftOutput({ region: openObject(), image: openObject() }, ["region", "image"]),
+  "review.repair.draft.discard": repairDraftOutput(),
   "review.repair.apply": objectSchema({ target: openObject(), nodeRevision: integerSchema(0), itemId: stringSchema(), itemVersion: integerSchema(1), replayed: booleanSchema(),
     changedRegion: openObject(), region: openObject(), image: openObject() }, ["target", "nodeRevision", "itemId", "itemVersion", "replayed", "changedRegion", "region", "image"]),
   "review.frames.capture": objectSchema({ target: openObject(), nodeRevision: integerSchema(0), itemId: stringSchema(), itemVersion: integerSchema(1), replayed: booleanSchema(),

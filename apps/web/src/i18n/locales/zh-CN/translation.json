@@ -73,7 +73,7 @@
     "kind": { "model3d": "3D 模型", "image": "图片", "video": "视频", "text": "文字", "data": "数据表" },
     "agentAccessLabel": "允许 Agent 修改审阅", "exportMenu": "\u5bfc\u51fa",
     "copyTaskInstructions": "复制「{{name}}」的 Agent 启动提示词",
-    "startupPrompt": "请通过 ReelTerminal 独立审阅工作台完成我的请求。\nCLI 前缀（所有子命令均接在此前缀后）：{{cli}}\n{{task}}目标：{{target}}\n先运行 review describe 获取操作流程与发现入口。固定此任务目标，不随 GUI 选择切换；重启或冲突后重新核对身份和原任务目标。\n始终在这个任务内继续工作：新增内容放入合适的父节点/分组，返工更新原条目版本，不为新批次、不同方案或重试创建任务或分支。只有我明确要求一个独立目标时才新建任务。分组可按类型、批次、阶段等组织树；备注有内容才填写。方案和说明使用 Markdown 标题、列表、表格和代码块。",
+    "startupPrompt": "立即执行：{{startCommand}}",
     "branch": {"label": "历史关联", "listTitle": "历史任务关联", "compareTitle": "比较并采纳分支结果", "baseRevision": "起点修订", "adoptHint": "选择要采纳的内容结果。保留源条目的决定与反馈，采纳时会再次检查源条目是否变化。", "select": "选择", "loading": "正在载入分支比较…", "refresh": "刷新比较", "adoptSelected": "采纳所选结果", "empty": "没有历史关联任务。新内容和返工请继续提交到当前任务。", "state": {"changed": "内容已修改", "added": "新增结果", "unchanged": "未修改", "adopted": "已采纳", "conflict": "源条目已变化"}}
   },
   "projectMediaFilters": {
@@ -375,7 +375,7 @@
       "copyStartupPrompt": "复制启动提示词",
       "startupCopied": "启动提示词已复制",
       "startupCopyFailed": "无法复制启动提示词",
-      "startupPrompt": "请通过 live CLI 协作处理当前 ReelTerminal 桌面项目。使用 {{shell}}，每次调用使用完整前缀：{{cliCommand}}\n\n首先执行：\n{{cliCommand}} status\n{{cliCommand}} call capabilities.get\n{{cliCommand}} context --compact\n\n如上下文报告启用的协作指令，调用 collaboration.instructions.get 读取全文；如有待处理任务，使用 requirements list/get 读取。相关读取与编辑绑定同一 projectId 和 workspaceId；每轮工作和提交编辑前刷新上下文，协作指令摘要变化时重新读取。\n\n编辑使用读取时的 revision、项目身份及命令支持的安全保护参数；参数通过 schema <command> 查询。发生冲突时重新核对目标与计划，不盲目重试。保留当前项目的格式和已有状态，除非我明确要求更改或替换。\n\n文件工作根目录以 capabilities.get 的 recommendedRoot 为准（复制时路径：{{workspaceRoot}}），生成文件遵守返回的目录与导入边界。CLI 自动读取凭据，不打印或复制 token。安装或存储位置变化后重新复制此提示词。\n\n读取上下文后继续处理我的请求；尚无具体请求时询问我要处理什么。",
+      "startupPrompt": "立即执行：{{startCommand}}",
       "readOnly": "只读",
       "restoreWrite": "允许编辑",
       "restoreWriteDescription": "允许智能体修改当前项目",
@@ -1208,8 +1208,8 @@
     "toast": "已切换到「{{name}}」",
     "copyPrompt": "复制 Agent 提示词",
     "copied": "Agent 提示词已复制",
-    "promptBody": "接下来处理项目「{{projectName}}」（projectId: {{projectId}}），编辑目标为 workspaceId: {{workspaceId}}（{{workspaceName}}）。先读取该目标最新状态、实例代次和 revision，再提交编辑；不要根据 GUI 当前画面猜测写入目标。已提交任务继续使用原目标。正常保存只保存工作区，需要创建存档点时再明确执行 node.save；Ctrl+S 不创建存档点。连接方式：{{cliCommand}}；外部工作目录：{{workspaceRoot}}。",
-    "promptBodyLocal": "接下来处理项目「{{projectName}}」（projectId: {{projectId}}），编辑目标为 workspaceId: {{workspaceId}}（{{workspaceName}}）。先读取该目标最新状态、实例代次和 revision，再提交编辑；不要根据 GUI 当前画面猜测写入目标。已提交任务继续使用原目标。正常保存只保存工作区，需要创建存档点时再明确执行 node.save；Ctrl+S 不创建存档点。",
+    "promptBody": "立即执行：{{startCommand}}",
+    "promptBodyLocal": "请在桌面应用中复制此工作区的 Agent 启动提示。",
     "actionsSection": "项目操作"
   },
   "previewClipboard": {

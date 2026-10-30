@@ -73,7 +73,7 @@
     "kind": { "model3d": "3D model", "image": "Image", "video": "Video", "text": "Text", "data": "Table" },
     "agentAccessLabel": "Allow Agent to edit reviews", "exportMenu": "Export",
     "copyTaskInstructions": "Copy Agent instructions for {{name}}",
-    "startupPrompt": "{{task}}Use the independent ReelTerminal Review Workspace for my request.\nCLI prefix (prepend it to each subcommand): {{cli}}\nTarget: {{target}}\nFirst run review describe for the workflow and discovery steps. Keep this task target fixed across GUI selection changes; recheck identity and the intended target after restart or conflict.\nContinue in this same task. Organize new content with meaningful parent nodes/groups and update existing item versions for revisions. Do not create tasks or branches for batches, alternatives or retries. Create a task only when I explicitly request an independent goal. Groups may represent types, batches, stages or other clear tree structures. Omit absent notes. Write plans and explanations in Markdown.",
+    "startupPrompt": "Run now: {{startCommand}}",
     "branch": {"label": "Historical link", "listTitle": "Historical task links", "compareTitle": "Compare and adopt branch results", "baseRevision": "Starting revision", "adoptHint": "Select content results to adopt. Source decisions and feedback are preserved; source changes are checked again when adopting.", "select": "Select", "loading": "Loading branch comparison…", "refresh": "Refresh comparison", "adoptSelected": "Adopt selected results", "empty": "No historical task links. Continue new submissions and revisions in this task.", "state": {"changed": "Changed", "added": "New result", "unchanged": "Unchanged", "adopted": "Already adopted", "conflict": "Source changed"}}
   },
   "projectMediaFilters": {
@@ -375,7 +375,7 @@
       "copyStartupPrompt": "Copy startup prompt",
       "startupCopied": "Startup prompt copied",
       "startupCopyFailed": "Could not copy startup prompt",
-      "startupPrompt": "Collaborate on the current ReelTerminal desktop project through its live CLI. Use {{shell}} and this complete prefix on every invocation: {{cliCommand}}\n\nFirst run:\n{{cliCommand}} status\n{{cliCommand}} call capabilities.get\n{{cliCommand}} context --compact\n\nIf context reports enabled collaboration instructions, read their complete text with collaboration.instructions.get. Read pending tasks with requirements list/get. Bind related reads and edits to the same projectId and workspaceId. Refresh context before each round of work and before edits; reread instructions when their summary changes.\n\nUse the revision from the planning read, project identity and supported safety guards. Discover parameters with schema <command>. On conflicts, resolve the target and plan again rather than blindly retrying. Preserve the project format and existing state unless I request changes or replacement.\n\nUse capabilities.get recommendedRoot for files (path at copy time: {{workspaceRoot}}) and follow its directory and import boundaries. The CLI reads credentials automatically; never print or copy tokens. Copy a fresh prompt after installation or storage paths change.\n\nContinue with my request after reading context; if no specific request is present, ask what I want to do.",
+      "startupPrompt": "Run now: {{startCommand}}",
       "readOnly": "Read-only",
       "restoreWrite": "Enable editing",
       "restoreWriteDescription": "Allow the agent to edit this project",
@@ -1208,8 +1208,8 @@
     "toast": "Switched to \"{{name}}\"",
     "copyPrompt": "Copy Agent prompt",
     "copied": "Agent prompt copied",
-    "promptBody": "Work on project \"{{projectName}}\" (projectId: {{projectId}}) with editing target workspaceId: {{workspaceId}} ({{workspaceName}}). Read the latest state, workspace instance, and revision for that target before submitting edits; never infer the write target from what the GUI currently shows. Already-submitted tasks keep their original target. Regular saves only persist the workspace; create a save point explicitly with node.save; Ctrl+S does not create save points. Connect with: {{cliCommand}}; external workspace root: {{workspaceRoot}}.",
-    "promptBodyLocal": "Work on project \"{{projectName}}\" (projectId: {{projectId}}) with editing target workspaceId: {{workspaceId}} ({{workspaceName}}). Read the latest state, workspace instance, and revision for that target before submitting edits; never infer the write target from what the GUI currently shows. Already-submitted tasks keep their original target. Regular saves only persist the workspace; create a save point explicitly with node.save; Ctrl+S does not create save points.",
+    "promptBody": "Run now: {{startCommand}}",
+    "promptBodyLocal": "Copy this workspace’s Agent startup prompt in the desktop app.",
     "actionsSection": "Project actions"
   },
   "previewClipboard": {

@@ -1,41 +1,6 @@
 import type { JSX } from "react";
 import { Check, ClipboardCopy, Plus } from "lucide-react";
 
-/**
- * Exact, copyable Agent ingress instructions. The verb/argument names mirror
- * the real facade schemas (`workbench.ingest`, `media.import`) — this is a
- * documentation aid, not an executable shortcut, and it never contains a
- * token or enables write access by itself.
- */
-export const AGENT_INGEST_INSTRUCTIONS = `1) 导入真实媒体（图片/视频需先进入本项目素材库）
-   reelctl call media.import --path "<本地文件路径>" --idempotency-key "<唯一键>"
-
-2) 节点命名与组织规范（必须遵守）
-   - 保持节点命名简短：批次名 (name) 写完整上下文；条目 title 与 agentGuidance.nodeSlotLabel 必须精炼（建议 4~8 个汉字，勿重复堆砌批次前缀，如用 "普攻·H3" 而非 "赛琳妮运动连续性·普攻·H3与修订版对比"）。
-   - 父节点聚合画板 vs 分类目录：多张抽帧/套图或低信息量需同屏审阅的图文数条目，应归入同一父节点（lineage.upstreamGroupId 或 parentNodeId）并标记 groupMode: "board"（默认收拢为一个聚合画板节点）；仅用于归类的目录标记 groupMode: "category"。
-   - 视频对比预设：需与基准视频并排对比的条目，可指定 compareWithItemId: "<基准视频条目ID>"。
-
-3) 提交审阅批次
-   reelctl call workbench.ingest --batchId "<批次ID>" --name "<批次名>" --items '<items JSON>'
-   items JSON 形如：
-   [
-     {"id":"img-1","title":"普攻·抽帧16","type":"image",
-      "content":{"type":"image","mediaId":"<media.import 返回的 mediaId>"}},
-     {"id":"vid-1","title":"普攻·H3","type":"video",
-      "content":{"type":"video","mediaId":"<mediaId>","durationSec":12.5}},
-     {"id":"txt-1","title":"审查结论","type":"text",
-      "content":{"type":"text","entryId":"entry-1","title":"审查结论",
-                 "speakerOrContext":"旁白","text":"正文…"}},
-     {"id":"data-1","title":"帧率统计","type":"data",
-      "content":{"type":"data","datasetId":"ds-1",
-                 "columns":[{"columnId":"c1","title":"列"}],
-                 "rows":[{"rowId":"r1","cells":{"c1":"值"}}],
-                 "proposals":[]}}
-   ]
-
-4) 查看批次
-   reelctl call workbench.get --batchId "<批次ID>"`;
-
 export interface WorkbenchStartPanelProps {
   onCopy: () => void;
   copyState: "idle" | "copied" | "failed";
@@ -96,7 +61,7 @@ export function WorkbenchStartPanel({
           </button>
           {copyState === "failed" && (
             <span className="text-[11px] text-status-warning">
-              复制失败，请展开下方命令手动复制
+              复制失败，请确认项目工作区已就绪后重试
             </span>
           )}
         </div>
@@ -105,9 +70,10 @@ export function WorkbenchStartPanel({
           <summary className="cursor-pointer text-[11px] font-medium text-fg-2">
             Agent 接入说明（需已开启本项目 Agent 访问；不会自动开启写权限或发送消息）
           </summary>
-          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-fg-2">
-            {AGENT_INGEST_INSTRUCTIONS}
-          </pre>
+          <p className="mt-2 text-xs leading-relaxed text-fg-2">
+            复制接入说明后立即运行其中的 start 命令，按返回的能力卡片选择 tools、describe 和 call。
+            项目内已有批次使用 video.legacy-workbench 能力包。
+          </p>
         </details>
 
         <p className="text-[11px] leading-relaxed text-fg-3">

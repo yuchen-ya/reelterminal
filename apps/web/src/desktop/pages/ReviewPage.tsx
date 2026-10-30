@@ -245,14 +245,12 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     return () => window.removeEventListener("reelterminal:review-history", listener);
   }, [legacy, migrated, directoryHistory, surface]);
 
-  const copyInstructions = async (node?: ReviewNode) => {
+  const copyInstructions = async (node: ReviewNode | null = selected) => {
     if (!context) throw reviewError("CONFLICT", "审阅服务尚未载入");
-    const info = await window.reelterminal!.collabControl!.getStartupInfo();
+    const info = await window.reelterminal!.collabControl!.getStartupInfo(node ? { ...context.target, nodeId: node.id } : context.target);
     await navigator.clipboard.writeText(
       t("review.startupPrompt", {
-        cli: info.cliCommand,
-        task: node ? `${node.name}\n` : "",
-        target: JSON.stringify(node ? { ...context.target, nodeId: node.id } : context.target),
+        startCommand: info.startCommand,
         interpolation: { escapeValue: false },
       })
     );

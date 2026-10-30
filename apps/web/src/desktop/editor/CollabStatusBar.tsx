@@ -72,7 +72,9 @@ export function CollabStatusBar({ onConnectRequested }: {
                 onClickLabel: t("desktop.collaboration.copyStartupPrompt"),
                 onClick: async () => {
                   try {
-                    const info = await window.reelterminal!.collabControl!.getStartupInfo();
+                    const { project, workspaceId } = useProjectStore.getState();
+                    if (!workspaceId) throw new Error("The project workspace is not ready");
+                    const info = await window.reelterminal!.collabControl!.getStartupInfo({ kind: "video", projectId: project.id, workspaceId });
                     await navigator.clipboard.writeText(t("desktop.collaboration.startupPrompt", info));
                     useNotificationStore.getState().removeNotification(notificationId);
                     toast.success(t("desktop.collaboration.startupCopied"));

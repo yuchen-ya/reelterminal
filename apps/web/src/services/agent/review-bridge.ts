@@ -14,6 +14,7 @@ import { prepareReviewExport, reviewExportStatus, cancelReviewExport, copyReview
 import { inspectReviewPackage, restoreReviewPackage } from "../review-workspace/package";
 import { attachReviewMedia, type ReviewAttachRequest } from "../review-workspace/attach";
 import { inspectImageRepair, applyImageRepair } from "../review-workspace/repair";
+import { createImageRepairDraft, applyImageRepairDraft, inspectImageRepairDraft, commitImageRepairDraft, discardImageRepairDraft } from "../review-workspace/repair-drafts";
 import { captureReviewFrame } from "../review-workspace/frame-capture";
 
 function reviewOps(ops: readonly WorkbenchAgentOp[], state: WorkbenchProjectState): Action[] {
@@ -51,6 +52,11 @@ export async function handleReviewCommand(verb: ReviewVerb, params: Record<strin
   const valid = validateObject<Record<string, unknown>>(params, REVIEW_SCHEMAS[verb], `${verb} params`);
   const target = valid.target as ReviewContext["target"];
   switch (verb) {
+    case "review.repair.draft.create": return createImageRepairDraft(valid as unknown as Parameters<typeof createImageRepairDraft>[0]);
+    case "review.repair.draft.apply": return applyImageRepairDraft(valid as unknown as Parameters<typeof applyImageRepairDraft>[0]);
+    case "review.repair.draft.inspect": return inspectImageRepairDraft(valid as unknown as Parameters<typeof inspectImageRepairDraft>[0]);
+    case "review.repair.draft.commit": return commitImageRepairDraft(valid as unknown as Parameters<typeof commitImageRepairDraft>[0]);
+    case "review.repair.draft.discard": return discardImageRepairDraft(valid as unknown as Parameters<typeof discardImageRepairDraft>[0]);
     case "review.repair.inspect": return inspectImageRepair(valid as unknown as Parameters<typeof inspectImageRepair>[0]);
     case "review.repair.apply": return applyImageRepair(valid as unknown as Parameters<typeof applyImageRepair>[0]);
     case "review.frames.capture": return captureReviewFrame(valid as unknown as Parameters<typeof captureReviewFrame>[0]);

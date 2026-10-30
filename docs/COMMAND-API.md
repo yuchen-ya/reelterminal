@@ -4,6 +4,42 @@ The desktop exposes video-project and independent review command catalogs on
 loopback. The GUI owns both stores; an external Agent uses `reelctl` to read or
 edit an explicit target. Review does not require an open video project.
 
+## Start and discover on demand
+
+Copy the startup prompt from the intended video workspace or review task. It is
+one line: `Run now: <installation-generated CLI prefix> start --target <ref>`.
+The reference contains object and runtime identities, never credentials. Do not
+replace it with the active GUI selection or hand-build it from a board ID.
+
+`start` is a bounded authenticated read: connection, fixed target, permission,
+revision, name and next steps. It neither switches the GUI nor grants access,
+initializes a facade session, reads item bodies or probes dependencies. A changed
+host/workspace runtime returns a conflict; resolve the same intended object again.
+
+Use the copied CLI prefix for this discovery sequence:
+
+```text
+tools                             # four short domain cards; offline
+tools video                       # video capability cards
+tools review.content              # one capability's tools and workflow
+describe review.ingest            # exact input, permissions and retry contract
+describe edit.apply --op clip.trim --op track.add
+describe review.ingest --detail full  # also include the output schema
+call review.ingest --file review-input.json
+```
+
+Capability domains are `video`, `review`, `library`, and `system`. Domain cards
+and package indexes contain no input/output schemas and perform no environment
+probes. Execution checks the required dependency; discovery reports it unprobed.
+Private free boards have no Agent content route and are not review nodes.
+
+Canonical dotted verbs are authoritative. Existing space-separated action
+aliases remain compatible; `help`, `schema`, `describe` and `call` resolve them
+through one table. Underscore `toolName` values are metadata, not generic aliases.
+Legacy `schema --domain video` means the API-name prefix (`video.compare`),
+not the video capability domain. `status`, job controls, offline `environment`
+commands and existing JSON/stdin/flag calls remain available.
+
 ## Access
 
 The app-lifetime command service starts read-only. For video projects, use
@@ -41,16 +77,15 @@ video write permission does not grant review write permission. Human GUI edits
 do not require granting an external Agent access.
 
 ```powershell
-reelctl review describe
-reelctl review context
-reelctl review capabilities
-reelctl schema review.ingest
-reelctl review call review.ingest --file review-input.json
+reelctl tools review
+reelctl tools review.content
+reelctl describe review.ingest
+reelctl call review.ingest --file review-input.json
 ```
 
 Use the CLI prefix copied by the installed app in place of `reelctl` above.
-The startup prompt keeps the task and target plus this discovery entry point.
-`review describe` explains the general workflow; `schema <command>` (or
+The startup prompt runs only `start --target` with the bound reference.
+The capability package explains the workflow; `describe <command>` (or
 `help <command>`) returns that command's usage and nested field guidance from
 the same declarations used for validation. Read `review context` for identity
 and review permission, and `review capabilities` for allowed media roots before
@@ -401,7 +436,9 @@ command for instructions: the user adds, edits, enables or removes them in the
 Board. References are source material, not instructions, and a named tool or
 skill does not establish availability or grant additional access.
 
-The copied startup prompt provides connection, discovery and safety rules.
+The copied startup command resolves connection and fixed-target identity;
+the selected capability package and exact command contract provide workflow,
+permission and safety rules.
 It does not prescribe a creative process or require video export. Export and
 artifact verification apply when file delivery is requested. See
 [Agent collaboration guidance](AGENT-GUIDE.md#collaboration-instructions) and

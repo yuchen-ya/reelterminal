@@ -43,6 +43,7 @@ function installBridge(
   }));
   const getStartupInfo = vi.fn(async () => ({
     cliCommand: "& 'C:/ReelTerminal/reelctl.cmd'",
+    startCommand: "& 'C:/ReelTerminal/reelctl.cmd' start --target rt1.fixed-project-workspace",
     shell: "PowerShell",
     workspaceRoot: "E:/Data/agent-workspace",
   }));
@@ -71,7 +72,7 @@ describe("CollabStatusBar Agent Access status", () => {
   beforeEach(() => {
     delete openreelWindow.reelterminal;
     useUIStore.setState({ activeModal: null });
-    useProjectStore.setState((state) => ({ project: { ...state.project, requirements: undefined } }));
+    useProjectStore.setState((state) => ({ project: { ...state.project, requirements: undefined }, workspaceId: "workspace-a" }));
     useCollabStore.setState({ sequence: 0, enabled: false, access: "write", currentAction: null });
     useCollabStore.setState({ startupHintShown: false });
     useNotificationStore.getState().clearAll();
@@ -116,10 +117,8 @@ describe("CollabStatusBar Agent Access status", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Copy Agent startup prompt/i }));
     await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
     expect(getStartupInfo).toHaveBeenCalledOnce();
-    expect(writeText.mock.calls[0][0]).toContain("& 'C:/ReelTerminal/reelctl.cmd' status");
-    expect(writeText.mock.calls[0][0]).toContain("E:/Data/agent-workspace");
-    expect(writeText.mock.calls[0][0]).toContain("call capabilities.get");
-    expect(writeText.mock.calls[0][0]).toContain("PowerShell");
+    expect(getStartupInfo).toHaveBeenCalledWith({ kind: "video", projectId: useProjectStore.getState().project.id, workspaceId: "workspace-a" });
+    expect(writeText.mock.calls[0][0]).toBe("Run now: & 'C:/ReelTerminal/reelctl.cmd' start --target rt1.fixed-project-workspace");
     await screen.findByText("Startup prompt copied");
 
     useNotificationStore.getState().clearAll();

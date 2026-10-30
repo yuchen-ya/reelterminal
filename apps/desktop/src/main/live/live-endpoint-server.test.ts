@@ -121,6 +121,9 @@ describe("live endpoint authentication + descriptor", () => {
   it("rejects API requests without a token or with the wrong token", async () => {
     expect((await api("/status", {}, "")).status).toBe(401);
     expect((await api("/status", {}, "wrong")).status).toBe(401);
+    expect((await api("/start?target=rt1.invalid", {}, "")).status).toBe(401);
+    expect((await api("/start?target=rt1.invalid", {}, "wrong")).status).toBe(401);
+    expect((await api("/start?target=rt1.invalid")).status).toBe(400);
   });
 
   it("enforces the documented route and methods", async () => {

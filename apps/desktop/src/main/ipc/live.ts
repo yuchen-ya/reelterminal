@@ -15,6 +15,7 @@ import { assertEditorIpcSender } from "./index";
 import { agentWorkspaceRoot } from "../live/host-instance";
 import type { LiveSessionHost } from "../live/live-session-host";
 import { agentStartupInfo } from "../live/agent-startup-info";
+import { agentTargetRequestSchema } from "../../shared/agent-target";
 
 const setAccessArgsSchema = z.object({
   access: z.enum(["read-only", "write"]),
@@ -91,14 +92,16 @@ export function registerLiveIpc(host: LiveSessionHost): void {
     }
     return host.purgeTrackedWorkFiles(request);
   });
-  ipcMain.handle(CHANNELS.collabGetStartupInfo, (event) => {
+  ipcMain.handle(CHANNELS.collabGetStartupInfo, async (event, raw) => {
     assertEditorIpcSender(event);
+    const target = raw === undefined ? undefined : await host.resolveStartupTarget(agentTargetRequestSchema.parse(raw));
     return agentStartupInfo({
       platform: process.platform,
       packaged: app.isPackaged,
       appPath: app.getAppPath(),
       executablePath: process.execPath,
       workspaceRoot: agentWorkspaceRoot(),
+      target,
     });
   });
   // Compatibility for renderers that still use the former service toggle:

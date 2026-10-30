@@ -306,6 +306,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export class LiveCommandClient {
   constructor(readonly endpoint: LiveEndpoint = readLiveEndpoint()) {}
 
+  async start(target: string): Promise<FacadeResult<unknown>> {
+    return await request(this.endpoint, { method: "GET", path: `/start?target=${encodeURIComponent(target)}` }) as FacadeResult<unknown>;
+  }
+
   async status(signal?: AbortSignal): Promise<LiveStatus> {
     const result = await request(this.endpoint, { method: "GET", path: "/status", ...(signal === undefined ? {} : { signal }) });
     if (!isRecord(result) || result.ok !== true || result.apiVersion !== 1) {
@@ -398,8 +402,8 @@ function cryptoRandomId(): string {
   return randomUUID();
 }
 
-export function catalogCommand(catalog: CommandCatalog, nameOrTool: string): CommandCatalogEntry | undefined {
-  return catalog.commands.find((entry) => entry.name === nameOrTool || entry.toolName === nameOrTool);
+export function catalogCommand(catalog: CommandCatalog, name: string): CommandCatalogEntry | undefined {
+  return catalog.commands.find((entry) => entry.name === name);
 }
 
 export function hasSchemaProperty(entry: CommandCatalogEntry, property: string): boolean {
