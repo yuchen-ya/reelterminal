@@ -280,7 +280,7 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
     return undefined;
   };
 
-  return <div ref={host} className="flex h-full min-h-0 flex-col" data-testid="human-board-canvas" data-board-id={initialBoard.id} data-save-state={saveState} data-exported-node-id={exportedNodeId}
+  return <div ref={host} className="flex h-full min-h-0 flex-col" data-testid="human-board-canvas" data-board-id={initialBoard.id} data-selected-element-id={selected.length === 1 ? selected[0].id : undefined} data-save-state={saveState} data-exported-node-id={exportedNodeId}
     onKeyDown={event => event.stopPropagation()}>
     <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-bg-1 px-3 py-1 text-xs">
       <input aria-label="画板名称" data-testid="human-board-name" className="w-40 rounded border border-border bg-bg-2 px-2 py-1" value={name} maxLength={200} onChange={event => { setName(event.target.value); board.current = { ...board.current, name: event.target.value.trim() || "未命名画板" }; scheduleSave(); }} />

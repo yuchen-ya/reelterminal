@@ -204,7 +204,8 @@ test("CLI image revisions retain decoded pixels, view state and explicit failure
     await page.evaluate(() => { (window as unknown as { reviewDecodeGate: { hold: boolean } }).reviewDecodeGate.hold = false; });
     await page.getByTestId("workbench-tree-panel").getByText("Clean second item", { exact: true }).click();
     await vi.waitFor(async () => expect(await image().getAttribute("src")).toContain(secondMediaId));
-    expect(await page.getByTestId("image-stage-pending-image").count()).toBe(0);
+    await page.getByTestId("image-stage-pending-image").waitFor({ state: "detached", timeout: 15_000 });
+    expect(await image().evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
     await page.getByTestId("workbench-tree-panel").getByText("Continuity house", { exact: true }).click();
     await vi.waitFor(async () => expect(await image().getAttribute("src")).toContain(fourth.item.revisions.at(-1)!.mediaId));
     expect(await image().getAttribute("src")).not.toContain(second.item.revisions.at(-1)!.mediaId);

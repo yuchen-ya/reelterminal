@@ -48,10 +48,23 @@ async function elementPoint(page: Page, element: BoardElement) {
     const content = kind === "model3d"
       ? page.locator(`[data-testid="model-preview"][data-resource-id="${resourceId}"]`)
       : page.locator(`video[src$="/${resourceId}"]`);
-    return content.evaluate(node => {
-      const bounds = node.closest(".excalidraw__embeddable-container__inner")!.getBoundingClientRect();
-      return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-    });
+    return content.evaluate(node => new Promise<{ x: number; y: number }>((resolve, reject) => {
+      let previous = "", stable = 0;
+      const deadline = performance.now() + 5000;
+      const inspect = () => {
+        const bounds = node.closest(".excalidraw__embeddable-container__inner")!.getBoundingClientRect();
+        const scene = node.closest('[data-testid="human-board-scene"]')!.getBoundingClientRect();
+        const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
+        const current = [bounds.x, bounds.y, bounds.width, bounds.height].join(":");
+        const visible = x > scene.left && x < scene.right && y > scene.top && y < scene.bottom;
+        stable = visible && current === previous ? stable + 1 : 0;
+        previous = current;
+        if (stable >= 2) resolve({ x, y });
+        else if (performance.now() >= deadline) reject(new Error("Embedded media did not settle inside the board viewport"));
+        else requestAnimationFrame(inspect);
+      };
+      requestAnimationFrame(inspect);
+    }));
   }
   const boardId = await page.getByTestId("human-board-canvas").getAttribute("data-board-id");
   const board = (await boards(page)).find(board => board.id === boardId)!;
@@ -59,6 +72,18 @@ async function elementPoint(page: Page, element: BoardElement) {
   if (!bounds) throw new Error("Human board surface is absent");
   const zoom = board.appState.zoom?.value ?? 1;
   return { x: bounds.x + (element.x + element.width / 2 + (board.appState.scrollX ?? 0)) * zoom, y: bounds.y + (element.y + element.height / 2 + (board.appState.scrollY ?? 0)) * zoom };
+}
+
+async function activateMedia(page: Page, element: BoardElement) {
+  const scene = page.getByTestId("human-board-scene").locator(".excalidraw");
+  await scene.focus(); await page.keyboard.press("Escape");
+  let at = await elementPoint(page, element);
+  await page.mouse.click(at.x, at.y);
+  await vi.waitFor(async () => expect(await page.getByTestId("human-board-canvas").getAttribute("data-selected-element-id")).toBe(element.id), { timeout: 10_000 });
+  // Selecting a newly added image can still finish its automatic fit. Observe
+  // the selected object's live, settled position before entering its controls.
+  at = await elementPoint(page, element);
+  await page.mouse.dblclick(at.x, at.y);
 }
 
 test("private mixed-media board appends in one scene, exports one frozen container and retains undo resources", async () => {
@@ -319,13 +344,11 @@ test("video/model interactions retain board geometry and freeze source views wit
     await vi.waitFor(async () => expect(await page.getByTestId("model-preview").getAttribute("data-phase")).toBe("ready"), { timeout: 20_000 });
     const original = (await boards(page))[0];
     const videoElement = original.elements.find(element => element.customData?.kind === "video")!;
-    const videoPoint = await elementPoint(page, videoElement);
-    await page.mouse.dblclick(videoPoint.x, videoPoint.y);
+    await activateMedia(page, videoElement);
     await page.getByLabel("视频定位秒").fill("0.8");
     await vi.waitFor(async () => expect(await video.evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(0.8, 2));
     const modelElement = original.elements.find(element => element.customData?.kind === "model3d")!;
-    const modelPoint = await elementPoint(page, modelElement);
-    await page.mouse.dblclick(modelPoint.x, modelPoint.y);
+    await activateMedia(page, modelElement);
     const internalLink = page.locator('.excalidraw-hyperlinkContainer a[href^="https://human-board.invalid/"]');
     await expect.poll(async () => internalLink.count()).toBeGreaterThan(0);
     expect(await internalLink.first().isVisible()).toBe(false);
@@ -341,8 +364,7 @@ test("video/model interactions retain board geometry and freeze source views wit
     const observation = () => page.getByTestId("model-preview").getAttribute("data-observation");
     // The hidden-link security probe above is a separate synthetic click. Enter
     // the model again through real pointer input before testing its controls.
-    const activeModelPoint = await elementPoint(page, modelElement);
-    await page.mouse.dblclick(activeModelPoint.x, activeModelPoint.y);
+    await activateMedia(page, modelElement);
     await vi.waitFor(async () => expect(await modelHost.evaluate(host => getComputedStyle(host.closest(".excalidraw__embeddable-container__inner")!).pointerEvents)).toBe("all"));
     const oldObservation = await observation();
     const modelCanvas = modelHost.locator("canvas");
@@ -389,14 +411,13 @@ test("video/model interactions retain board geometry and freeze source views wit
     evidence.record("mediaFreeze", { area, png: { width: decoded.width, height: decoded.height }, frozenTime, oldObservation, newObservation: await observation(), componentControlsExcluded: true, boardGeometryUnchanged: true });
     await page.getByRole("button", { name: "关闭输出", exact: true }).click();
     const beforeCaptureCount = (await boards(page))[0].elements.filter(element => !element.isDeleted).length;
-    await page.mouse.dblclick((await elementPoint(page, videoElement)).x, (await elementPoint(page, videoElement)).y);
+    await activateMedia(page, videoElement);
     await page.getByTestId("human-board-video-capture").click();
     await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(beforeCaptureCount + 1), { timeout: 20_000 });
     evidence.record("videoSourceFrameAdded", true);
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("Shift+1");
     await saved(page);
-    const captureModelPoint = await elementPoint(page, modelElement);
-    await page.mouse.dblclick(captureModelPoint.x, captureModelPoint.y);
+    await activateMedia(page, modelElement);
     await page.getByTestId("model-capture").click();
     await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted)).toHaveLength(beforeCaptureCount + 2), { timeout: 20_000 });
     evidence.record("modelSourceViewAdded", true);

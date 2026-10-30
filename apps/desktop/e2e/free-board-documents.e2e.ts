@@ -456,13 +456,15 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     await saved(page);
     // The HTML was brought forward above. Select the webpage's exposed top
     // header, bring it forward too, then enter its unobscured content.
-    const webCorner = await point(page, { ...webpage, x: webpage.x + webpage.width / 2, y: webpage.y + 16, width: 0, height: 0 });
+    const webBounds = (await page.locator('[data-document-kind="webpage"]').boundingBox())!;
+    const webCorner = { x: webBounds.x + webBounds.width / 2, y: webBounds.y + 8 };
     await page.mouse.click(webCorner.x, webCorner.y);
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus();
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+]" : "Control+Shift+]");
+    await page.getByTestId("human-board-scene").getByRole("button", { name: /^置于顶层/ }).click();
     await saved(page);
     await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted).at(-1)?.id).toBe(webpage.id));
-    const webCenter = await point(page, webpage);
+    const currentWebBounds = (await page.locator('[data-document-kind="webpage"]').boundingBox())!;
+    const webCenter = { x: currentWebBounds.x + currentWebBounds.width / 2, y: currentWebBounds.y + currentWebBounds.height / 2 };
     await page.mouse.dblclick(webCenter.x, webCenter.y);
     await page.locator('[data-document-kind="webpage"]').getByTestId("human-board-document-browse").click();
     await vi.waitFor(async () => expect(await page.getByTestId("human-board-browser").getAttribute("data-state")).toBe("error"), { timeout: 30_000 });
