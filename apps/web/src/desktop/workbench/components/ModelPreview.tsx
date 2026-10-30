@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ModelObservation } from "@reelterminal/core/types/workbench";
+import type { FileResource } from "@reelterminal/core/review/types";
 import { reviewService } from "../../../services/review-workspace/service";
 import type { ModelPreviewRuntime, PreviewInfo, StandardView } from "../model-preview/runtime";
 import { wbButton } from "../wb-button";
@@ -8,8 +9,10 @@ const selectControl = "h-7 rounded-[6px] border border-border bg-bg-2 px-2 text-
 
 export interface ModelCapture { blob: Blob; observation: ModelObservation }
 
-export function ModelPreview({ resourceId, restore, onCapture, onRuntime, onObservation }: {
+export function ModelPreview({ resourceId, restore, onCapture, onRuntime, onObservation, resource: suppliedResource, captureLabel = "截图反馈" }: {
   resourceId: string; restore?: ModelObservation;
+  resource?: FileResource;
+  captureLabel?: string;
   onCapture?: (capture: ModelCapture) => void;
   onRuntime?: (runtime: ModelPreviewRuntime | null) => void;
   onObservation?: (view: ModelObservation) => void;
@@ -29,7 +32,7 @@ export function ModelPreview({ resourceId, restore, onCapture, onRuntime, onObse
     let cancelled = false;
     setPhase("loading"); setInfo(undefined); setView(undefined); setError(""); setPlaying(false);
     const load = async () => {
-      const [resource] = await reviewService.getResources([resourceId]);
+      const resource = suppliedResource ?? (await reviewService.getResources([resourceId]))[0];
       if (cancelled) return;
       setFileInfo(`${resource.originalFileName} · ${resource.size.toLocaleString()} B`);
       if (resource.modelPreview && resource.modelPreview.status !== "ready") throw new Error(resource.modelPreview.reason ?? "模型不支持预览");
@@ -54,7 +57,7 @@ export function ModelPreview({ resourceId, restore, onCapture, onRuntime, onObse
       setError(problem instanceof Error ? problem.message : String(problem)); setPhase("error");
     });
     return () => { cancelled = true; runtime.current?.dispose(); runtime.current = null; callbacks.current.onRuntime?.(null); };
-  }, [resourceId, restore, attempt]);
+  }, [resourceId, suppliedResource, restore, attempt]);
 
   const animate = (index: number, time: number, play: boolean) => { runtime.current!.setAnimation(index, time, play); setPlaying(play); };
 
@@ -68,7 +71,7 @@ export function ModelPreview({ resourceId, restore, onCapture, onRuntime, onObse
         <select className={selectControl} aria-label="模型背景" value={view?.background ?? "dark"} disabled={phase !== "ready"} onChange={event => { runtime.current!.setBackground(event.target.value as "light" | "dark"); setView(runtime.current!.observation()); }}>
           <option value="dark">深背景</option><option value="light">浅背景</option>
         </select>
-        {onCapture && <button className={wbButton.secondary} disabled={phase !== "ready"} data-testid="model-capture" onClick={() => { setPlaying(false); void runtime.current!.capture().then(onCapture).catch(problem => setError(String(problem))); }}>截图反馈</button>}
+        {onCapture && <button className={wbButton.secondary} disabled={phase !== "ready"} data-testid="model-capture" onClick={() => { setPlaying(false); void runtime.current!.capture().then(onCapture).catch(problem => setError(String(problem))); }}>{captureLabel}</button>}
       </div>
       <div ref={host} className="relative grid min-h-[220px] flex-1 place-items-center overflow-hidden" data-testid="model-canvas-host" />
       {phase !== "ready" && (

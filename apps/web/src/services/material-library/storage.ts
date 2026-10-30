@@ -26,7 +26,7 @@ import { upgradeReviewStores } from "../review-workspace/schema";
 
 // Persisted database name for materials, journal entries, and blobs.
 export const MATERIAL_LIBRARY_DB_NAME = LEGACY_MATERIAL_LIBRARY_DB_NAME;
-export const MATERIAL_LIBRARY_DB_VERSION = 2;
+export const MATERIAL_LIBRARY_DB_VERSION = 3;
 
 export interface MaterialStorageCommit {
   /** Raw, atomically read input state. Checked inside the write transaction. */
@@ -132,6 +132,9 @@ export function openMaterialDatabase(): Promise<IDBDatabase> {
         db.createObjectStore("blobs", { keyPath: "id" });
       }
       upgradeReviewStores(db);
+      if (!db.objectStoreNames.contains("humanBoards")) {
+        db.createObjectStore("humanBoards", { keyPath: "id" });
+      }
     };
     request.onsuccess = () => {
       const database = request.result;

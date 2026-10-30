@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
 import type { ReviewContext, ReviewGroup, ReviewNode } from "@reelterminal/core/review/types";
@@ -29,6 +29,9 @@ import { ReviewAdminMenu } from "../workbench/components/ReviewAdminMenu";
 import { ReviewBranchDialog } from "../workbench/components/ReviewBranchDialog";
 import { ReviewBranchListDialog } from "../workbench/components/ReviewBranchListDialog";
 import "../workbench/workbench.css";
+import type { WorkbenchItemView } from "../workbench/types";
+
+const HumanBoardHome = lazy(() => import("../workbench/human-board/HumanBoardHome"));
 
 const input = "min-w-0 rounded-md border border-border bg-bg-2 px-2.5 py-1.5 text-xs text-fg";
 const report = (error: unknown) => toast.error(error instanceof Error ? error.message : String(error));
@@ -39,6 +42,14 @@ const textEntry = (element: Element | null) =>
 
 export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
   const { t } = useTranslation();
+  const [surface, setSurface] = useState<"review" | "human">(() => localStorage.getItem("reelterminal.workbench.surface") === "human" ? "human" : "review");
+  const [boardIncoming, setBoardIncoming] = useState<WorkbenchItemView | null>(null);
+  const chooseSurface = (value: "review" | "human") => { setSurface(value); localStorage.setItem("reelterminal.workbench.surface", value); };
+  useEffect(() => {
+    const listener = (event: Event) => { setBoardIncoming((event as CustomEvent<WorkbenchItemView>).detail); chooseSurface("human"); };
+    window.addEventListener("reelterminal:add-to-human-board", listener);
+    return () => window.removeEventListener("reelterminal:add-to-human-board", listener);
+  }, []);
   const [context, setContext] = useState<ReviewContext | null>(null);
   const [directory, setDirectory] = useState<{
     groups: readonly ReviewGroup[];
@@ -217,6 +228,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     const listener = (event: Event) => {
       const direction: unknown = (event as CustomEvent).detail;
       if (direction !== "undo" && direction !== "redo") return;
+      if (surface === "human") { window.dispatchEvent(new CustomEvent("reelterminal:human-board-history", { detail: direction })); return; }
       const active = document.activeElement;
       if (textEntry(active) || active?.closest('[role="dialog"]')) return;
       if (legacy) void useProjectStore.getState()[direction]();
@@ -225,7 +237,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     };
     window.addEventListener("reelterminal:review-history", listener);
     return () => window.removeEventListener("reelterminal:review-history", listener);
-  }, [legacy, directoryHistory]);
+  }, [legacy, directoryHistory, surface]);
 
   const copyInstructions = async (node?: ReviewNode) => {
     if (!context) throw reviewError("CONFLICT", "审阅服务尚未载入");
@@ -295,7 +307,11 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
       data-testid="review-page"
       data-workbench-scope="true"
     >
-      {legacy && hasProject ? (
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-bg-1 px-3 text-xs">
+        <button className={surface === "review" ? wbButton.primary : wbButton.ghost} data-testid="review-surface-tab" onClick={() => chooseSurface("review")}>审阅节点</button>
+        <button className={surface === "human" ? wbButton.primary : wbButton.ghost} data-testid="human-board-tab" onClick={() => chooseSurface("human")}>人工画板</button>
+      </div>
+      {surface === "human" ? <Suspense fallback={<div className="p-8 text-sm">正在载入人工画板…</div>}><div className="min-h-0 flex-1"><HumanBoardHome incomingItem={boardIncoming} onIncomingConsumed={() => setBoardIncoming(null)} onOpenReview={nodeId => { chooseNode(nodeId); chooseSurface("review"); }} /></div></Suspense> : legacy && hasProject ? (
         <>
           <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3">
             <button

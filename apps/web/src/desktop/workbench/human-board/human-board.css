@@ -1,0 +1,5 @@
+/* Media embed identifiers are internal routing, not external links. */
+[data-testid="human-board-canvas"] .excalidraw-hyperlinkContainer:has(a[href^="https://human-board.invalid/"]),
+[data-testid="human-board-canvas"] .excalidraw-hyperlinkContainer:has(input[value^="https://human-board.invalid/"]) {
+  display: none;
+}

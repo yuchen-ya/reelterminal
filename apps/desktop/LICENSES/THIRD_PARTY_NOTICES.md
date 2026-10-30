@@ -21,6 +21,11 @@ copyright and license notice included as `LICENSE.txt`.
   [`../DISTRIBUTION.md`](../DISTRIBUTION.md)); they are not third-party code.
 - The renderer includes local font assets and their family-specific license
   texts under `resources/renderer/fonts/licenses/`.
+- The independent human board embeds Excalidraw 0.18.1 (MIT). Its upstream
+  copyright and the notices for its bundled Assistant, Cascadia Code, Comic
+  Shanns, Excalifont, Liberation Sans, Lilita One, Nunito, Virgil and Xiaolai
+  fonts are in `LICENSES/excalidraw/`. Font files are copied without alteration
+  from the published npm package to `renderer/excalidraw-assets/fonts/`.
 
 ## JavaScript packages
 

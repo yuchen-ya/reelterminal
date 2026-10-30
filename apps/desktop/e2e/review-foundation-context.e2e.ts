@@ -117,11 +117,12 @@ describe("review foundation: actual no-project CLI discovery and IDB upgrade", (
         transaction.oncomplete = () => resolve({ material: material.result, journal: journal.result, blob: blob.result.blob });
         transaction.onabort = () => reject(transaction.error);
       });
-      const result = { version: database.version, material: snapshot.material, journal: snapshot.journal, bytes: await snapshot.blob.text() };
+      const result = { version: database.version, hasHumanBoards: database.objectStoreNames.contains("humanBoards"), material: snapshot.material, journal: snapshot.journal, bytes: await snapshot.blob.text() };
       database.close();
       return result;
     }, LEGACY_IDB_MATERIAL_LIBRARY);
-    expect(stored.version).toBe(2);
+    expect(stored.version).toBe(3);
+    expect(stored.hasHumanBoards).toBe(true);
     expect(stored.bytes).toBe("original legacy bytes");
     expect(stored.material).toEqual({ id: "legacy-preservation-probe", revision: 7, userNotes: "human notes stay exact" });
     expect(stored.journal).toEqual({ id: "legacy-journal", order: { sequence: 9 } });

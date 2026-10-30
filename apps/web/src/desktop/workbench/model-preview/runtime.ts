@@ -205,11 +205,19 @@ export class ModelPreviewRuntime {
       animation: clip ? { index: this.animationIndex, name: clip.name || `Animation ${this.animationIndex + 1}`, time: this.action?.time ?? 0 } : null,
       viewport: { width: this.renderer.domElement.clientWidth, height: this.renderer.domElement.clientHeight } };
   }
-  async capture(): Promise<{ blob: Blob; observation: ModelObservation }> {
+  async capture(size?: { width: number; height: number }): Promise<{ blob: Blob; observation: ModelObservation }> {
     this.playing = false; this.stopFrame(); this.render(true);
     const observation = this.observation(); this.changed(observation);
-    const blob = await new Promise<Blob>((resolve, reject) => this.renderer.domElement.toBlob(value => value ? resolve(value) : reject(new Error("截图失败")), "image/png"));
-    return { blob, observation };
+    if (size) {
+      this.renderer.setPixelRatio(1);
+      this.renderer.setSize(size.width, size.height, false);
+      this.camera.aspect = size.width / size.height;
+      this.camera.updateProjectionMatrix(); this.render(true);
+    }
+    try {
+      const blob = await new Promise<Blob>((resolve, reject) => this.renderer.domElement.toBlob(value => value ? resolve(value) : reject(new Error("截图失败")), "image/png"));
+      return { blob, observation };
+    } finally { if (size) this.resize(); }
   }
   private render(force = false): void {
     if (this.disposed || (!force && (this.initializing || !this.visible || document.hidden))) return;

@@ -1,4 +1,11 @@
 {
+  "@excalidraw/excalidraw": {
+    "0.18.1": {
+      "file": "LICENSES/excalidraw/Excalidraw-MIT.txt",
+      "license": "MIT",
+      "url": "https://github.com/excalidraw/excalidraw/blob/v0.18.0/LICENSE"
+    }
+  },
   "@astryxdesign/core": {
     "0.1.1": {
       "file": "LICENSES/npm-upstream/astryx-core-0.1.1.txt",
