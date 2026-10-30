@@ -29,13 +29,13 @@ function bytes(value: number): string {
 const button =
   "rounded-md border border-border bg-bg-2 px-3 py-2 text-sm text-fg hover:bg-bg-3 disabled:opacity-40";
 const actionLabels: Record<string, string> = {
-  "purge-media": "清理无引用受管素材",
-  "recycle-nodes": "将选中节点移到回收站",
-  "restore-nodes": "恢复选中节点",
-  "purge-deleted-nodes": "永久清除已删除节点及独占素材",
+  "purge-media": "清理不再使用的应用内素材",
+  "recycle-nodes": "将所选存档移入回收站",
+  "restore-nodes": "恢复所选存档",
+  "purge-deleted-nodes": "永久删除回收站中的所选存档",
   "purge-cache": "清理可重建缓存",
-  "purge-failed-jobs": "清理失败作业记录与输入快照",
-  "purge-work-files": "清理选中的过程文件 / 未采用尝试",
+  "purge-failed-jobs": "清理失败任务记录",
+  "purge-work-files": "清理选中的临时文件与未采用结果",
 };
 
 export function ExportCleanupPage(): JSX.Element {
@@ -55,6 +55,11 @@ export function ExportCleanupPage(): JSX.Element {
   const target = useMemo(
     () => session?.target ?? activeTarget,
     [session?.target, activeTarget],
+  );
+  const hasPlanChanges = plan !== null && (
+    plan.candidateMedia.length > 0 || plan.candidateCache.length > 0 ||
+    plan.candidateJobs.length > 0 || plan.candidateWorkFiles.length > 0 ||
+    (["recycle-nodes", "restore-nodes", "purge-deleted-nodes"].includes(plan.action) && plan.selection.nodeIds.length > 0)
   );
   const cleanupNodeIds =
     action === "purge-cache" || action === "purge-failed-jobs" || action === "purge-work-files" ? [] : nodeIds;
@@ -158,7 +163,7 @@ export function ExportCleanupPage(): JSX.Element {
           <div>
             <h1 className="text-lg font-semibold">导出与整理</h1>
             <p className="mt-1 text-xs text-fg-muted">
-              先审查引用，再确认具体计划。成片与源素材分别保留。
+              查看导出结果，或释放应用占用的空间。先预览清理内容，确认后才会删除；原始文件和导出视频会保留。
             </p>
           </div>
           <button
@@ -199,26 +204,29 @@ export function ExportCleanupPage(): JSX.Element {
           </div>
         ) : null}
         {target ? (
-          <p className="mt-3 break-all font-mono text-[11px] text-fg-muted">
+          <details className="mt-3 text-xs text-fg-muted">
+            <summary className="cursor-pointer">项目与导出技术详情</summary>
+            <p className="mt-2 break-all font-mono">
             工程 {target.projectId} · 工作区 {target.workspaceId}
             {target.exportId ? ` · 导出 ${target.exportId}` : " · 未绑定导出"}
-          </p>
+            </p>
+          </details>
         ) : null}
       </header>
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(300px,1fr)_minmax(360px,1fr)]">
         <div className="overflow-auto border-r border-border p-6">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold">工程节点图</h2>
+            <h2 className="font-semibold">1. 选择项目存档</h2>
             <button
               className={button}
               disabled={busy || !target}
               onClick={() => void refresh()}
             >
-              重新审查
+              刷新检查
             </button>
           </div>
           <p className="my-3 text-xs text-fg-muted">
-            多选按联合引用计算。回收站节点仍保留素材，只有永久清除计划才计算释放。
+            清理素材或管理存档时，请勾选下方存档。清理缓存和失败任务无需选择。仍被其他项目或历史版本使用的素材会保留。
           </p>
           <div className="relative" data-testid="cleanup-node-graph">
             <svg
@@ -275,8 +283,7 @@ export function ExportCleanupPage(): JSX.Element {
                 >
                   {node.parentNodeIds.length
                     ? `来自 ${review?.nodes.find((parent) => parent.nodeId === node.parentNodeIds[0])?.name ?? "已清除的父节点"}`
-                    : "根节点"}{" "}
-                  · {node.nodeId}
+                    : "首次存档"}
                 </p>
                 <p className="mt-2 text-xs text-fg-2">
                   {node.media.length} 个素材 · 独占{" "}
@@ -302,18 +309,18 @@ export function ExportCleanupPage(): JSX.Element {
             ))}
             {review && review.nodes.length === 0 ? (
               <p className="rounded-lg border border-border p-5 text-sm text-fg-muted">
-                尚无保存节点。当前工作区、历史和恢复草稿依然受保护。
+                还没有项目存档。可以先清理缓存；当前编辑和自动恢复数据会保留。
               </p>
             ) : null}
           </div>
           {review ? (
             <div className="mt-4 rounded-lg border border-border bg-bg-1 p-4 text-sm">
-              <strong>已选 {nodeIds.length} 个节点</strong>
+              <strong>已选 {nodeIds.length} 个存档</strong>
               <p className="mt-1">
-                联合独占素材 {bytes(review.selected.reclaimableBytes)}
+                仅由所选存档使用的素材：{bytes(review.selected.reclaimableBytes)}
               </p>
               <p className="mt-1 text-xs text-fg-muted">
-                全局保留引用 {review.retainedSummary.references.length} 项。最终可释放量以计划检查为准。
+                其他项目、存档和编辑历史仍在使用的素材会保留。实际可清理大小请查看右侧预览。
               </p>
               <details className="mt-3 text-xs">
                 <summary className="cursor-pointer">
@@ -348,7 +355,7 @@ export function ExportCleanupPage(): JSX.Element {
           ) : null}
         </div>
         <div className="overflow-auto p-6">
-          <h2 className="font-semibold">现在整理</h2>
+          <h2 className="font-semibold">2. 选择要清理的内容</h2>
           <label className="mt-3 block text-xs text-fg-muted">
             整理动作
             <select
@@ -430,8 +437,10 @@ export function ExportCleanupPage(): JSX.Element {
               })
             }
           >
-            现在整理 · 生成审查计划
+            {busy ? "正在检查…" : "预览清理内容"}
           </button>
+          <details className="mt-4 rounded-lg border border-border p-3">
+            <summary className="cursor-pointer text-sm">交给 Agent 协助检查（可选）</summary>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
               className={button}
@@ -465,8 +474,9 @@ export function ExportCleanupPage(): JSX.Element {
           <p className="mt-3 text-xs text-fg-muted">
             未采用生成尝试与失败作业残留需要用途和归属证据。发布任务授权审查；执行仍需确认具体计划。
           </p>
+          </details>
           <details className="mt-4 rounded-lg border border-border p-3 text-xs">
-            <summary className="cursor-pointer font-medium">source / work / project / output 文件审查</summary>
+            <summary className="cursor-pointer font-medium">临时文件与未采用结果（高级）</summary>
             <p className="mt-2 text-fg-muted">正式素材见节点引用，工程见节点图。生产任务按实际用途登记；删除未采用尝试后无法再次注册该结果，且可能无法原样重建，需逐项选择。成片、已采用素材和受引用文件保留。</p>
             {review?.workFiles.files.map((file) => (
               <label key={`${file.jobId}:${file.fileId}`} className="mt-3 flex gap-2 rounded border border-border p-2">
@@ -519,11 +529,14 @@ export function ExportCleanupPage(): JSX.Element {
               className="mt-5 rounded-lg border border-accent p-4"
               data-testid="cleanup-confirmation"
             >
-              <h3 className="font-semibold">确认这份整理计划</h3>
-              <p className="mt-2 break-all text-xs text-fg-muted">
+              <h3 className="font-semibold">3. 确认清理内容</h3>
+              <details className="mt-2 text-xs text-fg-muted">
+                <summary className="cursor-pointer">本次检查的技术详情</summary>
+                <p className="mt-2 break-all">
                 计划 {plan.planId}
                 {` · 此次审查版本 ${plan.revision}${session ? ` · 导出来源版本 ${session.target.revision}` : ""}`}
-              </p>
+                </p>
+              </details>
               <p className="mt-3 text-sm">
                 {actionLabels[plan.action]} · 预计释放{" "}
                 {bytes(plan.reclaimableBytes)}
@@ -622,6 +635,11 @@ export function ExportCleanupPage(): JSX.Element {
                   ))}
                 </ul>
               ) : null}
+              {!hasPlanChanges && (
+                <p role="status" className="my-3 text-sm text-fg-2">
+                  没有可清理的内容，无需执行。仍在使用或无法确认用途的文件已保留。
+                </p>
+              )}
               <div className="flex gap-2">
                 <button
                   className={button}
@@ -632,7 +650,7 @@ export function ExportCleanupPage(): JSX.Element {
                 </button>
                 <button
                   className={`${button} border-red-500 text-red-400`}
-                  disabled={busy || plan.status !== "ready"}
+                  disabled={busy || plan.status !== "ready" || !hasPlanChanges}
                   onClick={() =>
                     void perform(async () => {
                       const outcome = await executeCleanupPlan({
@@ -645,7 +663,7 @@ export function ExportCleanupPage(): JSX.Element {
                     })
                   }
                 >
-                  确认执行此计划
+                  {busy ? "正在执行…" : "确认执行"}
                 </button>
               </div>
             </div>

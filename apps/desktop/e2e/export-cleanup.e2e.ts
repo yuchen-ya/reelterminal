@@ -108,6 +108,7 @@ test("human export, review handoff, explicit cleanup and retained media survive 
 
     await page.getByRole("checkbox", { name: "选择节点 整理验收节点" }).check();
     await page.getByLabel("整理动作").selectOption("recycle-nodes");
+    await page.getByText("交给 Agent 协助检查（可选）", { exact: true }).click();
     const clipboardHostRoundTrip = await app.evaluate(async ({ clipboard }) => {
       const previous = await clipboard.readText();
       try {
@@ -156,7 +157,7 @@ test("human export, review handoff, explicit cleanup and retained media survive 
     expect(reviewTask.cleanupHandoff.phase).toBe("pending_review");
 
     await page
-      .getByRole("button", { name: "现在整理 · 生成审查计划", exact: true })
+      .getByRole("button", { name: "预览清理内容", exact: true })
       .click();
     await page.getByTestId("cleanup-confirmation").waitFor();
     await page.getByRole("button", { name: "取消", exact: true }).click();
@@ -169,10 +170,10 @@ test("human export, review handoff, explicit cleanup and retained media survive 
       ).nodes.some((node) => node.id === saved.node.id),
     ).toBe(true);
     await page
-      .getByRole("button", { name: "现在整理 · 生成审查计划", exact: true })
+      .getByRole("button", { name: "预览清理内容", exact: true })
       .click();
     await page
-      .getByRole("button", { name: "确认执行此计划", exact: true })
+      .getByRole("button", { name: "确认执行", exact: true })
       .click();
     await vi.waitFor(async () =>
       expect(
@@ -280,13 +281,13 @@ test("human export, review handoff, explicit cleanup and retained media survive 
     expect(existsSync(residualFile.path)).toBe(true);
     const recordsWhileArtifactsExist = value(await agent.callCommand<any>("media.cleanup.plan", { ...target, action: "purge-failed-jobs", jobIds: [residualJobId] }));
     expect(recordsWhileArtifactsExist.status).toBe("review-required");
-    await page.getByRole("button", { name: "重新审查", exact: true }).click();
-    await page.getByText("source / work / project / output 文件审查", { exact: true }).click();
+    await page.getByRole("button", { name: "刷新检查", exact: true }).click();
+    await page.getByText("临时文件与未采用结果（高级）", { exact: true }).click();
     await page.getByRole("checkbox", { name: `选择过程文件 ${residualFile.selectionId}`, exact: true }).check();
     await page.getByLabel("整理动作").selectOption("purge-work-files");
-    await page.getByRole("button", { name: "现在整理 · 生成审查计划", exact: true }).click();
+    await page.getByRole("button", { name: "预览清理内容", exact: true }).click();
     await page.getByTestId("cleanup-confirmation").getByText(residualFile.path, { exact: true }).waitFor();
-    await page.getByRole("button", { name: "确认执行此计划", exact: true }).click();
+    await page.getByRole("button", { name: "确认执行", exact: true }).click();
     await vi.waitFor(() => expect(existsSync(residualFile.path)).toBe(false));
     const workResult = page.getByRole("status").filter({ has: page.getByRole("heading", { name: "整理结果", exact: true }) });
     await vi.waitFor(async () => {
