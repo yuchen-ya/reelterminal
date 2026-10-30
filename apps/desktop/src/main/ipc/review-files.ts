@@ -9,6 +9,8 @@ import { getDataRootLayout } from "../data-root";
 import { ReviewFileStore } from "../review-file-store";
 import { resolveContainedPathDetailed } from "@reelterminal/agent-facade/media/path-roots";
 import { inspectReviewMedia } from "../review-media-probe";
+import { isAllocatedTempFile } from "./fs";
+import { extractReviewFileFrames } from "../live/review-media-bridge";
 
 let store: ReviewFileStore | undefined;
 export function getReviewFileStore(): ReviewFileStore {
@@ -27,6 +29,17 @@ export async function fileReply<T>(operation: () => Promise<T>): Promise<{ ok: t
 }
 
 export function registerReviewFilesIpc(mediaRoots: () => readonly string[]): void {
+  handle(CHANNELS.reviewFilesCaptureFrame, z.object({ resourceId: z.string().uuid(), frameIndex: z.number().int().nonnegative(),
+    nodeRevision: z.number().int().nonnegative(), operationId: z.string().uuid(), outputResourceId: z.string().uuid() }).strict(), args => fileReply(async () => {
+    const store = getReviewFileStore();
+    const decoded = await extractReviewFileFrames(store, args.resourceId, [args.frameIndex], args.nodeRevision);
+    const frame = decoded.frames[0];
+    const resource = await store.prepare({ operationId: args.operationId, resourceId: args.outputResourceId, sourcePath: frame.artifact.path,
+      originalFileName: `frame-${frame.frame}.png`, mime: "image/png", source: "agent", inspect: file => inspectReviewMedia(file, "image/png") });
+    const resolved = await store.resolve(resource.id, true);
+    return { resource, path: resolved.path, frameIndex: frame.frame, ptsTimeSec: frame.ptsTimeSec,
+      timing: decoded.facts.frameTiming.timing, sourceResourceId: args.resourceId };
+  }));
   handle(CHANNELS.reviewFilesCollect, z.object({ registeredIds: z.array(z.string().uuid()).max(500000) }).strict(),
     args => fileReply(() => getReviewFileStore().collectUnregistered(args.registeredIds)));
   handle(CHANNELS.reviewFilesPrepare, z.object({
@@ -34,8 +47,12 @@ export function registerReviewFilesIpc(mediaRoots: () => readonly string[]): voi
     originalFileName: z.string().min(1).max(255).regex(/^[^\\/\0]+$/).optional(),
     expectedHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
     mime: z.string().min(1).max(200).regex(/^[^\r\n]+\/[^\r\n]+$/), mode: z.enum(["managed", "external"]).optional(), source: z.enum(["user", "agent", "migration"]).optional(),
+    generated: z.boolean().optional(),
   }).strict(), args => fileReply(async () => {
-    if (args.source === "agent") {
+    if (args.generated && (!isAllocatedTempFile(args.sourcePath) || args.mode === "external" || args.mime !== "image/png")) {
+      throw Object.assign(new Error("Generated review images must use an application-allocated PNG temporary file"), { reason: "INVALID_PARAMS" });
+    }
+    if (args.source === "agent" && !args.generated) {
       const resolution = resolveContainedPathDetailed(args.sourcePath, mediaRoots());
       if (args.mode === "external" || !path.isAbsolute(args.sourcePath) || resolution.kind === "outside") throw Object.assign(new Error("Agent review files must be copied from an allowed media root"), { reason: "INVALID_PARAMS" });
       if (resolution.kind === "unresolvable") throw Object.assign(new Error(`Review source is missing or unreadable: ${args.sourcePath}`), { reason: "MISSING_FILE" });

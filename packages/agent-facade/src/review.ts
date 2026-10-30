@@ -12,7 +12,8 @@ export const REVIEW_VERBS = [
   "review.get", "review.ingest", "review.apply", "review.changes", "review.handoff.get", "review.versions.get", "review.history.control",
   "review.export.prepare", "review.export.status", "review.export.cancel", "review.export.copy",
   "review.steps.start", "review.steps.complete", "review.steps.fail", "review.steps.list",
-  "review.package.inspect", "review.package.restore", "review.attach", "review.media.inspect", "review.frames.extract",
+  "review.package.inspect", "review.package.restore", "review.attach", "review.media.inspect", "review.frames.extract", "review.frames.capture",
+  "review.repair.inspect", "review.repair.apply",
   "review.items.submit", "review.branches.create", "review.branches.compare", "review.branches.submit",
 ] as const;
 export type ReviewVerb = typeof REVIEW_VERBS[number];
@@ -114,10 +115,35 @@ const exportFilter: ObjectSchema = { batchId: uuidField(false), type: typeFilter
 const videoDestination: ObjectSchema = { kind: kind("video"), projectId: boundedText(200), workspaceId: boundedText(200), instanceId: uuidField() };
 const resourceRead: ObjectSchema = { target: target(true), expectedNodeRevision: revision,
   reference: { check: value => references.some(schema => matchesSchema(value, schema)), describe: "an exact version or resource retained by the target node", required: true, emits: { kind: "anyOfObjects", variants: references } } };
+const positiveVersion: FieldRule = { ...revision, check: value => Number.isSafeInteger(value) && Number(value) > 0, emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } } };
+const repairRegion: ObjectSchema = Object.fromEntries(Object.entries(regionSchema).map(([key, rule]) => [key, key === "space" ? rule : {
+  ...rule, check: (value: unknown) => Number.isSafeInteger(value) && Number(value) >= (key === "width" || key === "height" ? 1 : 0),
+  emits: { kind: "leaf", schema: { type: "integer", minimum: key === "width" || key === "height" ? 1 : 0 } },
+}]));
+const repairRegionField: FieldRule = { check: value => matchesSchema(value, repairRegion), describe: "integer crop/clip rectangle in decoded source pixels, inside the image; all operation coordinates remain full-image source pixels", required: true, emits: { kind: "object", schema: repairRegion } };
+const signedCoordinate: FieldRule = { ...finite(), check: value => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 100000, emits: { kind: "leaf", schema: { type: "number", minimum: -100000, maximum: 100000 } } };
+const unit: FieldRule = { ...finite(), check: value => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1, emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } } };
+const point: ObjectSchema = { x: signedCoordinate, y: signedCoordinate, pressure: unit };
+const points = objectArray(point, 1, 10000, "1–10000 full-image source-pixel points with pressure 0–1");
+const size: FieldRule = { ...finite(true), check: value => typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 4096, emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0, maximum: 4096 } } };
+const repairOperations: readonly ObjectSchema[] = [
+  { kind: kind("brush"), size, points, color: { ...boundedText(9), check: value => typeof value === "string" && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(value), emits: { kind: "leaf", schema: { type: "string", pattern: "^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$" } } } },
+  { kind: kind("eraser"), size, points },
+  { kind: kind("clone"), size, points, hardness: unit, opacity: unit, source: { check: value => matchesSchema(value, { x: finite(), y: finite() }), describe: "sample anchor in the frozen composite at batch start", required: true, emits: { kind: "object", schema: { x: finite(), y: finite() } } } },
+  { kind: kind("patch"), resourceId: uuidField(), x: signedCoordinate, y: signedCoordinate, width: finite(true), height: finite(true), opacity: unit },
+];
+const repairIdentity: ObjectSchema = { target: target(true), expectedNodeRevision: revision, itemId: uuidField(), expectedItemVersion: positiveVersion };
+const repairBaseline: ObjectSchema = { target: target(true), itemId: uuidField(), itemVersion: positiveVersion, nodeRevision: revision,
+  region: repairRegionField, resourceId: uuidField(), imageSha256: boundedText(64), annotationsSha256: boundedText(64) };
 const submitResultsSchema: ObjectSchema = { ...nodeWrite, files, stepId: uuidField(false), results: objectArray({ itemId: uuidField(),
     expectedItemVersion: { ...revision, check: value => isNonNegativeInteger(value) && Number(value) > 0, emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } } }, content }, 1, 500,
     "existing items in the current task and complete replacement content; resource IDs must be retained by this task or imported atomically through files") };
 export const REVIEW_SCHEMAS: Record<ReviewVerb, ObjectSchema> = {
+  "review.repair.inspect": { ...repairIdentity, region: repairRegionField, handoffId: { ...uuidField(false), describe: "optional explicit published handoff snapshot; returns only this current image version's region-relevant published issues, never unsubmitted draft/current feedback" }, ...page,
+    baseline: { check: value => matchesSchema(value, repairBaseline), describe: "the exact conditional-read baseline returned by the preceding inspect for this target/item/region; not proof of visual observation; unchanged images are omitted, uncertain changes refresh the complete local crop", emits: { kind: "object", schema: repairBaseline } } },
+  "review.repair.apply": { ...repairIdentity, requestId: uuidField(), region: repairRegionField,
+    operations: { check: value => Array.isArray(value) && value.length > 0 && value.length <= 100 && value.every(op => repairOperations.some(schema => matchesSchema(op, schema))), describe: "1–100 operations, prevalidated and clipped to region; patch resources must belong to this node; one batch is one atomic saved version and undo", required: true, emits: { kind: "array", minItems: 1, maxItems: 100, items: { kind: "anyOfObjects", variants: repairOperations } } } },
+  "review.frames.capture": { ...repairIdentity, requestId: uuidField(), frameIndex: { ...revision, describe: "exact zero-based decoded frame index, never seconds times nominal FPS" } },
   "review.items.submit": submitResultsSchema,
   "review.branches.submit": submitResultsSchema,
   "review.branches.create": { ...nodeWrite, expectedWorkspaceRevision: revision, name,
@@ -177,6 +203,9 @@ export const REVIEW_SCHEMAS: Record<ReviewVerb, ObjectSchema> = {
   },
 };
 export const REVIEW_DESCRIPTIONS: Record<ReviewVerb, string> = {
+  "review.repair.inspect": "Inspect one explicit image version and source-pixel region. Returns a real managed PNG crop, coordinate mapping and only intersecting version-bound annotations. Reuse the returned baseline; unchanged content omits the image, replacements/undo refresh the region. No observation database or all-layer/history dump.",
+  "review.repair.apply": "Atomically execute brush, repair-layer eraser, soft-edge clone and transparent image patches inside an explicit repair region. Prevalidate the entire batch; keep source bytes and outside pixels intact. Returns one new immutable image version, measured change bounds and a true composed local PNG. Durable requestId retries do not create another version; actor is agent. No independent human-board access.",
+  "review.frames.capture": "Capture one exact decoded frame from an explicit node-owned video item/version using the shared FFmpeg frame processor. Atomically create a source-linked image item with real decode index and PTS in the same node; inspect/repair it with review.repair.* and compare adjacent captures. Does not infer PTS from GUI currentTime, propagate repairs, or re-encode video.",
   "review.items.submit": "Submit complete replacement results to existing items in the SAME task. Guard node revision and expectedItemVersion; retain immutable versions, feedback and history, and return changed items to pending review. New resources use files and existing resources must belong to this task. Optional stepId completes a running processing step. Do not create another task or branch for revisions, alternatives or continued work; organize new items under meaningful lineage parents. Write plans and explanations as Markdown with real headings, lists, tables and code fences. Plain text remains supported.",
   "review.branches.submit": "Legacy branch operation. Prefer review.items.submit on the existing task. Submit complete real image/video/model/text/table results to exact existing branch items with node and item version guards. Files use the managed review import path; existing resources must already be retained by this branch. Atomically records new immutable branch versions without changing the source or fabricating a handoff. Optional stepId completes a real running branch processing step with these exact new outputs. Continue using this same branch target throughout the task; users adopt selected results in the GUI.",
   "review.branches.create": "Retired: creating task branches is disabled. Keep the explicit current task target; use review.ingest for new grouped items and review.items.submit for new versions. Create an independent task only when the user explicitly requests a new independent goal.",

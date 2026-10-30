@@ -13,6 +13,8 @@ import { prepareReviewFiles, type ReviewSourceFile } from "../review-workspace/f
 import { prepareReviewExport, reviewExportStatus, cancelReviewExport, copyReviewExport } from "../review-workspace/export";
 import { inspectReviewPackage, restoreReviewPackage } from "../review-workspace/package";
 import { attachReviewMedia, type ReviewAttachRequest } from "../review-workspace/attach";
+import { inspectImageRepair, applyImageRepair } from "../review-workspace/repair";
+import { captureReviewFrame } from "../review-workspace/frame-capture";
 
 function reviewOps(ops: readonly WorkbenchAgentOp[], state: WorkbenchProjectState): Action[] {
   let draft = state;
@@ -49,6 +51,9 @@ export async function handleReviewCommand(verb: ReviewVerb, params: Record<strin
   const valid = validateObject<Record<string, unknown>>(params, REVIEW_SCHEMAS[verb], `${verb} params`);
   const target = valid.target as ReviewContext["target"];
   switch (verb) {
+    case "review.repair.inspect": return inspectImageRepair(valid as unknown as Parameters<typeof inspectImageRepair>[0]);
+    case "review.repair.apply": return applyImageRepair(valid as unknown as Parameters<typeof applyImageRepair>[0]);
+    case "review.frames.capture": return captureReviewFrame(valid as unknown as Parameters<typeof captureReviewFrame>[0]);
     case "review.branches.create": throw reviewError("UNSUPPORTED", "任务分支已停用。请在当前任务中分组提交内容，使用 review.items.submit 更新已有条目；只有用户明确要求独立目标时才新建任务。");
     case "review.branches.compare": return reviewService.compareBranch(target);
     case "review.items.submit":

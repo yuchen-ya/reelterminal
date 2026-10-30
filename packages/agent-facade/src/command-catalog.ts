@@ -65,6 +65,9 @@ const FILESYSTEM_VERBS = new Set<FacadeVerb>([
   "verify.artifact",
   "font.upload",
   "font.list",
+  "review.repair.inspect",
+  "review.repair.apply",
+  "review.frames.capture",
 ]);
 
 function hasIdempotencyKey(schema: JsonSchemaObject): boolean {
@@ -89,7 +92,7 @@ function retryFor(verb: FacadeVerb, schema: JsonSchemaObject): CommandRetryPolic
   // an idempotency key exists, transports must make retry decisions explicit.
   if (effectsFor(verb).includes("task")) return "never";
   if (!effectsFor(verb).includes("write")) return "safe";
-  return hasIdempotencyKey(schema) || verb === "audio.process.register" || verb === "review.branches.create" || verb === "review.branches.submit" || verb === "review.items.submit" ? "idempotent" : "never";
+  return hasIdempotencyKey(schema) || verb === "audio.process.register" || verb === "review.branches.create" || verb === "review.branches.submit" || verb === "review.items.submit" || verb === "review.repair.apply" || verb === "review.frames.capture" ? "idempotent" : "never";
 }
 
 function entryFor(verb: FacadeVerb, mode: CommandCatalogMode): CommandCatalogEntry {

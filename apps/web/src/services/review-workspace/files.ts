@@ -5,7 +5,7 @@ import { exportValue } from "./export";
 export interface ReviewSourceFile { resourceId: string; sourcePath: string; mime: string }
 
 export async function prepareReviewBlob(blob: Blob, name: string, operationId: string, resourceId: string,
-  source: FileResource["source"] = "user", expectedHash?: string): Promise<FileResource> {
+  source: FileResource["source"] = "user", expectedHash?: string, generated = false): Promise<FileResource> {
   const native = window.reelterminal;
   if (!native?.reviewFiles) throw reviewError("UNSUPPORTED", "Native review file preparation is unavailable");
   const extension = name.split(".").at(-1)?.toLowerCase() ?? "bin";
@@ -18,7 +18,7 @@ export async function prepareReviewBlob(blob: Blob, name: string, operationId: s
     await native.fs.closeWrite(handle);
     closed = true;
     const result = await native.reviewFiles.prepare({ operationId, resourceId, sourcePath: temporary, mime: blob.type,
-      originalFileName: name, source, expectedHash });
+      originalFileName: name, source, expectedHash, ...(generated ? { generated: true } : {}) });
     return exportValue(result);
   } finally {
     if (handle && !closed) await native.fs.abortWrite(handle);

@@ -453,8 +453,11 @@ interface ReelTerminalDesktopBridge {
         startDrag(exportId: string, folder: boolean): Promise<{ state: "handed-to-system" }>;
       };
       reviewFiles?: {
+        captureFrame(args: { resourceId: string; frameIndex: number; nodeRevision: number; operationId: string; outputResourceId: string }): Promise<ReviewNativeReply<{
+          resource: import("@reelterminal/core/review/types").FileResource; path: string; frameIndex: number; ptsTimeSec: number; timing: "cfr" | "vfr" | "unknown"; sourceResourceId: string;
+        }>>;
         collectUnregistered(registeredIds: readonly string[]): Promise<ReviewNativeReply<{ removed: number; bytes: number }>>;
-        prepare(args: { operationId: string; resourceId: string; sourcePath: string; mime: string; originalFileName?: string; expectedHash?: string; mode?: "managed" | "external"; source?: "user" | "agent" | "migration" }): Promise<{
+        prepare(args: { operationId: string; resourceId: string; sourcePath: string; mime: string; originalFileName?: string; expectedHash?: string; mode?: "managed" | "external"; source?: "user" | "agent" | "migration"; generated?: boolean }): Promise<{
           ok: true; value: import("@reelterminal/core/review/types").FileResource;
         } | { ok: false; error: { code: string; message: string; reason: string } }>;
         resolve(resourceId: string, freeze?: boolean): Promise<{

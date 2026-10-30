@@ -56,6 +56,9 @@ function withInput(invocation: ParsedInvocation): ParsedInvocation {
 
 function commandNameFromText(text: string): string {
   const known: Readonly<Record<string, string>> = {
+    "review repair inspect": "review.repair.inspect",
+    "review repair apply": "review.repair.apply",
+    "review frames capture": "review.frames.capture",
     "review context": "review.context",
     "video context": "editor.get_context",
     context: "editor.get_context",

@@ -45,6 +45,30 @@ function makeClient(commands: CommandCatalogEntry[], result: unknown = { ok: tru
 }
 
 describe("reelctl command parsing and safety", () => {
+  it("resolves three-word repair commands without consuming flags or changing legacy commands", () => {
+    expect(parseInvocation(["review", "repair", "inspect", "--file", "crop.json"])).toMatchObject({ commandName: "review.repair.inspect", file: "crop.json", arguments: {} });
+    expect(parseInvocation(["review", "repair", "apply", "--file", "batch.json"])).toMatchObject({ commandName: "review.repair.apply", file: "batch.json" });
+    expect(parseInvocation(["review", "frames", "capture", "--file", "frame.json"])).toMatchObject({ commandName: "review.frames.capture", file: "frame.json" });
+    expect(parseInvocation(["review", "context"]).commandName).toBe("review.context");
+    expect(parseInvocation(["frames", "extract", "--start-frame", "2"]).arguments).toEqual({ startFrame: 2 });
+    expect(parseInvocation(["context", "--compact"]).compact).toBe(true);
+    expect(() => parseInvocation(["review", "repair", "inspect", "unexpected"])).toThrow(/Unexpected positional/);
+  });
+
+  it("dispatches repair files and resolves the same dedicated alias for help and schema", async () => {
+    const file = path.join(tempDir(), "repair.json");
+    const request = { target: { kind: "review", nodeId: "node" }, expectedNodeRevision: 2, itemId: "image", expectedItemVersion: 1,
+      region: { space: "source-pixels", x: 10, y: 20, width: 40, height: 30 } };
+    writeFileSync(file, JSON.stringify(request));
+    const api = makeClient([entry("review.repair.inspect", "review_repair_inspect")]);
+    const output: string[] = [];
+    await runReelctl(["review", "repair", "inspect", "--file", file], { client: api, stdout: line => output.push(line) });
+    expect(api.command).toHaveBeenCalledWith("review.repair.inspect", request, expect.any(Object));
+    await runReelctl(["schema", "review", "repair", "inspect"], { client: api, stdout: line => output.push(line) });
+    expect(api.catalogEntry).toHaveBeenLastCalledWith("review.repair.inspect");
+    await runReelctl(["help", "review", "repair", "inspect"], { client: api, stdout: line => output.push(line) });
+    expect(output.at(-1)).toContain("review.repair.inspect");
+  });
   it("does not advertise or dispatch the removed MCP adapter", async () => {
     const output: string[] = [];
     const client = makeClient([]);

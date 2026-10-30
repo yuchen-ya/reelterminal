@@ -11,6 +11,7 @@ export const CHANNELS = {
   reviewPackageRelease: "reelterminal:reviewPackage:release",
   reviewFilesPrepare: "reelterminal:reviewFiles:prepare",
   reviewFilesResolve: "reelterminal:reviewFiles:resolve",
+  reviewFilesCaptureFrame: "reelterminal:reviewFiles:captureFrame",
   reviewFilesCollect: "reelterminal:reviewFiles:collect",
   collabSetReviewAccess: "reelterminal:collab:setReviewAccess",
   collabGetReviewAccess: "reelterminal:collab:getReviewAccess",

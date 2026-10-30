@@ -7,8 +7,22 @@ import { frameToolsPlugin } from "@reelterminal/agent-facade/plugins/frame-tools
 import type { ReviewResourceRead } from "@reelterminal/core/review/export";
 import type { ReviewFileStore } from "../review-file-store";
 
+/** Shared exact decoder for read-only candidates and explicit saved frame captures. */
+export async function extractReviewFileFrames(store: ReviewFileStore, resourceId: string, frames: readonly number[], nodeRevision: number) {
+  const source = await store.resolve(resourceId, true);
+  if (source.resource.metadata?.type !== "video") throw new FacadeError("UNSUPPORTED", "Exact frame extraction requires a video resource");
+  const tool = frameToolsPlugin.tools[0];
+  const input = validateObject<Parameters<typeof tool.execute>[0]>({ source: { path: source.path }, selection: { frames }, expectedRevision: nodeRevision }, tool.input, "review.frames.extract");
+  const jobRoot = path.join(store.root, "jobs", `${new Date().toISOString().slice(0, 10)}-review-frames-${randomUUID()}`, "output");
+  return tool.execute(input, {
+    mode: "live", sourceRevision: nodeRevision, artifactRoot: jobRoot, mediaRoots: [path.dirname(source.path)],
+    snapshot: async () => { throw new FacadeError("UNSUPPORTED", "Review frame processing has no video project snapshot"); },
+    resolveMediaPath: async () => { throw new FacadeError("UNSUPPORTED", "Review frame processing accepts only its frozen resource"); },
+  });
+}
+
 /** Adapt explicit review resources to the existing read-only frame processor. */
-export function createReviewMediaBridge(bridge: ReviewBridge, files: () => ReviewFileStore, reviewRoot: string): ReviewBridge {
+export function createReviewMediaBridge(bridge: ReviewBridge, files: () => ReviewFileStore, _reviewRoot: string): ReviewBridge {
   return async (verb, params) => {
     if (verb !== "review.media.inspect" && verb !== "review.frames.extract") return bridge(verb, params);
     const frozen = await bridge(verb, params) as ReviewResourceRead;
@@ -22,15 +36,7 @@ export function createReviewMediaBridge(bridge: ReviewBridge, files: () => Revie
     }
     if (source.resource.size !== frozen.resource.size || source.resource.sha256 !== frozen.resource.sha256) throw new FacadeError("CONFLICT", "Review metadata and registered file identity differ");
     if (verb === "review.media.inspect") return frozen;
-    if (source.resource.metadata?.type !== "video") throw new FacadeError("UNSUPPORTED", "Exact frame extraction requires a video resource");
-    const tool = frameToolsPlugin.tools[0];
-    const input = validateObject<Parameters<typeof tool.execute>[0]>({ source: { path: source.path }, selection: { frames: params.frames }, expectedRevision: frozen.nodeRevision }, tool.input, "review.frames.extract");
-    const jobRoot = path.join(reviewRoot, "jobs", `${new Date().toISOString().slice(0, 10)}-review-frames-${randomUUID()}`, "output");
-    const result = await tool.execute(input, {
-      mode: "live", sourceRevision: frozen.nodeRevision, artifactRoot: jobRoot, mediaRoots: [path.dirname(source.path)],
-      snapshot: async () => { throw new FacadeError("UNSUPPORTED", "Review frame processing has no video project snapshot"); },
-      resolveMediaPath: async () => { throw new FacadeError("UNSUPPORTED", "Review frame processing accepts only its frozen resource"); },
-    });
+    const result = await extractReviewFileFrames(files(), frozen.resource.id, params.frames as number[], frozen.nodeRevision);
     return { target: frozen.target, nodeRevision: frozen.nodeRevision, resourceId: frozen.resource.id,
       facts: { width: result.facts.width, height: result.facts.height, durationSec: result.facts.durationSec, timing: result.facts.frameTiming.timing },
       frames: result.frames, limitations: [...result.limitations.filter(note => !note.includes("Adopt results through")), "Read-only candidates; no review content, feedback or steps were committed."] };

@@ -263,6 +263,9 @@ export interface WorkbenchContentRevision {
   readonly mediaId?: string;
   readonly strokes?: readonly WorkbenchPixelStroke[];
   readonly base?: WorkbenchRepairBase;
+  /** Separate transparent layer and its frozen bottom image for exact eraser semantics. */
+  readonly repairLayerMediaId?: string;
+  readonly repairBaseMediaId?: string;
 }
 
 /** Agent guidance is optional input; the UI must render its absence honestly. */

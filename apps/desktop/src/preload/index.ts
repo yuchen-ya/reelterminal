@@ -44,8 +44,9 @@ const api = {
   },
   reviewFiles: {
     collectUnregistered: (registeredIds: readonly string[]) => ipcRenderer.invoke(CHANNELS.reviewFilesCollect, { registeredIds }),
-    prepare: (args: { operationId: string; resourceId: string; sourcePath: string; mime: string; originalFileName?: string; expectedHash?: string; mode?: "managed" | "external"; source?: "user" | "agent" | "migration" }) => ipcRenderer.invoke(CHANNELS.reviewFilesPrepare, args),
+    prepare: (args: { operationId: string; resourceId: string; sourcePath: string; mime: string; originalFileName?: string; expectedHash?: string; mode?: "managed" | "external"; source?: "user" | "agent" | "migration"; generated?: boolean }) => ipcRenderer.invoke(CHANNELS.reviewFilesPrepare, args),
     resolve: (resourceId: string, freeze = false) => ipcRenderer.invoke(CHANNELS.reviewFilesResolve, { resourceId, freeze }),
+    captureFrame: (args: { resourceId: string; frameIndex: number; nodeRevision: number; operationId: string; outputResourceId: string }) => ipcRenderer.invoke(CHANNELS.reviewFilesCaptureFrame, args),
   },
   // Desktop has no hosted editor configured. URL builders reject this empty
   // value instead of producing unusable fragment-only sharing links.

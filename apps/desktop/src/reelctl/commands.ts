@@ -18,6 +18,9 @@ export interface ParsedInvocation {
 }
 
 const ALIASES: Readonly<Record<string, string>> = {
+  "review repair inspect": "review.repair.inspect",
+  "review repair apply": "review.repair.apply",
+  "review frames capture": "review.frames.capture",
   "review context": "review.context",
   "video context": "editor.get_context",
   context: "editor.get_context",
@@ -196,7 +199,7 @@ export function parseFlags(tokens: readonly string[]): RawArgs {
 
 function commandFromWords(words: readonly string[]): { readonly commandName: string; readonly consumed: number } {
   if (words.length === 0) fail("Missing command. Use `reelctl help` for usage.");
-  for (let length = Math.min(2, words.length); length >= 1; length -= 1) {
+  for (let length = Math.min(3, words.length); length >= 1; length -= 1) {
     const joined = words.slice(0, length).join(" ");
     const commandName = ALIASES[joined];
     if (commandName !== undefined) return { commandName, consumed: length };
@@ -372,6 +375,9 @@ Usage:
   reelctl review context | capabilities | describe
   reelctl video context | capabilities | describe
   reelctl review call review.ingest --file review-input.json
+  reelctl review repair inspect --file inspect-region.json
+  reelctl review repair apply --file repair-batch.json
+  reelctl review frames capture --file exact-frame.json
   reelctl patch apply --file patch.json
   reelctl image align --file align.json
   reelctl motion track --file track.json

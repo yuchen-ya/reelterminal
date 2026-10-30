@@ -201,6 +201,7 @@ export async function revealInFolder(args: { path: string }): Promise<void> {
 }
 
 const allocatedTempFiles = new Set<string>();
+export function isAllocatedTempFile(file: string): boolean { return allocatedTempFiles.has(file); }
 export async function tempFilePath(args: { ext: string }): Promise<string> {
   const safeExt = args.ext.replace(/[^a-zA-Z0-9]/g, "") || "bin";
   const file = path.join(os.tmpdir(), `reelterminal-mat-${randomUUID()}.${safeExt}`);

@@ -68,7 +68,7 @@ export interface ReviewOverview {
   counts: Readonly<Record<string, { total: number; pending: number }>>;
   handoffIds: readonly string[]; stepCount: number; canUndo: boolean; canRedo: boolean;
 }
-export interface CommitResult { nodeId: string; revision: number; sequence: number; replayed: boolean }
+export interface CommitResult { nodeId: string; revision: number; sequence: number; replayed: boolean; output?: Record<string, unknown> }
 /** Explicit projection for item-local builders: these items, their owning batches and feedback;
  * no handoffs. Processing builders still receive the complete step graph. Omit for arbitrary builders.
  */
@@ -83,6 +83,8 @@ export interface ReviewCommit {
   prepareResources?: () => Promise<readonly FileResource[]>;
   steps?: readonly ReviewStep[];
   buildSteps?: (before: WorkbenchProjectState, after: WorkbenchProjectState, resources: readonly FileResource[], existingSteps: readonly ReviewStep[]) => readonly ReviewStep[];
+  /** Small operation-specific response frozen in the same durable request receipt. */
+  output?: (after: WorkbenchProjectState, resources: readonly FileResource[]) => Record<string, unknown>;
   /** Internal history command; never supplied as a core action by external callers. */
   history?: "undo" | "redo";
   /** Internal human adoption. Validated against the branch inside this commit's transaction. */
@@ -468,6 +470,8 @@ export class ReviewService {
         if (version.originalResourceId) ids.add(version.originalResourceId);
         if (version.content && workbenchContentResourceId(version.content)) ids.add(workbenchContentResourceId(version.content)!);
         if (version.revision?.mediaId) ids.add(version.revision.mediaId);
+        if (version.revision?.repairBaseMediaId) ids.add(version.revision.repairBaseMediaId);
+        if (version.revision?.repairLayerMediaId) ids.add(version.revision.repairLayerMediaId);
       }
       for (const step of snapshot.steps) for (const reference of [...step.inputs, ...step.outputs]) if ("resourceId" in reference) ids.add(reference.resourceId);
       for (const handoff of snapshot.state.handoffs) for (const item of handoff.items) {
@@ -965,6 +969,7 @@ export class ReviewService {
             transaction.objectStore("reviewArchives").put({ ...archive, branch: { ...archive.branch, checkpoints: [...archive.branch.checkpoints, ...plan.checkpoints] } });
           } else actions = input.build(before.state, resources ?? []);
           const reduced = reduceReviewActions(before.state, actions);
+          if (input.output) result.output = input.output(reduced.state, resources ?? []);
           if (input.readScope) {
             const ids = new Set(input.readScope.itemIds);
             const localActions = new Set(["workbench/feedback.save", "workbench/decide", "workbench/content.update", "workbench/annotations.set",
@@ -1105,6 +1110,8 @@ export class ReviewService {
       ...(version.originalResourceId ? [version.originalResourceId] : []),
       ...(version.content && workbenchContentResourceId(version.content) ? [workbenchContentResourceId(version.content)!] : []),
       ...(version.revision?.mediaId ? [version.revision.mediaId] : []),
+      ...(version.revision?.repairBaseMediaId ? [version.revision.repairBaseMediaId] : []),
+      ...(version.revision?.repairLayerMediaId ? [version.revision.repairLayerMediaId] : []),
     ];
     const refs: Array<{ resourceId: string; ownerType: string; ownerId: string; ownerVersion: number }> = [];
     for (const version of versions) for (const resourceId of resourceIds(version)) refs.push({ resourceId, ownerType: "version", ownerId: version.itemId, ownerVersion: version.version });

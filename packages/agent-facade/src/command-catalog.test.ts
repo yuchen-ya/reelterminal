@@ -96,4 +96,22 @@ describe("protocol-neutral command catalog", () => {
     expect(item.title).not.toHaveProperty("maxLength", 15);
     expect(ingest.inputSchema.required).toContain("expectedNodeRevision");
   });
+
+  it("advertises scoped image repair and exact saved frames with the matching retry policies", () => {
+    const inspect = getCommandCatalogEntry("review.repair.inspect", "live")!;
+    const apply = getCommandCatalogEntry("review.repair.apply", "live")!;
+    const capture = getCommandCatalogEntry("review.frames.capture", "live")!;
+    expect(inspect.effects).toEqual(["read", "filesystem"]);
+    expect(inspect.retry).toBe("safe");
+    expect(apply.effects).toEqual(["write", "filesystem"]);
+    expect(apply.retry).toBe("idempotent");
+    expect(capture.retry).toBe("idempotent");
+    for (const command of [inspect, apply, capture]) {
+      expect(command.inputSchema.required).toEqual(expect.arrayContaining(["target", "expectedNodeRevision", "itemId", "expectedItemVersion"]));
+      expect(command.description).toBe(REVIEW_DESCRIPTIONS[command.name as keyof typeof REVIEW_DESCRIPTIONS]);
+    }
+    expect(apply.inputSchema.required).toContain("requestId");
+    expect(JSON.stringify(apply.inputSchema.properties.operations)).toContain("clone");
+    expect(capture.inputSchema.properties.frameIndex.description).toContain("decoded frame index");
+  });
 });

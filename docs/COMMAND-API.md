@@ -103,6 +103,128 @@ Available command families (query their schemas for exact arguments):
   `agent-workspace/review/jobs/<date>-review-frames-<uuid>/output/`. They do not
   automatically create review items, feedback or steps. Other project processors
   are not available for review targets.
+- `review.repair.inspect/apply` operates only on an explicitly targeted review
+  image. Dedicated CLI forms are `reelctl review repair inspect --file crop.json`
+  and `reelctl review repair apply --file batch.json`; `schema` and `help` accept
+  the same three-word names. Both requests require `target` (review workspace,
+  runtime instance and node), `expectedNodeRevision`, `itemId`,
+  `expectedItemVersion`, and an integer `region` rectangle
+  `{ "space":"source-pixels", "x":10, "y":20, "width":80, "height":60 }`.
+  Coordinates are full decoded image pixels, including operation points; a crop
+  pixel maps back by adding `mapping.cropOrigin`, with scale 1.
+  Inspect returns a real managed PNG path, dimensions, intersecting normalized
+  annotations and a `baseline`. Send that baseline on subsequent reads. It is a
+  client conditional-read token, like an ETag, not proof that an Agent viewed or
+  approved an image. State is `initial`, `unchanged`, or `refresh`; unchanged
+  pixels omit `image`, and a different target/item/region or changed image causes
+  a full local crop refresh. No hidden board, full layer stack or history dump is
+  included. Each baseline covers only its stated region.
+  Optional `handoffId` reads region-relevant pixel issues from that explicit
+  immutable published handoff at the current item version. `feedback` contains
+  stable IDs, target geometry, intent and up to 1000 characters per text;
+  `feedbackSource` names the snapshot. Use `limit` (1–500, default 100) and the
+  returned `feedbackCursor` as `cursor` for further pages. Fetch the existing
+  `review.handoff.get` for complete published text. Without `handoffId`, no
+  feedback is returned or other handoff scanned. Draft or edited-but-unpublished
+  feedback never enters this path. The baseline includes the actual returned
+  annotation and published-feedback page, without claiming any visual approval.
+  Apply additionally requires a UUID `requestId` and `operations`:
+  brush `{kind:"brush",color:"#ff0000",size:8,points:[{x:20,y:30,pressure:1}]}`;
+  eraser `{kind:"eraser",size:8,points:[...]}`;
+  clone `{kind:"clone",size:16,source:{x:40,y:30},points:[...],hardness:0.5,opacity:1}`;
+  patch `{kind:"patch",resourceId:"<retained-image-uuid>",x:10,y:20,width:80,height:60,opacity:1}`.
+  Import patch files into the same node using existing `review.ingest.files`.
+  Clone samples the frozen batch-start composite with a soft circular edge.
+  Eraser clears only the separate transparent repair layer; a legacy flattened
+  repair becomes the immutable bottom image for a new layer. The complete batch
+  is validated and rendered before one atomic commit/undo; source media and
+  pixels outside the region remain intact. A no-visible-change batch is rejected.
+  Results include `nodeRevision`, `itemVersion`, exact `changedRegion`, a true
+  composed local `image` PNG path, and `replayed`. Reuse the original request ID
+  and business arguments after an uncertain response; after restart rediscover
+  the runtime target, preserving the workspace/node/item identities. Retries
+  return the retained result without creating a new version or reviving an undo.
+- `reelctl review frames capture --file frame.json` (`review.frames.capture`)
+  explicitly creates a source-linked image in the same review node from a video
+  `itemId`/`expectedItemVersion`. Supply the same target and revision guards,
+  UUID `requestId`, and exact zero-based `frameIndex`. It reuses the FFmpeg
+  decoder behind `review.frames.extract`; the saved processing record and
+  returned `source` retain the original video item/version/resource, actual
+  decode index, source `ptsTimeSec`, and timing classification. `image` reports
+  the actual PNG dimensions after FFmpeg autorotation, which define subsequent
+  repair coordinates. Capture adjacent indices separately to compare neighboring
+  frames; GUI `currentTime` is not source PTS and `seconds * fps` is never used.
+  The result is a normal image for `review.repair.*` and comparison. This first
+  version does not propagate changes across frames or re-encode video. Independent
+  human boards use their own resource/commit path and are not review targets.
+
+The following are complete request-file examples. Replace the example UUIDs and
+revisions with `review.context` and the explicit node's `review.get` results;
+do not use the current GUI selection as a target. Run
+`reelctl review repair inspect --file inspect-region.json` with:
+
+```json
+{
+  "target": {
+    "kind": "review",
+    "reviewWorkspaceId": "11111111-1111-4111-8111-111111111111",
+    "instanceId": "22222222-2222-4222-8222-222222222222",
+    "nodeId": "33333333-3333-4333-8333-333333333333"
+  },
+  "expectedNodeRevision": 1,
+  "itemId": "44444444-4444-4444-8444-444444444444",
+  "expectedItemVersion": 1,
+  "region": { "space": "source-pixels", "x": 10, "y": 20, "width": 80, "height": 60 }
+}
+```
+
+After inspecting that real crop, run
+`reelctl review repair apply --file repair-batch.json` with:
+
+```json
+{
+  "target": {
+    "kind": "review",
+    "reviewWorkspaceId": "11111111-1111-4111-8111-111111111111",
+    "instanceId": "22222222-2222-4222-8222-222222222222",
+    "nodeId": "33333333-3333-4333-8333-333333333333"
+  },
+  "expectedNodeRevision": 1,
+  "itemId": "44444444-4444-4444-8444-444444444444",
+  "expectedItemVersion": 1,
+  "requestId": "55555555-5555-4555-8555-555555555555",
+  "region": { "space": "source-pixels", "x": 10, "y": 20, "width": 80, "height": 60 },
+  "operations": [
+    { "kind": "brush", "color": "#ff0000", "size": 8,
+      "points": [{ "x": 30, "y": 40, "pressure": 1 }, { "x": 50, "y": 40, "pressure": 1 }] }
+  ]
+}
+```
+
+For an existing video item, run
+`reelctl review frames capture --file exact-frame.json` with:
+
+```json
+{
+  "target": {
+    "kind": "review",
+    "reviewWorkspaceId": "11111111-1111-4111-8111-111111111111",
+    "instanceId": "22222222-2222-4222-8222-222222222222",
+    "nodeId": "33333333-3333-4333-8333-333333333333"
+  },
+  "expectedNodeRevision": 2,
+  "itemId": "66666666-6666-4666-8666-666666666666",
+  "expectedItemVersion": 1,
+  "requestId": "77777777-7777-4777-8777-777777777777",
+  "frameIndex": 4
+}
+```
+
+The capture response's new image `itemId` and version become the next repair
+target. Repeat capture with adjacent indices and fresh request IDs to observe
+neighboring frames. Read `reelctl schema review repair apply` for the complete
+operation union, including clone and retained transparent patches.
+
 - `review.export.prepare/status/cancel/copy` freezes `original`, `adopted`,
   `node-package` or exact-reference `version` exports. Region/time annotations do
   not crop or trim the exported file. Prepared exports are disposable copies;

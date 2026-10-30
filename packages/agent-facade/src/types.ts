@@ -173,6 +173,7 @@ export const READ_ONLY_VERBS = [
   "review.package.inspect",
   "review.media.inspect",
   "review.frames.extract",
+  "review.repair.inspect",
   "review.directory.get",
   "review.handoff.get",
   "review.versions.get",

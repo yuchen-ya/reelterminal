@@ -127,6 +127,8 @@ export function validateReviewNodeArchive(value: unknown): asserts value is Revi
     if (version.content?.type === "image" || version.content?.type === "video") requireResource(version.content.mediaId);
     if (version.content?.type === "model3d") requireResource(version.content.resourceId);
     if (version.revision?.mediaId) requireResource(version.revision.mediaId);
+    if (version.revision?.repairBaseMediaId) requireResource(version.revision.repairBaseMediaId);
+    if (version.revision?.repairLayerMediaId) requireResource(version.revision.repairLayerMediaId);
   }
   for (const batch of archive.state.batches) {
     if (!id(batch.id) || !string(batch.name) || !Array.isArray(batch.itemIds) || batch.itemIds.some(itemId => items.get(itemId)?.batchId !== batch.id)) invalid("invalid batch membership");
@@ -177,6 +179,7 @@ export function validateReviewNodeArchive(value: unknown): asserts value is Revi
 const fields: Readonly<Record<string, string>> = {
   screenshotResourceId: "resource", observationId: "observation",
   itemId: "item", sourceItemId: "item", parentNodeId: "item", batchId: "batch", mediaId: "resource", resourceId: "resource", originalResourceId: "resource", derivedMediaId: "resource",
+  repairBaseMediaId: "resource", repairLayerMediaId: "resource",
   entryId: "entry", datasetId: "dataset", columnId: "column", rowId: "row", proposalId: "proposal", annotationId: "annotation", markerId: "marker", feedbackId: "feedback", issueId: "issue", tagId: "tag",
   revisionId: "revision", contentRevisionId: "revision", handoffId: "handoff", supersedesHandoffId: "handoff", fromHandoffId: "handoff", runId: "run", supersedesStepId: "step",
   provenanceTagId: "tag", compareWithItemId: "item", similarToEntryId: "entry",
