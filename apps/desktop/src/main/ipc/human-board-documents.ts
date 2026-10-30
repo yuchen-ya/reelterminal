@@ -128,8 +128,11 @@ export function registerHumanBoardDocumentsIpc(): void {
       candidate.getSize().width / editor.getContentSize()[0] * contents.getZoomFactor()));
     const size = frame.getSize();
     const scale = size.width / editor.getContentSize()[0] * contents.getZoomFactor();
-    const x = Math.round(bounds.x * scale), y = Math.ceil(bounds.y * scale);
-    const image = frame.crop({ x, y, width: Math.min(size.width - x, Math.round(bounds.width * scale)), height: Math.min(size.height - y, Math.round(bounds.height * scale)) });
+    const x = Math.ceil(bounds.x * scale), y = Math.ceil(bounds.y * scale);
+    const width = Math.min(size.width, Math.floor((bounds.x + bounds.width) * scale)) - x;
+    const height = Math.min(size.height, Math.floor((bounds.y + bounds.height) * scale)) - y;
+    if (width <= 0 || height <= 0) throw new Error("文档截图区域已移出窗口，请重试");
+    const image = frame.crop({ x, y, width, height });
     if (image.isEmpty()) throw new Error("文档预览尚未就绪");
     return image.toPNG();
   });

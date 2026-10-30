@@ -67,7 +67,10 @@ it.each([0.25, 0.67, 1, 1.25, 2])("rejects a queued document surface before acce
   const crop = vi.spyOn(current, "crop");
   native.present(current);
   expect(await capture).toEqual(Buffer.from("current document"));
-  expect(crop.mock.calls.at(-1)?.[0].y).toBeGreaterThanOrEqual(8 * scale);
+  const area = crop.mock.calls.at(-1)![0];
+  expect(area.y).toBeGreaterThanOrEqual(8 * scale);
+  expect(area.x + area.width).toBeLessThanOrEqual(640 * scale);
+  expect(area.y + area.height).toBeLessThanOrEqual((8 + 448) * scale);
   expect(native.editor.webContents.endFrameSubscription).toHaveBeenCalledOnce();
 });
 
