@@ -197,7 +197,7 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
   // exceed the 64MP export contract; no source pixels or limit are reduced.
   const contentSize = await launched.app.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
-    window.setContentSize(1024, 720);
+    window.setContentSize(1024, 700);
     return window.getContentSize();
   });
   evidence.record("contentSize", contentSize);
@@ -415,15 +415,25 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     await vi.waitFor(async () => expect(await page.locator('[data-document-kind="webpage"] img').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true));
     // At the whole-board 10% fit, overlapping edges are closer than the
     // drawing tool's pointer hit radius. Zoom to the page before selecting
-    // the retained HTML's exposed bottom edge and bringing it to the front.
-    const topPage = await point(page, reopened.elements.find(element => element.id === webpage.id)!);
+    // the retained HTML's exposed left edge and bringing it to the front. The
+    // lower edge can be clipped by the 700px macOS work area after zoom-to-fit.
+    // Read rendered bounds, rather than the previous autosaved viewport.
+    const pageBounds = (await page.locator('[data-document-kind="webpage"]').boundingBox())!;
+    const topPage = { x: pageBounds.x + pageBounds.width / 2, y: pageBounds.y + pageBounds.height / 2 };
     await page.mouse.click(topPage.x, topPage.y);
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus();
     await page.keyboard.press("Shift+2"); await saved(page);
-    const localCorner = await point(page, { ...local, x: local.x + 35, y: local.y + local.height - 25, width: 0, height: 0 });
+    const localBounds = (await page.locator('[data-document-kind="html"]').boundingBox())!;
+    const localCorner = { x: localBounds.x + localBounds.width * 0.04, y: localBounds.y + localBounds.height / 2 };
+    const sceneBounds = (await page.getByTestId("human-board-scene").boundingBox())!;
+    expect(localCorner.y).toBeGreaterThan(sceneBounds.y);
+    expect(localCorner.y).toBeLessThan(sceneBounds.y + sceneBounds.height);
     await page.mouse.click(localCorner.x, localCorner.y);
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus();
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+]" : "Control+Shift+]");
+    // Excalidraw 0.18.1 matches Cmd+Alt+] to both bring-forward and
+    // bring-to-front on macOS, then cancels the ambiguous shortcut. Exercise
+    // the native drawing control that remains available on every platform.
+    await page.getByTestId("human-board-scene").getByRole("button", { name: /^置于顶层/ }).click();
     await saved(page);
     await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted).at(-1)?.id).toBe(local.id));
     await page.mouse.dblclick(localCorner.x, localCorner.y);

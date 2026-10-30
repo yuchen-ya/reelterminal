@@ -134,8 +134,31 @@ test("packaged pitch-preserving playback, seek, speed edits and encoded export u
     const ffmpeg = process.env.REELTERMINAL_FFMPEG_PATH || "ffmpeg";
     const ffprobe = process.env.REELTERMINAL_FFPROBE_PATH || "ffprobe";
     const probe = JSON.parse(execFileSync(ffprobe, ["-v", "error", "-show_format", "-show_streams", "-of", "json", destination], { encoding: "utf8", windowsHide: true }));
-    expect(Number(probe.format.duration)).toBeCloseTo(4 / 1.5, 1);
+    const videoStream = probe.streams.find((stream: any) => stream.codec_type === "video");
+    const audioStream = probe.streams.find((stream: any) => stream.codec_type === "audio");
+    const expectedDuration = 4 / 1.5;
+    // AAC containers can include encoder priming and the last packet's remainder.
+    // Apple documents 2112 priming samples and 1024-sample AAC access units:
+    // https://developer.apple.com/documentation/quicktime-file-format/background_aac_encoding
+    // Keep video timing exact and bound audio overhead in samples, rather than
+    // comparing padded container duration with an arbitrary decimal tolerance.
+    const encodedSampleRate = Number(audioStream?.sample_rate);
+    expect(Number.isFinite(encodedSampleRate) && encodedSampleRate > 0).toBe(true);
+    const maxAacPadding = (2112 + 1023) / encodedSampleRate;
+    writeFileSync(path.join(ARTIFACTS_DIR, "audio-pitch-export-timing.json"), JSON.stringify({
+      expectedDuration, containerDuration: Number(probe.format.duration), maxAacPadding,
+      streams: probe.streams.map((stream: any) => ({ type: stream.codec_type, codec: stream.codec_name, duration: Number(stream.duration), sampleRate: stream.sample_rate, frames: stream.nb_frames })),
+    }, null, 2));
+    expect(videoStream).toBeDefined();
+    expect(Number(videoStream.duration)).toBeCloseTo(expectedDuration, 4);
+    expect(Number(videoStream.nb_frames)).toBe(64);
+    expect(audioStream?.codec_name).toBe("aac");
+    expect(Number(audioStream.duration)).toBeGreaterThanOrEqual(expectedDuration - 1 / rate);
+    expect(Number(audioStream.duration)).toBeLessThanOrEqual(expectedDuration + maxAacPadding + 1 / rate);
+    expect(Number(probe.format.duration)).toBeCloseTo(Math.max(Number(videoStream.duration), Number(audioStream.duration)), 4);
     const pcm = execFileSync(ffmpeg, ["-v", "error", "-i", destination, "-map", "0:a:0", "-f", "f32le", "-ar", String(rate), "-ac", "2", "pipe:1"], { maxBuffer: 4 * 1024 * 1024, windowsHide: true });
+    expect(pcm.length / 8 / rate).toBeGreaterThanOrEqual(expectedDuration - 1 / rate);
+    expect(pcm.length / 8 / rate).toBeLessThanOrEqual(expectedDuration + maxAacPadding + 1 / rate);
     const frequencies = [0, 1].map((channel) => frequency(Array.from({ length: pcm.length / 8 }, (_, frame) => pcm.readFloatLE(frame * 8 + channel * 4)), rate));
     expect(frequencies[0]).toBeCloseTo(440, 0);
     expect(frequencies[1]).toBeCloseTo(660, 0);

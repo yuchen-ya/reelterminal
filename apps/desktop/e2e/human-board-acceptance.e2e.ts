@@ -41,6 +41,18 @@ async function saved(page: Page) {
 
 async function elementPoint(page: Page, element: BoardElement) {
   await saved(page);
+  // Embed DOM follows the live viewport immediately; its persisted viewport can
+  // still describe the previous fit while the autosave debounce is pending.
+  const kind = element.customData?.kind, resourceId = element.customData?.resourceId;
+  if (resourceId && (kind === "video" || kind === "model3d")) {
+    const content = kind === "model3d"
+      ? page.locator(`[data-testid="model-preview"][data-resource-id="${resourceId}"]`)
+      : page.locator(`video[src$="/${resourceId}"]`);
+    return content.evaluate(node => {
+      const bounds = node.closest(".excalidraw__embeddable-container__inner")!.getBoundingClientRect();
+      return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    });
+  }
   const boardId = await page.getByTestId("human-board-canvas").getAttribute("data-board-id");
   const board = (await boards(page)).find(board => board.id === boardId)!;
   const bounds = await page.getByTestId("human-board-scene").locator(".excalidraw").boundingBox();
@@ -287,6 +299,7 @@ test("plain-text paste creates one board and path-backed drop uses the actual sc
 test("video/model interactions retain board geometry and freeze source views with text but without controls", async () => {
   const launched = await launchApp();
   const evidence = createEvidence("human-board-media", launched.page);
+  await launched.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1024, 700));
   try {
     const page = launched.page;
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
