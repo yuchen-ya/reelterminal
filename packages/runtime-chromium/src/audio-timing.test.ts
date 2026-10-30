@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { build } from "esbuild";
 import { chromium } from "playwright-core";
 import { fileURLToPath } from "node:url";
+import { audioStretchAssets } from "./node/audio-stretch-assets.mjs";
 
 // Real OfflineAudioContext rendering. Synthetic PCM only, isolated Chromium;
 // no desktop project, endpoint, external service, speakers or export jobs.
@@ -11,7 +12,7 @@ it("renders constant and curved trim/seek/chunk boundaries in real Chromium audi
   const bundle = await build({
     stdin: { contents: 'export { AudioEngine } from "./audio-engine"; export { RealtimeAudioGraph } from "./realtime-audio-graph";', resolveDir: audioDirectory },
     bundle: true, write: false, platform: "browser", format: "iife", globalName: "AudioTimingModule",
-    plugins: [{ name: "existing-audio-decode-shim", setup(builder) {
+    plugins: [audioStretchAssets(), { name: "existing-audio-decode-shim", setup(builder) {
       builder.onResolve({ filter: /(^|\/)extract-audio$/ }, () => ({ path: shim }));
     } }],
   });

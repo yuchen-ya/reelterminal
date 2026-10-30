@@ -29,6 +29,7 @@ import { build } from "esbuild";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { audioStretchAssets } from "../../../packages/runtime-chromium/src/node/audio-stretch-assets.mjs";
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -70,6 +71,7 @@ const result = await build({
     "process.env.NODE_ENV": '"production"',
   },
   plugins: [
+    audioStretchAssets(),
     {
       name: "reelterminal-harness-shims",
       setup(pluginBuild) {

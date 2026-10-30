@@ -497,6 +497,9 @@ importers:
       polygon-clipping:
         specifier: 0.15.7
         version: 0.15.7
+      signalsmith-stretch-js:
+        specifier: 0.2.0
+        version: 0.2.0
       three:
         specifier: ^0.182.0
         version: 0.182.0
@@ -5614,6 +5617,10 @@ packages:
 
   signal-exit@3.0.7:
     resolution: {integrity: sha512-wnD2ZE+l+SPC/uoS0vXeE9L1+0wuaMqKlfz9AMUo38JsyLSBWSFcHR1Rri62LZc12vLr1gb3jl7iwQhgwpAbGQ==}
+
+  signalsmith-stretch-js@0.2.0:
+    resolution: {integrity: sha512-jE8RzjZWXQxlqnBvlKyxj1WEFT2a8Lav3ZBjf2Fg36RCi1ICoh2V7qM/NEb5hlamf0l9pgGgYI7mne4EGNWVfA==}
+    engines: {node: '>=18'}
 
   simple-update-notifier@2.0.0:
     resolution: {integrity: sha512-a2B9Y0KlNXl9u/vsW6sTIu9vGEpfKu2wRV6l1H3XEas/0gUIzGzBoP/IouTcUQbm9JWZLH3COxyn03TYlFax6w==}
@@ -11697,6 +11704,8 @@ snapshots:
   siginfo@2.0.0: {}
 
   signal-exit@3.0.7: {}
+
+  signalsmith-stretch-js@0.2.0: {}
 
   simple-update-notifier@2.0.0:
     dependencies:

@@ -23,6 +23,7 @@ import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { audioStretchAssets } from "./audio-stretch-assets.mjs";
 
 let cached: Promise<string> | null = null;
 
@@ -143,6 +144,7 @@ async function doBuild(): Promise<string> {
       "process.env.NODE_ENV": '"production"',
     },
     plugins: [
+      audioStretchAssets(),
       {
         name: "reelterminal-harness-shims",
         setup(pluginBuild) {

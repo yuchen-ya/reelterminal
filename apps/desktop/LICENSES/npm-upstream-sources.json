@@ -6,6 +6,13 @@
       "url": "https://github.com/excalidraw/excalidraw/blob/v0.18.0/LICENSE"
     }
   },
+  "signalsmith-stretch-js": {
+    "0.2.0": {
+      "file": "LICENSES/npm-upstream/signalsmith-stretch-js-0.2.0.txt",
+      "license": "MIT",
+      "url": "https://github.com/Signalsmith-Audio/signalsmith-stretch/tree/57b93f4e9206a089a45387eaa39bdc9f310d3308"
+    }
+  },
   "@astryxdesign/core": {
     "0.1.1": {
       "file": "LICENSES/npm-upstream/astryx-core-0.1.1.txt",

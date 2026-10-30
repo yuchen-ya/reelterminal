@@ -137,10 +137,9 @@ import { createExportResourceObserver } from "../harness/performance/export-reso
     const green = tracks.find((t: any) => t.id === "upper-green").clips[0];
     const blue = tracks.find((t: any) => t.id === "upper-blue").clips[0];
     await edit([{ op: "clip.setTransform", clipId: green.id, transform: { position: { x: 500, y: -250 }, scale: { x: 0.3, y: 0.3 } } }, { op: "clip.setTransform", clipId: blue.id, transform: { position: { x: -500, y: -250 }, scale: { x: 0.3, y: 0.3 } } }, { op: "clip.setSpeedConfig", clipId: green.id, speed: 1.5, reversed: false, pitchCorrection: true, keyframes: [], freezeFrames: [] }, { op: "transition.add", clipAId: back[0].id, clipBId: back[1].id, type: "crossfade", duration: 0.5 }]);
-    const unsupportedAudio = await agent.callCommand("editor.control", { ...target, action: "play" });
-    record.unsupported_audio = { pitch_correction: true, result: { ok: unsupportedAudio.ok, error: unsupportedAudio.error } };
-    expect(unsupportedAudio.ok).toBe(false);
-    expect(unsupportedAudio.error?.message).toMatch(/pitch correction.*not available/i);
+    const pitchPreservingAudio = await agent.callCommand("editor.control", { ...target, action: "play" });
+    record.pitch_preserving_audio = { pitch_correction: true, result: { ok: pitchPreservingAudio.ok, error: pitchPreservingAudio.error } };
+    expect(pitchPreservingAudio.ok).toBe(true);
     await control("pause");
     await edit([{ op: "clip.setSpeedConfig", clipId: green.id, speed: 1.5, reversed: false, pitchCorrection: false, keyframes: [], freezeFrames: [] }]);
     record.selected_audio_mode = "1.5x_varispeed_pitch_correction_false";

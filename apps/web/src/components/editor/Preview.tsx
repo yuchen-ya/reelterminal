@@ -1582,14 +1582,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             (effect: Effect) => effect.enabled,
           );
           if (audioEffects.length > 0) {
-            try {
-              previewBuffer = (await getPreviewAudioBufferForEffects(audioBuffer, cacheKey, audioEffects)).audioBuffer;
-            } catch (error) {
-              console.warn(
-                `[Preview] Failed to pre-process audio effects for clip ${clip.id}:`,
-                error,
-              );
-            }
+            previewBuffer = (await getPreviewAudioBufferForEffects(audioBuffer, cacheKey, audioEffects)).audioBuffer;
           }
           if (!track.muted && (!hasSoloTracks || track.solo) &&
               (clip.volume > 0 || clip.automation?.volume?.some((point) => point.value > 0))) {

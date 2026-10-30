@@ -48,6 +48,7 @@
     "immer": "^11.1.18",
     "mediabunny": "^1.55.4",
     "polygon-clipping": "0.15.7",
+    "signalsmith-stretch-js": "0.2.0",
     "three": "^0.182.0",
     "uuid": "^13.0.2"
   }

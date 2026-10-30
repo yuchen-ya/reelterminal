@@ -319,7 +319,7 @@ describe("RealtimeAudioGraph speed scheduling", () => {
     time = 1;
     vi.advanceTimersByTime(300);
     expect(failure).toHaveBeenCalledOnce();
-    expect(failure).toHaveBeenCalledWith(expect.objectContaining({ code: "AUDIO_PITCH_CORRECTION_UNAVAILABLE" }));
+    expect(failure).toHaveBeenCalledWith(expect.objectContaining({ code: "AUDIO_SPEED_NOT_PREPARED" }));
     expect(vi.getTimerCount()).toBe(0);
   });
   it("does not reject unsupported options on a muted track", () => {

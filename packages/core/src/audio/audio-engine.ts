@@ -269,6 +269,7 @@ export class AudioEngine {
   private noAudioMedia: Set<string> = new Set();
   private segmentedAudioDecoders: Map<string, SegmentedAudioDecoder> = new Map();
   private effectsEngine: AudioEffectsEngine | null = null;
+  private profileNoiseBuffers = new WeakMap<AudioBuffer, Map<string, { signature: string; buffer: Promise<AudioBuffer> }>>();
 
   /**
    * Creates a new AudioEngine instance.
@@ -605,9 +606,29 @@ export class AudioEngine {
       }
     }
 
-    const audioBuffer = await this.getAudioBuffer(mediaItem, context, clipInfo.audioTrackIndex ?? 0);
+    let audioBuffer = await this.getAudioBuffer(mediaItem, context, clipInfo.audioTrackIndex ?? 0);
     if (!audioBuffer) {
       return;
+    }
+
+    // Preview removes profile-based noise from source PCM before speed
+    // processing. Keep that order here: a profile describes source frequencies,
+    // and processing a different range per export chunk changes the result.
+    const { profileAwareNoiseEffects, realtimeEffects } = splitProfileAwareNoiseReductionEffects(
+      clipInfo.effects.filter((effect) => effect.enabled),
+    );
+    if (profileAwareNoiseEffects.length && this.effectsEngine) {
+      let entries = this.profileNoiseBuffers.get(audioBuffer);
+      if (!entries) { entries = new Map(); this.profileNoiseBuffers.set(audioBuffer, entries); }
+      if (clipIds) for (const id of entries.keys()) if (!clipIds.has(id)) entries.delete(id);
+      const signature = JSON.stringify(profileAwareNoiseEffects);
+      let entry = entries.get(clipInfo.clipId);
+      if (entry?.signature !== signature) {
+        entry = { signature, buffer: this.applySourceNoiseProfiles(audioBuffer, profileAwareNoiseEffects) };
+        entries.set(clipInfo.clipId, entry);
+      }
+      audioBuffer = await entry.buffer;
+      clipInfo = { ...clipInfo, effects: realtimeEffects };
     }
 
     if (clipInfo.audioTiming) {
@@ -620,6 +641,15 @@ export class AudioEngine {
       return this.renderPreparedClipToContext(context, prepared.buffer, clipInfo, renderStartTime);
     }
     return this.renderPreparedClipToContext(context, audioBuffer, clipInfo, renderStartTime);
+  }
+
+  private async applySourceNoiseProfiles(buffer: AudioBuffer, effects: Effect[]): Promise<AudioBuffer> {
+    for (const effect of effects) {
+      const params = effect.params as AudioEffectParams["noiseReduction"];
+      buffer = await this.effectsEngine!.applyNoiseReductionWithProfileData(buffer, params.profile!,
+        params.reduction ?? 0.5, params.focus ?? "balanced", params.threshold ?? -40);
+    }
+    return buffer;
   }
 
   private async renderPreparedClipToContext(
@@ -703,30 +733,11 @@ export class AudioEngine {
       clipInfo.sourceTime,
       clipInfo.sourceDuration ?? clipInfo.duration,
     );
-    const { profileAwareNoiseEffects, realtimeEffects } =
-      splitProfileAwareNoiseReductionEffects(enabledEffects);
-
     let processedBuffer = segmentBuffer;
-
-    for (const effect of profileAwareNoiseEffects) {
-      const params = effect.params as AudioEffectParams["noiseReduction"];
-      if (!params.profile) {
-        continue;
-      }
-
-      processedBuffer = await this.effectsEngine.applyNoiseReductionWithProfileData(
-        processedBuffer,
-        params.profile,
-        params.reduction ?? 0.5,
-        params.focus ?? "balanced",
-        params.threshold ?? -40,
-      );
-    }
-
-    if (realtimeEffects.length > 0) {
+    if (enabledEffects.length > 0) {
       const result = await this.effectsEngine.applyEffectChain(
         processedBuffer,
-        realtimeEffects,
+        enabledEffects,
       );
       processedBuffer = result.buffer;
     }
@@ -1095,6 +1106,7 @@ export class AudioEngine {
 
   clearCache(): void {
     this.mediaBuffers.clear();
+    this.profileNoiseBuffers = new WeakMap();
 
     for (const decoder of this.segmentedAudioDecoders.values()) {
       decoder.dispose();
