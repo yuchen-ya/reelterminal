@@ -37,6 +37,13 @@ test("visible isolated desktop: title close waits, rename is shared, local fonts
     await createProjectViaUI(launched.page);
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     const capabilities = call("capabilities.get");
+    // Complete startup onboarding before inspecting archive controls. The narrow-window
+    // titlebar regression separately keeps this notice open while switching workspaces.
+    const startupHint = launched.page.getByTestId("notification-toast").filter({ hasText: "Copy Agent startup prompt" });
+    if (await startupHint.count()) {
+      await startupHint.getByRole("button", { name: "Dismiss notification", exact: true }).click();
+      await startupHint.waitFor({ state: "detached" });
+    }
     expect(capabilities.manual.contentVersion).toBe(GUI_MANUAL_CONTENT_VERSION);
     const workspace = path.join(capabilities.mediaImport.recommendedRoot, "jobs", "2026-10-09-node-ux-fixes");
     evidence = job ? path.join(job, "evidence") : path.join(workspace, "evidence");
