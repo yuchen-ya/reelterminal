@@ -232,7 +232,7 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
 
 ToastItem.displayName = "ToastItem";
 
-export const ToastContainer: React.FC = () => {
+export const ToastContainer: React.FC<{ belowTitlebar?: boolean }> = ({ belowTitlebar = false }) => {
   const { t } = useTranslation();
   const { notifications, removeNotification } = useNotificationStore();
 
@@ -243,7 +243,7 @@ export const ToastContainer: React.FC = () => {
   // orders it above drawers, popovers, app dialogs and FloatingWindow.
   return createPortal(
     <div
-      className="fixed top-4 right-4 z-[var(--z-toast)] flex flex-col gap-3"
+      className={`fixed ${belowTitlebar ? "top-14" : "top-4"} right-4 z-[var(--z-toast)] flex flex-col gap-3`}
       role="region"
       aria-label={t("Notifications")}
     >

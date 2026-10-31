@@ -375,7 +375,8 @@ export function DesktopApp(): JSX.Element {
       <SettingsDialog />
       <CloseRetentionDialog />
       <DesktopHelpDialog open={helpOpen} onOpenChange={setHelpOpen} canTour={showEditor && isVideoEditing} />
-      <ToastContainer />
+      {/* Persistent notices leave the titlebar tabs reachable in narrow windows. */}
+      <ToastContainer belowTitlebar />
     </div>
   );
 }
