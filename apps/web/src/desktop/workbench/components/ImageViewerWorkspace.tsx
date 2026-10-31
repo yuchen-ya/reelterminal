@@ -8,6 +8,7 @@
 import type {
   JSX,
   PointerEvent as ReactPointerEvent,
+  ReactNode,
 } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -51,6 +52,8 @@ export interface ImageViewerWorkspaceProps {
   readonly currentItem: WorkbenchItemView;
   /** All image items of the batch (grid cards + pinned reference compare). */
   readonly batchImageItems: readonly WorkbenchItemView[];
+  readonly toolbarLeading?: ReactNode;
+  readonly toolbarTrailing?: ReactNode;
   readonly hideCollectionNavigation?: boolean;
   readonly onOpenCollection?: () => void;
   readonly selectedIds: readonly string[];
@@ -71,6 +74,8 @@ interface RepairDraftCache {
 export function ImageViewerWorkspace({
   currentItem,
   batchImageItems,
+  toolbarLeading,
+  toolbarTrailing,
   onOpenCollection,
   hideCollectionNavigation = false,
   onUpdateImageAnnotations,
@@ -371,6 +376,7 @@ export function ImageViewerWorkspace({
     resetPointerState,
   } = useImagePointerInteractions({
     canDraw,
+    zoom,
     workMode,
     repairTool,
     annotateTool,
@@ -572,7 +578,22 @@ export function ImageViewerWorkspace({
       <div className="sr-only">
         {dimensionLabel}
       </div>
-      <div ref={areaRef} className="absolute inset-0 flex items-center justify-center">
+      <div
+        ref={areaRef}
+        className="absolute inset-0 flex items-center justify-center"
+        onContextMenu={(e) => {
+          if (loupeEnabled) {
+            e.preventDefault();
+            setLoupeEnabled(false);
+          }
+        }}
+        onPointerDown={(e) => {
+          if (e.button === 2 && loupeEnabled) {
+            e.preventDefault();
+            setLoupeEnabled(false);
+          }
+        }}
+      >
         <ImageStage
           key={imageScope}
           stageRef={stageRef}
@@ -591,6 +612,7 @@ export function ImageViewerWorkspace({
           zoom={zoom}
           pan={pan}
           loupeEnabled={loupeEnabled}
+          onDisableLoupe={() => setLoupeEnabled(false)}
           workMode={workMode}
           stageCursorClass={stageCursorClass}
           holdOriginal={holdOriginal}
@@ -624,6 +646,8 @@ export function ImageViewerWorkspace({
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-bg">
       <ImageViewerToolbar
+        leadingSlot={toolbarLeading}
+        trailingSlot={toolbarTrailing}
         hideCollectionNavigation={hideCollectionNavigation}
         viewMode={viewMode}
         setViewMode={mode => { if (mode === "grid") onOpenCollection?.(); }}

@@ -14,6 +14,7 @@ export interface ReviewAdminMenuProps {
   contextLoaded?: boolean;
   hasProject: boolean;
   projectName?: string;
+  onImportToBoard?: () => void;
   onOpenMigration: () => void;
   onOpenBackup: () => void;
   onOpenRestore: () => void;
@@ -25,6 +26,7 @@ export function ReviewAdminMenu({
   contextLoaded = true,
   hasProject,
   projectName = "",
+  onImportToBoard,
   onOpenMigration,
   onOpenBackup,
   onOpenRestore,
@@ -47,6 +49,17 @@ export function ReviewAdminMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
+        {onImportToBoard && (
+          <>
+            <DropdownMenuItem
+              data-testid="human-board-menu-import"
+              onSelect={onImportToBoard}
+            >
+              导入文件到画板…
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem
           disabled={!contextLoaded}
           data-testid="review-migration-open"

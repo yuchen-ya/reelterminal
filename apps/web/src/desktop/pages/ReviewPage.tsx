@@ -18,6 +18,7 @@ import { ReviewExportDialog } from "../workbench/components/ReviewExportDialog";
 import { ReviewAttachDialog } from "../workbench/components/ReviewAttachDialog";
 import { ReviewProcessView } from "../workbench/components/ReviewProcessView";
 import { ReviewCommandActivity } from "../workbench/components/ReviewCommandActivity";
+import { ReviewRepairDraftPreview } from "../workbench/components/ReviewRepairDraftPreview";
 import { ReviewRestoreDialog } from "../workbench/components/ReviewRestoreDialog";
 import { ReviewBackupDialog } from "../workbench/components/ReviewBackupDialog";
 import { ReviewPurgeDialog } from "../workbench/components/ReviewPurgeDialog";
@@ -28,6 +29,7 @@ import { wbButton } from "../workbench/wb-button";
 import { ReviewNodeHeader } from "../workbench/components/ReviewNodeHeader";
 import { ReviewTaskDirectory, type DirectoryView } from "../workbench/components/ReviewTaskDirectory";
 import { WorkbenchTabs } from "../workbench/components/WorkbenchTabs";
+import { FreeBoardIcon, WorkspaceDirectoryIcon } from "../workbench/components/WorkbenchIcons";
 import { useWorkbenchTabsStore, workbenchTabKey } from "../../stores/workbench-tabs-store";
 import { humanBoardStorage, type HumanBoard } from "../../services/human-board/storage";
 import { boardTransferInput, type BoardTransferInput } from "../../services/human-board/documents";
@@ -117,6 +119,24 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
   const adoptBranch = useCallback((input: Omit<Parameters<typeof reviewService.adoptBranch>[0], "target">) =>
     reviewService.adoptBranch({ ...input, target: branchTarget! }), [branchTarget]);
 
+  useEffect(() => {
+    if (!managerOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !busy &&
+        !trashRequest &&
+        !rename &&
+        !document.querySelector('[role="menu"], [role="dialog"]')
+      ) {
+        setManagerOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [managerOpen, busy, trashRequest, rename]);
+
   const hasProject = useProjectStore((state) => state.hasOpenProject);
   const projectName = useProjectStore((state) => state.project.name);
   const migrated = useProjectStore((state) => !!state.project.reviewMigration);
@@ -193,7 +213,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     transition.current = true;
     setSwitching(true);
     try {
-      if (activeTab?.kind === "board" && !legacy) await flush.current();
+      if (activeTab?.kind === "board" && !legacy && !managerOpen) await flush.current();
       await action();
     } finally {
       transition.current = false;
@@ -302,19 +322,19 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     const listener = (event: Event) => {
       const direction: unknown = (event as CustomEvent).detail;
       if (direction !== "undo" && direction !== "redo") return;
-      if (!legacy && activeTab?.kind === "board") { window.dispatchEvent(new CustomEvent("reelterminal:human-board-history", { detail: direction })); return; }
+      if (!legacy && !managerOpen && activeTab?.kind === "board") { window.dispatchEvent(new CustomEvent("reelterminal:human-board-history", { detail: direction })); return; }
       const active = document.activeElement;
       if (textEntry(active) || active?.closest('[role="dialog"]')) return;
       if (legacy) {
         if (migrated) { report(new Error("迁移备份为只读，请在独立审阅任务中操作历史")); return; }
         void projectHistory(direction).then(result => { if (!result.ok) report(new Error(result.message)); });
       }
-      else if (active?.closest("[data-review-directory]")) void directoryHistory(direction).catch(report);
+      else if (managerOpen || active?.closest("[data-review-directory]")) void directoryHistory(direction).catch(report);
       else window.dispatchEvent(new CustomEvent("reelterminal:review-content-history", { detail: direction }));
     };
     window.addEventListener("reelterminal:review-history", listener);
     return () => window.removeEventListener("reelterminal:review-history", listener);
-  }, [legacy, migrated, directoryHistory, activeTab?.kind]);
+  }, [legacy, managerOpen, migrated, directoryHistory, activeTab?.kind]);
 
   const [startup, setStartup] = useState<{ key: string; command: string } | null>(null);
   useEffect(() => {
@@ -365,10 +385,15 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
       contextLoaded={!!context && !busy}
       hasProject={hasProject}
       projectName={projectName}
+      onImportToBoard={
+        activeTab?.kind === "board" && !managerOpen && !legacy
+          ? () => document.querySelector<HTMLInputElement>('[data-testid="human-board-import-files"]')?.click()
+          : undefined
+      }
       onOpenMigration={() => setMigrationOpen(true)}
       onOpenBackup={() => setBackupOpen(true)}
       onOpenRestore={() => setRestoreOpen(true)}
-      onOpenLegacyProject={hasProject ? () => { void navigate(() => setLegacy(true)).catch(report); } : undefined}
+      onOpenLegacyProject={hasProject ? () => { void navigate(() => { setManagerOpen(false); setLegacy(true); }).catch(report); } : undefined}
       onOpenLegacyMotion={
         hasProject
           ? () => {
@@ -379,24 +404,56 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     />
   );
 
+  const reviewAddressContent = (
+    <>
+      {command ? (
+        <button
+          className="h-6 min-w-0 max-w-[340px] xl:max-w-[460px] truncate rounded-[5px] border border-border bg-bg-2 px-2.5 text-left font-mono text-[11px] text-fg-2 transition-colors hover:border-border-strong hover:bg-bg-3 hover:text-fg"
+          data-testid="review-start-command"
+          title={copied ? "已复制" : "点击复制启动命令"}
+          onClick={() => { void navigator.clipboard.writeText(command).then(() => setCopied(true)).catch(report); }}
+        >
+          {command}
+        </button>
+      ) : (
+        <span className="truncate text-fg-3">
+          {activeTab ? (browserDemo ? "浏览器演示 · 请在桌面版连接 Agent" : "正在载入启动命令…") : "打开审阅任务或自由画板"}
+        </span>
+      )}
+      {copied && command && !legacy && <span role="status" className="shrink-0 text-[11px] text-accent">已复制</span>}
+    </>
+  );
+
+  const boardToolbarRight = (
+    <div className="flex shrink-0 items-center gap-1" data-testid="workbench-address-bar">
+      <span
+        className="sr-only"
+        data-testid="workbench-private-board"
+      >
+        私有自由画板 · 没有 Agent target
+      </span>
+      {adminMenu}
+    </div>
+  );
+
   return (
     <div
       className="flex h-full min-h-0 flex-col bg-bg text-fg"
       data-testid="review-page"
       data-workbench-scope="true"
       onPaste={event => {
-        if (activeTab || legacy || textEntry(event.target as Element)) return;
+        if ((activeTab && !managerOpen) || legacy || textEntry(event.target as Element)) return;
         const content = boardTransferInput(event.clipboardData);
         if (content) { event.preventDefault(); void createBoard(content).catch(report); }
       }}
-      onDragOver={event => { if (!activeTab && !legacy && event.dataTransfer.types.some(type => ["Files", "text/plain", "text/uri-list", "text/html"].includes(type))) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } else if (activeTab?.kind === "review" && !legacy && context && !busy && event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
+      onDragOver={event => { if ((!activeTab || managerOpen) && !legacy && event.dataTransfer.types.some(type => ["Files", "text/plain", "text/uri-list", "text/html"].includes(type))) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } else if (activeTab?.kind === "review" && !managerOpen && !legacy && context && !busy && event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
       onDrop={event => {
-        if (!activeTab && !legacy && !textEntry(event.target as Element)) {
+        if ((!activeTab || managerOpen) && !legacy && !textEntry(event.target as Element)) {
           const content = boardTransferInput(event.dataTransfer, true);
           if (content) { event.preventDefault(); void createBoard(content).catch(report); }
           return;
         }
-        if (activeTab?.kind !== "review" || legacy || !context || busy || !event.dataTransfer.files.length) return;
+        if (activeTab?.kind !== "review" || managerOpen || legacy || !context || busy || !event.dataTransfer.files.length) return;
         event.preventDefault();
         const files = Array.from(event.dataTransfer.files);
         const captured = context;
@@ -421,23 +478,193 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
         event.target.value = "";
         if (files.length) void createBoard({ files }).catch(report);
       }} />
-      <WorkbenchTabs locked={layoutLocked || busy || switching} onOpen={() => { void navigate(() => setManagerOpen(true)).catch(report); }}
-        onActivate={key => { if (key === activeKey) return; void navigate(() => {
-          if (key.startsWith("review:")) useWorkbenchUiStore.getState().activateScope(key);
-          useWorkbenchTabsStore.getState().activate(key);
-          setLegacy(false);
-          setBoardIncoming(null);
-        }).catch(report); }} onClose={key => { void navigate(() => useWorkbenchTabsStore.getState().close(key)).catch(report); }} />
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-bg-1 px-3 text-xs" data-testid="workbench-address-bar">
-        {legacy ? <span className="text-fg-3">{t("review.legacyProject", { name: projectName })}</span> : activeTab?.kind === "board" ? <span className="text-fg-3" data-testid="workbench-private-board">私有自由画板 · 没有 Agent target；仅主动导出的单个内容快照进入审阅。</span>
-          : command ? <button className="min-w-0 flex-1 truncate rounded border border-border bg-bg-2 px-3 py-1 text-left font-mono text-fg-2 hover:text-fg" data-testid="review-start-command" title={copied ? "已复制" : "点击复制启动命令"} onClick={() => { void navigator.clipboard.writeText(command).then(() => setCopied(true)).catch(report); }}>{command}</button>
-          : <span className="text-fg-3">{activeTab ? (browserDemo ? "浏览器演示 · 请在桌面版连接 Agent" : "正在载入启动命令…") : "打开审阅任务或自由画板"}</span>}
-        {copied && command && !legacy && <span role="status" className="shrink-0 text-fg-3">已复制</span>}
-        {adminMenu}
-      </div>
-      {legacy && hasProject ? (
+      <WorkbenchTabs
+        locked={layoutLocked || busy || switching}
+        managerOpen={managerOpen}
+        onOpen={() => { void navigate(() => setManagerOpen(true)).catch(report); }}
+        onCloseManager={() => setManagerOpen(false)}
+        onActivate={key => {
+          if (key === activeKey && !managerOpen) return;
+          void navigate(() => {
+            if (key.startsWith("review:")) useWorkbenchUiStore.getState().activateScope(key);
+            useWorkbenchTabsStore.getState().activate(key);
+            setManagerOpen(false);
+            setLegacy(false);
+            setBoardIncoming(null);
+          }).catch(report);
+        }}
+        onClose={key => { void navigate(() => useWorkbenchTabsStore.getState().close(key)).catch(report); }}
+      />
+      {managerOpen ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-1 px-3 text-xs" data-testid="workbench-address-bar">
+            <div className="flex min-w-0 items-center gap-2">
+              <WorkspaceDirectoryIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
+              <strong className="shrink-0 font-semibold text-fg">打开与管理工作台</strong>
+              {selected && (
+                <span className="sr-only" data-testid="review-node-title" data-node-id={selected.id}>
+                  {selected.name}
+                </span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {activeTab && (
+                <button
+                  type="button"
+                  className={wbButton.secondary}
+                  onClick={() => setManagerOpen(false)}
+                >
+                  返回当前标签页
+                </button>
+              )}
+              {adminMenu}
+            </div>
+          </div>
+          <div
+            className="flex min-h-0 flex-1 bg-bg"
+            data-testid="workbench-open-dialog"
+            data-workbench-modal="true"
+          >
+            <section className="flex min-w-0 flex-1 flex-col border-r border-border">
+              <ReviewTaskDirectory
+                nodes={nodes}
+                selectedId={selectedId}
+                onSelectNode={chooseNode}
+                directoryScope={context ? { target: context.target, revision: context.revision } : undefined}
+                onMoveNode={(nodeId, nextGroupId, revision) => { void mutate([{ kind: "node.update", nodeId, patch: { groupId: nextGroupId } }], revision).catch(report); }}
+                onDropFiles={(node, files) => {
+                  if (!context) return;
+                  const capturedTarget = { ...context.target, nodeId: node.id };
+                  const revision = node.revision;
+                  setBusy(true);
+                  void planReviewFiles(files).then(plan => importReviewFiles(capturedTarget, revision, "拖入文件", plan))
+                    .catch(report).finally(() => setBusy(false));
+                }}
+                onUpdateNode={(nodeId, patch) => {
+                  if (patch.trashed) {
+                    const node = nodes.find(node => node.id === nodeId);
+                    if (node && context) setTrashRequest({ node, revision: context.revision });
+                  } else void mutate([{ kind: "node.update", nodeId, patch }]).catch(report);
+                }}
+                onBranches={browserDemo ? undefined : node => {
+                  if (!context) return;
+                  const nodeTarget = { ...context.target, nodeId: node.id };
+                  if (node.branch) setBranchTarget(nodeTarget); else setBranchListTarget(nodeTarget);
+                }}
+                onRenameNode={node => {
+                  if (context) setRename({ kind: "node", id: node.id, name: node.name, revision: context.revision });
+                }}
+                onPurgeNode={node => {
+                  if (context) setPurgeTarget({ ...context.target, nodeId: node.id });
+                }}
+                directory={directory}
+                view={view}
+                onSelectView={setView}
+                query={query}
+                onQueryChange={setQuery}
+                groupId={groupId}
+                onSelectGroup={setGroupId}
+                onCreateNode={async (name) => {
+                  const result = await mutate([{ kind: "node.create", name }]);
+                  setView("recent");
+                  setGroupId("");
+                  await openReview(result.nodes[0].id);
+                }}
+                onCreateGroup={async (name) => {
+                  await mutate([{ kind: "group.create", name }]);
+                }}
+                onRenameGroup={(id) => {
+                  const g = directory.groups.find((group) => group.id === id);
+                  if (g && context) {
+                    setRename({ kind: "group", id, name: g.name, revision: context.revision });
+                  }
+                }}
+                onRemoveGroup={(id) => {
+                  void mutate([{ kind: "group.remove", groupId: id }])
+                    .then(() => setGroupId(""))
+                    .catch(report);
+                }}
+                onDirectoryHistory={(direction) => void directoryHistory(direction).catch(report)}
+                cursor={cursor}
+                onLoadMore={() => void loadMore().catch(report)}
+                busy={busy || switching || !context}
+              />
+            </section>
+            <section className="flex min-w-0 flex-1 flex-col gap-2 p-3">
+              <div className="flex h-7 items-center justify-between px-1 text-xs">
+                <strong className="inline-flex items-center gap-1.5 font-semibold text-fg">
+                  <FreeBoardIcon className="h-3.5 w-3.5 text-sky-400" />
+                  <span>私有自由画板</span>
+                </strong>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={busy || switching}
+                    className={wbButton.secondary}
+                    onClick={() => newBoardFiles.current?.click()}
+                  >
+                    导入文件建画板
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || switching}
+                    className={wbButton.primary}
+                    data-testid="human-board-new"
+                    onClick={() => void createBoard().catch(report)}
+                  >
+                    ＋ 新建自由画板
+                  </button>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto border-t border-border pt-1.5">
+                {boards.map(row => (
+                  <div key={row.id} className="group flex items-center rounded px-2 hover:bg-bg-2">
+                    <FreeBoardIcon className="mr-2 h-3.5 w-3.5 shrink-0 text-sky-400" />
+                    <button
+                      disabled={busy || switching}
+                      className="min-w-0 flex-1 truncate py-2 text-left text-xs text-fg-2 group-hover:text-fg"
+                      data-testid={`human-board-open-${row.id}`}
+                      onClick={() => {
+                        void navigate(() => {
+                          useWorkbenchTabsStore.getState().open({ kind: "board", id: row.id, name: row.name });
+                          setBoardIncoming(null);
+                          setManagerOpen(false);
+                          setLegacy(false);
+                        }).catch(report);
+                      }}
+                    >
+                      {row.name}
+                    </button>
+                    <button
+                      disabled={busy || switching}
+                      className="px-2 py-1 text-xs text-fg-3 hover:text-status-error"
+                      aria-label={`删除画板 ${row.name}`}
+                      data-testid={`human-board-delete-${row.id}`}
+                      onClick={() => {
+                        if (!window.confirm(`删除画板“${row.name}”及其撤销历史？已导出的审阅快照会保留。`)) return;
+                        void navigate(async () => {
+                          await humanBoardStorage.remove(row.id);
+                          useWorkbenchTabsStore.getState().close(`board:${row.id}`);
+                          await refreshBoards();
+                        }).catch(report);
+                      }}
+                    >
+                      删除
+                    </button>
+                  </div>
+                ))}
+                {!boards.length && (
+                  <p className="px-2 py-6 text-center text-xs text-fg-3">
+                    暂无自由画板，点击右上角「＋ 新建自由画板」或拖入文件开始创作。
+                  </p>
+                )}
+              </div>
+            </section>
+          </div>
+        </div>
+      ) : legacy && hasProject ? (
         <>
-          <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3">
+          <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-1 px-3 text-xs" data-testid="workbench-address-bar">
             <button
               type="button"
               className={wbButton.secondary}
@@ -447,6 +674,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
               {t("review.backToNodes")}
             </button>
             <strong className="text-xs">{t("review.legacyProject", { name: projectName })}</strong>
+            {adminMenu}
           </div>
           <div className="min-h-0 flex-1" data-review-legacy="true">
             <EditorBootstrapGate>
@@ -463,7 +691,31 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
             </EditorBootstrapGate>
           </div>
         </>
-      ) : activeTab?.kind === "board" ? board ? <Suspense fallback={<div className="p-8 text-sm">正在载入自由画板…</div>}><div className="min-h-0 flex-1"><HumanBoardView key={board.id} board={board} incoming={boardIncoming} onIncomingConsumed={consumeIncoming} onOpenReview={chooseNode} onSaved={boardSaved} onFlush={registerFlush} onLayoutLockChange={setLayoutLocked} /></div></Suspense> : <div className="p-8 text-sm">{boardsReady ? "画板不存在" : "正在载入画板…"}</div> : (
+      ) : activeTab?.kind === "board" ? board ? (
+        <Suspense fallback={<div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3 text-xs"><span className="text-fg-3">正在载入自由画板…</span>{boardToolbarRight}</div>}>
+          <div className="min-h-0 flex-1">
+            <HumanBoardView
+              key={board.id}
+              board={board}
+              incoming={boardIncoming}
+              onIncomingConsumed={consumeIncoming}
+              onOpenReview={chooseNode}
+              onSaved={boardSaved}
+              onFlush={registerFlush}
+              onLayoutLockChange={setLayoutLocked}
+              toolbarRight={boardToolbarRight}
+            />
+          </div>
+        </Suspense>
+      ) : (
+        <>
+          <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3 text-xs">
+            <span className="text-fg-3">{boardsReady ? "画板不存在" : "正在载入画板…"}</span>
+            {boardToolbarRight}
+          </div>
+          <div className="p-8 text-sm">{boardsReady ? "画板不存在" : "正在载入画板…"}</div>
+        </>
+      ) : (
         <div className="flex min-h-0 flex-1">
           <main className="flex min-w-0 flex-1 flex-col">
             {error && (
@@ -487,6 +739,8 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                     busy={busy}
                     onToggleAccess={handleToggleAccess}
                     browserDemo={browserDemo}
+                    addressContent={reviewAddressContent}
+                    adminMenu={adminMenu}
                   />
                   <div className="grid flex-1 place-items-center p-8 text-sm text-fg-2">
                     {t("review.restoreBeforeEditing")}
@@ -504,6 +758,9 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                       busy={busy}
                       onToggleAccess={handleToggleAccess}
                       browserDemo={browserDemo}
+                      addressContent={reviewAddressContent}
+                      commandActivity={!browserDemo ? <ReviewCommandActivity target={target} inline /> : undefined}
+                      adminMenu={adminMenu}
                       {...headerControls}
                       onAttach={browserDemo ? undefined : headerControls.onAttach}
                       onExport={browserDemo ? undefined : headerControls.onExport}
@@ -519,6 +776,8 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                   busy={busy}
                   onToggleAccess={handleToggleAccess}
                   browserDemo={browserDemo}
+                  addressContent={reviewAddressContent}
+                  adminMenu={adminMenu}
                 />
                 <div ref={emptyHost} className="grid flex-1 place-items-center p-8 text-center outline-none" data-testid="workbench-empty" tabIndex={0}>
                   <div>
@@ -535,91 +794,6 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
           </main>
         </div>
       )}
-
-      {managerOpen && <ToolcraftDialog isOpen width={820} purpose="workbench-open" onOpenChange={open => { if (!busy) setManagerOpen(open); }}>
-        <ToolcraftDialogHeader title="打开 / 管理工作台" onOpenChange={setManagerOpen} />
-        <div className="flex h-[min(65vh,620px)] min-h-0" data-testid="workbench-open-dialog" data-workbench-modal="true">
-          <section className="flex min-w-0 flex-1 flex-col border-r border-border">
-          <ReviewTaskDirectory
-            nodes={nodes}
-            selectedId={selectedId}
-            onSelectNode={chooseNode}
-            directoryScope={context ? { target: context.target, revision: context.revision } : undefined}
-            onMoveNode={(nodeId, nextGroupId, revision) => { void mutate([{ kind: "node.update", nodeId, patch: { groupId: nextGroupId } }], revision).catch(report); }}
-            onDropFiles={(node, files) => {
-              if (!context) return;
-              const capturedTarget = { ...context.target, nodeId: node.id };
-              const revision = node.revision;
-              setBusy(true);
-              void planReviewFiles(files).then(plan => importReviewFiles(capturedTarget, revision, "拖入文件", plan))
-                .catch(report).finally(() => setBusy(false));
-            }}
-            onUpdateNode={(nodeId, patch) => {
-              if (patch.trashed) {
-                const node = nodes.find(node => node.id === nodeId);
-                if (node && context) setTrashRequest({ node, revision: context.revision });
-              } else void mutate([{ kind: "node.update", nodeId, patch }]).catch(report);
-            }}
-            onBranches={browserDemo ? undefined : node => {
-              if (!context) return;
-              const nodeTarget = { ...context.target, nodeId: node.id };
-              if (node.branch) setBranchTarget(nodeTarget); else setBranchListTarget(nodeTarget);
-            }}
-            onRenameNode={node => {
-              if (context) setRename({ kind: "node", id: node.id, name: node.name, revision: context.revision });
-            }}
-            onPurgeNode={node => {
-              if (context) setPurgeTarget({ ...context.target, nodeId: node.id });
-            }}
-            directory={directory}
-            view={view}
-            onSelectView={setView}
-            query={query}
-            onQueryChange={setQuery}
-            groupId={groupId}
-            onSelectGroup={setGroupId}
-            onCreateNode={async (name) => {
-              const result = await mutate([{ kind: "node.create", name }]);
-              setView("recent");
-              setGroupId("");
-              await openReview(result.nodes[0].id);
-            }}
-            onCreateGroup={async (name) => {
-              await mutate([{ kind: "group.create", name }]);
-            }}
-            onRenameGroup={(id) => {
-              const g = directory.groups.find((group) => group.id === id);
-              if (g && context) {
-                setRename({ kind: "group", id, name: g.name, revision: context.revision });
-              }
-            }}
-            onRemoveGroup={(id) => {
-              void mutate([{ kind: "group.remove", groupId: id }])
-                .then(() => setGroupId(""))
-                .catch(report);
-            }}
-            onDirectoryHistory={(direction) => void directoryHistory(direction).catch(report)}
-            cursor={cursor}
-            onLoadMore={() => void loadMore().catch(report)}
-            busy={busy || switching || !context}
-          />
-          </section>
-          <section className="flex min-w-0 flex-1 flex-col gap-2 p-3">
-            <div className="flex items-center justify-between text-xs"><strong>私有自由画板</strong><button disabled={busy || switching} className={wbButton.primary} data-testid="human-board-new" onClick={() => void createBoard().catch(report)}>＋ 新建自由画板</button></div>
-            <div className="min-h-0 flex-1 overflow-y-auto">{boards.map(row => <div key={row.id} className="flex items-center rounded hover:bg-bg-2">
-              <button disabled={busy || switching} className="min-w-0 flex-1 truncate px-2 py-2 text-left text-xs" data-testid={`human-board-open-${row.id}`} onClick={() => { void navigate(() => {
-                useWorkbenchTabsStore.getState().open({ kind: "board", id: row.id, name: row.name });
-                setBoardIncoming(null); setManagerOpen(false); setLegacy(false);
-              }).catch(report); }}>{row.name}</button>
-              <button disabled={busy || switching} className="px-2 text-xs text-fg-3 hover:text-status-error" aria-label={`删除画板 ${row.name}`} data-testid={`human-board-delete-${row.id}`} onClick={() => {
-                if (!window.confirm(`删除画板“${row.name}”及其撤销历史？已导出的审阅快照会保留。`)) return;
-                void navigate(async () => { await humanBoardStorage.remove(row.id); useWorkbenchTabsStore.getState().close(`board:${row.id}`); await refreshBoards(); }).catch(report);
-              }}>删除</button>
-            </div>)}</div>
-            <p className="text-[11px] leading-relaxed text-fg-3">画板自动保存。关闭标签只关闭视图，可从这里重新打开。删除会移除画板及其撤销历史。</p>
-          </section>
-        </div>
-      </ToolcraftDialog>}
 
       {branchListTarget && <ReviewBranchListDialog target={branchListTarget} onClose={() => setBranchListTarget(null)} onCompare={nodeId => {
         setBranchTarget({ ...branchListTarget, nodeId });
@@ -788,7 +962,7 @@ function ReviewNodeEditor({
         onExport: () => setExportOpen(true),
       })}
 
-      {!browserDemo && <ReviewCommandActivity target={target} />}
+      {!browserDemo && <ReviewRepairDraftPreview target={target} />}
 
       {state.error && (
         <div role="alert" className="flex items-center gap-2 p-2 text-xs text-status-error">

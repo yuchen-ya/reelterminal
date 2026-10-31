@@ -25,6 +25,7 @@ export interface InProgressRepairStroke extends Omit<WorkbenchPixelStroke, "poin
 
 export interface UseImagePointerInteractionsProps {
   readonly canDraw: boolean;
+  readonly zoom?: number;
   readonly workMode: CanvasWorkMode;
   readonly repairTool: RepairTool;
   readonly annotateTool: AnnotateTool;
@@ -49,6 +50,7 @@ export interface UseImagePointerInteractionsProps {
 
 export function useImagePointerInteractions({
   canDraw,
+  zoom = 100,
   workMode,
   repairTool,
   annotateTool,
@@ -236,9 +238,10 @@ export function useImagePointerInteractions({
   const handleStagePointerMove = (e: ReactPointerEvent<HTMLDivElement>): void => {
     const panDrag = panDragRef.current;
     if (panDrag && panDrag.pointerId === e.pointerId) {
+      const scale = Math.max(0.2, zoom / 100);
       setPan({
-        x: panDrag.originX + (e.clientX - panDrag.startX),
-        y: panDrag.originY + (e.clientY - panDrag.startY),
+        x: panDrag.originX + (e.clientX - panDrag.startX) / scale,
+        y: panDrag.originY + (e.clientY - panDrag.startY) / scale,
       });
       return;
     }

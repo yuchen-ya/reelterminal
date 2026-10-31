@@ -1,5 +1,7 @@
 import "./assets";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type React from "react";
+import { Crop, Redo2, Undo2 } from "lucide-react";
 import { CaptureUpdateAction, Excalidraw, MainMenu, convertToExcalidrawElements, getCommonBounds, newElementWith, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
 import type { ExcalidrawElement, ExcalidrawImageElement, FileId } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
@@ -17,20 +19,22 @@ import { BoardMedia } from "./BoardMedia";
 import { BoardFileOutput, type BoardOutput } from "./BoardFileOutput";
 import type { BoardIncoming } from "./HumanBoardView";
 import { BoardImageRepair } from "./BoardImageRepair";
+import { HumanBoardCaptureOverlay } from "./HumanBoardCaptureOverlay";
 import { wbButton } from "../wb-button";
 import "@excalidraw/excalidraw/index.css";
 import "./human-board.css";
 
 const BOARD_MEDIA_LINK_PREFIX = "https://human-board.invalid/";
 
-interface CaptureSession { scene: FrozenBoardScene; state: AppState; region?: BoardRegion; start?: { x: number; y: number }; screen?: { x: number; y: number; width: number; height: number } }
+interface CaptureSession { scene: FrozenBoardScene; state: AppState }
 
-export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingConsumed, onImport, onSaved, onFlush, onOpenReview, onLayoutLockChange }: {
+export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingConsumed, onImport, onSaved, onFlush, onOpenReview, onLayoutLockChange, toolbarRight }: {
   initialBoard: HumanBoard; incoming: BoardIncoming | null; onIncomingConsumed: () => void;
   onImport: () => void; onSaved: () => void;
   onFlush: (callback: () => Promise<void>) => void;
   onOpenReview: (nodeId: string) => void;
   onLayoutLockChange: (locked: boolean) => void;
+  toolbarRight?: React.ReactNode;
 }) {
   const [api, setApi] = useState<ExcalidrawImperativeAPI>();
   const apiRef = useRef(api); apiRef.current = api;
@@ -282,51 +286,79 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
 
   return <div ref={host} className="flex h-full min-h-0 flex-col" data-testid="human-board-canvas" data-board-id={initialBoard.id} data-selected-element-id={selected.length === 1 ? selected[0].id : undefined} data-save-state={saveState} data-exported-node-id={exportedNodeId}
     onKeyDown={event => event.stopPropagation()}>
-    <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-bg-1 px-3 py-1 text-xs">
-      <input aria-label="画板名称" data-testid="human-board-name" className="w-40 rounded border border-border bg-bg-2 px-2 py-1" value={name} maxLength={200} onChange={event => { setName(event.target.value); board.current = { ...board.current, name: event.target.value.trim() || "未命名画板" }; scheduleSave(); }} />
-      <span role="status" className="text-fg-3">{saveState === "saved" ? "已自动保存" : saveState === "error" ? "保存失败" : "正在保存…"}</span>
-      <button className={wbButton.secondary} onClick={onImport}>导入文件</button>
-      <button className={wbButton.secondary} data-testid="human-board-undo" onClick={() => history("undo")}>撤销</button>
-      <button className={wbButton.secondary} data-testid="human-board-redo" onClick={() => history("redo")}>重做</button>
+    {/* Single fixed-height (h-10) unified board toolbar keeps scene origin 100% stable across selection changes. */}
+    <div className="flex h-10 shrink-0 items-center gap-1.5 overflow-x-auto scrollbar-none border-b border-border bg-bg-1 px-3 text-xs">
+      <input aria-label="画板名称" data-testid="human-board-name" className="h-6 w-36 shrink-0 rounded-[5px] border border-border bg-bg-2 px-2 text-xs text-fg focus:outline-none focus:ring-1 focus:ring-accent" value={name} maxLength={200} onChange={event => { setName(event.target.value); board.current = { ...board.current, name: event.target.value.trim() || "未命名画板" }; scheduleSave(); }} />
+      {saveState !== "saved" && (
+        <span role="status" className="shrink-0 text-[11px] text-fg-3">
+          {saveState === "error" ? "保存失败" : "正在保存…"}
+        </span>
+      )}
+      <div className="mx-0.5 h-3.5 w-px shrink-0 bg-border" />
+      <div className="flex shrink-0 items-center gap-0.5">
+        <button
+          type="button"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-[5px] text-fg-2 transition-colors hover:bg-bg-2 hover:text-fg"
+          data-testid="human-board-undo"
+          title="撤销 (Ctrl+Z)"
+          aria-label="撤销"
+          onClick={() => history("undo")}
+        >
+          <Undo2 className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-[5px] text-fg-2 transition-colors hover:bg-bg-2 hover:text-fg"
+          data-testid="human-board-redo"
+          title="重做 (Ctrl+Y)"
+          aria-label="重做"
+          onClick={() => history("redo")}
+        >
+          <Redo2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="mx-0.5 h-3.5 w-px shrink-0 bg-border" />
       <button className={wbButton.primary} disabled={!api || busy} data-testid="human-board-capture-region" onClick={() => {
         setBusy(true); setOutput(null);
         const state = api!.getAppState();
         void freeze().then(scene => setCapture({ scene, state })).catch(report).finally(() => setBusy(false));
-      }}>区域截图</button>
-      <span className="text-fg-3">拖入/粘贴追加 · 双击容器进入交互 · 对象多选与区域截图独立</span>
+      }}>
+        <Crop className="h-3.5 w-3.5" />
+        <span>区域截图</span>
+      </button>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 pl-1" data-testid="human-board-selection-tools">
+        {selected.length > 0 && <>
+          <div className="mx-0.5 h-3.5 w-px shrink-0 bg-border" />
+          <span className="shrink-0 font-medium text-accent">已选 {selected.length} 项</span>
+          <button className={wbButton.secondary} data-testid="human-board-delete-selection" onClick={() => api!.updateScene({ elements: api!.getSceneElementsIncludingDeleted().map(element => selected.some(item => item.id === element.id) ? newElementWith(element, { isDeleted: true }) : element), captureUpdate: CaptureUpdateAction.IMMEDIATELY })}>删除对象</button>
+          {one?.type === "image" && <>
+            <button className={wbButton.secondary} onClick={() => patchSelected({ angle: one.angle + Math.PI / 2 })}>旋转 90°</button>
+            <button className={wbButton.secondary} onClick={() => patchSelected({ scale: [-one.scale[0], one.scale[1]] })}>水平翻转</button>
+            <button className={wbButton.secondary} onClick={() => patchSelected({ scale: [one.scale[0], -one.scale[1]] })}>垂直翻转</button>
+            <button className={wbButton.secondary} onClick={() => api!.updateScene({ appState: { croppingElementId: one.id }, captureUpdate: CaptureUpdateAction.NEVER })}>裁剪图片</button>
+            <button className={wbButton.secondary} data-testid="human-board-image-repair" onClick={() => setRepair(one)}>像素修补</button>
+          </>}
+          {selectedDocument && <select className="h-6 rounded-[5px] border border-border bg-bg-2 px-1.5 text-xs text-fg" data-testid="human-board-document-export-mode" aria-label="文档导出内容" value={documentExport} onChange={event => setDocumentExport(event.target.value)}><option value="source">{selectedDocument.kind === "webpage" ? "URL 文本 → text" : selectedDocument.kind === "markdown" ? "Markdown 正文 → text" : "HTML 源码 → text"}</option><option value="preview">{selectedDocument.kind === "markdown" ? "可见预览 PNG → image" : "当前视口 PNG → image"}</option></select>}
+          <button className={wbButton.secondary} disabled={!contentSelected || busy} data-testid="human-board-single-file" onClick={() => {
+            setBusy(true);
+            void selectedResource().then(resource => {
+              if (selectedDocument && documentExport === "source") setOutput({ name: `${selectedDocument.name}.${selectedDocument.kind === "markdown" ? "md" : selectedDocument.kind === "html" ? "html" : "txt"}`, text: selectedDocument.source ?? selectedDocument.url ?? "", image: false });
+              else if (one?.type === "text") setOutput({ name: `${String(one.customData?.name ?? "画板文本")}.txt`, text: one.text, image: false });
+              else if (resource && one?.type !== "image" && !selectedDocument) setOutput({ name: resource.originalFileName, resource, image: false });
+            }).catch(report).finally(() => setBusy(false));
+          }}>单个文件：拖出 / 保存</button>
+          <button className={wbButton.primary} disabled={!contentSelected || busy} data-testid="human-board-export-review" onClick={() => {
+            const element = one!;
+            setBusy(true);
+            void selectedResource().then(resource => exportBoardObjectToReview(String(element.customData?.name ?? "画板内容"), element, resource, selectedDocument ? documentExport === "source" ? { text: selectedDocument.source ?? selectedDocument.url ?? "" } : { image: true } : undefined))
+              .then(nodeId => { setExportedNodeId(nodeId); setOutput(null); }).catch(report).finally(() => setBusy(false));
+          }}>导出此内容为审阅节点</button>
+          {exportedNodeId && <button className={wbButton.secondary} onClick={() => onOpenReview(exportedNodeId)}>打开导出的审阅节点</button>}
+        </>}
+      </div>
+      {toolbarRight}
     </div>
     {error && <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-border p-2 text-xs text-status-error">{error}<button onClick={() => setError("")}>关闭</button><button onClick={() => void persist().catch(report)}>重试保存</button></div>}
-    {/* Keep the scene origin stable when the first click changes selection;
-        otherwise the second click/drag lands on a different scene coordinate. */}
-    <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-1 text-xs" data-testid="human-board-selection-tools">
-      {selected.length > 0 && <>
-      <span>已选 {selected.length} 项</span>
-      <button className={wbButton.secondary} data-testid="human-board-delete-selection" onClick={() => api!.updateScene({ elements: api!.getSceneElementsIncludingDeleted().map(element => selected.some(item => item.id === element.id) ? newElementWith(element, { isDeleted: true }) : element), captureUpdate: CaptureUpdateAction.IMMEDIATELY })}>删除对象</button>
-      {one?.type === "image" && <>
-        <button className={wbButton.secondary} onClick={() => patchSelected({ angle: one.angle + Math.PI / 2 })}>旋转 90°</button>
-        <button className={wbButton.secondary} onClick={() => patchSelected({ scale: [-one.scale[0], one.scale[1]] })}>水平翻转</button>
-        <button className={wbButton.secondary} onClick={() => patchSelected({ scale: [one.scale[0], -one.scale[1]] })}>垂直翻转</button>
-        <button className={wbButton.secondary} onClick={() => api!.updateScene({ appState: { croppingElementId: one.id }, captureUpdate: CaptureUpdateAction.NEVER })}>裁剪图片</button>
-        <button className={wbButton.secondary} data-testid="human-board-image-repair" onClick={() => setRepair(one)}>像素修补</button>
-      </>}
-      {selectedDocument && <select data-testid="human-board-document-export-mode" aria-label="文档导出内容" value={documentExport} onChange={event => setDocumentExport(event.target.value)}><option value="source">{selectedDocument.kind === "webpage" ? "URL 文本 → text" : selectedDocument.kind === "markdown" ? "Markdown 正文 → text" : "HTML 源码 → text"}</option><option value="preview">{selectedDocument.kind === "markdown" ? "可见预览 PNG → image" : "当前视口 PNG → image"}</option></select>}
-      <button className={`${wbButton.secondary} ml-auto`} disabled={!contentSelected || busy} data-testid="human-board-single-file" onClick={() => {
-        setBusy(true);
-        void selectedResource().then(resource => {
-          if (selectedDocument && documentExport === "source") setOutput({ name: `${selectedDocument.name}.${selectedDocument.kind === "markdown" ? "md" : selectedDocument.kind === "html" ? "html" : "txt"}`, text: selectedDocument.source ?? selectedDocument.url ?? "", image: false });
-          else if (one?.type === "text") setOutput({ name: `${String(one.customData?.name ?? "画板文本")}.txt`, text: one.text, image: false });
-          else if (resource && one?.type !== "image" && !selectedDocument) setOutput({ name: resource.originalFileName, resource, image: false });
-        }).catch(report).finally(() => setBusy(false));
-      }}>单个文件：拖出 / 保存</button>
-      <button className={wbButton.primary} disabled={!contentSelected || busy} data-testid="human-board-export-review" onClick={() => {
-        const element = one!;
-        setBusy(true);
-        void selectedResource().then(resource => exportBoardObjectToReview(String(element.customData?.name ?? "画板内容"), element, resource, selectedDocument ? documentExport === "source" ? { text: selectedDocument.source ?? selectedDocument.url ?? "" } : { image: true } : undefined))
-          .then(nodeId => { setExportedNodeId(nodeId); setOutput(null); }).catch(report).finally(() => setBusy(false));
-      }}>导出此内容为审阅节点</button>
-      {exportedNodeId && <button className={wbButton.secondary} onClick={() => onOpenReview(exportedNodeId)}>打开导出的审阅节点</button>}
-      </>}
-    </div>
     <div className="relative min-h-0 flex-1" data-testid="human-board-scene"
       onDragOverCapture={event => {
         if ((event.target as HTMLElement).closest("input,textarea,[contenteditable=true]")) return;
@@ -363,36 +395,28 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
           const resource = binding && resources.get(binding.resourceId);
           return resource ? <BoardMedia element={element} resource={resource} register={register} onObservation={observe} onCapture={(blob, title) => { void addBlob(blob, title).catch(report); }} onError={report} /> : null;
         }}>
-        <MainMenu><MainMenu.DefaultItems.Help /><MainMenu.Item onSelect={() => window.open("https://github.com/excalidraw/excalidraw", "_blank", "noopener,noreferrer")}>Excalidraw · MIT</MainMenu.Item></MainMenu>
+        <MainMenu>
+          <MainMenu.Item onSelect={onImport}>导入文件…</MainMenu.Item>
+          <MainMenu.DefaultItems.Help />
+          <MainMenu.Item onSelect={() => window.open("https://github.com/excalidraw/excalidraw", "_blank", "noopener,noreferrer")}>Excalidraw · MIT</MainMenu.Item>
+        </MainMenu>
       </Excalidraw>}
-      {capture && <div className="absolute inset-0 z-30 cursor-crosshair bg-black/10" data-testid="human-board-capture-overlay"
-        onPointerDown={event => {
-          if ((event.target as HTMLElement).closest("button")) return;
-          event.currentTarget.setPointerCapture(event.pointerId);
-          const bounds = event.currentTarget.getBoundingClientRect();
-          setCapture({ ...capture, start: { x: event.clientX, y: event.clientY }, region: undefined, screen: { x: event.clientX - bounds.left, y: event.clientY - bounds.top, width: 0, height: 0 } });
-        }}
-        onPointerMove={event => {
-          if (!capture.start || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
-          const start = viewportCoordsToSceneCoords({ clientX: capture.start.x, clientY: capture.start.y }, capture.state);
-          const bounds = event.currentTarget.getBoundingClientRect();
-          const clientX = Math.max(bounds.left, Math.min(bounds.right, event.clientX));
-          const clientY = Math.max(bounds.top, Math.min(bounds.bottom, event.clientY));
-          const end = viewportCoordsToSceneCoords({ clientX, clientY }, capture.state);
-          setCapture({ ...capture, region: { x: Math.min(start.x, end.x), y: Math.min(start.y, end.y), width: Math.abs(end.x - start.x), height: Math.abs(end.y - start.y) },
-            screen: { x: Math.min(capture.start.x, clientX) - bounds.left, y: Math.min(capture.start.y, clientY) - bounds.top, width: Math.abs(clientX - capture.start.x), height: Math.abs(clientY - capture.start.y) } });
-        }}
-        onPointerUp={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}>
-        <div className="absolute left-1/2 top-4 flex -translate-x-1/2 items-center gap-2 rounded border border-border bg-bg-1 p-2 text-xs shadow-xl">
-          <span>场景已冻结 · 拖动框选截图区域</span>
-          <button className={wbButton.primary} disabled={!capture.region || capture.region.width < 1 || capture.region.height < 1 || busy} data-testid="human-board-capture-confirm" onClick={() => {
-            const session = capture; setBusy(true);
-            void renderBoardRegion(session.scene, session.region).then(blob => produceImage(blob, "画板区域.png")).then(() => setCapture(null)).catch(report).finally(() => setBusy(false));
-          }}>生成 PNG</button>
-          <button className={wbButton.secondary} onClick={() => setCapture(null)}>取消</button>
-        </div>
-        {capture.screen && <div className="pointer-events-none absolute border-2 border-accent bg-accent/10" style={{ left: capture.screen.x, top: capture.screen.y, width: capture.screen.width, height: capture.screen.height }} />}
-      </div>}
+      {capture && (
+        <HumanBoardCaptureOverlay
+          state={capture.state}
+          busy={busy}
+          onConfirm={(region: BoardRegion) => {
+            const session = capture;
+            setBusy(true);
+            void renderBoardRegion(session.scene, region)
+              .then((blob) => produceImage(blob, "画板区域.png"))
+              .then(() => setCapture(null))
+              .catch(report)
+              .finally(() => setBusy(false));
+          }}
+          onCancel={() => setCapture(null)}
+        />
+      )}
       {browser && <BoardBrowser element={browser} onClose={() => { setBrowser(null); requestAnimationFrame(() => host.current?.querySelector<HTMLElement>(".excalidraw")?.focus()); }} onError={report} onSnapshot={async (blob, url) => {
         const resource = await retainBoardBlob(board.current.id, blob, `${String(browser.customData?.name ?? "网页")}-视口.png`);
         await refreshResources();

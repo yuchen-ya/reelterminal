@@ -27,7 +27,7 @@ Before generated assets ever reach a video timeline, creators face heavy **upstr
 
 ## 🗂️ Unified Tabs & Privacy Boundary
 
-Starting in v1.3.9, Review Workspace combines **Review Tasks** and **Private Free Boards** in a single **reorderable workspace tab strip** while enforcing a strict boundary between Agent-visible review nodes and private human boards:
+Review Workspace combines **Review Tasks** and **Private Free Boards** in a single **reorderable workspace tab strip** while enforcing a strict boundary between Agent-visible review nodes and private human boards:
 
 ```mermaid
 flowchart LR

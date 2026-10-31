@@ -445,7 +445,12 @@ it("keeps the decoded frame and focused viewport until the first repair decodes,
   fireEvent.pointerDown(surface, { button: 1, pointerId: 10, clientX: 20, clientY: 20 });
   fireEvent.pointerMove(surface, { pointerId: 10, clientX: 45, clientY: 35 });
   fireEvent.pointerUp(surface, { pointerId: 10, clientX: 45, clientY: 35 });
-  expect(stage.style.transform).toContain("translate(25px, 15px)");
+  // CSS pan is in pre-scale coordinates; the pointer must move the image by
+  // exactly 25 x 15 screen pixels even while a replacement frame is loading.
+  const panned = /scale\(([\d.]+)\) translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(stage.style.transform);
+  expect(panned).not.toBeNull();
+  expect(Number(panned![1]) * Number(panned![2])).toBeCloseTo(25);
+  expect(Number(panned![1]) * Number(panned![3])).toBeCloseTo(15);
   fireEvent.wheel(surface, { deltaY: -1 });
   expect(stage.style.transform).toContain("scale(1.4)");
   transform = stage.style.transform;

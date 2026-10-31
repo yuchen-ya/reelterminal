@@ -281,14 +281,6 @@ export function DesktopExportButton({
   return (
     <>
       <Button
-        label="导出与整理"
-        variant="secondary"
-        size="sm"
-        style={NO_DRAG}
-        onClick={() => useUIStore.getState().setDesktopPage("deliver")}
-        className="mr-2"
-      />
-      <Button
         label={t("desktop.editor.export")}
         variant="primary"
         size="sm"

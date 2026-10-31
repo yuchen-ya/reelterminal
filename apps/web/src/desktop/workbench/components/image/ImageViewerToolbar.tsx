@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import {
   ArrowUpRight,
   Brush,
@@ -25,6 +25,8 @@ import type { AnnotateTool, CanvasWorkMode, RepairTool } from "./image-canvas-ut
 export type RepairBaseChoice = "latest" | "source";
 
 export interface ImageViewerToolbarProps {
+  readonly leadingSlot?: ReactNode;
+  readonly trailingSlot?: ReactNode;
   readonly hideCollectionNavigation?: boolean;
   readonly viewMode: "grid" | "zoom";
   readonly setViewMode: (mode: "grid" | "zoom") => void;
@@ -64,6 +66,8 @@ export interface ImageViewerToolbarProps {
 }
 
 export function ImageViewerToolbar({
+  leadingSlot,
+  trailingSlot,
   hideCollectionNavigation = false,
   viewMode,
   setViewMode,
@@ -109,9 +113,10 @@ export function ImageViewerToolbar({
     }`;
 
   return (
-    <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-bg-1 px-2.5 py-1" data-testid="image-toolbar">
-      {/* Left: View switcher + compare */}
+    <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-bg-1 px-2.5 py-1" data-testid="image-toolbar">
+      {/* Left: Drilldown breadcrumb + View switcher + compare */}
       <div className="flex items-center gap-1">
+        {leadingSlot}
         {!hideCollectionNavigation && <div className={wbButton.segmentedContainer}>
           <button
             type="button"
@@ -138,7 +143,9 @@ export function ImageViewerToolbar({
 
         {viewMode === "zoom" && (
           <>
-            <div className="mx-0.5 h-3.5 w-px bg-border" />
+            {(leadingSlot || !hideCollectionNavigation) && (
+              <div className="mx-0.5 h-3.5 w-px bg-border" />
+            )}
             <button
               type="button"
               onClick={() =>
@@ -343,7 +350,7 @@ export function ImageViewerToolbar({
         </div>
       )}
 
-      {/* Right: Hold-to-Compare, Local Magnifier Loupe & Zoom */}
+      {/* Right: Hold-to-Compare, Local Magnifier Loupe, Zoom & Trailing actions */}
       <div className="ml-auto flex items-center gap-1">
         {viewMode === "zoom" && (
           <>
@@ -427,6 +434,12 @@ export function ImageViewerToolbar({
                 <ZoomIn className="h-3 w-3" />
               </button>
             </div>
+          </>
+        )}
+        {trailingSlot && (
+          <>
+            <div className="mx-0.5 h-3.5 w-px bg-border" />
+            {trailingSlot}
           </>
         )}
       </div>

@@ -67,6 +67,7 @@ export interface VideoFrameWorkspaceProps {
   /** Width of the restored issue panel; owned by the page's layout state. */
   readonly issuePanelWidth: number;
   readonly onStartResizeIssuePanel?: (event: React.PointerEvent) => void;
+  readonly toolbarLeading?: React.ReactNode;
 }
 
 export function VideoFrameWorkspace({
@@ -77,6 +78,7 @@ export function VideoFrameWorkspace({
   onUpdateVideoMarkers,
   issuePanelWidth,
   onStartResizeIssuePanel,
+  toolbarLeading,
 }: VideoFrameWorkspaceProps): JSX.Element {
   const payload = item.videoPayload;
 
@@ -694,6 +696,7 @@ export function VideoFrameWorkspace({
     <div className="flex h-full w-full flex-col overflow-hidden bg-bg">
       {/* Top toolbar */}
       <VideoTopToolbar
+        leadingSlot={toolbarLeading}
         resolution={payload.resolution}
         durationLabel={durationLabel}
         version={item.version}
@@ -720,7 +723,7 @@ export function VideoFrameWorkspace({
       />
 
       {/* Main viewer area: Video Stage + Separator + Issue Panel */}
-      <div className="flex min-h-0 flex-1 items-stretch overflow-hidden bg-[#0d0f12]">
+      <div className="flex min-h-0 flex-1 items-stretch overflow-hidden bg-stage-bg">
         <VideoCanvasStage
           stageRef={stageRef}
           videoRef={videoRef}
@@ -745,6 +748,7 @@ export function VideoFrameWorkspace({
           onPanChange={setPan}
           onStepZoom={stepZoom}
           loupeEnabled={loupeEnabled}
+          onDisableLoupe={() => setLoupeEnabled(false)}
           currentTitle={`${item.agentGuidance?.nodeSlotLabel ?? item.title} (v${item.version})`}
           showCompareSplit={showCompareSplit && !!compareItem}
           compareVideoRef={compareVideoRef}
@@ -791,7 +795,7 @@ export function VideoFrameWorkspace({
             role="separator"
             aria-orientation="vertical"
             onPointerDown={onStartResizeIssuePanel}
-            className="group flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-[#0d0f12]"
+            className="group flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-stage-bg"
             title="拖拽调整问题栏宽度"
           >
             <div className="h-10 w-0.5 rounded-full bg-border-strong group-hover:bg-accent" />

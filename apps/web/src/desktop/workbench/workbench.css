@@ -1,11 +1,37 @@
 /**
  * Workbench design tokens and scoped typography.
- * Strictly scoped to [data-workbench-scope] so video editor styles remain untouched.
+ * Strictly scoped to [data-workbench-scope] / [data-workbench-modal] so video editor styles remain untouched.
+ * Uses a Figma-inspired neutral charcoal / slate-grey palette (#2c2e33 panels, #25272c stage) instead of pure black.
  */
 
-[data-workbench-scope] {
+.reelterminal-desktop [data-workbench-scope],
+.reelterminal-desktop [data-workbench-modal],
+[data-workbench-scope],
+[data-workbench-modal] {
   --wb-font-num: "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --wb-tab-track: oklch(0.23 0.005 250);
+  --bg: oklch(0.275 0.006 250);
+  --bg-1: oklch(0.305 0.006 250);
+  --bg-2: oklch(0.345 0.007 250);
+  --bg-3: oklch(0.385 0.008 250);
+  --bg-elev: oklch(0.33 0.007 250);
+  --border: oklch(0.40 0.008 250);
+  --border-strong: oklch(0.48 0.009 250);
+  --hover: oklch(0.365 0.007 250);
+  --stage-bg: oklch(0.265 0.006 250);
   --wb-border: var(--border);
+}
+
+[data-workbench-scope] .bg-stage-bg {
+  background-color: var(--stage-bg);
+  background-image: radial-gradient(oklch(0.36 0.007 250 / 0.65) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+[data-workbench-scope] .wb-tab-active {
+  background-color: var(--bg-1);
+  border-color: var(--border);
+  border-bottom-color: var(--bg-1);
 }
 
 [data-workbench-scope] .font-mono {

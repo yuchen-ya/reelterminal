@@ -67,6 +67,8 @@ minimumReleaseAgeExclude:
   - undici@7.29.1
   - '@uiw/react-md-editor@4.1.6'
 patchedDependencies:
+  minimatch@9.0.7: patches/minimatch@9.0.7.patch
+  minimatch@10.2.6: patches/minimatch@10.2.6.patch
   '@imgly/background-removal@1.7.0': patches/@imgly__background-removal@1.7.0.patch
   braces@3.0.3: patches/braces@3.0.3.patch
   plist@3.1.0: patches/plist@3.1.0.patch
@@ -74,6 +76,10 @@ patchedDependencies:
 auditConfig:
   # Mitigated by pinned patches. test:security verifies the installed braces
   # depth guard and sprintf numeric precision bounds before the audit runs.
+  # GHSA-g3hv-75wg-m249: upstream 77a0f5c is backported to both optimized
+  # minimatch majors. The installed CJS/ESM guards are regression-tested;
+  # legacy v3/v5 do not implement the affected preprocessing phases.
   ignoreGhsas:
+    - GHSA-g3hv-75wg-m249
     - GHSA-vfj7-8cjw-p6xm
     - GHSA-hp3w-g68c-fv3c

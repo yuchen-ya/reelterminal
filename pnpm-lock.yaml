@@ -31,6 +31,8 @@ overrides:
 patchedDependencies:
   '@imgly/background-removal@1.7.0': 973170494600e3335207b9d6c752e5c65933ea0db67400aa3cd894a25d1e79c0
   braces@3.0.3: 7f56de506f4437d4278f18a94c67bfc8a7257f74759b16c45be2899b60e99892
+  minimatch@10.2.6: 923f676cfaa1aca3571a17c6e97a76a26dacaf9910f7721bddf77f30bda6100e
+  minimatch@9.0.7: c140a02de4a83a17ccc077974af8f14f5153490a0d9be9c4b8aa2cf7da9ee655
   plist@3.1.0: 5e96a8183577f236291776ff1f850b331c49e31e1a49a8886503ce66ae3499e5
   sprintf-js@1.1.3: a25ef43f2dbc2522b18d5645a93c6b45686d27497079dc4b98ab82bfe226af78
 
@@ -6553,7 +6555,7 @@ snapshots:
       debug: 4.4.3(supports-color@10.2.2)
       dir-compare: 4.2.0
       fs-extra: 11.4.1
-      minimatch: 9.0.7
+      minimatch: 9.0.7(patch_hash=c140a02de4a83a17ccc077974af8f14f5153490a0d9be9c4b8aa2cf7da9ee655)
       plist: 3.1.1
     transitivePeerDependencies:
       - supports-color
@@ -8490,7 +8492,7 @@ snapshots:
       '@typescript-eslint/types': 8.53.0
       '@typescript-eslint/visitor-keys': 8.53.0
       debug: 4.4.3(supports-color@10.2.2)
-      minimatch: 9.0.7
+      minimatch: 9.0.7(patch_hash=c140a02de4a83a17ccc077974af8f14f5153490a0d9be9c4b8aa2cf7da9ee655)
       semver: 7.8.5
       tinyglobby: 0.2.15
       ts-api-utils: 2.4.0(typescript@5.9.3)
@@ -8727,7 +8729,7 @@ snapshots:
       js-yaml: 4.3.2
       json5: 2.2.3
       lazy-val: 1.0.5
-      minimatch: 10.2.6
+      minimatch: 10.2.6(patch_hash=923f676cfaa1aca3571a17c6e97a76a26dacaf9910f7721bddf77f30bda6100e)
       pkijs: 3.4.1
       plist: 3.1.0(patch_hash=5e96a8183577f236291776ff1f850b331c49e31e1a49a8886503ce66ae3499e5)
       proper-lockfile: 4.1.2
@@ -10863,7 +10865,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  minimatch@10.2.6:
+  minimatch@10.2.6(patch_hash=923f676cfaa1aca3571a17c6e97a76a26dacaf9910f7721bddf77f30bda6100e):
     dependencies:
       brace-expansion: 5.0.12
 
@@ -10875,7 +10877,7 @@ snapshots:
     dependencies:
       brace-expansion: 2.1.7
 
-  minimatch@9.0.7:
+  minimatch@9.0.7(patch_hash=c140a02de4a83a17ccc077974af8f14f5153490a0d9be9c4b8aa2cf7da9ee655):
     dependencies:
       brace-expansion: 5.0.12
 

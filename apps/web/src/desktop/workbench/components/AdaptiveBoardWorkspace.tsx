@@ -218,7 +218,7 @@ export function AdaptiveBoardWorkspace({
       </div>
 
       {/* Contact-sheet / Adaptive Board Canvas */}
-      <div className="flex-1 overflow-auto bg-[#181b22] p-3">
+      <div className="flex-1 overflow-auto bg-stage-bg p-3">
         {items.length === 0 && <p className="p-6 text-center text-xs text-fg-3">当前筛选下没有条目；可切换至“全部”查看本组。</p>}
         <div data-board-grid className={`grid gap-x-4 gap-y-3 ${gridClass}`}>
           {items.map((item) => {

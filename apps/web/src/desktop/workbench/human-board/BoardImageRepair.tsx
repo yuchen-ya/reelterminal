@@ -109,7 +109,7 @@ export function BoardImageRepair({ element, files, onClose, onSave, onHistoryRea
     </div>
     <p className="px-3 py-2 text-xs text-fg-3">修补原件像素；画板上的裁剪、旋转、翻转会保留。外部贴片在点击位置放置，宽度为工具尺寸的 4 倍。</p>
     {error && <p role="alert" className="px-3 text-xs text-status-error">{error}</p>}
-    <div className="grid min-h-0 flex-1 place-items-center overflow-auto bg-[#181818] p-4">
+    <div className="grid min-h-0 flex-1 place-items-center overflow-auto bg-stage-bg p-4">
       <canvas ref={canvas} className="max-h-full max-w-full touch-none object-contain" style={{ cursor: tool === "clone" ? "crosshair" : "default" }} data-testid="human-board-repair-canvas"
         onPointerDown={event => {
           if (!ready) return;

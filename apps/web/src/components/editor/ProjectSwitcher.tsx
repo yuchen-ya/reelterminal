@@ -358,6 +358,21 @@ export const ProjectSwitcher: React.FC<{ onNewProject?: () => void }> = ({ onNew
                 </Text>
               </ClickableCard>
               <ClickableCard
+                label="导出记录与空间清理"
+                onClick={() => closeAfter(() => useUIStore.getState().setDesktopPage("deliver"))}
+                isDisabled={!activeTarget}
+                padding={3}
+                variant="transparent"
+                className="group flex w-full items-center gap-3 text-left hover:bg-background-secondary"
+              >
+                <span className="rounded-md bg-background-tertiary p-1.5 text-text-muted group-hover:text-text-secondary">
+                  <Layers className="h-4 w-4" aria-hidden />
+                </span>
+                <Text type="supporting" color="primary" className="text-sm font-medium">
+                  导出记录与空间清理
+                </Text>
+              </ClickableCard>
+              <ClickableCard
                 label={t("versioning.copyAgentPrompt")}
                 onClick={handleCopyAgentPrompt}
                 isDisabled={!activeTarget}

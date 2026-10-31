@@ -28,6 +28,7 @@ import {
 } from "@reelterminal/ui";
 import { wbButton } from "../wb-button";
 import { reviewSeenKey, useReviewSeenStore } from "../../../stores/review-seen-store";
+import { ReviewTaskIcon } from "./WorkbenchIcons";
 
 export type DirectoryView = "recent" | "pinned" | "archived" | "trash";
 
@@ -210,13 +211,16 @@ export function ReviewTaskDirectory({
 
   return (
     <aside
-      className="flex min-h-0 flex-1 flex-col gap-1.5 p-2 text-xs"
+      className="flex min-h-0 flex-1 flex-col gap-1.5 p-3 text-xs"
       data-review-directory="true"
       onKeyDownCapture={handleKeyDown}
     >
       {/* 1. Header row (all actions iconified on one line) */}
       <div className="flex h-7 items-center justify-between px-1">
-        <span className="shrink-0 font-semibold text-fg">{t("review.nodes")}</span>
+        <span className="inline-flex shrink-0 items-center gap-1.5 font-semibold text-fg">
+          <ReviewTaskIcon className="h-3.5 w-3.5 text-accent" />
+          {t("review.nodes")}
+        </span>
         <div className="flex items-center gap-0.5">
           {!creatingNode && (
             <button
@@ -495,7 +499,7 @@ export function ReviewTaskDirectory({
                 onDragOver={event => nodeFileOver(event, node)} onDrop={event => nodeFileDrop(event, node)} data-review-node-drop={node.id}>
                 <button
                   type="button"
-                  className={`w-full flex min-w-0 flex-col rounded pl-2 pr-8 py-1.5 text-left transition-colors border-l-2 ${
+                  className={`w-full flex min-w-0 items-center gap-2 rounded pl-2 pr-8 py-1.5 text-left transition-colors border-l-2 ${
                     isCurrent
                       ? "border-l-accent bg-bg-2 text-fg shadow-sm"
                       : "border-l-transparent text-fg-2 hover:bg-bg-2/60"
@@ -503,16 +507,19 @@ export function ReviewTaskDirectory({
                   onClick={() => onSelectNode(node.id)}
                   aria-current={isCurrent ? "true" : undefined}
                 >
-                  <span
-                    className="max-w-full truncate text-xs font-medium"
-                    title={node.name}
-                  >
-                    {node.pinned ? "★ " : ""}
-                    {node.name}
-                    {(node.incomingRevision ?? 0) > (seen[reviewSeenKey(node.id, "node")] ?? 0) && <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-label="有未查看的新内容" />}
-                  </span>
-                  <span className="text-[10px] text-fg-3">
-                    {new Date(node.updatedAt).toLocaleDateString()}
+                  <ReviewTaskIcon className={`h-3.5 w-3.5 shrink-0 ${isCurrent ? "text-accent" : "text-fg-3 group-hover:text-fg-2"}`} />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span
+                      className="max-w-full truncate text-xs font-medium"
+                      title={node.name}
+                    >
+                      {node.pinned ? "★ " : ""}
+                      {node.name}
+                      {(node.incomingRevision ?? 0) > (seen[reviewSeenKey(node.id, "node")] ?? 0) && <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-label="有未查看的新内容" />}
+                    </span>
+                    <span className="text-[10px] text-fg-3">
+                      {new Date(node.updatedAt).toLocaleDateString()}
+                    </span>
                   </span>
                 </button>
                 <DropdownMenu><DropdownMenuTrigger asChild>

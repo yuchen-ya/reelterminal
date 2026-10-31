@@ -454,11 +454,12 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     await page.getByTestId("human-board-browser-close").click();
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("Escape");
     await saved(page);
-    // The HTML was brought forward above. Select the webpage's exposed top
-    // header, bring it forward too, then enter its unobscured content.
+    // The HTML was brought forward above and covers the webpage's header.
+    // Select its exposed lower edge, verify the selection, then bring it forward.
     const webBounds = (await page.locator('[data-document-kind="webpage"]').boundingBox())!;
-    const webCorner = { x: webBounds.x + webBounds.width / 2, y: webBounds.y + 8 };
+    const webCorner = { x: webBounds.x + webBounds.width * 0.65, y: webBounds.y + webBounds.height - 16 };
     await page.mouse.click(webCorner.x, webCorner.y);
+    await vi.waitFor(async () => expect(await page.getByTestId("human-board-canvas").getAttribute("data-selected-element-id")).toBe(webpage.id));
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus();
     await page.getByTestId("human-board-scene").getByRole("button", { name: /^置于顶层/ }).click();
     await saved(page);

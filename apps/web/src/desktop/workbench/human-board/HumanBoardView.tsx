@@ -1,4 +1,5 @@
 import { lazy, Suspense, useRef, useState } from "react";
+import type React from "react";
 import type { HumanBoard } from "../../../services/human-board/storage";
 import type { BoardTransferInput } from "../../../services/human-board/documents";
 
@@ -6,7 +7,7 @@ const HumanBoardCanvas = lazy(() => import("./HumanBoardCanvas"));
 export type BoardIncoming = BoardTransferInput;
 
 /** One mounted scene; the workspace owns opening, closing and managing boards. */
-export default function HumanBoardView({ board, incoming, onIncomingConsumed, onOpenReview, onSaved, onFlush, onLayoutLockChange }: {
+export default function HumanBoardView({ board, incoming, onIncomingConsumed, onOpenReview, onSaved, onFlush, onLayoutLockChange, toolbarRight }: {
   board: HumanBoard;
   incoming: BoardIncoming | null;
   onIncomingConsumed: () => void;
@@ -14,6 +15,7 @@ export default function HumanBoardView({ board, incoming, onIncomingConsumed, on
   onSaved: () => void;
   onFlush: (callback: () => Promise<void>) => void;
   onLayoutLockChange: (locked: boolean) => void;
+  toolbarRight?: React.ReactNode;
 }) {
   const [initialBoard] = useState(board);
   const [importedFiles, setImportedFiles] = useState<BoardIncoming | null>(null);
@@ -27,7 +29,7 @@ export default function HumanBoardView({ board, incoming, onIncomingConsumed, on
     }} />
     <Suspense fallback={<div className="p-8 text-sm">正在载入画板…</div>}>
       <HumanBoardCanvas key={board.id} initialBoard={initialBoard} incoming={incoming ?? importedFiles} onIncomingConsumed={() => incoming ? onIncomingConsumed() : setImportedFiles(null)}
-        onImport={() => filesInput.current?.click()} onSaved={onSaved} onFlush={onFlush} onOpenReview={onOpenReview} onLayoutLockChange={onLayoutLockChange} />
+        onImport={() => filesInput.current?.click()} onSaved={onSaved} onFlush={onFlush} onOpenReview={onOpenReview} onLayoutLockChange={onLayoutLockChange} toolbarRight={toolbarRight} />
     </Suspense>
   </div>;
 }

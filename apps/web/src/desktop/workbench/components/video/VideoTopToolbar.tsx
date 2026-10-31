@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import {
   ArrowUpRight,
   Columns2,
@@ -18,6 +18,7 @@ export interface VideoCompareCandidate {
 }
 
 export interface VideoTopToolbarProps {
+  readonly leadingSlot?: ReactNode;
   readonly resolution?: string;
   readonly durationLabel: string;
   readonly version: number;
@@ -40,6 +41,7 @@ export interface VideoTopToolbarProps {
 }
 
 export function VideoTopToolbar({
+  leadingSlot,
   resolution,
   durationLabel,
   version,
@@ -62,8 +64,14 @@ export function VideoTopToolbar({
   const hasCompareOptions = compareCandidates.length > 0;
 
   return (
-    <div className="flex h-8 shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-1 px-2.5 select-none">
+    <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-1 px-2.5 select-none">
       <div className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-fg-3">
+        {leadingSlot && (
+          <>
+            <div className="font-sans">{leadingSlot}</div>
+            <span className="mx-0.5 h-3.5 w-px bg-border" />
+          </>
+        )}
         <span className="text-fg-2">{resolution ?? "—"}</span>
         <span>·</span>
         <span>{durationLabel}</span>

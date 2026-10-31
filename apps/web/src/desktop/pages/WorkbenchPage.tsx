@@ -4,7 +4,7 @@ import type { JSX, ReactNode, DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useProjectStore } from "../../stores/project-store";
-import { ArrowLeft, ChevronDown, ChevronUp, LayoutGrid, PanelLeftOpen } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, LayoutGrid, PanelLeftOpen } from "lucide-react";
 import type { WorkbenchDecision } from "@reelterminal/core";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
 import { CollectionInteractionContext, type CollectionAction, type CollectionScope } from "../workbench/components/CollectionActions";
@@ -416,6 +416,7 @@ export function WorkbenchPanel({
         event.preventDefault();
         navigate(1);
       } else if (key === "k" && !effectiveBoard) {
+        if (isTextEntry(target)) return;
         event.preventDefault();
         navigate(-1);
       } else if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "z") {
@@ -540,6 +541,61 @@ export function WorkbenchPanel({
     };
     void perform().catch(error => showToast(error instanceof Error ? error.message : String(error)));
   } : undefined;
+
+  const drilldownLeading = returnScope && !effectiveBoard ? (
+    <div className="flex shrink-0 items-center gap-1" data-testid="board-drilldown-breadcrumb">
+      <button
+        type="button"
+        onClick={() => {
+          setActiveBoard(returnScope);
+          setDrilledFromBoard(null);
+        }}
+        className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[11px] font-medium text-accent hover:bg-bg-2"
+        title={`返回集合：${returnScope.title}`}
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        <LayoutGrid className="h-3.5 w-3.5" />
+        <span className="max-w-[140px] truncate">返回集合：{returnScope.title}</span>
+      </button>
+      <div className="flex items-center gap-0.5 text-fg-3">
+        <button
+          type="button"
+          aria-label="上一项"
+          title="上一项 (K)"
+          disabled={currentNavigationIndex <= 0}
+          onClick={() => navigate(-1)}
+          className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-bg-2 hover:text-fg disabled:opacity-35"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          aria-label="下一项"
+          title="下一项 (J)"
+          disabled={currentNavigationIndex >= navigationItems.length - 1}
+          onClick={() => navigate(1)}
+          className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-bg-2 hover:text-fg disabled:opacity-35"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  ) : undefined;
+
+  const imageTrailing = independent && currentItem?.type === "image" ? (
+    <button
+      type="button"
+      className={wbButton.secondary}
+      data-testid="review-image-add-to-human-board"
+      onClick={() =>
+        window.dispatchEvent(
+          new CustomEvent("reelterminal:add-to-human-board", { detail: currentItem }),
+        )
+      }
+    >
+      加入自由画板
+    </button>
+  ) : undefined;
 
   return (
     <CollectionInteractionContext.Provider value={{ action: collectionAction, busy,
@@ -693,9 +749,6 @@ export function WorkbenchPanel({
         {/* Centre/Right main workspace: viewer + bottom dock */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
           {quickExport.feedback}
-          {independent && currentItem?.type === "image" && <div className="flex shrink-0 justify-end border-b border-border px-3 py-1">
-            <button className={wbButton.secondary} data-testid="review-image-add-to-human-board" onClick={() => window.dispatchEvent(new CustomEvent("reelterminal:add-to-human-board", { detail: currentItem }))}>加入自由画板</button>
-          </div>}
           {!loading && controller.activeBatch && controller.activeBatch.totalCount > 0 && controller.activeBatch.pendingCount === 0 && (
             <div role="status" data-testid="review-complete" className="flex shrink-0 items-center gap-3 border-b border-accent/30 bg-accent/10 px-3 py-2 text-xs">
               <span>本批 {controller.activeBatch.totalCount} 条已全部审完</span>
@@ -707,7 +760,7 @@ export function WorkbenchPanel({
           {!loading && controller.activeBatch && controller.activeBatch.pendingCount > 0 && collectionItems.length > 0 && !paginated && collectionItems.every(item => item.status !== "pending") && (
             <div role="status" className="shrink-0 border-b border-border px-3 py-2 text-xs text-fg-2">本组已审完，本批还有 {controller.activeBatch.pendingCount} 项待审。</div>
           )}
-          {returnScope && !effectiveBoard && (
+          {returnScope && !effectiveBoard && currentItem?.type !== "image" && currentItem?.type !== "video" && (
             <div
               className="flex h-7 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3 text-[11px]"
               data-testid="board-drilldown-breadcrumb"
@@ -767,6 +820,8 @@ export function WorkbenchPanel({
                 batchImageItems={batchImageItems}
                 hideCollectionNavigation={!!returnScope}
                 onOpenCollection={() => { setActiveBoard(drilledFromBoard ?? scopeForItem(currentItem.id)); setDrilledFromBoard(null); }}
+                toolbarLeading={drilldownLeading}
+                toolbarTrailing={imageTrailing}
                 selectedIds={controller.selectedIds}
                 onSelectItem={controller.selectItem}
                 onUpdateImageAnnotations={controller.updateImageAnnotations}
@@ -803,6 +858,7 @@ export function WorkbenchPanel({
               <VideoFrameWorkspace
                 item={currentItem}
                 batchVideoItems={batchVideoItems}
+                toolbarLeading={drilldownLeading}
                 ensureItemsLoaded={controller.ensureItemsLoaded}
                 openMediaUrl={controller.openMediaUrl}
                 onUpdateVideoMarkers={controller.updateVideoMarkers}

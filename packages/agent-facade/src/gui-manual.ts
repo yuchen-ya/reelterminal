@@ -55,7 +55,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * the manual binds to the APP, not only the facade.
  */
 export const GUI_MANUAL_CONTENT_VERSION = "1.8.0" as const;
-export const GUI_MANUAL_APP_VERSION = "1.3.9" as const;
+export const GUI_MANUAL_APP_VERSION = "1.3.10" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
 /** Agent-facing payload limits for the help verbs. */
@@ -117,10 +117,10 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     // @source apps/web/src/desktop/pages/ReviewPage.tsx
     // @source apps/web/src/desktop/workbench/components/ReviewProcessView.tsx
     summary: { zh: "无需视频项目，在统一标签栏中并排管理图片、文字、数据、视频、3D GLB 审阅任务与私有自由画板，查看处理过程并导出精确版本。", en: "Manage independent image, text, data, video and 3D GLB review tasks alongside private free boards in unified tabs without a video project; inspect recorded processing and export exact versions." },
-    entry: [{ zh: "点击顶栏“审阅工作台”，在顶部统一标签栏新建或通过“打开 / 管理”选择审阅任务或自由画板，再导入文件、文件夹、CSV/JSON 或粘贴内容。", en: "Choose Review Workspace in the top bar, create or open a review task or free board from the unified tab strip and Open / Manage dialog, then import files, a folder, CSV/JSON or pasted content." }],
+    entry: [{ zh: "点击顶栏“审阅工作台”，在顶部统一标签栏新建或通过“打开 / 管理”选择审阅任务或自由画板，再导入文件、文件夹、CSV/JSON 或粘贴内容。", en: "Choose Review Workspace in the top bar, create or open a review task or free board from the unified tab strip and Open / Manage tab, then import files, a folder, CSV/JSON or pasted content." }],
     steps: [
       { zh: "候选图、分镜及需同屏审阅的低密度图文可组织成父节点画板；普通分类目录只用于分组。Agent 可预绑定基准视频并排比较，播放时钟映射仍需单独提供。", en: "Group candidate images, storyboards or sparse text/data into a parent board for same-screen review; use category folders for organization. Agents can prebind a baseline video for side-by-side comparison; playback-time mappings are supplied separately." },
-      { zh: "顶部可排序标签栏混排审阅任务与私有自由画板，关闭标签保留实体并在重启后恢复；“打开 / 管理”对话框集中管理任务分类、置顶、归档、回收站与已保存画板。审阅任务内部使用紧凑批次下拉框，NEW 表示有未查看的 Agent 更新；查看状态会保存且不自动切走当前批次。正文和步骤按页读取。", en: "The reorderable tab strip holds both review tasks and private free boards; closing a tab retains its entity and restores on relaunch. The Open / Manage dialog organizes task categories, pins, archive, recycle bin and saved boards. Inside a task, the compact batch picker shows NEW for unseen Agent updates without switching your active batch. Item bodies and processing steps are paged." },
+      { zh: "顶部可排序标签栏混排审阅任务与私有自由画板，关闭标签保留实体并在重启后恢复；“打开 / 管理”标签页集中管理任务分类、置顶、归档、回收站与已保存画板。审阅任务内部使用紧凑批次下拉框，NEW 表示有未查看的 Agent 更新；查看状态会保存且不自动切走当前批次。正文和步骤按页读取。", en: "The reorderable tab strip holds both review tasks and private free boards; closing a tab retains its entity and restores on relaunch. The Open / Manage tab organizes task categories, pins, archive, recycle bin and saved boards. Inside a task, the compact batch picker shows NEW for unseen Agent updates without switching your active batch. Item bodies and processing steps are paged." },
       { zh: "任务代表独立目标，Agent 在指定任务内持续提交。分组是组织树的父节点，可按批次、类型或阶段组织，按最新修改时间排序；备注有内容才显示。新建任务分支已停用，既有关系在任务菜单的历史关联中查看。", en: "Tasks represent independent goals. Agents continue in the specified task. Parent groups organize batches, types, stages or other meaningful trees and sort by latest modification; remarks appear only when present. New task branches are retired; existing links remain in the task menu." },
       { zh: "文本默认以 Markdown 排版阅读；集合展示紧凑摘要，打开后仅阅读当前条目。直接改文使用开源轻量编辑器及实时预览；切换原文与批注可精确选取原文区间，保存产生新版本。", en: "Text opens in Markdown reading mode; collections show compact excerpts and opening an item shows only that document. Edit with the open-source lightweight editor and live preview; switch to Source and comments for exact source selections. Saving creates a new version." },
       { zh: "保留、丢弃与返工可撤销。返工先填写原因，Enter 提交后才自动推进，Shift+Enter 换行，Esc 取消。本批待审清零后显示发布入口。图片修补、改文和单元格修改保留版本；交回本轮决策由人工发布不可变快照，等待 Agent 真实读取与回报。", en: "Keep, discard and rework decisions are undoable. Rework prompts for a reason: Enter submits and advances, Shift+Enter inserts a newline, and Escape cancels. A completed batch shows a publication entry. Repairs, text edits and cell changes retain versions. A human publishes an immutable decision snapshot, then waits for real Agent acknowledgement." },

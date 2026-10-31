@@ -4,6 +4,7 @@ import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { ensureReviewSample } from "./review-sample";
 import { getReviewContext } from "../services/review-workspace/context";
 import { reviewService } from "../services/review-workspace/service";
+import { humanBoardStorage } from "../services/human-board/storage";
 
 beforeEach(() => {
   vi.stubGlobal("indexedDB", new IDBFactory());
@@ -31,4 +32,8 @@ it("creates one persistent review example with editable text and version history
   expect((await reviewService.getVersion(target, item.id, 1)).content).toMatchObject({
     type: "text", versions: expect.arrayContaining([expect.objectContaining({ text: "让每一个灵感，都有机会成为作品。" })]),
   });
+
+  const boards = await humanBoardStorage.list();
+  expect(boards).toHaveLength(1);
+  expect(boards[0].name).toBe("分镜灵感 · 私有画板");
 });

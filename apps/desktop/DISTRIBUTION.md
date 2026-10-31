@@ -1,11 +1,11 @@
 # Desktop distribution
 
-## Current version: 1.3.9
+## Current version: 1.3.10
 
-The current application version is 1.3.9. This release targets a Windows x64
+The current application version is 1.3.10. This release targets a Windows x64
 installer and portable ZIP; available downloads are listed on
 [Releases](https://github.com/yuchen-ya/reelterminal/releases). See the
-[1.3.9 build scope](../../docs/RELEASE-1.3.9.md).
+[1.3.10 build scope](../../docs/RELEASE-1.3.10.md).
 Confirm the source, signing status, checksums and packaged validation for the actual
 release artifacts before publication. See the [upgrade guide](../../docs/WINDOWS-UPGRADE.md)
 before replacing an existing installation. Legacy unsafe uninstallers are blocked;
@@ -17,7 +17,7 @@ directory; do not rename an older package to a new version. For example:
 ```bash
 pnpm install --frozen-lockfile
 pnpm build:wasm
-pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.3.9-<short-sha>
+pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.3.10-<short-sha>
 ```
 
 Verify the packaged app version and `dist/performance-build.json` source SHA,

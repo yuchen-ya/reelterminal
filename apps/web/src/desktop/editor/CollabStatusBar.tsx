@@ -132,6 +132,14 @@ export function CollabStatusBar({ onConnectRequested }: {
         </button>
         <button
           type="button"
+          data-testid="export-cleanup-entry"
+          onClick={() => useUIStore.getState().setDesktopPage("deliver")}
+          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] text-fg-2 transition-colors duration-150 hover:bg-hover hover:text-fg motion-reduce:transition-none"
+        >
+          导出与整理
+        </button>
+        <button
+          type="button"
           data-testid="requirement-board-entry"
           aria-label={t("requirementBoard.title")}
           onClick={() => openModal(REQUIREMENT_BOARD_MODAL_ID, { projectId: useProjectStore.getState().project.id })}

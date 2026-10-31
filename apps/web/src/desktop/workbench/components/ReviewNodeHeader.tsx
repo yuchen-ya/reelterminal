@@ -25,6 +25,9 @@ export interface ReviewNodeHeaderProps {
   busy: boolean;
   onToggleAccess: (event: React.ChangeEvent<HTMLInputElement>) => void;
   browserDemo?: boolean;
+  addressContent?: React.ReactNode;
+  commandActivity?: React.ReactNode;
+  adminMenu?: React.ReactNode;
 }
 
 export function ReviewNodeHeader({
@@ -41,31 +44,33 @@ export function ReviewNodeHeader({
   busy,
   onToggleAccess,
   browserDemo = false,
+  addressContent,
+  commandActivity,
+  adminMenu,
 }: ReviewNodeHeaderProps): JSX.Element {
   const { t } = useTranslation();
 
   return (
-    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-bg-1 px-2.5">
+    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-bg-1 px-3">
       {node ? (
         <>
           {/* 当前任务；打开与管理入口位于顶部标签栏。 */}
-          <div className="flex min-w-0 items-center gap-0.5">
+          <div className="flex min-w-0 shrink-0 items-center gap-1">
+            {node.pinned && <span className="text-xs text-accent" aria-hidden>★</span>}
             <h1
-              className="truncate text-xs font-semibold text-fg max-w-[220px]"
+              className="max-w-[180px] truncate text-xs font-semibold text-fg"
               data-testid="review-node-title"
               data-node-id={node.id}
               title={node.name}
             >
-              {node.pinned ? "★ " : ""}
               {node.name}
             </h1>
-
           </div>
 
           {/* 「内容 | 处理过程(n)」紧凑图标切换 */}
           {view && onSelectView && (
             <div
-              className="inline-flex h-6 items-center gap-0.5 rounded-[5px] border border-border bg-bg-2 p-0.5"
+              className="inline-flex h-6 shrink-0 items-center gap-0.5 rounded-[5px] border border-border bg-bg-2 p-0.5"
               role="group"
               aria-label={t("review.process.title")}
             >
@@ -103,13 +108,23 @@ export function ReviewNodeHeader({
               </button>
             </div>
           )}
+          <div className="mx-0.5 h-3.5 w-px shrink-0 bg-border" />
         </>
       ) : (
-        <strong className="text-xs font-semibold">{t("review.title")}</strong>
+        <strong className="shrink-0 text-xs font-semibold">{t("review.title")}</strong>
       )}
 
-      {/* 弹性空白 */}
-      <div className="flex-1" />
+      {/* 内联地址栏 / 启动命令与 CLI 活动胶囊 */}
+      {addressContent && (
+        <div
+          className="flex min-w-0 flex-1 items-center gap-2 text-xs"
+          data-testid="workbench-address-bar"
+        >
+          {addressContent}
+          {commandActivity}
+        </div>
+      )}
+      {!addressContent && <div className="flex-1" />}
 
       {node && (onExport || onAttach) && (
         <DropdownMenu>
@@ -145,7 +160,7 @@ export function ReviewNodeHeader({
         title={`${t("review.agentAccessLabel")} · ${t(
           context?.access === "write" ? "review.agentWrite" : "review.agentRead",
         )}`}
-        className={`relative inline-flex h-6 items-center gap-1 rounded-[5px] px-1.5 text-xs transition-colors cursor-pointer select-none ${
+        className={`relative inline-flex h-6 shrink-0 items-center gap-1 rounded-[5px] px-1.5 text-xs transition-colors cursor-pointer select-none ${
           context?.access === "write"
             ? "border border-accent/60 bg-accent/10 text-accent font-medium"
             : "border border-border bg-bg-2 text-fg-3 hover:text-fg-2"
@@ -176,6 +191,7 @@ export function ReviewNodeHeader({
         </span>
       </label>}
 
+      {adminMenu}
     </div>
   );
 }

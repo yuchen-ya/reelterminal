@@ -38,6 +38,7 @@ export interface VideoCanvasStageProps {
   readonly onPanChange?: (pan: { readonly x: number; readonly y: number }) => void;
   readonly onStepZoom?: (delta: number) => void;
   readonly loupeEnabled?: boolean;
+  readonly onDisableLoupe?: () => void;
   readonly onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
   readonly onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
   readonly onPointerCancel?: () => void;
@@ -87,6 +88,7 @@ export function VideoCanvasStage({
   onPanChange,
   onStepZoom,
   loupeEnabled = false,
+  onDisableLoupe,
   onPointerDown,
   onPointerMove,
   onPointerCancel,
@@ -186,6 +188,13 @@ export function VideoCanvasStage({
   );
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (e.button === 2 && loupeEnabled) {
+      e.preventDefault();
+      e.stopPropagation();
+      setLoupeState(null);
+      onDisableLoupe?.();
+      return;
+    }
     if (videoReady && (drawTool === "pan" || e.button === 1)) {
       e.preventDefault();
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -278,8 +287,23 @@ export function VideoCanvasStage({
       ref={containerRef}
       data-workbench-player="true"
       onWheel={handleWheel}
+      onContextMenu={(e) => {
+        if (loupeEnabled) {
+          e.preventDefault();
+          e.stopPropagation();
+          setLoupeState(null);
+          onDisableLoupe?.();
+        }
+      }}
+      onPointerDown={(e) => {
+        if (e.button === 2 && loupeEnabled) {
+          e.preventDefault();
+          setLoupeState(null);
+          onDisableLoupe?.();
+        }
+      }}
       onPointerLeave={() => setLoupeState(null)}
-      className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden bg-[#0d0f12] p-2"
+      className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden bg-stage-bg p-2"
     >
       {/* Keep screen-reader / test status hooks without visual HUD clutter */}
       <div className="sr-only">
@@ -357,6 +381,13 @@ export function VideoCanvasStage({
             onPointerMove={handlePointerMove}
             tabIndex={0}
             onKeyDown={event => {
+              if (event.key === "Escape" && loupeEnabled) {
+                event.preventDefault();
+                event.stopPropagation();
+                setLoupeState(null);
+                onDisableLoupe?.();
+                return;
+              }
               if (event.target !== event.currentTarget || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
               if ((event.key === "Delete" || event.key === "Backspace") && onDeleteSelected) {
                 event.preventDefault();

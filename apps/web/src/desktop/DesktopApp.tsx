@@ -312,7 +312,7 @@ export function DesktopApp(): JSX.Element {
           />
         }
       >
-        {showEditor && isVideoEditing ? <span data-tour="desktop-export"><DesktopExportButton /></span> : null}
+        {showEditor && isVideoEditing ? <span className="inline-flex items-center" data-tour="desktop-export"><DesktopExportButton /></span> : null}
         <ToolcraftTooltip content={t("common.githubRepository")} placement="below">
           <a
             href="https://github.com/yuchen-ya/reelterminal"

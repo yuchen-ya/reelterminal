@@ -33,7 +33,10 @@ for (const [name, owner] of [["Excalidraw", excalidrawRequire], ["Mermaid adapte
 }
 
 test("installed lodash-es rejects template import parameter injection and unsafe unset paths", async () => {
-  const lodash = await import(pathToFileURL(mermaidRequire.resolve("lodash-es")).href);
+  // Mermaid now uses es-toolkit. Test the lodash-es copy the image app actually ships.
+  const imageRequire = createRequire(new URL("../../apps/image/package.json", import.meta.url));
+  const removalRequire = createRequire(imageRequire.resolve("@imgly/background-removal"));
+  const lodash = await import(pathToFileURL(removalRequire.resolve("lodash-es")).href);
   assert.throws(() => lodash.template("value", { imports: { "value=1": 1 } }));
   assert.equal(lodash.template("Hello <%= name %>")({ name: "world" }), "Hello world");
   const prototype = { retained: "original" };
