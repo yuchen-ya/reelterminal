@@ -2,7 +2,7 @@
 
 [English](README_en.md) | **简体中文** · [审阅工作台](README_review.md)
 
-<img src="docs/assets/logo.png" alt="ReelTerminal" width="100" height="100" />
+<img src="docs/assets/logo.png" alt="ReelTerminal Logo" width="100" height="100" />
 
 # ReelTerminal
 
