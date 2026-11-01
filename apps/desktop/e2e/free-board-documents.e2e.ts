@@ -218,10 +218,41 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     let local = (await boards(page))[0].elements.find(element => element.customData?.kind === "html")!;
     expect(local.customData?.source).toBe(htmlSource);
     evidence.record("phase", "local-html-imported"); evidence.flush();
+    // Playwright's renderer input works in a background macOS app. Native
+    // focus recovery needs a foreground window before the guest lifecycle.
+    const activateEditor = async () => {
+      await launched.app.evaluate(({ app, BrowserWindow }) => {
+        app.focus({ steal: true });
+        BrowserWindow.getAllWindows()[0].focus();
+      });
+      await vi.waitFor(async () => expect(await launched.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())).toBe(true), { timeout: 5_000 });
+    };
+    const expectEditorFocus = async (phase: string) => {
+      await vi.waitFor(async () => {
+        const state = await launched.app.evaluate(({ BrowserWindow, webContents }) => ({
+          windowFocused: BrowserWindow.getAllWindows()[0].isFocused(),
+          mainFocused: BrowserWindow.getAllWindows()[0].webContents.isFocused(),
+          contents: webContents.getAllWebContents().map(contents => ({ type: contents.getType(), focused: contents.isFocused(), loading: contents.isLoading() })),
+        }));
+        evidence.record(phase, state);
+        expect(state.windowFocused, "Native focus scenario lost its foreground window").toBe(true);
+        expect(state.mainFocused).toBe(true);
+      }, { timeout: 5_000 });
+    };
+    await activateEditor();
     await select(page, local); await page.getByTestId("human-board-document-browse").click();
     await vi.waitFor(async () => expect(await page.getByTestId("human-board-browser").getAttribute("data-state")).toBe("ready"), { timeout: 30_000 });
     expect(await page.getByTestId("review-workspace-open").isDisabled()).toBe(true);
     expect(await page.locator('[data-testid^="board-tab-"]').first().isDisabled()).toBe(true);
+    await vi.waitFor(async () => {
+      const state = await launched.app.evaluate(({ webContents, BrowserWindow }) => {
+        const editor = BrowserWindow.getAllWindows()[0];
+        const guest = webContents.getAllWebContents().find(contents => contents.id !== editor.webContents.id && contents.getURL().startsWith("file:"));
+        return { windowFocused: editor.isFocused(), mainFocused: editor.webContents.isFocused(), guestFocused: guest?.isFocused() };
+      });
+      evidence.record("focusDuringHTMLBrowser", state);
+      expect(state).toEqual({ windowFocused: true, mainFocused: false, guestFocused: true });
+    }, { timeout: 5_000 });
     const guestFacts = await launched.app.evaluate(async ({ webContents, BrowserWindow, session }) => {
       const main = BrowserWindow.getAllWindows()[0].webContents;
       const guest = webContents.getAllWebContents().find(contents => contents.id !== main.id && contents.getURL().startsWith("file:"));
@@ -254,27 +285,20 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
       const main = BrowserWindow.getAllWindows()[0].webContents;
       return webContents.getAllWebContents().filter(contents => contents.id !== main.id && /^(file:|https?:)/.test(contents.getURL())).length;
     })).toBe(0));
+    await expectEditorFocus("focusAfterHTMLBrowserCapture");
     expect(await page.getByTestId("review-workspace-open").isEnabled()).toBe(true);
     local = (await boards(page))[0].elements.find(element => element.id === local.id)!;
     expect(local.customData?.snapshotResourceId).toBeTruthy();
+    await activateEditor();
     await select(page, local); await page.getByTestId("human-board-document-edit").click();
     await page.getByRole("textbox", { name: "HTML 原文", exact: true }).fill(`${htmlSource}\n<!-- edited source -->`);
     await page.getByTestId("human-board-document-save").click();
     await page.getByTestId("human-board-document-source").waitFor({ state: "hidden", timeout: 30_000 }); await saved(page);
     expect((await boards(page))[0].elements.find(element => element.id === local.id)?.customData?.snapshotResourceId).not.toBe(local.customData?.snapshotResourceId);
+    await expectEditorFocus("focusAfterHTMLSourcePreview");
     await page.getByTestId("human-board-undo").click(); await saved(page);
     expect((await boards(page))[0].elements.find(element => element.id === local.id)?.customData?.snapshotResourceId).toBe(local.customData?.snapshotResourceId);
-    const nativeFocus = await vi.waitFor(async () => {
-      const state = await launched.app.evaluate(({ BrowserWindow, webContents }) => ({
-        mainFocused: BrowserWindow.getAllWindows()[0].webContents.isFocused(),
-        contents: webContents.getAllWebContents().map(contents => ({ type: contents.getType(), focused: contents.isFocused(), loading: contents.isLoading() })),
-      }));
-      evidence.record("focusAfterHTMLUndo", state);
-      expect(state.mainFocused).toBe(true);
-      return state;
-    }, { timeout: 5_000 });
-    evidence.record("focusAfterHTMLUndo", nativeFocus);
-    expect(nativeFocus.mainFocused).toBe(true);
+    await expectEditorFocus("focusAfterHTMLUndo");
     evidence.record("nativeClipboardProbe", await launched.app.evaluate(async ({ clipboard }, text) => {
       const probes = [];
       for (const requested of ["Clipboard probe after native guest", text, "https://example.com/"]) { await clipboard.writeText(requested); probes.push({ requested, readBack: await clipboard.readText() }); }
@@ -479,5 +503,120 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     evidence.record("alerts", await launched.page.getByRole("alert").allTextContents());
     evidence.record("rendererConsole", launched.output.rendererConsole);
     if (!launched.page.isClosed()) await evidence.screenshot("terminal"); evidence.flush(); await launched.close();
+  }
+});
+
+
+test("background HTML source previews preserve another native window's focus", async () => {
+  const launched = await launchApp(), page = launched.page;
+  const evidence = createEvidence("free-board-background-html-focus", page);
+  try {
+    await openBoard(page);
+    const filename = path.join(launched.runDir, "background-preview.html");
+    await writeFile(filename, localHtmlSource);
+    await page.getByTestId("human-board-import-files").setInputFiles(filename);
+    await vi.waitFor(async () => expect((await boards(page))[0]?.elements.some(element => element.customData?.kind === "html")).toBe(true), { timeout: 30_000 });
+    await fit(page);
+    const local = (await boards(page))[0].elements.find(element => element.customData?.kind === "html")!;
+    expect(local.customData?.snapshotResourceId).toBeTruthy();
+    await select(page, local); await page.getByTestId("human-board-document-edit").click();
+    // This window belongs only to the isolated app. Its focus must survive the
+    // background editor's automatic HTML preview and cleanup.
+    const background = await launched.app.evaluate(async ({ app, BrowserWindow }) => {
+      const editor = BrowserWindow.getAllWindows()[0];
+      const foreground = new BrowserWindow({ width: 360, height: 180, show: false });
+      await foreground.loadURL("data:text/html,<p>HTML preview focus sentinel</p>");
+      app.focus({ steal: true });
+      foreground.show();
+      foreground.focus();
+      return { editorId: editor.id, foregroundId: foreground.id };
+    });
+    try {
+      const backgroundFocus = () => launched.app.evaluate(({ BrowserWindow }, ids) => {
+        const editor = BrowserWindow.fromId(ids.editorId)!, foreground = BrowserWindow.fromId(ids.foregroundId)!;
+        return { windowFocused: editor.isFocused(), mainFocused: editor.webContents.isFocused(), foregroundFocused: foreground.isFocused() };
+      }, background);
+      const expected = { windowFocused: false, mainFocused: false, foregroundFocused: true };
+      await vi.waitFor(async () => expect(await backgroundFocus()).toEqual(expected), { timeout: 5_000 });
+      evidence.record("focusBeforeBackgroundHTMLPreview", await backgroundFocus());
+      await page.getByRole("textbox", { name: "HTML 原文", exact: true }).fill(`${localHtmlSource}\n<!-- background preview -->`);
+      await page.getByTestId("human-board-document-save").click();
+      await page.getByTestId("human-board-document-source").waitFor({ state: "hidden", timeout: 30_000 }); await saved(page);
+      const edited = (await boards(page))[0].elements.find(element => element.id === local.id)!;
+      expect(edited.customData?.source).toContain("<!-- background preview -->");
+      expect(edited.customData?.snapshotResourceId).toBeTruthy();
+      expect(edited.customData?.snapshotResourceId).not.toBe(local.customData?.snapshotResourceId);
+      const state = await backgroundFocus();
+      evidence.record("focusAfterBackgroundHTMLPreview", state);
+      expect(state).toEqual(expected);
+      await page.getByTestId("human-board-undo").click(); await saved(page);
+      expect((await boards(page))[0].elements.find(element => element.id === local.id)?.customData?.snapshotResourceId).toBe(local.customData?.snapshotResourceId);
+      expect(await backgroundFocus()).toEqual(expected);
+    } finally {
+      await launched.app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)?.destroy(), background.foregroundId);
+    }
+  } finally {
+    evidence.record("rendererConsole", launched.output.rendererConsole);
+    if (!page.isClosed()) await evidence.screenshot("terminal"); evidence.flush(); await launched.close();
+  }
+});
+
+test("Display-P3 Markdown snapshots retain sRGB asset colours in the composite", async () => {
+  const launched = await launchApp({ chromiumArgs: ["--force-color-profile=display-p3-d65"] }), page = launched.page;
+  const evidence = createEvidence("free-board-p3-markdown", page);
+  try {
+    const display = await launched.app.evaluate(({ BrowserWindow, screen }) => screen.getDisplayMatching(BrowserWindow.getAllWindows()[0].getBounds()).colorSpace);
+    evidence.record("displayColourSpace", display);
+    expect(display).toContain("primaries:P3");
+    await openBoard(page);
+    const files: string[] = [];
+    for (const [name, colour] of [["red", [255, 0, 0, 255]], ["green", [0, 220, 0, 255]]] as const) {
+      const pixels = Buffer.alloc(128 * 128 * 4);
+      for (let index = 0; index < pixels.length; index += 4) pixels.set(colour, index);
+      writeRgbaPng(path.join(launched.runDir, `${name}.png`), 128, 128, pixels);
+      const file = path.join(launched.runDir, `${name}.md`);
+      await writeFile(file, `# ${name} Markdown\n\n![${name} asset](${name}.png)`);
+      files.push(file);
+    }
+    await page.getByTestId("human-board-import-files").setInputFiles(files);
+    await vi.waitFor(async () => expect((await boards(page))[0]?.elements.filter(element => !element.isDeleted)).toHaveLength(2), { timeout: 30_000 });
+    await fit(page);
+    await vi.waitFor(async () => expect(await page.locator('[data-document-kind="markdown"] img').evaluateAll(images => images.length === 2 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true));
+    const visible = (await boards(page))[0].elements.filter(element => !element.isDeleted);
+    await page.getByTestId("human-board-capture-region").click();
+    const overlay = page.getByTestId("human-board-capture-overlay");
+    await overlay.waitFor();
+    const current = (await boards(page))[0], stage = (await overlay.boundingBox())!;
+    const left = Math.min(...visible.map(element => element.x)) - 6, top = Math.min(...visible.map(element => element.y)) - 6;
+    const right = Math.max(...visible.map(element => element.x + element.width)) + 6, bottom = Math.max(...visible.map(element => element.y + element.height)) + 6;
+    const zoom = current.appState.zoom?.value ?? 1;
+    const from = { x: stage.x + (left + (current.appState.scrollX ?? 0)) * zoom, y: stage.y + (top + (current.appState.scrollY ?? 0)) * zoom };
+    const to = { x: stage.x + (right + (current.appState.scrollX ?? 0)) * zoom, y: stage.y + (bottom + (current.appState.scrollY ?? 0)) * zoom };
+    await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move(to.x, to.y, { steps: 12 }); await page.mouse.up();
+    await page.getByTestId("human-board-capture-confirm").click();
+    const image = page.getByTestId("human-board-output-image"); await image.waitFor();
+    const png = Buffer.from(await image.evaluate(async image => [...new Uint8Array(await (await fetch((image as HTMLImageElement).src)).arrayBuffer())]));
+    const decoded = decodeRgbaPng(evidence.writePng("composite", png));
+    const scale = decoded.width / (right - left);
+    const colours = visible.map(element => {
+      const counts = { name: element.customData?.name, red: 0, green: 0 };
+      for (let y = Math.max(0, Math.ceil((element.y - top) * scale)); y < Math.min(decoded.height, (element.y + element.height - top) * scale); y++) {
+        for (let x = Math.max(0, Math.ceil((element.x - left) * scale)); x < Math.min(decoded.width, (element.x + element.width - left) * scale); x++) {
+          const offset = (y * decoded.width + x) * 4;
+          const [r, g, b] = decoded.pixels.subarray(offset, offset + 3);
+          if (r > 220 && g < 70 && b < 70) counts.red++;
+          if (g > 170 && r < 70 && b < 70) counts.green++;
+        }
+      }
+      return counts;
+    });
+    evidence.record("assetColours", colours);
+    expect(colours.find(item => item.name === "red.md")).toMatchObject({ green: 0 });
+    expect(colours.find(item => item.name === "red.md")!.red).toBeGreaterThan(400);
+    expect(colours.find(item => item.name === "green.md")).toMatchObject({ red: 0 });
+    expect(colours.find(item => item.name === "green.md")!.green).toBeGreaterThan(400);
+  } finally {
+    evidence.record("rendererConsole", launched.output.rendererConsole);
+    if (!page.isClosed()) await evidence.screenshot("terminal"); evidence.flush(); await launched.close();
   }
 });

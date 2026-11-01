@@ -52,6 +52,8 @@ export interface LaunchedApp {
 }
 
 export interface LaunchOptions {
+  /** Chromium switches for an isolated rendering scenario; isolation paths win. */
+  chromiumArgs?: readonly string[];
   /** Reuse a previous run dir (relaunch leg). */
   runDir?: string;
   /** Keep the temp dir after close (debugging). */
@@ -83,6 +85,7 @@ async function launch(
   paths: ReturnType<typeof makeRunDirs>,
   extraEnv: NodeJS.ProcessEnv = {},
   skipLocaleReload = false,
+  chromiumArgs: readonly string[] = [],
 ): Promise<LaunchedApp> {
   if (!existsSync(MAIN_BUNDLE_PATH) || !existsSync(REELCTL_PATH)) {
     throw new Error(
@@ -103,7 +106,7 @@ async function launch(
 
   const app = await electron.launch({
     ...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? { executablePath: process.env.REELTERMINAL_E2E_APP_EXECUTABLE } : {}),
-    args: [...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? [] : ["."]), ...(process.env.REELTERMINAL_E2E_SOFTWARE_GL === "1" ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : []), "--lang=en-US", `--user-data-dir=${paths.userDataDir}`],
+    args: [...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? [] : ["."]), ...(process.env.REELTERMINAL_E2E_SOFTWARE_GL === "1" ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : []), ...chromiumArgs, "--lang=en-US", `--user-data-dir=${paths.userDataDir}`],
     cwd: DESKTOP_DIR,
     env: {
       ...process.env,
@@ -272,7 +275,7 @@ async function launch(
 
     async relaunch() {
       await handle.close({ keepRunDir: true });
-      return launch(paths, extraEnv, skipLocaleReload);
+      return launch(paths, extraEnv, skipLocaleReload, chromiumArgs);
     },
 
     close(options = {}) {
@@ -335,5 +338,5 @@ async function launch(
 
 export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedApp> {
   const paths = makeRunDirs(options.runDir);
-  return launch(paths, options.env, options.skipLocaleReload);
+  return launch(paths, options.env, options.skipLocaleReload, options.chromiumArgs);
 }

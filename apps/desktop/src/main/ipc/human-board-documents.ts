@@ -77,6 +77,7 @@ function frameHasDocumentToken(frame: NativeImage, frameToken: number, scale: nu
 function capturePresentedFrame(contents: WebContents, accepts: (frame: NativeImage) => boolean): Promise<NativeImage> {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let copying = false;
     const cleanup = () => {
       clearTimeout(timeout);
       contents.removeListener("destroyed", cancelled);
@@ -91,16 +92,32 @@ function capturePresentedFrame(contents: WebContents, accepts: (frame: NativeIma
     const timeout = setTimeout(() => fail(new Error("文档预览未完成绘制")), 10000);
     contents.once("destroyed", cancelled);
     contents.beginFrameSubscription(false, frame => {
-      if (settled || frame.isEmpty()) return;
+      if (settled || copying || frame.isEmpty()) return;
       try {
         if (!accepts(frame)) {
           setImmediate(() => { if (!settled && !contents.isDestroyed()) contents.invalidate(); });
           return;
         }
       } catch (error) { fail(error instanceof Error ? error : new Error(String(error))); return; }
-      settled = true;
-      // End the native subscription after its callback has unwound.
-      setImmediate(() => { cleanup(); resolve(frame); });
+      copying = true;
+      // Subscription frames identify presentation, but Electron discards their
+      // colour profile. capturePage retains it for colour-correct PNG encoding.
+      // Check its receipt too: the copy can race a document/surface change.
+      setImmediate(async () => {
+        if (settled) return;
+        try {
+          const image = await contents.capturePage();
+          if (settled) return;
+          if (!image.isEmpty() && accepts(image)) {
+            settled = true;
+            cleanup();
+            resolve(image);
+          } else {
+            copying = false;
+            contents.invalidate();
+          }
+        } catch (error) { fail(error instanceof Error ? error : new Error(String(error))); }
+      });
     });
     contents.invalidate();
   });
