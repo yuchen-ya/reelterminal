@@ -99,7 +99,25 @@ test("CLI image revisions retain decoded pixels, view state and explicit failure
     const clip = { x: Math.ceil(imageBox.x + imageBox.width * 0.3), y: Math.ceil(imageBox.y + imageBox.height * 0.3), width: Math.floor(imageBox.width * 0.4), height: Math.floor(imageBox.height * 0.4) };
     const viewLayout = async () => ({ image: await image().boundingBox(), toolbar: await page.getByTestId("image-toolbar").boundingBox(), stageStyle: await page.getByTestId("image-stage").getAttribute("style") });
     evidence.record("viewBeforeUpdate", await viewLayout());
-    const beforeFile = evidence.writePng("before-image-region", await page.screenshot({ clip }));
+    // The preceding zoom/pan can still trigger a compositor reraster after
+    // layout has settled. Establish an exact stable baseline before a CLI
+    // update, so its edge rounding is not mistaken for changed image content.
+    let previousPixels: Buffer | undefined;
+    let baselinePng: Buffer | undefined;
+    let equalFrames = 0;
+    let baselineSamples = 0;
+    await vi.waitFor(async () => {
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      const png = await page.screenshot({ clip });
+      const file = evidence.writePng(`baseline-frame-${baselineSamples++}`, png);
+      const pixels = decodeRgbaPng(file).pixels;
+      equalFrames = previousPixels?.equals(pixels) ? equalFrames + 1 : 0;
+      previousPixels = pixels;
+      baselinePng = png;
+      expect(equalFrames, "image pixels must settle before the CLI update").toBeGreaterThanOrEqual(3);
+    });
+    evidence.record("stableBaselineSamples", baselineSamples);
+    const beforeFile = evidence.writePng("before-image-region", baselinePng!);
     const beforePixels = decodeRgbaPng(beforeFile).pixels;
     await installDecodeGate(page);
     await page.evaluate(() => {

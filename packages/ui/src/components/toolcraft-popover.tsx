@@ -49,6 +49,15 @@ export function ToolcraftPopover({
         align={alignment}
         aria-label={label}
         side={toSide(placement)}
+        onCloseAutoFocus={(event) => {
+          // A closing scope restores focus asynchronously. A newly opened
+          // dialog already owns its input; restoring the old trigger would
+          // dismiss that dialog as an outside-focus interaction.
+          const focusedDialog = document.activeElement?.closest(
+            '[role="dialog"][data-state="open"]',
+          )
+          if (focusedDialog) event.preventDefault()
+        }}
         className={cn("!w-auto !p-0 overflow-hidden", className)}
         style={width ? { width: toCssSize(width) } : undefined}
       >
