@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useCallback, useState, useRef } from "react";
 import { ToolcraftCard as Card } from "@reelterminal/ui";
 import { ToolcraftFileDropControl as FileInput } from "@reelterminal/ui";
@@ -224,7 +225,7 @@ export const SVGImporter: React.FC<SVGImporterProps> = ({
                 {t("SVG imported successfully")}</Text>
             ) : status === "error" ? (
               <Text type="supporting" className="text-[10px] text-red-500">
-                {errorMessage}
+                <LocalizedMessage>{errorMessage}</LocalizedMessage>
               </Text>
             ) : (
               <div className="flex flex-col gap-0.5">

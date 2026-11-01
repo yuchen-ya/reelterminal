@@ -1,3 +1,6 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 /**
  * Image review workspace for the AI material workbench.
  *
@@ -83,6 +86,7 @@ export function ImageViewerWorkspace({
   issuePanelWidth,
   onStartResizeIssuePanel,
 }: ImageViewerWorkspaceProps): JSX.Element {
+  const { t } = useTranslation();
   const viewMode = "zoom" as const;
   const [pinnedRefId, setPinnedRefId] = useState<string | null>(null);
   const [showCompareSplit, setShowCompareSplit] = useState<boolean>(false);
@@ -155,7 +159,7 @@ export function ImageViewerWorkspace({
   useEffect(() => {
     if (natural || !usingRepair || !repair || !imageLoadFailed || workMode === "repair" || displayChoice?.scope === imageScope) return;
     setRepairFallback({ scope: imageScope, mediaId: repair.mediaId,
-      message: imgError ? failedImage!.message : activeMedia?.error ?? "修补媒体不可用" });
+      message: imgError ? failedImage!.message : activeMedia?.error ?? translate("Repair media unavailable") });
   }, [natural, usingRepair, repair, imageLoadFailed, workMode, displayChoice, imageScope, imgError, failedImage, activeMedia]);
 
   const draftKey = `${currentItem.id}:${currentItem.version}`;
@@ -241,7 +245,7 @@ export function ImageViewerWorkspace({
       selectId?: string,
     ): Promise<void> => {
       if (!imageCurrent) {
-        setMutationError("当前版本图像尚未载入，暂时无法修改圈注");
+        setMutationError(translate("The current image has not loaded. Annotations cannot be edited yet."));
         return;
       }
       const result = await onUpdateImageAnnotations(
@@ -293,11 +297,11 @@ export function ImageViewerWorkspace({
   const handleSaveRepair = useCallback(async (): Promise<void> => {
     if (draftStrokes.length === 0) return;
     if (!imageCurrent) {
-      setMutationError("当前版本图像尚未载入，暂时无法保存修补");
+      setMutationError(translate("The current image has not loaded. Repairs cannot be saved yet."));
       return;
     }
     if (repairBase === "latest" && repair && !repairReady) {
-      setMutationError("已保存修补结果不可用，请切换为“从原图重新修补”后再保存");
+      setMutationError(translate("The saved repair is unavailable. Choose Start a repair from the original before saving."));
       return;
     }
     const base: WorkbenchRepairBase =
@@ -319,8 +323,8 @@ export function ImageViewerWorkspace({
       setMutationError(null);
       setRepairNotice(
         base.kind === "source"
-          ? "已从原图生成新修补版本"
-          : "已在已保存修补上生成新版本",
+          ? translate("Created a new repair version from the original")
+          : translate("Created a new version from the saved repair"),
       );
       setDisplayMode("repaired");
       setDraftsByItemVersion((prev) => {
@@ -420,7 +424,7 @@ export function ImageViewerWorkspace({
           ? { ptsLabel: `PTS ${ann.ptsSec.toFixed(3)}s` }
           : {}),
       })),
-    [annotations, currentItem.version, natural],
+    [annotations, currentItem.version, natural, t],
   );
 
   const handleSaveIssue = useCallback(
@@ -428,10 +432,10 @@ export function ImageViewerWorkspace({
       issueId: string,
       input: WorkbenchIssueSaveInput,
     ): Promise<WorkbenchMutationResult> => {
-      if (!imageCurrent) return { ok: false, code: "CONFLICT", message: "当前版本图像尚未载入，暂时无法修改圈注" };
+      if (!imageCurrent) return { ok: false, code: "CONFLICT", message: translate("The current image has not loaded. Annotations cannot be edited yet.") };
       const annotation = annotations.find((ann) => ann.id === issueId);
       if (!annotation) {
-        return { ok: false, code: "NOT_FOUND", message: "圈注不存在" };
+        return { ok: false, code: "NOT_FOUND", message: translate("Annotation not found") };
       }
       const next = annotations.map((ann) =>
         ann.id === issueId ? { ...ann, label: input.text } : ann,
@@ -475,10 +479,10 @@ export function ImageViewerWorkspace({
 
   const handleDeleteIssue = useCallback(
     async (issueId: string): Promise<WorkbenchMutationResult> => {
-      if (!imageCurrent) return { ok: false, code: "CONFLICT", message: "当前版本图像尚未载入，暂时无法修改圈注" };
+      if (!imageCurrent) return { ok: false, code: "CONFLICT", message: translate("The current image has not loaded. Annotations cannot be edited yet.") };
       const remaining = annotations.filter((ann) => ann.id !== issueId);
       if (remaining.length === annotations.length) {
-        return { ok: false, code: "NOT_FOUND", message: "圈注不存在" };
+        return { ok: false, code: "NOT_FOUND", message: translate("Annotation not found") };
       }
       const result = await onUpdateImageAnnotations(
         currentItem.id,
@@ -536,7 +540,7 @@ export function ImageViewerWorkspace({
       if (image.decode) await image.decode();
     } catch {
       if (requestedImageRef.current === requestedImage && image.isConnected) {
-        setFailedImage({ request: requestedImage, message: "图片解码失败" });
+        setFailedImage({ request: requestedImage, message: translate("Image decoding failed") });
       }
       return;
     }
@@ -545,7 +549,7 @@ export function ImageViewerWorkspace({
     const height = image.naturalHeight;
     if (usingRepair && payload?.naturalWidth && payload?.naturalHeight &&
       (width !== payload.naturalWidth || height !== payload.naturalHeight)) {
-      setFailedImage({ request: requestedImage, message: "修补结果尺寸与源图不一致" });
+      setFailedImage({ request: requestedImage, message: translate("Repair dimensions do not match the source image") });
       return;
     }
     setDecodedImage({ scope: imageScope, url: image.src, w: width, h: height, repaired: usingRepair });
@@ -554,7 +558,7 @@ export function ImageViewerWorkspace({
   };
 
   const handleImageError = (): void => {
-    setFailedImage({ request: requestedImage, message: "图片加载失败" });
+    setFailedImage({ request: requestedImage, message: translate("Image failed to load") });
   };
 
   const compareSourceUrl = (() => {
@@ -634,9 +638,9 @@ export function ImageViewerWorkspace({
           <div role={imageLoadFailed ? "alert" : "status"}
             data-testid="image-update-status"
             className="pointer-events-none absolute bottom-3 left-1/2 max-w-full -translate-x-1/2 rounded border border-border bg-bg-1/95 px-3 py-1.5 text-xs text-fg-2">
-            {imageLoadFailed
-              ? `新版本未载入，仍显示上一张已载入图像：${imgError ? failedImage?.message : activeMedia?.error ?? "媒体不可用"}`
-              : "正在载入新图像，暂时保留上一张已载入图像"}
+            <LocalizedMessage>{imageLoadFailed
+              ? t("The new version has not loaded. Showing the previous loaded image: {{v0}}", { v0: imgError ? failedImage?.message : activeMedia?.error ?? t("Media unavailable") })
+              : t("Loading the new image. The previous loaded image remains visible.")}</LocalizedMessage>
           </div>
         )}
       </div>
@@ -688,12 +692,12 @@ export function ImageViewerWorkspace({
 
       {mutationError && (
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-status-error/40 bg-status-error/10 px-3 py-1.5 text-xs text-status-error">
-          <span className="truncate">提交失败:{mutationError}</span>
+          <span className="truncate">{t("Submission failed: {{v0}}", { v0: mutationError })}</span>
           <button
             type="button"
             onClick={() => setMutationError(null)}
             className="shrink-0 hover:opacity-80"
-            title="关闭"
+            title={t("common.close")}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -705,12 +709,12 @@ export function ImageViewerWorkspace({
           className="flex shrink-0 items-center justify-between gap-2 border-b border-status-warning/40 bg-status-warning/10 px-3 py-1.5 text-xs text-status-warning"
           data-testid="repair-notice"
         >
-          <span className="truncate">{repairNotice ?? `修补结果不可用，已回退原图：${fallback?.message}`}</span>
+          <span className="truncate">{repairNotice ?? t("The repair is unavailable. Showing the original: {{v0}}", { v0: fallback?.message })}</span>
           {repairNotice && <button
             type="button"
             onClick={() => setRepairNotice(null)}
             className="shrink-0 hover:opacity-80"
-            title="关闭"
+            title={t("common.close")}
           >
             <X className="h-3.5 w-3.5" />
           </button>}
@@ -725,11 +729,11 @@ export function ImageViewerWorkspace({
                   <div className="mb-1.5 flex w-full items-center justify-between px-1">
                     <div className="flex items-center gap-1.5 text-xs font-medium text-status-warning">
                       <Pin className="h-3.5 w-3.5" />
-                      <span>并排参考图: {pinnedRefItem.title}</span>
+                      <span>{t("Side-by-side reference: {{v0}}", { v0: pinnedRefItem.title })}</span>
                     </div>
                     <span className="font-mono text-[11px] text-fg-3">
                       {pinnedRefItem.provenanceTags.map((tag) => `@${tag.shortName}`).join(" · ") ||
-                        "无溯源标签"}
+                        t("No provenance tags")}
                     </span>
                   </div>
                   <div className="relative aspect-video w-full overflow-hidden rounded border border-border-strong bg-bg-2">
@@ -741,14 +745,14 @@ export function ImageViewerWorkspace({
                         title={
                           pinnedRefItem.id === currentItem.id
                             ? undefined
-                            : "缩略图预览(原始媒体仅当前条目可用)"
+                            : t("Thumbnail preview (original media is available only for the current item)")
                         }
                         className="h-full w-full select-none object-contain"
                       />
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-fg-3">
                         <ImageOff className="h-5 w-5" />
-                        <span className="text-[11px]">参考图缩略图未提供</span>
+                        <span className="text-[11px]">{t("No reference thumbnail was supplied")}</span>
                       </div>
                     )}
                   </div>
@@ -766,7 +770,7 @@ export function ImageViewerWorkspace({
               aria-orientation="vertical"
               onPointerDown={onStartResizeIssuePanel}
               className="group flex w-1.5 shrink-0 cursor-col-resize items-center justify-center"
-              title="拖拽调整问题栏宽度"
+              title={t("Drag to resize the issues panel")}
             >
               <div className="h-10 w-0.5 rounded-full bg-border-strong group-hover:bg-accent" />
             </div>
@@ -801,7 +805,7 @@ export function ImageViewerWorkspace({
                 }
               : {})}
             widthPx={issuePanelWidth}
-            emptyHint="先选上方「标记问题」，在图片上拖出方框或箭头；再点选标记，在这里填写修改要求。"
+            emptyHint={t("Choose Mark issues above and draw a box or arrow on the image. Select the mark and enter revision instructions here.")}
           />
         </div>
     </div>

@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../i18n/messages";
 import type { ProjectCleanupHandoff } from "@reelterminal/core";
 import type { ProjectNodeSummary, WorkspaceTarget } from "./workspace-manager";
 import {
@@ -252,7 +253,7 @@ interface StoredPlan {
 }
 
 const plans = new Map<string, StoredPlan>();
-const cleanupUnknowns = ["未登记产物清单的历史文件保留；文件分类不等于删除资格。"];
+const cleanupUnknowns = ["Historical files without an output manifest are retained; classification alone does not make a file eligible for deletion."];
 
 const failedTaskReasons = [
   "Only this failed or cancelled task's durable input and status records are removed. Task outputs, source media, and other files remain untouched.",
@@ -459,7 +460,7 @@ async function readCleanupJobSnapshot(target: CleanupTarget): Promise<CleanupJob
         sizeBytes: file.sizeBytes,
         lastModifiedMs: file.lastModifiedMs,
       })),
-      retainedReason: hasArtifacts ? "仍有产物文件，保留任务清单；先审查过程文件。" : candidate ? failedTaskReasons[0]! : task.retainedReason ?? "No durable cleanup reason was provided.",
+      retainedReason: hasArtifacts ? canonicalMessage("Output files remain, so the task manifest is retained. Review intermediate files first.") : candidate ? failedTaskReasons[0]! : task.retainedReason ?? "No durable cleanup reason was provided.",
       candidate,
     };
   });
@@ -472,7 +473,7 @@ async function readCleanupJobSnapshot(target: CleanupTarget): Promise<CleanupJob
     try { pathReferences = await scanArtifactPathReferences(); }
     catch (error) {
       workScanReady = false;
-      unknowns.push(`产物引用扫描失败，过程文件全部保留：${error instanceof Error ? error.message : String(error)}`);
+      unknowns.push(canonicalMessage("Output reference scanning failed; all intermediate files are retained: {{v0}}", { v0: error instanceof Error ? error.message : String(error) }));
     }
   }
   const workFiles = tracked.map((file): CleanupWorkFile => {
@@ -480,11 +481,11 @@ async function readCleanupJobSnapshot(target: CleanupTarget): Promise<CleanupJob
     const retainedBy = pathReferences.filter((reference) => reference.pathKey === key)
       .map((reference) => `${reference.kind}: ${reference.referenceId}`);
     const retainedReason = file.retainedReason ??
-      (!workScanReady ? "引用扫描不完整" : !key ? "文件路径无效" :
-        file.kind !== "work" ? "正式素材、工程与成片单独保留" :
-          file.deliveryStatus === "delivered" ? "已交付的产物保留" :
-            file.taskState === "queued" || file.taskState === "running" ? "活动作业保护" :
-              retainedBy.length > 0 ? "仍有工程、历史、素材库、审阅或任务引用" : undefined);
+      (!workScanReady ? canonicalMessage("Reference scan incomplete") : !key ? canonicalMessage("Invalid file path") :
+        file.kind !== "work" ? canonicalMessage("Saved media, projects and delivered videos are retained separately") :
+          file.deliveryStatus === "delivered" ? canonicalMessage("Delivered outputs are retained") :
+            file.taskState === "queued" || file.taskState === "running" ? canonicalMessage("Protected by an active job") :
+              retainedBy.length > 0 ? canonicalMessage("Still referenced by a project, history, media library, review or task") : undefined);
     return { ...file, selectionId: `${file.jobId}:${file.fileId}`, retainedBy, ...(retainedReason ? { retainedReason } : {}) };
   });
   return { tasks, unknowns, scanReady, workFiles, workScanReady };
@@ -744,11 +745,11 @@ export async function createCleanupPlan(
     blockers.push("jobIds are only valid for failed-job cleanup");
   }
   if (action === "purge-work-files") {
-    if (!review.workFiles.scanReady) blockers.push("过程文件的完整引用扫描未通过");
-    if (selectedNodeIds.length > 0 || requestedMediaIds.length > 0 || requestedCacheKeys.length > 0) blockers.push("过程文件清理只接受 workFileIds 与 jobIds");
-    if (requestedWorkFileIds.length === 0) blockers.push("请明确选择要删除的过程文件；未采用尝试不会默认全选");
-    if (getExportingProjectIds().size > 0) blockers.push("请等待活动导出结束后重新确认过程文件清理");
-  } else if (requestedWorkFileIds.length > 0) blockers.push("workFileIds 只适用于过程文件清理");
+    if (!review.workFiles.scanReady) blockers.push(canonicalMessage("The complete reference scan for intermediate files did not pass"));
+    if (selectedNodeIds.length > 0 || requestedMediaIds.length > 0 || requestedCacheKeys.length > 0) blockers.push(canonicalMessage("Intermediate-file cleanup accepts only workFileIds and jobIds"));
+    if (requestedWorkFileIds.length === 0) blockers.push(canonicalMessage("Explicitly select intermediate files to delete; unadopted attempts are not selected by default"));
+    if (getExportingProjectIds().size > 0) blockers.push(canonicalMessage("Wait for the active export to finish, then confirm intermediate-file cleanup again"));
+  } else if (requestedWorkFileIds.length > 0) blockers.push(canonicalMessage("workFileIds applies only to intermediate-file cleanup"));
 
   const candidateWorkFiles = action === "purge-work-files" && review.workFiles.scanReady
     ? review.workFiles.files.filter((file) => requestedWorkFileIds.includes(file.selectionId) &&
@@ -756,7 +757,7 @@ export async function createCleanupPlan(
     : [];
   if (action === "purge-work-files") {
     for (const fileId of requestedWorkFileIds) {
-      if (!candidateWorkFiles.some((file) => file.selectionId === fileId)) blockers.push(`过程文件 ${fileId} 不在可清理范围或仍受引用保护`);
+      if (!candidateWorkFiles.some((file) => file.selectionId === fileId)) blockers.push(canonicalMessage("Intermediate file {{v0}} is outside the cleanup scope or remains protected by references", { v0: fileId }));
     }
   }
   const workFiles: ProjectLibraryTrackedWorkFingerprint[] = candidateWorkFiles.map(({ jobId, fileId, path, sizeBytes, lastModifiedMs }) => ({ jobId, fileId, path, sizeBytes, lastModifiedMs }));
@@ -1090,7 +1091,7 @@ export async function executeCleanupPlan(input: CleanupExecutionInput): Promise<
       return emptyResult(input.planId, "blocked", "Failed task records cannot be cleaned while this project has an active export");
     }
     if (stored.plan.action === "purge-work-files" && getExportingProjectIds().size > 0) {
-      return emptyResult(input.planId, "blocked", "活动导出期间保留过程文件；导出结束后请重新审查");
+      return emptyResult(input.planId, "blocked", canonicalMessage("Intermediate files are retained during an active export; review again after it finishes"));
     }
 
     const lifecycleAction = nodeAction(stored.plan.action);
@@ -1246,19 +1247,19 @@ export async function executeCleanupPlan(input: CleanupExecutionInput): Promise<
     }
 
     if (stored.plan.action === "purge-work-files") {
-      if (!beforeJobs.workScanReady) return emptyResult(input.planId, "blocked", "过程文件最终引用扫描未通过");
+      if (!beforeJobs.workScanReady) return emptyResult(input.planId, "blocked", canonicalMessage("The final reference scan for intermediate files did not pass"));
       const expected = stored.plan.confirmation.workFiles ?? [];
       const matching: ProjectLibraryTrackedWorkFingerprint[] = [];
       for (const file of expected) {
         const current = beforeJobs.workFiles.find((entry) => entry.jobId === file.jobId && entry.fileId === file.fileId);
         if (!current || current.retainedReason || current.path !== file.path || current.sizeBytes !== file.sizeBytes || current.lastModifiedMs !== file.lastModifiedMs) {
-          skipped.push({ kind: "job", id: `${file.jobId}:${file.fileId}`, reason: current?.retainedReason ?? "过程文件身份、状态或引用在审查后发生变化" });
+          skipped.push({ kind: "job", id: `${file.jobId}:${file.fileId}`, reason: current?.retainedReason ?? canonicalMessage("Intermediate-file identity, state or references changed after review") });
         } else matching.push(file);
       }
       if (matching.length > 0) {
-        if (getExportingProjectIds().size > 0) return emptyResult(input.planId, "blocked", "引用扫描期间开始了导出，过程文件保留");
+        if (getExportingProjectIds().size > 0) return emptyResult(input.planId, "blocked", canonicalMessage("An export started during reference scanning; intermediate files are retained"));
         const projectLibrary = typeof window === "undefined" ? undefined : window.reelterminal?.projectLibrary;
-        if (!projectLibrary) return emptyResult(input.planId, "blocked", "当前环境无法清理过程文件");
+        if (!projectLibrary) return emptyResult(input.planId, "blocked", canonicalMessage("Intermediate-file cleanup is unavailable in this environment"));
         try {
           const cleanupResult = await projectLibrary.purgeTrackedWorkFiles({
             projectId: stored.plan.target.projectId,

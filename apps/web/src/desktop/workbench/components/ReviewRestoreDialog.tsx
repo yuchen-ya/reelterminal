@@ -1,3 +1,5 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { getAppLocale } from "../../../i18n";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
@@ -81,12 +83,12 @@ export function ReviewRestoreDialog({ target, onClose, onRestored }: { target: R
           />
         </label>
         {busy && <p role="status" className="text-xs text-fg-2">{t("review.restorePackage.busy")}</p>}
-        {error && <p role="alert" className="break-all text-xs text-status-error">{error}</p>}
+        {error && <p role="alert" className="break-all text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
         {preview && (
           <section className="space-y-2 rounded-[6px] border border-border bg-bg-2 p-3 text-xs tabular-nums" data-testid="review-restore-preview">
             <h3 className="font-semibold text-fg">{preview.name}</h3>
             <p className="text-fg-2">{t("review.restorePackage.counts", { items: preview.itemCount, versions: preview.versionCount, steps: preview.stepCount, files: preview.resourceCount })}</p>
-            <p className="text-fg-3">{preview.bytes.toLocaleString()} B · {t("review.restorePackage.handoffs", { count: preview.handoffCount })}</p>
+            <p className="text-fg-3">{preview.bytes.toLocaleString(getAppLocale())} B · {t("review.restorePackage.handoffs", { count: preview.handoffCount })}</p>
             {preview.missingResourceCount > 0 && <p className="text-status-warning">{t("review.restorePackage.missing", { count: preview.missingResourceCount })}</p>}
             {preview.missingVersionCount > 0 && <p className="text-status-warning">{t("review.migration.missingBodies", { count: preview.missingVersionCount })}</p>}
             <p className="text-fg-3">{t("review.restorePackage.history")}</p>

@@ -376,7 +376,7 @@ describe("R1: submission without auto-confirm capability", () => {
     if (!submitted.ok) return;
     expect(submitted.value.status).toBe("submitted");
     expect(submitted.value.autoConfirm).toBe("manual-only");
-    expect(submitted.value.autoConfirmNotice).toContain("无法自动确认");
+    expect(submitted.value.autoConfirmNotice).toContain("Automatic confirmation was unavailable");
   });
 
   it("treats the submission-time decision as authoritative (receipt clears a stale notice)", async () => {
@@ -431,7 +431,7 @@ describe("R2: target project verification before import", () => {
     if (!record.ok) return;
     expect(record.value.status).toBe("error");
     expect(record.value.error?.code).toBe("TARGET_PROJECT_MISSING");
-    expect(record.value.failureReason).toContain("不会转投其他项目");
+    expect(record.value.failureReason).toContain("will not be sent to another project");
     expect(record.value.resultPath).toBeUndefined();
   });
 

@@ -1,3 +1,7 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { getAppLocale } from "../../../i18n";
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 import { useEffect, useRef, useState } from "react";
 import type { ModelObservation } from "@reelterminal/core/types/workbench";
 import type { FileResource } from "@reelterminal/core/review/types";
@@ -9,7 +13,7 @@ const selectControl = "h-7 rounded-[6px] border border-border bg-bg-2 px-2 text-
 
 export interface ModelCapture { blob: Blob; observation: ModelObservation }
 
-export function ModelPreview({ resourceId, restore, onCapture, onRuntime, onObservation, resource: suppliedResource, captureLabel = "截图反馈" }: {
+export function ModelPreview({ resourceId, restore, onCapture, onRuntime, onObservation, resource: suppliedResource, captureLabel = translate("Capture feedback") }: {
   resourceId: string; restore?: ModelObservation;
   resource?: FileResource;
   captureLabel?: string;
@@ -17,6 +21,7 @@ export function ModelPreview({ resourceId, restore, onCapture, onRuntime, onObse
   onRuntime?: (runtime: ModelPreviewRuntime | null) => void;
   onObservation?: (view: ModelObservation) => void;
 }) {
+  const { t } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
   const runtime = useRef<ModelPreviewRuntime | null>(null);
   const callbacks = useRef({ onRuntime, onObservation }); callbacks.current = { onRuntime, onObservation };
@@ -34,8 +39,8 @@ export function ModelPreview({ resourceId, restore, onCapture, onRuntime, onObse
     const load = async () => {
       const resource = suppliedResource ?? (await reviewService.getResources([resourceId]))[0];
       if (cancelled) return;
-      setFileInfo(`${resource.originalFileName} · ${resource.size.toLocaleString()} B`);
-      if (resource.modelPreview && resource.modelPreview.status !== "ready") throw new Error(resource.modelPreview.reason ?? "模型不支持预览");
+      setFileInfo(`${resource.originalFileName} · ${resource.size.toLocaleString(getAppLocale())} B`);
+      if (resource.modelPreview && resource.modelPreview.status !== "ready") throw new Error(resource.modelPreview.reason ?? translate("Model preview unsupported"));
       if (resource.storage.kind === "unavailable") throw new Error(resource.storage.reason);
       const resolved = await window.reelterminal!.reviewFiles!.resolve(resourceId);
       if (cancelled) return;
@@ -64,45 +69,45 @@ export function ModelPreview({ resourceId, restore, onCapture, onRuntime, onObse
   return (
     <div className="flex h-full min-h-[320px] flex-col" data-testid="model-preview" data-resource-id={resourceId} data-phase={phase} data-observation={view ? JSON.stringify(view) : ""}>
       <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border bg-bg-1 px-3">
-        <button className={wbButton.secondary} disabled={phase !== "ready"} onClick={() => runtime.current!.fit()}>适应画面</button>
-        <select className={selectControl} aria-label="标准视角" disabled={phase !== "ready"} defaultValue="" onChange={event => { runtime.current!.fit(event.target.value as StandardView); event.target.value = ""; }}>
-          <option value="" disabled>标准视角</option>{[["front", "前"], ["back", "后"], ["left", "左"], ["right", "右"], ["top", "顶"]].map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        <button className={wbButton.secondary} disabled={phase !== "ready"} onClick={() => runtime.current!.fit()}>{t("Fit view")}</button>
+        <select className={selectControl} aria-label={t("Standard view")} disabled={phase !== "ready"} defaultValue="" onChange={event => { runtime.current!.fit(event.target.value as StandardView); event.target.value = ""; }}>
+          <option value="" disabled>{t("Standard view")}</option>{[["front", t("Front")], ["back", t("editorTour.back")], ["left", t("Left")], ["right", t("Right")], ["top", t("Top")]].map(([id, label]) => <option key={id} value={id}>{label}</option>)}
         </select>
-        <select className={selectControl} aria-label="模型背景" value={view?.background ?? "dark"} disabled={phase !== "ready"} onChange={event => { runtime.current!.setBackground(event.target.value as "light" | "dark"); setView(runtime.current!.observation()); }}>
-          <option value="dark">深背景</option><option value="light">浅背景</option>
+        <select className={selectControl} aria-label={t("Model background")} value={view?.background ?? "dark"} disabled={phase !== "ready"} onChange={event => { runtime.current!.setBackground(event.target.value as "light" | "dark"); setView(runtime.current!.observation()); }}>
+          <option value="dark">{t("Dark background")}</option><option value="light">{t("Light background")}</option>
         </select>
         {onCapture && <button className={wbButton.secondary} disabled={phase !== "ready"} data-testid="model-capture" onClick={() => { setPlaying(false); void runtime.current!.capture().then(onCapture).catch(problem => setError(String(problem))); }}>{captureLabel}</button>}
       </div>
       <div ref={host} className="relative grid min-h-[220px] flex-1 place-items-center overflow-hidden" data-testid="model-canvas-host" />
       {phase !== "ready" && (
         <div className="p-3 text-xs text-fg-2" role={phase === "error" ? "alert" : "status"}>
-          {phase === "loading" ? "正在加载 GLB…" : phase === "context-lost" ? "WebGL 上下文丢失；原件与反馈已保留" : error}
-          {phase !== "loading" && <button className={`${wbButton.secondary} ml-2`} onClick={() => setAttempt(value => value + 1)}>重载预览</button>}
+          <LocalizedMessage>{phase === "loading" ? t("Loading GLB…") : phase === "context-lost" ? t("WebGL context lost. Originals and feedback are preserved.") : error}</LocalizedMessage>
+          {phase !== "loading" && <button className={`${wbButton.secondary} ml-2`} onClick={() => setAttempt(value => value + 1)}>{t("Reload preview")}</button>}
         </div>
       )}
       {phase === "ready" && info && (
         <>
           {info.animations.length > 0 && (
             <div className="flex h-9 shrink-0 items-center gap-2 border-t border-border bg-bg-1 px-3">
-              <select className={selectControl} aria-label="模型动画" value={view?.animation?.index ?? 0} onChange={event => animate(Number(event.target.value), 0, false)}>
+              <select className={selectControl} aria-label={t("Model animation")} value={view?.animation?.index ?? 0} onChange={event => animate(Number(event.target.value), 0, false)}>
                 {info.animations.map((clip, index) => <option key={index} value={index}>{clip.name}</option>)}
               </select>
               <button className={wbButton.secondary} data-testid="model-play" onClick={() => animate(view!.animation!.index, view!.animation!.time, !playing)}>
-                {playing ? "暂停" : "播放"}
+                {playing ? t("Pause") : t("Play")}
               </button>
-              <input aria-label="动画时间" className="min-w-16 flex-1 accent-accent" type="range" min={0} step={0.001} max={info.animations[view?.animation?.index ?? 0].duration} value={view?.animation?.time ?? 0} onChange={event => animate(view!.animation!.index, Number(event.target.value), false)} />
+              <input aria-label={t("Animation time")} className="min-w-16 flex-1 accent-accent" type="range" min={0} step={0.001} max={info.animations[view?.animation?.index ?? 0].duration} value={view?.animation?.time ?? 0} onChange={event => animate(view!.animation!.index, Number(event.target.value), false)} />
               <output className="text-xs tabular-nums text-fg-2">{(view?.animation?.time ?? 0).toFixed(3)} s</output>
             </div>
           )}
           <details className="shrink-0 border-t border-border/40 px-3 py-1.5 text-xs text-fg-3">
-            <summary className="cursor-pointer select-none font-medium text-fg-2 hover:text-fg">模型信息 · 约定轴向，非自动识别朝向</summary>
+            <summary className="cursor-pointer select-none font-medium text-fg-2 hover:text-fg">{t("Model information · conventional axes, orientation is not auto-detected")}</summary>
             <div className="mt-1 space-y-0.5">
               <p>{fileInfo}</p>
-              <p>{info.scenes} 场景 · {info.meshes} meshes · {info.triangles.toLocaleString()} 三角图元（含 {info.instances} 节点实例）</p>
-              <p>glTF 约定单位；边界范围 {info.bounds.map(value => value.toPrecision(4)).join(" × ")}</p>
-              <p>几何展开预算计数 {info.decodedBytes.toLocaleString()} B · 纹理 {info.texturePixels.toLocaleString()} pixels · neutral-r182-v1</p>
-              {info.warnings.map(warning => <p key={warning}>{warning}</p>)}
-              <p>左键旋转 · 右键平移 · 滚轮缩放</p>
+              <p>{t("Scenes: {{v0}} · Meshes: {{v1}} · Triangles: {{v2}} ({{v3}} node instances)", { v0: info.scenes, v1: info.meshes, v2: info.triangles.toLocaleString(getAppLocale()), v3: info.instances })}</p>
+              <p>{t("glTF conventional units; bounds {{v0}}", { v0: info.bounds.map(value => value.toPrecision(4)).join(" × ") })}</p>
+              <p>{t("Decoded geometry budget: {{v0}} B · Textures: {{v1}} pixels · neutral-r182-v1", { v0: info.decodedBytes.toLocaleString(getAppLocale()), v1: info.texturePixels.toLocaleString(getAppLocale()) })}</p>
+              {info.warnings.map(warning => <p key={warning}><LocalizedMessage>{warning}</LocalizedMessage></p>)}
+              <p>{t("Left-drag to orbit · Right-drag to pan · Scroll to zoom")}</p>
             </div>
           </details>
         </>

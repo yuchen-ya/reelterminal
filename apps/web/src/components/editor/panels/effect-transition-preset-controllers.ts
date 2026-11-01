@@ -475,7 +475,7 @@ export async function renameCustomPreset(
     toast.error(tr(`${i18nPrefix}.renameFailed`), result.message);
     return false;
   }
-  toast.success(tr(`${i18nPrefix}.renamed`), validated.value);
+  toast.success(tr(`${i18nPrefix}.renamed`), validated.value, { localizeMessage: false });
   return true;
 }
 
@@ -499,7 +499,7 @@ export async function deleteCustomPresetWithConfirm(
     toast.error(tr(`${i18nPrefix}.deleteFailed`), result.message);
     return false;
   }
-  toast.success(tr(`${i18nPrefix}.deleted`), preset.name);
+  toast.success(tr(`${i18nPrefix}.deleted`), preset.name, { localizeMessage: false });
   return true;
 }
 

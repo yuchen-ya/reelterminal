@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -248,7 +249,7 @@ export function LocalCaptionPanel({
         )}
         {error && (
           <p role="alert" className="break-words text-status-error">
-            {error}
+            <LocalizedMessage>{error}</LocalizedMessage>
           </p>
         )}
         {connected && report && !ready && (

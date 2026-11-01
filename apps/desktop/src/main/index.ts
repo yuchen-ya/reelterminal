@@ -1,3 +1,4 @@
+import { setUiLocale } from "./ui-locale";
 // MUST stay the first import in the main entry: the bundler evaluates
 // require("esbuild") (runtime-chromium's static import) as a top-level
 // statement ahead of this file's body, and esbuild captures
@@ -295,6 +296,7 @@ app.whenReady().then(async () => {
   handle(CHANNELS.fsPathStatus, pathStatusArgsSchema, pathStatus);
   handle(CHANNELS.fsTempFilePath, z.object({ ext: z.string() }), tempFilePath);
   handle(CHANNELS.fsDiscardTempFile, z.object({ path: z.string() }).strict(), discardTempFile);
+  handle(CHANNELS.uiLocale, z.object({ locale: z.enum(["en", "zh-CN"]) }).strict(), ({ locale }) => setUiLocale(locale));
   handle(CHANNELS.inputHistory, z.object({ direction: z.enum(["undo", "redo"]) }).strict(), ({ direction }) => {
     getEditorWebContents()?.[direction]();
   });

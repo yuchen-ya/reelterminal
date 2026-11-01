@@ -1,3 +1,5 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
+import { t as translate } from "../../i18n";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
@@ -149,7 +151,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     setError(null);
     const load = async () => {
       const native = window.reelterminal?.collabControl;
-      if (!browserDemo && !native?.getReviewAccess) throw reviewError("UNSUPPORTED", "独立审阅服务不可用");
+      if (!browserDemo && !native?.getReviewAccess) throw reviewError("UNSUPPORTED", translate("The independent review service is unavailable"));
       const identity = await getReviewContext();
       const root = {
         ...identity,
@@ -231,7 +233,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
   };
   const chooseNode = (id: string) => { void navigate(() => openReview(id)).catch(report); };
   const openNewBoard = async (content?: BoardTransferInput) => {
-    const name = content?.files?.[0]?.name.replace(/\.[^.]+$/, "") || content?.text?.trim().split("\n")[0].slice(0, 40) || "未命名画板";
+    const name = content?.files?.[0]?.name.replace(/\.[^.]+$/, "") || content?.text?.trim().split("\n")[0].slice(0, 40) || translate("Untitled board");
     const created = await humanBoardStorage.create(name);
     await refreshBoards();
     setBoardIncoming(content ?? null);
@@ -250,7 +252,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
       const item = (event as CustomEvent<WorkbenchItemView>).detail;
       void navigate(async () => {
         const resourceId = item.imagePayload?.repairMedia?.mediaId ?? item.imagePayload?.originalMedia.mediaId;
-        if (!resourceId) throw new Error("该审阅图片没有可加入画板的资源");
+        if (!resourceId) throw new Error(translate("This review image has no resource that can be added to a board"));
         const [resource] = await reviewService.getResources([resourceId]);
         const image = await resourceImage(resource);
         await openNewBoard({ entries: [{ name: item.title, resource, kind: "image", image }] });
@@ -284,7 +286,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     commands: readonly DirectoryCommand[],
     expectedRevision = context?.revision
   ) => {
-    if (!context || expectedRevision === undefined) throw reviewError("CONFLICT", "审阅目录尚未载入");
+    if (!context || expectedRevision === undefined) throw reviewError("CONFLICT", translate("The review directory has not loaded"));
     setBusy(true);
     try {
       return await reviewService.directory.commit({
@@ -326,7 +328,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
       const active = document.activeElement;
       if (textEntry(active) || active?.closest('[role="dialog"]')) return;
       if (legacy) {
-        if (migrated) { report(new Error("迁移备份为只读，请在独立审阅任务中操作历史")); return; }
+        if (migrated) { report(new Error(translate("The migration backup is read-only. Use the independent review task to edit its history."))); return; }
         void projectHistory(direction).then(result => { if (!result.ok) report(new Error(result.message)); });
       }
       else if (managerOpen || active?.closest("[data-review-directory]")) void directoryHistory(direction).catch(report);
@@ -343,7 +345,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     if (!target || browserDemo) return;
     let cancelled = false;
     void window.reelterminal!.collabControl!.getStartupInfo(target).then(info => {
-      if (!info.startCommand) throw new Error("审阅启动命令不可用");
+      if (!info.startCommand) throw new Error(translate("The review startup command is unavailable"));
       if (!cancelled) setStartup({ key: `review:${target.nodeId}`, command: info.startCommand });
     }).catch(problem => { if (!cancelled) report(problem); });
     return () => { cancelled = true; };
@@ -410,17 +412,17 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
         <button
           className="h-6 min-w-0 max-w-[340px] xl:max-w-[460px] truncate rounded-[5px] border border-border bg-bg-2 px-2.5 text-left font-mono text-[11px] text-fg-2 transition-colors hover:border-border-strong hover:bg-bg-3 hover:text-fg"
           data-testid="review-start-command"
-          title={copied ? "已复制" : "点击复制启动命令"}
+          title={copied ? t("material.copied") : t("Click to copy the startup command")}
           onClick={() => { void navigator.clipboard.writeText(command).then(() => setCopied(true)).catch(report); }}
         >
           {command}
         </button>
       ) : (
         <span className="truncate text-fg-3">
-          {activeTab ? (browserDemo ? "浏览器演示 · 请在桌面版连接 Agent" : "正在载入启动命令…") : "打开审阅任务或自由画板"}
+          {activeTab ? (browserDemo ? t("Browser demo · Use the desktop app to connect an Agent") : t("Loading the startup command…")) : t("Open a review task or free board")}
         </span>
       )}
-      {copied && command && !legacy && <span role="status" className="shrink-0 text-[11px] text-accent">已复制</span>}
+      {copied && command && !legacy && <span role="status" className="shrink-0 text-[11px] text-accent">{t("material.copied")}</span>}
     </>
   );
 
@@ -429,9 +431,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
       <span
         className="sr-only"
         data-testid="workbench-private-board"
-      >
-        私有自由画板 · 没有 Agent target
-      </span>
+      >{t("Free Board · Export files or review snapshots")}</span>
       {adminMenu}
     </div>
   );
@@ -462,12 +462,12 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
           const plan = await planReviewFiles(files);
           const resources = await prepareReviewFileImport(plan);
           const created = await reviewService.directory.commit({ target: captured.target, expectedWorkspaceRevision: captured.revision,
-            requestId: crypto.randomUUID(), actor: "human", commands: [{ kind: "node.create", name: files[0].name.replace(/\.[^.]+$/, "") || "拖入文件" }] });
+            requestId: crypto.randomUUID(), actor: "human", commands: [{ kind: "node.create", name: files[0].name.replace(/\.[^.]+$/, "") || translate("Dropped files") }] });
           const node = created.nodes[0];
           try {
-            await importReviewFiles({ ...captured.target, nodeId: node.id }, node.revision, "拖入文件", plan, { groupId: null }, resources);
+            await importReviewFiles({ ...captured.target, nodeId: node.id }, node.revision, translate("Dropped files"), plan, { groupId: null }, resources);
           } catch (error) {
-            throw new Error(`任务“${node.name}”已创建，但文件导入失败：${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(translate("Task “{{v0}}” was created, but file import failed: {{v1}}", { v0: node.name, v1: error instanceof Error ? error.message : String(error) }));
           }
           await openReview(node.id);
         })().catch(report).finally(() => setBusy(false));
@@ -500,7 +500,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
           <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-1 px-3 text-xs" data-testid="workbench-address-bar">
             <div className="flex min-w-0 items-center gap-2">
               <WorkspaceDirectoryIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
-              <strong className="shrink-0 font-semibold text-fg">打开与管理工作台</strong>
+              <strong className="shrink-0 font-semibold text-fg">{t("Open and manage workspaces")}</strong>
               {selected && (
                 <span className="sr-only" data-testid="review-node-title" data-node-id={selected.id}>
                   {selected.name}
@@ -513,9 +513,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                   type="button"
                   className={wbButton.secondary}
                   onClick={() => setManagerOpen(false)}
-                >
-                  返回当前标签页
-                </button>
+                >{t("Return to the current tab")}</button>
               )}
               {adminMenu}
             </div>
@@ -537,7 +535,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                   const capturedTarget = { ...context.target, nodeId: node.id };
                   const revision = node.revision;
                   setBusy(true);
-                  void planReviewFiles(files).then(plan => importReviewFiles(capturedTarget, revision, "拖入文件", plan))
+                  void planReviewFiles(files).then(plan => importReviewFiles(capturedTarget, revision, translate("Dropped files"), plan))
                     .catch(report).finally(() => setBusy(false));
                 }}
                 onUpdateNode={(nodeId, patch) => {
@@ -594,7 +592,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
               <div className="flex h-7 items-center justify-between px-1 text-xs">
                 <strong className="inline-flex items-center gap-1.5 font-semibold text-fg">
                   <FreeBoardIcon className="h-3.5 w-3.5 text-sky-400" />
-                  <span>私有自由画板</span>
+                  <span>{t("Free Boards")}</span>
                 </strong>
                 <div className="flex items-center gap-1.5">
                   <button
@@ -602,18 +600,14 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                     disabled={busy || switching}
                     className={wbButton.secondary}
                     onClick={() => newBoardFiles.current?.click()}
-                  >
-                    导入文件建画板
-                  </button>
+                  >{t("Create a board from files")}</button>
                   <button
                     type="button"
                     disabled={busy || switching}
                     className={wbButton.primary}
                     data-testid="human-board-new"
                     onClick={() => void createBoard().catch(report)}
-                  >
-                    ＋ 新建自由画板
-                  </button>
+                  >{t("＋ New Free Board")}</button>
                 </div>
               </div>
               <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto border-t border-border pt-1.5">
@@ -638,25 +632,21 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                     <button
                       disabled={busy || switching}
                       className="px-2 py-1 text-xs text-fg-3 hover:text-status-error"
-                      aria-label={`删除画板 ${row.name}`}
+                      aria-label={t("Delete board {{v0}}", { v0: row.name })}
                       data-testid={`human-board-delete-${row.id}`}
                       onClick={() => {
-                        if (!window.confirm(`删除画板“${row.name}”及其撤销历史？已导出的审阅快照会保留。`)) return;
+                        if (!window.confirm(translate("Delete board “{{v0}}” and its undo history? Exported review snapshots are preserved.", { v0: row.name }))) return;
                         void navigate(async () => {
                           await humanBoardStorage.remove(row.id);
                           useWorkbenchTabsStore.getState().close(`board:${row.id}`);
                           await refreshBoards();
                         }).catch(report);
                       }}
-                    >
-                      删除
-                    </button>
+                    >{t("projectLibrary.recycle")}</button>
                   </div>
                 ))}
                 {!boards.length && (
-                  <p className="px-2 py-6 text-center text-xs text-fg-3">
-                    暂无自由画板，点击右上角「＋ 新建自由画板」或拖入文件开始创作。
-                  </p>
+                  <p className="px-2 py-6 text-center text-xs text-fg-3">{t("No free boards yet. Choose ＋ New Free Board at the top right or drop files to get started.")}</p>
                 )}
               </div>
             </section>
@@ -692,7 +682,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
           </div>
         </>
       ) : activeTab?.kind === "board" ? board ? (
-        <Suspense fallback={<div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3 text-xs"><span className="text-fg-3">正在载入自由画板…</span>{boardToolbarRight}</div>}>
+        <Suspense fallback={<div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3 text-xs"><span className="text-fg-3">{t("Loading free boards…")}</span>{boardToolbarRight}</div>}>
           <div className="min-h-0 flex-1">
             <HumanBoardView
               key={board.id}
@@ -710,10 +700,10 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
       ) : (
         <>
           <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3 text-xs">
-            <span className="text-fg-3">{boardsReady ? "画板不存在" : "正在载入画板…"}</span>
+            <span className="text-fg-3">{boardsReady ? t("Board not found") : t("Loading the board…")}</span>
             {boardToolbarRight}
           </div>
-          <div className="p-8 text-sm">{boardsReady ? "画板不存在" : "正在载入画板…"}</div>
+          <div className="p-8 text-sm">{boardsReady ? t("Board not found") : t("Loading the board…")}</div>
         </>
       ) : (
         <div className="flex min-h-0 flex-1">
@@ -723,7 +713,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                 role="alert"
                 className="flex items-center gap-3 border-b border-border p-3 text-xs text-status-error"
               >
-                {error}
+                <LocalizedMessage>{error}</LocalizedMessage>
                 <button type="button" className={wbButton.ghost} onClick={refresh}>
                   {t("review.retry")}
                 </button>
@@ -782,11 +772,9 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                 <div ref={emptyHost} className="grid flex-1 place-items-center p-8 text-center outline-none" data-testid="workbench-empty" tabIndex={0}>
                   <div>
                     <h1 className="text-lg font-semibold">{t("review.title")}</h1>
-                    <p className="mt-2 max-w-md text-sm leading-relaxed text-fg-2">
-                      打开已有审阅任务或私有自由画板，也可以拖入文件或粘贴图片、文字与链接来创建画板。
-                    </p>
-                    <button className={`${wbButton.primary} mt-4`} onClick={() => setManagerOpen(true)} data-testid="review-empty-create">打开 / 新建</button>
-                    <button className={`${wbButton.secondary} ml-2 mt-4`} onClick={() => newBoardFiles.current?.click()}>导入文件并创建画板</button>
+                    <p className="mt-2 max-w-md text-sm leading-relaxed text-fg-2">{t("Open an existing review task or free board, or create a board by dropping files or pasting images, text and links.")}</p>
+                    <button className={`${wbButton.primary} mt-4`} onClick={() => setManagerOpen(true)} data-testid="review-empty-create">{t("Open / New")}</button>
+                    <button className={`${wbButton.secondary} ml-2 mt-4`} onClick={() => newBoardFiles.current?.click()}>{t("Import files and create a board")}</button>
                   </div>
                 </div>
               </>
@@ -946,7 +934,7 @@ function ReviewNodeEditor({
     ["image", "video"].includes(state.controller.currentItem.type);
   const attachTitle =
     state.controller.currentItem?.type === "model3d"
-      ? "视频项目不支持模型；请另行提交渲染视频"
+      ? translate("Video projects do not support models. Submit a rendered video separately.")
       : undefined;
 
   return (
@@ -1014,7 +1002,7 @@ function ReviewNodeEditor({
             pageKey={state.pageNumber}
             independent
             loading={state.loading}
-            onImport={() => browserDemo ? toast.error("请使用桌面版导入文件") : setImportOpen(true)}
+            onImport={() => browserDemo ? toast.error(translate("Use the desktop app to import files")) : setImportOpen(true)}
               paginationFooter={
                 (state.hasPrevious || state.hasNext || (state.loading && !state.controller.currentItem)) ? (
                   <div
@@ -1064,19 +1052,17 @@ function ReviewNodeEditor({
                     type="button"
                     className={wbButton.primary}
                     disabled={!state.overview}
-                    onClick={() => browserDemo ? toast.error("请使用桌面版导入文件") : setImportOpen(true)}
+                    onClick={() => browserDemo ? toast.error(translate("Use the desktop app to import files")) : setImportOpen(true)}
                   >
                     {t("review.importTitle")}
                   </button>
-                  {!browserDemo && <p className="text-xs text-fg-3">Agent 投递前，请在右上角将“Agent 只读”切换为可写。</p>}
+                  {!browserDemo && <p className="text-xs text-fg-3">{t("Before Agent submission, enable editing with the Agent read-only control at the top right.")}</p>}
                 </div>
               </div>
             }
           />
           {state.loading && state.controller.currentItem && (
-            <div role="status" data-testid="review-detail-updating" className="pointer-events-none absolute bottom-3 left-3 rounded border border-border bg-bg-1/95 px-3 py-1.5 text-xs text-fg-2">
-              正在载入审阅更新，暂时保留上一版内容
-            </div>
+            <div role="status" data-testid="review-detail-updating" className="pointer-events-none absolute bottom-3 left-3 rounded border border-border bg-bg-1/95 px-3 py-1.5 text-xs text-fg-2">{t("Loading review updates. The previous content remains visible.")}</div>
           )}
         </div>
       )}

@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { mediaDisplayName, type MediaItem } from "@reelterminal/core";
@@ -44,7 +45,7 @@ export function ProjectMediaPreview({ item, projectId, onClose, onAdd }: {
         }
       >
         <ToolcraftLayoutContent>
-          {error ? <p role="alert" className="text-xs text-status-warning">{error}</p> : !source ?
+          {error ? <p role="alert" className="text-xs text-status-warning"><LocalizedMessage>{error}</LocalizedMessage></p> : !source ?
             <p className="text-xs text-fg-muted">{t("material.loadingPreview")}</p> : item.type === "image" ?
             <img src={source} alt={mediaDisplayName(item)} className="max-h-80 w-full object-contain" /> : item.type === "audio" ?
             <audio src={source} controls className="w-full" /> :

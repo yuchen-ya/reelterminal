@@ -717,7 +717,7 @@ export function MotionCreatorShell({
           setExportProgress(Math.round(progress.progress * 100));
         },
       });
-      toast.success("Motion scene exported", result.filename);
+      toast.success("Motion scene exported", result.filename, { localizeMessage: false });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         return;

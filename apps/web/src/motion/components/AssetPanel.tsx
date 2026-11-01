@@ -289,7 +289,7 @@ export function AssetPanel({ composition }: AssetPanelProps): JSX.Element {
         name: file.name.replace(/\.svg$/i, "") || "Imported SVG",
       });
       await saveImportedComposition(imported);
-      toast.success("SVG imported", imported.name);
+      toast.success("SVG imported", imported.name, { localizeMessage: false });
     } catch (error) {
       console.error("[MotionCreator] SVG import failed:", error);
       toast.error(
@@ -307,7 +307,7 @@ export function AssetPanel({ composition }: AssetPanelProps): JSX.Element {
         nm: lottie.nm || file.name.replace(/\.(json|lottie)$/i, ""),
       });
       await saveImportedComposition(imported);
-      toast.success("Lottie imported", imported.name);
+      toast.success("Lottie imported", imported.name, { localizeMessage: false });
     } catch (error) {
       console.error("[MotionCreator] Lottie import failed:", error);
       toast.error(

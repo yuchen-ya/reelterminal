@@ -249,7 +249,7 @@ export async function renameTextPreset(
     toast.error(t("assets.textPresets.renameFailed"), result.message);
     return false;
   }
-  toast.success(t("assets.textPresets.renamed"), validated.value);
+  toast.success(t("assets.textPresets.renamed"), validated.value, { localizeMessage: false });
   return true;
 }
 
@@ -271,7 +271,7 @@ export async function deleteTextPresetWithConfirm(
     toast.error(t("assets.textPresets.deleteFailed"), result.message);
     return false;
   }
-  toast.success(t("assets.textPresets.deleted"), preset.name);
+  toast.success(t("assets.textPresets.deleted"), preset.name, { localizeMessage: false });
   return true;
 }
 

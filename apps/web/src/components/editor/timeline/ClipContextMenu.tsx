@@ -265,7 +265,7 @@ export function useClipContextMenuItems({
       }
       const saved = await saveClipsAsWorkAsset(multiClipIds);
       if (saved.ok) {
-        toast.success(t("workAssets.saved"), saved.asset.name);
+        toast.success(t("workAssets.saved"), saved.asset.name, { localizeMessage: false });
       } else {
         toast.error(t("workAssets.captureFailed"), saved.message);
       }
@@ -293,7 +293,7 @@ export function useClipContextMenuItems({
     }
     const saved = await saveClipAsWorkAsset(clip.id);
     if (saved.ok) {
-      toast.success(t("workAssets.saved"), saved.asset.name);
+      toast.success(t("workAssets.saved"), saved.asset.name, { localizeMessage: false });
     } else {
       toast.error(t("workAssets.captureFailed"), saved.message);
     }

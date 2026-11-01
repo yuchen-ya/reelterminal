@@ -180,12 +180,12 @@ describe("workbench: ingest → review → handoff → rework", () => {
       .getByText("重复短语")
       .first()
       .waitFor({ timeout: 10_000 });
-    await page.getByRole("button", { name: "直接改文" }).first().click();
+    await page.getByRole("button", { name: "Edit text" }).first().click();
     const editor = page.getByTestId("workbench-content").locator("textarea").first();
     await editor.waitFor({ timeout: 10_000 });
     await editor.fill("人工修订后的正文内容。");
-    await page.getByTestId("workbench-content").getByRole("button", { name: "保存", exact: true }).click();
-    await page.getByText("已修改").first().waitFor({ timeout: 15_000 });
+    await page.getByTestId("workbench-content").getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByText("Modified").first().waitFor({ timeout: 15_000 });
 
     const read = await agent.callCommand("workbench.get", { batchId: "e2e-batch-1" });
     expect(read.ok).toBe(true);
@@ -201,8 +201,8 @@ describe("workbench: ingest → review → handoff → rework", () => {
     await page.getByText("2026/1/5", { exact: true }).and(page.locator("td:visible span.text-fg")).waitFor({ timeout: 10_000 });
     // Select the pending proposal cells explicitly, then confirm (the button
     // always shows its actual scope count).
-    await page.getByRole("button", { name: /全选待清洗建议/ }).first().click();
-    await page.getByRole("button", { name: /^确认建议 \(/ }).first().click();
+    await page.getByRole("button", { name: /Select all pending cleaning suggestions/ }).first().click();
+    await page.getByRole("button", { name: /^Accept suggestions \(/ }).first().click();
     await page.getByText("2026-01-05", { exact: true }).and(page.locator("td:visible span.text-fg")).waitFor({ timeout: 15_000 });
     const read = await agent.callCommand("workbench.get", {
       batchId: "e2e-batch-1",
@@ -230,11 +230,11 @@ describe("workbench: ingest → review → handoff → rework", () => {
       .getByText("语料条目", { exact: true })
       .first()
       .click();
-    await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "返工", exact: true }).click();
+    await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "Rework", exact: true }).click();
     const reworkDialog = page.getByRole("dialog");
     if (await reworkDialog.isVisible()) {
-      await reworkDialog.getByLabel(/共同修改要求/).fill("请根据审阅意见提交修订版本");
-      await reworkDialog.getByRole("button", { name: "确认返工", exact: true }).click();
+      await reworkDialog.getByLabel(/Shared revision instructions/).fill("请根据审阅意见提交修订版本");
+      await reworkDialog.getByRole("button", { name: "Confirm: Rework", exact: true }).click();
     }
     await expect.poll(async () => {
       const result = await agent.callCommand<{ item: { status: string } }>("workbench.get", { batchId: "e2e-batch-1", itemId: "e2e-txt-1" });
@@ -242,12 +242,12 @@ describe("workbench: ingest → review → handoff → rework", () => {
     }, { timeout: 15_000 }).toBe("rework");
 
     // Publish through the real handoff dialog.
-    await page.getByRole("button", { name: /发布审阅结果/ }).click();
+    await page.getByRole("button", { name: /Publish review results/ }).click();
     const publish = page
-      .getByRole("button", { name: /发布交接结果|更新交接结果/ });
+      .getByRole("button", { name: /Publish handoff results|Update handoff results/ });
     await publish.waitFor({ timeout: 10_000 });
     await publish.click();
-    await page.getByText(/等待 Agent 读取/).first().waitFor({ timeout: 15_000 });
+    await page.getByText(/waiting for the Agent to read/i).first().waitFor({ timeout: 15_000 });
 
     // The agent discovers the handoff through workbench.changes, reads the
     // snapshot, acks, and returns rework for the item.

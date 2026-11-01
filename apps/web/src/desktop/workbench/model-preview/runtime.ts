@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../../i18n/messages";
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -93,7 +94,7 @@ export class ModelPreviewRuntime {
   async load(url: string, restore?: ModelObservation): Promise<PreviewInfo | undefined> {
     const generation = ++this.generation;
     const response = await fetch(url, { signal: this.abort.signal });
-    if (!response.ok) throw new Error(`模型资源读取失败 (${response.status})`);
+    if (!response.ok) throw new Error(canonicalMessage("Model resource could not be read ({{v0}})", { v0: response.status }));
     const bytes = await response.arrayBuffer();
     const report = inspectGlb(bytes);
     if (this.disposed || generation !== this.generation) return;
@@ -102,7 +103,7 @@ export class ModelPreviewRuntime {
     const urls = new Set<string>();
     let failed = false;
     manager.setURLModifier(uri => {
-      if (!uri.startsWith("blob:") && !uri.startsWith("data:")) throw new Error("禁止模型外部资源请求");
+      if (!uri.startsWith("blob:") && !uri.startsWith("data:")) throw new Error(canonicalMessage("External model resource requests are not allowed"));
       if (uri.startsWith("blob:")) { urls.add(uri); if (failed) URL.revokeObjectURL(uri); }
       return uri;
     });
@@ -127,7 +128,7 @@ export class ModelPreviewRuntime {
     this.mixer = new THREE.AnimationMixer(loaded.scene);
     loaded.scene.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(loaded.scene, true);
-    if (box.isEmpty() || !Number.isFinite(box.max.length()) || box.getSize(new THREE.Vector3()).length() <= 1e-10) throw new Error("默认场景为空或边界为零，无法取景");
+    if (box.isEmpty() || !Number.isFinite(box.max.length()) || box.getSize(new THREE.Vector3()).length() <= 1e-10) throw new Error(canonicalMessage("The default scene is empty or has zero bounds; it cannot be framed"));
     box.getCenter(this.center); this.radius = box.getSize(new THREE.Vector3()).length() / 2;
     // Initial setup changes animation, camera and background together. Render
     // the final state once rather than submitting each intermediate frame.
@@ -169,7 +170,7 @@ export class ModelPreviewRuntime {
   }
   setBackground(background: "light" | "dark"): void { this.background = background; this.scene.background = new THREE.Color(background === "dark" ? 0x252830 : 0xe9eaed); this.render(); }
   setAnimation(index: number, time: number, playing: boolean): void {
-    if (!this.gltf || !this.mixer || !this.gltf.animations[index]) throw new Error("此模型没有所选动画");
+    if (!this.gltf || !this.mixer || !this.gltf.animations[index]) throw new Error(canonicalMessage("This model does not have the selected animation"));
     if (index !== this.animationIndex) {
       this.mixer.stopAllAction(); this.animationIndex = index;
       this.action = this.mixer.clipAction(this.gltf.animations[index]); this.action.play();
@@ -181,7 +182,7 @@ export class ModelPreviewRuntime {
     this.savedAspect = view.viewport.width / view.viewport.height; this.resize();
     if (view.animation) {
       const clip = this.gltf?.animations[view.animation.index];
-      if (!clip || (clip.name || `Animation ${view.animation.index + 1}`) !== view.animation.name || view.animation.time > clip.duration) throw new Error("保存的动画观察与此版本不匹配");
+      if (!clip || (clip.name || `Animation ${view.animation.index + 1}`) !== view.animation.name || view.animation.time > clip.duration) throw new Error(canonicalMessage("The saved animation observation does not match this version"));
       this.setAnimation(view.animation.index, view.animation.time, false);
     }
     this.camera.position.fromArray(view.camera.position); this.camera.quaternion.fromArray(view.camera.quaternion);
@@ -215,7 +216,7 @@ export class ModelPreviewRuntime {
       this.camera.updateProjectionMatrix(); this.render(true);
     }
     try {
-      const blob = await new Promise<Blob>((resolve, reject) => this.renderer.domElement.toBlob(value => value ? resolve(value) : reject(new Error("截图失败")), "image/png"));
+      const blob = await new Promise<Blob>((resolve, reject) => this.renderer.domElement.toBlob(value => value ? resolve(value) : reject(new Error(canonicalMessage("Capture failed"))), "image/png"));
       return { blob, observation };
     } finally { if (size) this.resize(); }
   }

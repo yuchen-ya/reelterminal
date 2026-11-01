@@ -57,14 +57,14 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     await page.mouse.move(box.x+box.width*.5,box.y+box.height*.5); await page.mouse.down(); await page.mouse.move(box.x+box.width*.65,box.y+box.height*.55,{steps:10}); await page.mouse.up();
     expect((await observation()).camera.position).not.toEqual(initial.camera.position);
     await page.mouse.wheel(0,-180); await page.waitForTimeout(100);
-    await page.getByLabel("标准视角").selectOption("front");
-    await page.getByLabel("模型背景").selectOption("light");
+    await page.getByLabel("Standard view").selectOption("front");
+    await page.getByLabel("Model background").selectOption("light");
     await page.getByTestId("model-play").click(); await page.waitForTimeout(350); await page.getByTestId("model-play").click();
     expect((await observation()).animation!.time).toBeGreaterThan(.1);
-    const seek = async (fraction: number) => { const range=page.getByLabel("动画时间"); const r=(await range.boundingBox())!; await page.mouse.click(r.x+r.width*fraction,r.y+r.height/2); };
+    const seek = async (fraction: number) => { const range=page.getByLabel("Animation time"); const r=(await range.boundingBox())!; await page.mouse.click(r.x+r.width*fraction,r.y+r.height/2); };
     await seek(.45); const boneView=await observation(); expect(boneView.animation!.time).toBeGreaterThan(.7);
     await mkdir(ARTIFACTS_DIR,{recursive:true}); await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-bone.png")});
-    await page.getByLabel("模型动画").selectOption("1"); await seek(.5);
+    await page.getByLabel("Model animation").selectOption("1"); await seek(.5);
     const morphView=await observation(); expect(morphView.animation!.name).toBe("MorphRise");
     await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-morph.png")});
     expect(await nodeRevision()).toBe(beforeRevision); // observation is not content revision/history
@@ -76,8 +76,8 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     });
     evidence.gpu=pixels; evidence.initial=initial;evidence.bone=boneView;evidence.morph=morphView;
     await page.getByTestId("model-capture").click();
-    await page.getByLabel("模型观察备注").fill("Inspect morph silhouette at this exact pose");
-    await page.getByRole("checkbox",{name:"标记返工",exact:true}).check();
+    await page.getByLabel("Model observation note").fill("Inspect morph silhouette at this exact pose");
+    await page.getByRole("checkbox",{name:"Mark for rework",exact:true}).check();
     await page.getByTestId("model-save-feedback").click();
     await vi.waitFor(async()=>expect((await readItem()).feedback.length).toBe(1)); await ready();
     let saved=(await readItem()).feedback[0]; expect(saved.target?.kind).toBe("model-view");
@@ -89,13 +89,13 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     expect(Math.max(screenshotBytes.readUInt32BE(16),screenshotBytes.readUInt32BE(20))).toBeLessThanOrEqual(512);
     await page.getByTestId("model-saved-observation").click(); await ready();
     expect((await observation()).animation!.time).toBeCloseTo(morphView.animation!.time,3);
-    await page.getByRole("button",{name:"返回当前版本"}).click();await ready();
+    await page.getByRole("button",{name:"Return to current version"}).click();await ready();
     await page.getByTestId("model-capture").click();await page.getByTestId("model-save-feedback").click();
     await vi.waitFor(async()=>expect((await readItem()).feedback.length).toBe(1),{timeout:15000});await ready();
     saved=(await readItem()).feedback[0];
-    await page.getByRole("button",{name:/发布审阅结果/}).click();
-    await page.getByRole("button",{name:/发布交接结果|更新交接结果/}).click();
-    await page.getByText(/等待 Agent 读取/).first().waitFor();await page.keyboard.press("Escape");
+    await page.getByRole("button",{name:/Publish review results/}).click();
+    await page.getByRole("button",{name:/Publish handoff results|Update handoff results/}).click();
+    await page.getByText(/waiting for the Agent to read/i).first().waitFor();await page.keyboard.press("Escape");
     const changes=value(await agent.callCommand<{entries:Array<{handoffIds?:string[]}>}>("review.changes",{target,afterSequence:0}));
     const handoffId=changes.entries.flatMap(entry=>entry.handoffIds??[]).at(-1)!;
     const handoff=value(await agent.callCommand<{handoff:WorkbenchHandoff}>("review.handoff.get",{target,handoffId})).handoff;
@@ -112,13 +112,13 @@ test("GLB real renderer: material/skin/morph, frozen feedback, rework, compariso
     await page.getByTestId("review-process-tab").click();
     await page.getByTestId("review-step-card").filter({hasText:"Change fixture material"}).getByTestId("review-step-compare").click();
     await vi.waitFor(async()=>expect(await page.locator('[data-testid="model-preview"][data-phase="ready"]').count()).toBe(2),{timeout:20000});
-    await page.getByLabel("模型相机联动").selectOption("direction");
-    await page.getByLabel("标准视角").first().selectOption("right");
+    await page.getByLabel("Model camera linking").selectOption("direction");
+    await page.getByLabel("Standard view").first().selectOption("right");
     const cameras=await page.getByTestId("model-preview").evaluateAll(elements=>elements.map(e=>JSON.parse(e.getAttribute("data-observation")!).camera));
     cameras[0].quaternion.forEach((value:number,index:number)=>expect(value).toBeCloseTo(cameras[1].quaternion[index],10));
     await page.screenshot({path:path.join(ARTIFACTS_DIR,"review-model3d-comparison.png")});
     await page.getByTestId("review-content-tab").click();await ready();
-    await page.getByTestId("workbench-bottom-dock").getByRole("button",{name:"保留",exact:true}).click();
+    await page.getByTestId("workbench-bottom-dock").getByRole("button",{name:"Keep",exact:true}).click();
     await vi.waitFor(async()=>expect((await readItem()).item.status).toBe("kept"),{timeout:15000});
     const exportTo = async(mode:"original"|"adopted"|"node-package")=>{
       const exportId=crypto.randomUUID();value(await agent.callCommand("review.export.prepare",{target,expectedNodeRevision:await nodeRevision(),exportId,scope:"node",mode}));
@@ -209,7 +209,7 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
    const resources=await page.getByTestId("model-canvas-host").evaluate(e=>({geometries:Number((e as HTMLElement).dataset.geometries),textures:Number((e as HTMLElement).dataset.textures)}));expect(resources).toEqual(baseline);cycles.push(resources);
   }
   await page.locator('canvas[aria-label="3D model preview"]').evaluate(canvas=>(canvas as HTMLCanvasElement).getContext("webgl2")!.getExtension("WEBGL_lose_context")!.loseContext());
-  await vi.waitFor(async()=>expect(await page.getByTestId("model-preview").getAttribute("data-phase")).toBe("context-lost"));await page.getByRole("button",{name:"重载预览"}).click();await ready();
+  await vi.waitFor(async()=>expect(await page.getByTestId("model-preview").getAttribute("data-phase")).toBe("context-lost"));await page.getByRole("button",{name:"Reload preview"}).click();await ready();
   await select("Animated");await ready();await page.getByTestId("model-play").click();
   const host=page.getByTestId("model-canvas-host");await host.evaluate(e=>{(e as HTMLElement).style.visibility="hidden";(e as HTMLElement).style.display="none";});await page.waitForTimeout(100);
   let stopped:string|null=null;await vi.waitFor(async()=>{stopped=await host.getAttribute("data-render-count");await page.waitForTimeout(200);expect(await host.getAttribute("data-render-count")).toBe(stopped);},{timeout:5000});
@@ -227,7 +227,7 @@ test("GLB bounded native samples, rejected previews retain bytes, race/context l
   await page.getByTestId("review-step-card").filter({hasText:"Stress pair"}).getByTestId("review-step-compare").click();
   await vi.waitFor(async()=>expect(await page.locator('[data-testid="model-preview"][data-phase="error"]').count()).toBe(2),{timeout:15000});
   const stressRejectMs=performance.now()-stressStarted;
-  expect(await page.getByText(/3D 预览仅支持简单场景/).count()).toBe(2);
+  expect(await page.getByText(/3D preview supports simple scenes only/).count()).toBe(2);
   expect(await page.locator('[data-testid="model-preview"] canvas').count()).toBe(0);
   for(const resourceId of [left,right]){
    const original=await page.evaluate(id=>window.reelterminal!.reviewFiles!.resolve(id,true),resourceId);

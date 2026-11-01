@@ -1,14 +1,18 @@
+import { getAppLocale } from "../../../i18n";
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 import { useEffect, useMemo, useState } from "react";
 import type { ReviewContext } from "@reelterminal/core/review/types";
 import { installCollabEventListener, useCollabStore, type CommandActivity } from "../../../stores/collab-store";
 import { ReviewRepairDraftPreview } from "./ReviewRepairDraftPreview";
 
 const preference = "reelterminal.review.commandsOpen";
-const status = (entry: CommandActivity) => entry.phase === "start" ? "运行中" : entry.ok ? entry.replayed ? "成功 · 复用回执" : "成功" : "失败";
+const status = (entry: CommandActivity) => entry.phase === "start" ? translate("review.process.state.running") : entry.ok ? entry.replayed ? translate("Succeeded · reused receipt") : translate("Succeeded") : translate("review.process.state.failed");
 const statusColor = (entry: CommandActivity) => entry.phase === "end" && !entry.ok ? "text-status-error" : "text-accent";
 
 /** Uses the same endpoint activity pushes as the video's Agent status bar. */
 export function ReviewCommandActivity({ target, inline = false }: { target: ReviewContext["target"]; inline?: boolean }) {
+  const { t } = useTranslation();
   const activity = useCollabStore(state => state.commandActivity);
   const [open, setOpen] = useState(() => localStorage.getItem(preference) === "true");
   useEffect(() => installCollabEventListener(), []);
@@ -32,21 +36,21 @@ export function ReviewCommandActivity({ target, inline = false }: { target: Revi
         data-testid="review-command-toggle"
       >
         <span aria-hidden>{open ? "▾" : "▸"}</span>
-        <span className="shrink-0">CLI / API 命令 ({entries.length})</span>
+        <span className="shrink-0">{t("CLI / API commands ({{v0}})", { v0: entries.length })}</span>
         {latest ? <>
           <code className="min-w-0 truncate text-fg" data-testid="review-command-current">{latest.verb}</code>
           <span className={`${statusColor(latest)} shrink-0`} data-testid="review-command-current-status">{status(latest)}</span>
           <span className="sr-only">{latest.argumentSummary}</span>
-        </> : <span className="sr-only">等待当前任务的命令</span>}
+        </> : <span className="sr-only">{t("Waiting for commands for this task")}</span>}
       </summary>
       <div
         className="absolute right-0 top-[calc(100%+6px)] z-40 max-h-64 w-[min(560px,85vw)] overflow-auto rounded-lg border border-border bg-bg-1 shadow-xl"
         data-testid="review-command-list"
       >
-        <p className="px-3 py-1.5 text-fg-3">显示本次窗口最近 100 次调用中的当前任务命令。参数已脱敏，长列表仅显示预览。</p>
+        <p className="px-3 py-1.5 text-fg-3">{t("Shows this task’s commands among the latest 100 calls in this window. Parameters are redacted; long lists are previewed.")}</p>
         {entries.map(entry => <details key={entry.callId} className="border-t border-border px-3 py-1.5" data-testid="review-command-entry" data-call-id={entry.callId} data-verb={entry.verb} data-state={entry.phase === "start" ? "running" : entry.ok ? "success" : "failed"}>
           <summary className="flex cursor-pointer items-center gap-2">
-            <time className="shrink-0 font-mono text-fg-3" dateTime={new Date(entry.startedAt!).toISOString()}>{new Date(entry.startedAt!).toLocaleTimeString()}</time>
+            <time className="shrink-0 font-mono text-fg-3" dateTime={new Date(entry.startedAt!).toISOString()}>{new Date(entry.startedAt!).toLocaleTimeString(getAppLocale())}</time>
             <code className="min-w-0 truncate text-fg">{entry.verb}</code>
             <span className={`${statusColor(entry)} shrink-0`}>{status(entry)}</span>
             {entry.phase === "end" && entry.finishedAt !== undefined && <span className="shrink-0 text-fg-3">{Math.max(0, entry.finishedAt - entry.startedAt!)} ms</span>}

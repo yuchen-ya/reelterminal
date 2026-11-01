@@ -122,9 +122,9 @@ test("pages a 1,000 by 20 table without losing last-page editing or full-column 
     expect(await content.getByRole("cell").count()).toBe(1050);
     const openMs = performance.now() - opened;
     await content.getByRole("button", { name: /Column 0/ }).click();
-    await vi.waitFor(async () => expect(await content.textContent()).toContain("已选 1000 格"));
+    await vi.waitFor(async () => expect(await content.textContent()).toContain("Selected cells: 1000"));
     const nextStarted = performance.now();
-    await pagination.getByRole("button", { name: "末页", exact: true }).click();
+    await pagination.getByRole("button", { name: "Last page", exact: true }).click();
     const last = content.getByText("Value 999 / 0", { exact: true });
     await last.waitFor();
     const lastPageMs = performance.now() - nextStarted;

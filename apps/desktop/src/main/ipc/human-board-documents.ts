@@ -1,3 +1,4 @@
+import { uiMessageKey } from "@reelterminal/core/ui-message";
 import { app, session, WebContentsView, type NativeImage, type WebContents } from "electron";
 import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -47,8 +48,8 @@ function waitForPreviewPaint(current: Guest): Promise<void> {
       if (!contents.isDestroyed()) contents.endFrameSubscription();
       if (error) reject(error); else resolve();
     };
-    const cancelled = () => finish(new Error("HTML 预览已取消"));
-    const timeout = setTimeout(() => finish(new Error("HTML 预览未完成首次绘制")), 10000);
+    const cancelled = () => finish(new Error(uiMessageKey("HTML preview cancelled")));
+    const timeout = setTimeout(() => finish(new Error(uiMessageKey("The HTML preview has not completed its first paint"))), 10000);
     contents.once("destroyed", cancelled);
     contents.beginFrameSubscription(false, image => { if (!image.isEmpty()) finish(); });
     current.view.setVisible(true);
@@ -56,7 +57,7 @@ function waitForPreviewPaint(current: Guest): Promise<void> {
 }
 
 function requireGuest(id: string): Guest {
-  if (!guest || guest.id !== id) throw new Error("网页视图已关闭或已切换");
+  if (!guest || guest.id !== id) throw new Error(uiMessageKey("The webpage view was closed or switched"));
   return guest;
 }
 
@@ -88,8 +89,8 @@ function capturePresentedFrame(contents: WebContents, accepts: (frame: NativeIma
       settled = true;
       setImmediate(() => { cleanup(); reject(error); });
     };
-    const cancelled = () => fail(new Error("文档截图已取消"));
-    const timeout = setTimeout(() => fail(new Error("文档预览未完成绘制")), 10000);
+    const cancelled = () => fail(new Error(uiMessageKey("Document capture cancelled")));
+    const timeout = setTimeout(() => fail(new Error(uiMessageKey("The document preview has not finished painting"))), 10000);
     contents.once("destroyed", cancelled);
     contents.beginFrameSubscription(false, frame => {
       if (settled || copying || frame.isEmpty()) return;
@@ -131,9 +132,9 @@ export function registerHumanBoardDocumentsIpc(): void {
   });
   handle(CHANNELS.boardDocumentCapture, z.object({ id: z.string().uuid() }).strict(), async args => {
     const current = requireGuest(args.id);
-    if (current.view.webContents.isLoadingMainFrame()) throw new Error("页面仍在加载，请稍后截图");
+    if (current.view.webContents.isLoadingMainFrame()) throw new Error(uiMessageKey("The page is still loading; capture it shortly"));
     const image = await current.view.webContents.capturePage();
-    if (image.isEmpty()) throw new Error("页面尚无可截图的视口");
+    if (image.isEmpty()) throw new Error(uiMessageKey("The page has no viewport to capture yet"));
     return { png: image.toPNG(), url: current.view.webContents.getURL() };
   });
   handle(CHANNELS.boardDocumentCaptureEditor, rectangle.extend({ frameToken: z.number().int().min(0).max(0xffffffff) }), async bounds => {
@@ -148,9 +149,9 @@ export function registerHumanBoardDocumentsIpc(): void {
     const x = Math.ceil(bounds.x * scale), y = Math.ceil(bounds.y * scale);
     const width = Math.min(size.width, Math.floor((bounds.x + bounds.width) * scale)) - x;
     const height = Math.min(size.height, Math.floor((bounds.y + bounds.height) * scale)) - y;
-    if (width <= 0 || height <= 0) throw new Error("文档截图区域已移出窗口，请重试");
+    if (width <= 0 || height <= 0) throw new Error(uiMessageKey("The document capture region moved outside the window; try again"));
     const image = frame.crop({ x, y, width, height });
-    if (image.isEmpty()) throw new Error("文档预览尚未就绪");
+    if (image.isEmpty()) throw new Error(uiMessageKey("The document preview is not ready"));
     return image.toPNG();
   });
   handle(CHANNELS.boardDocumentOpen, z.object({ id: z.string().uuid(), bounds: rectangle, url: z.url().optional(), source: z.string().max(200000).optional(), documentPath: z.string().max(2048).optional(), assets: z.array(asset).max(256).optional(), preview: z.boolean().optional() }).strict(), async args => {
@@ -162,9 +163,9 @@ export function registerHumanBoardDocumentsIpc(): void {
       win.once("closed", closeAll);
     }
     if (!args.preview) await closeGuest();
-    if ((args.url === undefined) === (args.source === undefined)) throw new Error("请选择一个 HTML 文档或 HTTP/S 网页");
-    if (args.preview && args.source === undefined) throw new Error("自动预览只支持本地 HTML 源码");
-    if (args.url && !/^https?:\/\//i.test(args.url)) throw new Error("网页仅支持 HTTP/S");
+    if ((args.url === undefined) === (args.source === undefined)) throw new Error(uiMessageKey("Select an HTML document or HTTP/S webpage"));
+    if (args.preview && args.source === undefined) throw new Error(uiMessageKey("Automatic preview supports local HTML source only"));
+    if (args.url && !/^https?:\/\//i.test(args.url)) throw new Error(uiMessageKey("Webpages support HTTP/S only"));
     const isolated = session.fromPartition(`human-board-${args.id}`);
     isolated.setPermissionCheckHandler(() => false);
     isolated.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
@@ -196,24 +197,24 @@ export function registerHumanBoardDocumentsIpc(): void {
       return { action: "deny" };
     });
     view.webContents.on("did-fail-load", (_event, code, description, _url, mainFrame) => {
-      if (!args.preview && mainFrame && code !== -3) win.webContents.send(CHANNELS.boardDocumentLoadError, { id: args.id, message: `页面加载失败：${description} (${code})` });
+      if (!args.preview && mainFrame && code !== -3) win.webContents.send(CHANNELS.boardDocumentLoadError, { id: args.id, message: uiMessageKey(`Page loading failed: ${description} (${code})`) });
     });
     try {
       if (args.source !== undefined) {
         current.directory = await mkdtemp(path.join(app.getPath("temp"), "reelterminal-board-"));
-        if (current.disposed) throw new Error("HTML 预览已取消");
+        if (current.disposed) throw new Error(uiMessageKey("HTML preview cancelled"));
         for (const asset of args.assets ?? []) {
           if (!asset.resourceId) continue;
           const destination = path.resolve(current.directory, asset.path);
-          if (!isDocumentPathWithin(current.directory, destination)) throw new Error("文档资产路径超出目录");
+          if (!isDocumentPathWithin(current.directory, destination)) throw new Error(uiMessageKey("Document asset path is outside the directory"));
           const resolved = await getReviewFileStore().resolve(asset.resourceId, true);
-          if (resolved.resource.storage.kind !== "managed") throw new Error("HTML 资产必须是受管副本");
+          if (resolved.resource.storage.kind !== "managed") throw new Error(uiMessageKey("HTML assets must be managed copies"));
           await mkdir(path.dirname(destination), { recursive: true });
           await copyFile(resolved.path, destination);
-          if (current.disposed) throw new Error("HTML 预览已取消");
+          if (current.disposed) throw new Error(uiMessageKey("HTML preview cancelled"));
         }
         const entry = path.resolve(current.directory, args.documentPath ?? "__board_document__.html");
-        if (!isDocumentPathWithin(current.directory, entry)) throw new Error("文档路径超出目录");
+        if (!isDocumentPathWithin(current.directory, entry)) throw new Error(uiMessageKey("Document path is outside the directory"));
         await mkdir(path.dirname(entry), { recursive: true });
         await writeFile(entry, args.source, "utf8");
         await view.webContents.loadFile(entry);
@@ -223,10 +224,10 @@ export function registerHumanBoardDocumentsIpc(): void {
         // Use the same native view's first real paint before capturing it.
         await waitForPreviewPaint(current);
         const image = await view.webContents.capturePage();
-        if (image.isEmpty()) throw new Error("HTML 初始视口尚未就绪");
+        if (image.isEmpty()) throw new Error(uiMessageKey("The initial HTML viewport is not ready"));
         return image.toPNG();
       }
-      if (guest !== current) throw new Error("网页视图已关闭或已切换");
+      if (guest !== current) throw new Error(uiMessageKey("The webpage view was closed or switched"));
       view.webContents.focus();
     } catch (error) {
       if (guest === current) guest = undefined;

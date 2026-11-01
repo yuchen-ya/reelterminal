@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
@@ -57,7 +58,7 @@ export function ReviewBranchDialog({ target, load, adopt, onClose }: ReviewBranc
   return <ToolcraftDialog isOpen onOpenChange={open => { if (!open && !busy) onClose(); }} width={1050} purpose="review-branch">
     <ToolcraftDialogHeader title={t("review.branch.compareTitle", "Compare and adopt branch results")} onOpenChange={open => { if (!open && !busy) onClose(); }} />
     <div className="space-y-3 p-4" data-testid="review-branch-dialog" data-workbench-modal="true">
-      {error && <p role="alert" className="text-xs text-status-error">{error}</p>}
+      {error && <p role="alert" className="text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
       {comparison ? <>
         <p className="text-xs text-fg-2">{comparison.source.name} → {comparison.branch.name} · {t("review.branch.baseRevision", "Starting revision")} {comparison.branch.branch!.sourceNodeRevision}</p>
         <p className="text-xs text-fg-3">{t("review.branch.adoptHint", "Select content results to adopt. Source decisions and feedback are preserved; source changes are checked again when adopting.")}</p>

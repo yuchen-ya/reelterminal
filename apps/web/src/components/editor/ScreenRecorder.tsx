@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import React, { useEffect, useRef } from "react";
 import {
   Monitor,
@@ -185,7 +186,7 @@ export const ScreenRecorder: React.FC<ScreenRecorderProps> = ({
                 <Text type="body" weight="bold" display="block" className="text-error">
                   {t("Recording Error")}</Text>
                 <Text type="supporting" color="secondary" display="block" className="mt-1">
-                  {error}
+                  <LocalizedMessage>{error}</LocalizedMessage>
                 </Text>
               </div>
             </Card>

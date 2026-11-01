@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 /**
  * Redaction for the `sanitizedInfo` field stored on task records.
  *
@@ -27,9 +28,9 @@ const OPAQUE_TOKEN_PATTERN = /\b[A-Za-z0-9+/_-]{32,}\b/g;
 export function sanitizeGenerationInfo(raw: string): string {
   const scrubbed = raw
     .replace(/\r\n?/g, "\n")
-    .replace(CREDENTIAL_PATTERN, "[凭据已移除]")
-    .replace(PATH_PATTERN, "[路径已省略]")
-    .replace(OPAQUE_TOKEN_PATTERN, "[已脱敏]")
+    .replace(CREDENTIAL_PATTERN, canonicalMessage("[credentials removed]"))
+    .replace(PATH_PATTERN, canonicalMessage("[path omitted]"))
+    .replace(OPAQUE_TOKEN_PATTERN, canonicalMessage("[redacted]"))
     .trim();
   if (scrubbed.length <= AGENT_TASK_SANITIZED_INFO_MAX_LENGTH) {
     return scrubbed;

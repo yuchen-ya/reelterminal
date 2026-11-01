@@ -69,7 +69,7 @@ describe("independent review adopted project copies", () => {
     await page.getByRole("dialog").waitFor({ state: "hidden", timeout: 60_000 });
     for (const name of ["adopted.png", "large.mp4"]) {
       await page.getByTestId("workbench-tree-panel").getByText(name, { exact: false }).click();
-      await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "保留", exact: true }).click();
+      await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "Keep", exact: true }).click();
     }
     let contents: { node: ReviewNode; items: Array<{ id: string; title: string; status: string }> };
     await vi.waitFor(async () => {

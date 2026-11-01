@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 import type { CollectionExportTarget } from "./useCollectionExport";
 import { UUID } from "../../services/review-workspace/guards";
 
@@ -12,8 +13,8 @@ export function readReviewItemDrag(data: DataTransfer): ReviewItemDrag {
     !UUID.test(value.target.instanceId) || !value.target.nodeId || !UUID.test(value.target.nodeId) ||
     !Number.isInteger(value.revision) || value.revision < 0 || !UUID.test(value.batchId) ||
     !Array.isArray(value.itemIds) || !value.itemIds.length || value.itemIds.some(id => typeof id !== "string" || !UUID.test(id))) {
-    throw new Error("无效的审阅拖放数据");
+    throw new Error(canonicalMessage("Invalid review drag-and-drop data"));
   }
-  if (value.itemIds.length > 500) throw new Error("每次最多拖动 500 个审阅条目，请分批归类");
+  if (value.itemIds.length > 500) throw new Error(canonicalMessage("Drag at most 500 review items at a time; classify them in batches"));
   return value;
 }

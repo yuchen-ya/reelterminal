@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useCallback, useEffect, useState, useMemo } from "react";
 import { Music, Loader2, AlertCircle, Check, Settings2, Image, Type, Video } from "@/icons/lucide-compat";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
@@ -99,7 +100,7 @@ export const AudioTextSyncPanel: React.FC<BeatSyncPanelProps> = ({ clipId }) => 
         >
           <AlertCircle size={14} className="text-red-400 shrink-0" aria-hidden />
           <Text type="supporting" className="text-[10px] text-red-400">
-            {error}
+            <LocalizedMessage>{error}</LocalizedMessage>
           </Text>
         </Card>
       )}
@@ -111,7 +112,7 @@ export const AudioTextSyncPanel: React.FC<BeatSyncPanelProps> = ({ clipId }) => 
               <div className="flex items-center gap-2">
                 <Loader2 size={12} className="animate-spin text-primary" aria-hidden />
                 <Text type="supporting" color="primary" className="text-[10px]">
-                  {progress.message}
+                  <LocalizedMessage>{progress.message}</LocalizedMessage>
                 </Text>
               </div>
               <ProgressBar
@@ -330,7 +331,7 @@ export const AudioTextSyncPanel: React.FC<BeatSyncPanelProps> = ({ clipId }) => 
             >
               <Check size={14} className="text-green-400" aria-hidden />
               <Text type="supporting" className="text-[10px] text-green-400">
-                {progress.message}
+                <LocalizedMessage>{progress.message}</LocalizedMessage>
               </Text>
             </Card>
           )}

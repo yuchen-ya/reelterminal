@@ -1,3 +1,4 @@
+import { t as translate } from "../../../../i18n";
 import { useCallback, useState } from "react";
 import type React from "react";
 import type { WorkbenchSpatialAnnotation } from "@reelterminal/core";
@@ -139,7 +140,7 @@ export function useVideoDrawing({
       }
 
       const t = Number(realTime().toFixed(3));
-      const defaultNote = `播放时间 ${t.toFixed(3)}s 局部异常`;
+      const defaultNote = translate("Issue at playback time {{v0}}s", { v0: t.toFixed(3) });
       const annotation: WorkbenchSpatialAnnotation =
         drawTool === "box"
           ? {

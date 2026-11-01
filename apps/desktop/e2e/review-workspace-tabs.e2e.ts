@@ -62,18 +62,18 @@ test("mixed workspace tabs isolate review state, flush closing boards, reopen an
     await importTexts(page, launched.runDir, "alpha");
     await page.getByTestId("workbench-tree-panel").getByText("alpha-two.txt", { exact: true }).click();
     await vi.waitFor(async () => expect(await page.getByTestId("text-body").innerText()).toContain("alpha original body 2"));
-    await page.getByTitle("筛选与检索条目", { exact: true }).click();
-    await page.getByPlaceholder("筛选条目...").fill("alpha-two");
+    await page.getByTitle("Filter and search items", { exact: true }).click();
+    await page.getByPlaceholder("Filter items…").fill("alpha-two");
 
     const beta = await createTask(page, "Beta review");
     await importTexts(page, launched.runDir, "beta");
-    expect(await page.getByPlaceholder("筛选条目...").inputValue()).toBe("");
+    expect(await page.getByPlaceholder("Filter items…").inputValue()).toBe("");
     await page.getByTestId("workbench-tree-panel").getByText("beta-one.txt", { exact: true }).click();
     await page.getByTestId(`review-tab-${alpha}`).click();
-    await vi.waitFor(async () => expect(await page.getByPlaceholder("筛选条目...").inputValue()).toBe("alpha-two"));
+    await vi.waitFor(async () => expect(await page.getByPlaceholder("Filter items…").inputValue()).toBe("alpha-two"));
     await vi.waitFor(async () => expect(await page.getByTestId("text-body").innerText()).toContain("alpha original body 2"));
     await page.getByTestId(`review-tab-${beta}`).click();
-    await vi.waitFor(async () => expect(await page.getByPlaceholder("筛选条目...").inputValue()).toBe(""));
+    await vi.waitFor(async () => expect(await page.getByPlaceholder("Filter items…").inputValue()).toBe(""));
     await vi.waitFor(async () => expect(await page.getByTestId("text-body").innerText()).toContain("beta original body 1"));
     const reviewContext = value(await agent.callCommand<ReviewContext>("review.context"));
     const expectedCommands = await page.evaluate(async ({ target, ids }) => Promise.all(ids.map(async nodeId => {
@@ -93,14 +93,14 @@ test("mixed workspace tabs isolate review state, flush closing boards, reopen an
     await page.getByTestId(`close-tab-review-${alpha}`).click();
     await openWorkspaceDirectory(page);
     await page.getByTestId("review-node-list").getByText("Alpha review", { exact: true }).click();
-    await vi.waitFor(async () => expect(await page.getByPlaceholder("筛选条目...").inputValue()).toBe("alpha-two"));
+    await vi.waitFor(async () => expect(await page.getByPlaceholder("Filter items…").inputValue()).toBe("alpha-two"));
     await vi.waitFor(async () => expect(await page.getByTestId("text-body").innerText()).toContain("alpha original body 2"));
 
     await openOrCreateBoard(page);
     const boardId = (await page.getByTestId("human-board-canvas").getAttribute("data-board-id"))!;
     const boardTab = page.getByTestId(`board-tab-${boardId}`);
     expect(await page.getByTestId("review-start-command").count()).toBe(0);
-    expect(await page.getByTestId("workbench-private-board").innerText()).toContain("没有 Agent target");
+    expect(await page.getByTestId("workbench-private-board").innerText()).toContain("Free Board · Export files or review snapshots");
     expect(await page.getByTestId("human-board-list").count()).toBe(0);
     await page.getByTestId("human-board-name").fill("Private unsaved board");
     // Close immediately while the 500ms autosave is still pending.

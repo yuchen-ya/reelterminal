@@ -162,7 +162,7 @@ describe("workbench round 3 batch F: repaired image and reopen", () => {
     const page = launched.page;
     await page.getByTestId("image-mode-repair").click();
     await drawRepairStroke(page);
-    await page.getByRole("button", { name: /^保存修补\(/ }).click();
+    await page.getByRole("button", { name: /^Save repair \(/ }).click();
     let item = await waitForItemVersion(agent, identity, 2);
     let revisions = repairRevisions(item);
     expect(revisions).toHaveLength(1);
@@ -188,10 +188,10 @@ describe("workbench round 3 batch F: repaired image and reopen", () => {
     await page.getByTestId("image-mode-repair").click();
     await page.getByTestId("repair-base-label").waitFor({ timeout: 10_000 });
     expect(await page.getByTestId("repair-base-label").textContent()).toContain(
-      "已保存修补 v2",
+      "Saved repair v2",
     );
     await drawRepairStroke(page);
-    await page.getByRole("button", { name: /^保存修补\(/ }).click();
+    await page.getByRole("button", { name: /^Save repair \(/ }).click();
     item = await waitForItemVersion(agent, identity, 3);
     revisions = repairRevisions(item);
     expect(revisions).toHaveLength(2);
@@ -207,9 +207,9 @@ describe("workbench round 3 batch F: repaired image and reopen", () => {
     // Explicit source base: old revisions remain, new one records source.
     await page.getByTestId("image-mode-repair").click();
     await page.getByTestId("repair-base-toggle").click();
-    expect(await page.getByTestId("repair-base-label").textContent()).toContain("原图");
+    expect(await page.getByTestId("repair-base-label").textContent()).toContain("Original");
     await drawRepairStroke(page);
-    await page.getByRole("button", { name: /^保存修补\(/ }).click();
+    await page.getByRole("button", { name: /^Save repair \(/ }).click();
     item = await waitForItemVersion(agent, identity, 4);
     revisions = repairRevisions(item);
     expect(revisions).toHaveLength(3);

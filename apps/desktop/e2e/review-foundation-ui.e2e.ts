@@ -103,7 +103,7 @@ describe("independent review GUI without a video project", () => {
     await page.mouse.down();
     await page.mouse.move(stage!.x + stage!.width * 0.55, stage!.y + stage!.height * 0.55, { steps: 8 });
     await page.mouse.up();
-    await page.getByRole("button", { name: /^保存修补\(/ }).click();
+    await page.getByRole("button", { name: /^Save repair \(/ }).click();
     const imageId = imported.find(entry => entry.item.title.endsWith("original.png"))!.item.id;
     let repaired: WorkbenchItem;
     await vi.waitFor(async () => { repaired = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target, itemId: imageId })).item; expect(repaired.version).toBe(2); }, { timeout: 15_000 });
@@ -197,7 +197,7 @@ describe("independent review GUI without a video project", () => {
     await page.getByRole("menuitem", { name: /Move to recycle bin|移到回收站/ }).click();
     await page.getByTestId("review-trash-submit").click();
     await page.getByTestId("review-trash-dialog").waitFor({ state: "hidden" });
-    await page.getByRole("button", { name: "打开回收站" }).click();
+    await page.getByRole("button", { name: "Open the recycle bin" }).click();
     const trashedNode = page.getByTestId("review-node-list").getByText("Independent GUI node", { exact: true });
     await vi.waitFor(async () => expect(await trashedNode.count()).toBe(1));
     await trashedNode.click({ button: "right" });

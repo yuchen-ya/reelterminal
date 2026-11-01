@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, FileStack, Pencil, Plus, Trash2 } from "lucide-react";
@@ -107,7 +108,7 @@ export function TemplatesTab({ onTemplateApplied }: { onTemplateApplied?: () => 
   const filtered = templates.filter((template) => [template.name, template.description, ...template.tags].join(" ").toLocaleLowerCase().includes(search));
 
   return <section className="flex-1 min-h-0 h-full overflow-y-auto p-4 space-y-4">
-    {error && <p role="alert" className="text-xs text-status-error">{error}</p>}
+    {error && <p role="alert" className="text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
     {selected ? <>
       <button type="button" disabled={busy} className="asset-browser-button" onClick={() => setSelected(null)}><ArrowLeft size={14} />{t("personalTemplates.back")}</button>
       <div className="aspect-video rounded-lg border border-border bg-background-secondary flex items-center justify-center overflow-hidden">
@@ -125,7 +126,7 @@ export function TemplatesTab({ onTemplateApplied }: { onTemplateApplied?: () => 
       </div>
       {!selected.projectSnapshot && selected.placeholders.length > 0 && <TemplateVariablesPanel template={selected} values={values} onChange={setValues} />}
       <p className="text-xs leading-5 text-text-muted">{t("personalTemplates.newNotice")}</p>
-      {dependencyError ? <p role="alert" className="text-xs text-status-warning">{dependencyError}</p>
+      {dependencyError ? <p role="alert" className="text-xs text-status-warning"><LocalizedMessage>{dependencyError}</LocalizedMessage></p>
         : missing === null ? <p className="text-xs text-text-muted">{t("personalTemplates.checking")}</p>
         : <p className={`text-xs ${missing.length ? "text-status-warning" : "text-text-muted"}`}>{missing.length
           ? t("personalTemplates.missingDependencies", { items: missing.join(", ") }) : t("personalTemplates.ready")}</p>}

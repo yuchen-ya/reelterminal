@@ -1,3 +1,4 @@
+import { t as translate } from "../../../../i18n";
 import { useCallback, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import type {
@@ -141,7 +142,7 @@ export function useImagePointerInteractions({
       const repairLayer = repairCanvasRef.current;
       const nat = natural;
       if (!img || !nat || !img.complete || !img.naturalWidth) {
-        setMutationError("取色失败:原图尚未就绪");
+        setMutationError(translate("Color picking failed: the original is not ready"));
         return;
       }
       const scratch = document.createElement("canvas");
@@ -149,7 +150,7 @@ export function useImagePointerInteractions({
       scratch.height = nat.h;
       const ctx = scratch.getContext("2d", { willReadFrequently: true });
       if (!ctx) {
-        setMutationError("取色失败:无法创建采样画布");
+        setMutationError(translate("Color picking failed: unable to create a sampling canvas"));
         return;
       }
       try {
@@ -167,7 +168,7 @@ export function useImagePointerInteractions({
         setRepairTool("brush");
         setMutationError(null);
       } catch {
-        setMutationError("取色失败:图像数据不可读");
+        setMutationError(translate("Color picking failed: image data cannot be read"));
       }
     },
     [imgRef, natural, repairCanvasRef, setBrushColor, setMutationError, setRepairTool],
@@ -224,7 +225,7 @@ export function useImagePointerInteractions({
         tool: "text",
         x: pt.normalized.x,
         y: pt.normalized.y,
-        label: "问题点",
+        label: translate("Issue point"),
         color: ANNOTATION_COLOR_TEXT,
       };
       const next = [...annotations, ann];
@@ -309,7 +310,7 @@ export function useImagePointerInteractions({
           y,
           w,
           h,
-          label: "圈注区域",
+          label: translate("Annotated region"),
           color: ANNOTATION_COLOR_BOX,
         };
         const next = [...annotations, ann];
@@ -322,7 +323,7 @@ export function useImagePointerInteractions({
           y: start.y,
           endX: current.x,
           endY: current.y,
-          label: "指向问题",
+          label: translate("Point to issue"),
           color: ANNOTATION_COLOR_ARROW,
         };
         const next = [...annotations, ann];

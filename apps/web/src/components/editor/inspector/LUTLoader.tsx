@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useCallback, useRef, useState } from "react";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { ToolcraftCard as Card } from "@reelterminal/ui";
@@ -346,7 +347,7 @@ export const LUTLoader: React.FC<LUTLoaderProps> = ({
             className="text-red-500 flex-shrink-0 mt-0.5"
           />
           <Text type="supporting" className="text-[10px] text-red-400">
-            {error}
+            <LocalizedMessage>{error}</LocalizedMessage>
           </Text>
         </Card>
       )}

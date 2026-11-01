@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import { useCallback, useRef, useState } from "react";
 import { ToolcraftSegmentedControl } from "@reelterminal/ui";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
@@ -321,7 +322,7 @@ export function CompressDialog({ isOpen, onClose }: CompressDialogProps) {
           {error && (
             <Card variant="red" padding={2}>
               <Text type="supporting" color="primary">
-                {error}
+                <LocalizedMessage>{error}</LocalizedMessage>
               </Text>
             </Card>
           )}

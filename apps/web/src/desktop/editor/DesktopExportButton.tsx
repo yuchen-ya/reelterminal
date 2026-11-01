@@ -1,3 +1,4 @@
+import { t as translate } from "../../i18n";
 import type { JSX } from "react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
@@ -80,11 +81,11 @@ export function DesktopExportButton({
         useDesktopExportStore.getState().update(exportId.current, state);
       } else if (
         exportId.current &&
-        useDesktopExportStore.getState().session?.state.phase === "正在取消"
+        useDesktopExportStore.getState().session?.state.phase === translate("Cancelling")
       ) {
         useDesktopExportStore
           .getState()
-          .update(exportId.current, { ...state, phase: "已取消" });
+          .update(exportId.current, { ...state, phase: translate("review.export.state.cancelled") });
       }
     },
   });
@@ -158,7 +159,7 @@ export function DesktopExportButton({
             useDesktopExportStore.getState().update(sessionId, {
               isExporting: true,
               progress: 0,
-              phase: "正在取消",
+              phase: translate("Cancelling"),
               error: null,
               complete: false,
             });
@@ -246,7 +247,7 @@ export function DesktopExportButton({
         style={NO_DRAG}
         onClick={() => useUIStore.getState().setDesktopPage("deliver")}
         className="mr-2"
-        aria-label="查看导出与整理"
+        aria-label={t("View exports and cleanup")}
       />
     );
   }

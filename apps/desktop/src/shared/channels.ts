@@ -1,4 +1,5 @@
 export const CHANNELS = {
+  uiLocale: "reelterminal:ui:locale",
   boardDocumentImport: "reelterminal:boardDocument:import",
   boardDocumentOpen: "reelterminal:boardDocument:open",
   boardDocumentClose: "reelterminal:boardDocument:close",

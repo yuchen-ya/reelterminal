@@ -1,14 +1,15 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import type { BrowserWindow } from "electron";
 const mocks = vi.hoisted(() => ({
-  getSources: vi.fn(), buildFromTemplate: vi.fn(), popup: vi.fn(), setHandler: vi.fn(),
+  getLocale: vi.fn(), getSources: vi.fn(), buildFromTemplate: vi.fn(), popup: vi.fn(), setHandler: vi.fn(),
 }));
 vi.mock("electron", () => ({
-  app: { getLocale: () => "en-US" },
+  app: { getLocale: mocks.getLocale },
   desktopCapturer: { getSources: mocks.getSources },
   Menu: { buildFromTemplate: mocks.buildFromTemplate },
 }));
 import { installScreenCapture } from "./screen-capture";
+import { setUiLocale } from "./ui-locale";
 
 const frame = { url: "app://reelterminal/index.html", detached: false };
 const win = { isDestroyed: () => false, webContents: {
@@ -17,6 +18,8 @@ const win = { isDestroyed: () => false, webContents: {
 const source = { id: "screen:1:0", name: "Screen 1" };
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.getLocale.mockReturnValue("en-US");
+  setUiLocale("en");
   mocks.getSources.mockResolvedValue([source]);
   mocks.buildFromTemplate.mockReturnValue({ popup: mocks.popup });
   installScreenCapture(win);
@@ -52,4 +55,17 @@ it("rejects failed source enumeration so the renderer gets an error", async () =
     await mocks.setHandler.mock.calls[0][0](request, callback);
     expect(callback).toHaveBeenCalledExactlyOnceWith({});
   } finally { log.mockRestore(); }
+});
+
+it.each([
+  { system: "zh-CN", chosen: "en" as const, title: "Choose a screen or window to record", cancel: "Cancel" },
+  { system: "en-US", chosen: "zh-CN" as const, title: "选择要录制的屏幕或窗口", cancel: "取消" },
+])("uses the chosen $chosen UI locale on a $system system for the app fallback menu", async ({ system, chosen, title, cancel }) => {
+  mocks.getLocale.mockReturnValue(system);
+  setUiLocale(chosen);
+  await mocks.setHandler.mock.calls[0][0](request, vi.fn());
+  const menu = mocks.buildFromTemplate.mock.calls[0][0];
+  expect(menu[0].label).toBe(title);
+  expect(menu.at(-1).label).toBe(cancel);
+  expect(menu[2].label).toBe(source.name); // OS source/window names are data.
 });

@@ -74,7 +74,7 @@ describe("text range comment readback", () => {
     const views = buildTextRangeComments(textContent(), [
       rangeComment("fb-missing", 9, 0, 4, "建议"),
     ]);
-    expect(views[0].quotedText).toBe("（绑定版本原文不可用）");
+    expect(views[0].quotedText).toBe("(source text for the bound version is unavailable)");
   });
 
   it("ignores non-text-range feedback", () => {

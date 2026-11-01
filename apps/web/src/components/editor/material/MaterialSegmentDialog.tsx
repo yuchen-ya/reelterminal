@@ -83,7 +83,7 @@ export function MaterialSegmentDialog({
       toast.error(t("material.segmentSaveFailed"), result.message);
       return;
     }
-    toast.success(t("material.segmentSaved"), result.value.material.title);
+    toast.success(t("material.segmentSaved"), result.value.material.title, { localizeMessage: false });
     await onCreated(result.value.material.id);
   };
 

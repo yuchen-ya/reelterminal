@@ -1,3 +1,7 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { getAppLocale } from "../../../i18n";
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 /**
  * Local batch creation from the project media library (no Agent required).
  *
@@ -53,8 +57,8 @@ function newSubmission(ids: readonly string[]): FrozenSubmission {
 }
 
 function usageLabel(usage: WorkbenchMediaAsset["usage"]): string | null {
-  if (usage === "pending") return "已在工作台 · 待处理";
-  if (usage === "processed") return "已审阅";
+  if (usage === "pending") return translate("In the workbench · Pending");
+  if (usage === "processed") return translate("Reviewed");
   return null;
 }
 
@@ -65,6 +69,7 @@ export function CreateWorkbenchBatchDialog({
   onCreate,
   onOpenMediaLibrary,
 }: CreateWorkbenchBatchDialogProps): JSX.Element {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [search, setSearch] = useState("");
@@ -75,7 +80,7 @@ export function CreateWorkbenchBatchDialog({
 
   useEffect(() => {
     if (!isOpen) return;
-    setName(`素材审阅 ${new Date().toLocaleString()}`);
+    setName(translate("Media review {{v0}}", { v0: new Date().toLocaleString(getAppLocale()) }));
     setDescription("");
     setSearch("");
     setSelected([]);
@@ -142,7 +147,7 @@ export function CreateWorkbenchBatchDialog({
 
   return (
     <ToolcraftDialog isOpen={isOpen} onOpenChange={onOpenChange} width="72rem">
-      <ToolcraftDialogHeader title="从项目素材创建批次" />
+      <ToolcraftDialogHeader title={t("Create a batch from project media")} />
       <div
         className="flex max-h-[78vh] min-h-0 flex-col text-xs"
         data-testid="create-workbench-batch-dialog"
@@ -151,7 +156,7 @@ export function CreateWorkbenchBatchDialog({
       >
         <div className="grid shrink-0 gap-2.5 border-b border-border bg-bg-1 p-4 sm:grid-cols-2">
           <label className="space-y-1 text-xs text-fg-2">
-            <span>批次名</span>
+            <span>{t("review.batchName")}</span>
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -160,11 +165,11 @@ export function CreateWorkbenchBatchDialog({
             />
           </label>
           <label className="space-y-1 text-xs text-fg-2">
-            <span>描述（可选）</span>
+            <span>{t("personalTemplates.description")}</span>
             <input
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="例如：第三轮本地素材审阅"
+              placeholder={t("For example: Local media review, round 3")}
               className="w-full rounded-[6px] border border-border bg-bg-2 px-2.5 py-1.5 text-xs text-fg focus:border-accent focus:outline-none"
               data-testid="create-batch-description"
             />
@@ -177,7 +182,7 @@ export function CreateWorkbenchBatchDialog({
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="搜索项目素材"
+              placeholder={t("projectAssets.search")}
               className="w-full bg-transparent text-xs text-fg placeholder:text-fg-3 focus:outline-none"
               data-testid="create-batch-search"
             />
@@ -188,33 +193,26 @@ export function CreateWorkbenchBatchDialog({
             disabled={filtered.length === 0}
             className={wbButton.secondary}
           >
-            {allFilteredSelected ? "取消全选" : "全选当前结果"}
+            {allFilteredSelected ? t("Deselect all") : t("projectLibrary.selectAll")}
           </button>
-          <span className="font-mono tabular-nums text-[11px] text-fg-3">
-            已选 {selected.length} / {assets.length}
-          </span>
+          <span className="font-mono tabular-nums text-[11px] text-fg-3">{t("Selected {{v0}} / {{v1}}", { v0: selected.length, v1: assets.length })}</span>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {assets.length === 0 ? (
             <div className="flex flex-col items-center gap-2 rounded-[6px] border border-border bg-bg-2 p-8 text-center">
               <ImageIcon className="h-5 w-5 text-fg-3" />
-              <div className="text-sm font-medium text-fg">项目素材库没有图片/视频</div>
-              <p className="max-w-md text-xs text-fg-3">
-                请先在宿主素材面板导入 PNG/JPG 或 MP4。文字/数据仍由 Agent ingest
-                或后续粘贴入口提供，不能从媒体创建。
-              </p>
+              <div className="text-sm font-medium text-fg">{t("No images or videos in project media")}</div>
+              <p className="max-w-md text-xs text-fg-3">{t("Import PNG/JPG or MP4 files into the project media panel first. Text and tables must be ingested by an Agent or pasted; they cannot be created from media.")}</p>
               <button
                 type="button"
                 onClick={onOpenMediaLibrary}
                 className={wbButton.primary}
                 data-testid="create-batch-open-media"
-              >
-                打开宿主素材面板
-              </button>
+              >{t("Open project media")}</button>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="p-8 text-center text-xs text-fg-3">没有匹配的素材</div>
+            <div className="p-8 text-center text-xs text-fg-3">{t("No matching media")}</div>
           ) : (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
               {filtered.map((asset) => {
@@ -258,7 +256,7 @@ export function CreateWorkbenchBatchDialog({
                         {asset.name}
                       </div>
                       <div className="flex flex-wrap items-center gap-1 font-mono tabular-nums text-[10px] text-fg-3">
-                        <span>{asset.type === "image" ? "图片" : "视频"}</span>
+                        <span>{asset.type === "image" ? t("review.kind.image") : t("review.kind.video")}</span>
                         {asset.width && asset.height && (
                           <span>
                             {asset.width}×{asset.height}
@@ -290,22 +288,18 @@ export function CreateWorkbenchBatchDialog({
 
         {error && (
           <div className="shrink-0 border-t border-status-error/40 bg-status-error/10 px-4 py-2 text-xs text-status-error">
-            {error}
+            <LocalizedMessage>{error}</LocalizedMessage>
           </div>
         )}
 
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border bg-bg-1 px-4 py-3">
-          <div className="text-[11px] text-fg-3">
-            文字/数据不能由媒体创建；同一素材可再次建批，已审阅状态只作提示。
-          </div>
+          <div className="text-[11px] text-fg-3">{t("Text and tables cannot be created from media. Media may be included in another batch; reviewed status is only a hint.")}</div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => onOpenChange(false)}
               className={wbButton.secondary}
-            >
-              取消
-            </button>
+            >{t("review.cancel")}</button>
             <button
               type="button"
               onClick={() => void submit()}
@@ -318,7 +312,7 @@ export function CreateWorkbenchBatchDialog({
               ) : (
                 <Plus className="h-3.5 w-3.5" />
               )}
-              创建批次并开始审阅（{selected.length}）
+              {t("Create batch and start review (")}{selected.length}）
             </button>
           </div>
         </div>

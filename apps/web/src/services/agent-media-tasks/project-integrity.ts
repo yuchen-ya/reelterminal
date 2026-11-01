@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 /**
  * Pure target-project integrity check performed before an `awaiting_import`
  * task jumps into import (or before the UI navigates to the target project).
@@ -35,6 +36,6 @@ export function checkTargetProjectAvailability(
   return {
     ok: false,
     code: "TARGET_PROJECT_MISSING",
-    message: `目标项目（${targetProjectId}）已不存在，无法导入产物；任务已标记失败，产物不会转投其他项目`,
+    message: canonicalMessage("The target project ({{v0}}) no longer exists. Import is unavailable; the task was marked failed and its output will not be sent to another project.", { v0: targetProjectId }),
   };
 }

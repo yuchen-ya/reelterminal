@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
@@ -46,7 +47,7 @@ export function ReviewBackupDialog({ target, onClose }: { target: ReviewContext[
             {t(busy === "copy" ? "review.backup.copying" : "review.backup.progress", progress)}
           </p>
         )}
-        {error && <p role="alert" className="text-status-error">{error}</p>}
+        {error && <p role="alert" className="text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
         {destination && <p role="status" className="break-all font-mono text-accent">{destination}</p>}
         <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
           <button

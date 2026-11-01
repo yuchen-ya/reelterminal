@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import MDEditor, { commands } from "@uiw/react-md-editor/nohighlight";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import "./review-markdown.css";
@@ -22,6 +23,7 @@ export default function ReviewMarkdown({ source, editing = false, onChange, onLi
   onLink?: (href: string) => void;
   boardResources?: boolean;
 }) {
+  const { t } = useTranslation();
   const options = boardResources || onLink ? {
     skipHtml: false,
     pluginsFilter: previewOptions.pluginsFilter,
@@ -36,7 +38,7 @@ export default function ReviewMarkdown({ source, editing = false, onChange, onLi
         commands.quote, commands.code, commands.codeBlock, commands.unorderedListCommand,
         commands.orderedListCommand, commands.checkedListCommand, commands.table]}
       extraCommands={[commands.codeEdit, commands.codeLive, commands.codePreview]}
-      textareaProps={{ "aria-label": "Markdown 原文" }}
+      textareaProps={{ "aria-label": t("Markdown source") }}
       previewOptions={options as typeof previewOptions}
     /> : <MDEditor.Markdown source={source} {...options as typeof previewOptions} />}
   </div>;

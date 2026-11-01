@@ -302,6 +302,8 @@ export interface OpenReelAnalysisJobStatus {
 
 /** Shape of the desktop preload bridge exposed as window.reelterminal. */
 interface ReelTerminalDesktopBridge {
+      /** Resolved application language; never an OS-global setting. */
+      setUiLocale?(locale: "en" | "zh-CN"): Promise<void>;
       platform: "desktop";
       publicOrigin: string;
       audioEnvironment?: { check(): Promise<AudioEnvironmentReport> };

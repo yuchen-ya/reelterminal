@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { JSX } from "react";
 
 export interface WorkbenchQueueStateProps {
@@ -15,47 +16,34 @@ export function WorkbenchQueueState({
   onOpenHandoff,
   onSwitchToAll,
 }: WorkbenchQueueStateProps): JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 bg-stage-bg p-8 text-center">
       {kind === "filter-empty" ? (
         <>
-          <p className="text-sm font-semibold text-fg" data-testid="workbench-filter-empty">
-            当前筛选范围内没有条目
-          </p>
-          <p className="max-w-md text-xs leading-relaxed text-fg-2">
-            批次里仍有其他类型的节点。清除搜索或切换类型筛选即可继续审阅。
-          </p>
+          <p className="text-sm font-semibold text-fg" data-testid="workbench-filter-empty">{t("No items match the current filters")}</p>
+          <p className="max-w-md text-xs leading-relaxed text-fg-2">{t("This batch has other content types. Clear the search or change the type filter to continue reviewing.")}</p>
           <button
             type="button"
             onClick={onResetFilters}
             className="rounded-lg border border-border bg-bg-2 px-3.5 py-1.5 text-xs text-fg-2 transition-colors hover:text-fg"
-          >
-            重置筛选
-          </button>
+          >{t("assetBrowser.resetFilters")}</button>
         </>
       ) : (
         <>
-          <p className="text-sm font-semibold text-fg" data-testid="workbench-queue-done">
-            当前队列已全部处理
-          </p>
-          <p className="max-w-md text-xs leading-relaxed text-fg-2">
-            已处理 {processedCount} 项。可发布审阅结果，或切换到左侧「全部」查看并取回已处理节点。
-          </p>
+          <p className="text-sm font-semibold text-fg" data-testid="workbench-queue-done">{t("The current queue is complete")}</p>
+          <p className="max-w-md text-xs leading-relaxed text-fg-2">{t("{{v0}} items processed. Publish the review results, or choose All on the left to view and reopen processed items.", { v0: processedCount })}</p>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onOpenHandoff}
               className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-strong"
-            >
-              查看并发布审阅结果 ({processedCount})
-            </button>
+            >{t("Review and publish results ({{v0}})", { v0: processedCount })}</button>
             <button
               type="button"
               onClick={onSwitchToAll}
               className="rounded-lg border border-border bg-bg-2 px-3 py-2 text-xs text-fg-2 transition-colors hover:text-fg"
-            >
-              查看已处理
-            </button>
+            >{t("View processed items")}</button>
           </div>
         </>
       )}

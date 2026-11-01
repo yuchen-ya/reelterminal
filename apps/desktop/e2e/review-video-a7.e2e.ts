@@ -94,7 +94,7 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
       expect(inspected.resource.metadata.width).toBe(fixture.width); expect(inspected.resource.metadata.height).toBe(fixture.height);
       await select(fixture.name);
       await attachFrameObserver(player());
-      expect(await page.locator("[data-workbench-player='true']").textContent()).toContain("帧索引不可用(无解码映射)");
+      expect(await page.locator("[data-workbench-player='true']").textContent()).toContain("Frame index unavailable (no decode mapping)");
       // Exercise the actual GUI play/pause controls before seeking and marking.
       await page.locator("button:has(svg.lucide-play)").click();
       await vi.waitFor(async () => expect((await readFrame(player())).currentTime).toBeGreaterThan(0.1));
@@ -115,11 +115,11 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
         expect(frame!.width).toBe(fixture.width); expect(frame!.height).toBe(fixture.height);
         samples.push({ expectedContainerPts: fixture.probe.frames[expectedIndex].best_effort_timestamp_time, expectedIndex, browser: frame! });
       }
-      await page.getByRole("button", { name: /标问题帧/ }).click();
+      await page.getByRole("button", { name: /Mark issue frame/ }).click();
       const panel = page.getByTestId("workbench-issue-panel");
       await panel.getByTestId("workbench-issue-card").first().waitFor();
       await panel.getByTestId("workbench-issue-card").first().click();
-      await panel.getByLabel("问题建议").fill(`${fixture.name}: browser ${markerTime.toFixed(3)} seconds`);
+      await panel.getByLabel("Issue suggestion").fill(`${fixture.name}: browser ${markerTime.toFixed(3)} seconds`);
       await panel.getByTestId("workbench-issue-save").click();
       await vi.waitFor(async () => expect(((await readItem(id)).content as WorkbenchVideoContent).markers[0].note).toContain(`browser ${markerTime.toFixed(3)}`), { timeout: 15_000 });
       await panel.getByTestId("workbench-issue-card").first().click();
@@ -152,15 +152,15 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
     // Preserve v1 issue anchors across a genuine content v2, then reopen the profile.
     for (const original of retained) {
       await select(original.title);
-      await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "返工", exact: true }).click();
+      await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "Rework", exact: true }).click();
       const reworkDialog = page.getByRole("dialog");
-      await reworkDialog.getByLabel(/共同修改要求/).fill("保留现有圈注并提交更新的视频版本");
-      await reworkDialog.getByRole("button", { name: "确认返工", exact: true }).click();
+      await reworkDialog.getByLabel(/Shared revision instructions/).fill("保留现有圈注并提交更新的视频版本");
+      await reworkDialog.getByRole("button", { name: "Confirm: Rework", exact: true }).click();
       await vi.waitFor(async () => expect((await readItem(original.id)).status).toBe("rework"));
     }
-    await page.getByTitle("预览本轮已处理结果，确认后发布给 Agent 读取", { exact: true }).click();
-    await page.getByRole("button", { name: /发布交接结果|更新交接结果/ }).click();
-    await page.getByText(/等待 Agent 读取/).first().waitFor();
+    await page.getByTitle("Preview the processed results, then confirm publication for the Agent to read.", { exact: true }).click();
+    await page.getByRole("button", { name: /Publish handoff results|Update handoff results/ }).click();
+    await page.getByText(/waiting for the Agent to read/i).first().waitFor();
     await page.keyboard.press("Escape");
     const changes = value(await agent.callCommand<{ entries: Array<{ handoffIds?: string[] }> }>("review.changes", { target, afterSequence: 0 }));
     const handoffId = changes.entries.flatMap(entry => entry.handoffIds ?? []).at(-1)!;
@@ -205,7 +205,7 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
     await select(fixtures[0].name);
     await attachFrameObserver(player());
     await seek(1.53);
-    await page.getByRole("button", { name: /标问题帧/ }).click();
+    await page.getByRole("button", { name: /Mark issue frame/ }).click();
     await vi.waitFor(async () => expect(((await readItem(items[0].id)).content as WorkbenchVideoContent).markers[0]?.version).toBe(2));
     evidence.v2Marker = ((await readItem(items[0].id)).content as WorkbenchVideoContent).markers[0];
     await page.getByTestId("review-access-toggle").click();

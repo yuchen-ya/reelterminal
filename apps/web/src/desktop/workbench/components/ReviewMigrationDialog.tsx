@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
@@ -83,7 +84,7 @@ export function ReviewMigrationDialog({ target, onClose, onOpenNode }: { target:
             {t("review.migration.inspect")}
           </button>
         </div>
-        {error && <p role="alert" className="break-all text-xs text-status-error">{error}</p>}
+        {error && <p role="alert" className="break-all text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
         {preview && (
           <section className="space-y-3 rounded-[6px] border border-border bg-bg-2 p-3 tabular-nums" data-testid="review-migration-preview">
             <h3 className="font-semibold text-fg">{preview.name}</h3>

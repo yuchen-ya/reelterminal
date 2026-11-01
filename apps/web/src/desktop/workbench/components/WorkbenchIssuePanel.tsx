@@ -1,3 +1,6 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 /**
  * In-canvas issue editing panel for the AI material workbench.
  *
@@ -104,10 +107,10 @@ function tagLabel(tag: WorkbenchProvenanceTag): string {
 
 function tagVerificationLabel(tag: WorkbenchProvenanceTag): string {
   return tag.verification === "verified"
-    ? "已验证"
+    ? translate("Verified")
     : tag.verification === "declared"
-      ? "已声明(未验证)"
-      : "验证状态未知";
+      ? translate("Declared (unverified)")
+      : translate("Verification status unknown");
 }
 
 function draftKey(itemId: string, itemVersion: number, issueId: string): string {
@@ -147,6 +150,7 @@ export function WorkbenchIssuePanel({
   collapsed,
   onToggleCollapse,
 }: WorkbenchIssuePanelProps): JSX.Element {
+  const { t } = useTranslation();
   const [drafts, setDrafts] = useState<Readonly<Record<string, IssueDraft>>>({});
   const [busy, setBusy] = useState<"save" | "rework" | "delete" | null>(null);
   const [notice, setNotice] = useState<
@@ -245,7 +249,7 @@ export function WorkbenchIssuePanel({
           markRework,
         });
         if (!result.ok) {
-          setNotice({ kind: "error", message: `${result.message}（草稿已保留）` });
+          setNotice({ kind: "error", message: translate("{{v0}} (draft preserved)", { v0: result.message }) });
           return;
         }
         // Drop only this issue's draft; other issues keep theirs.
@@ -258,13 +262,13 @@ export function WorkbenchIssuePanel({
         setNotice({
           kind: "ok",
           message: markRework
-            ? "反馈已保存，条目已标记返工（尚未发布交接）"
-            : "反馈已保存（尚未发布交接）",
+            ? translate("Feedback saved and item marked for rework (handoff not published)")
+            : translate("Feedback saved (handoff not published)"),
         });
       } catch (error) {
         setNotice({
           kind: "error",
-          message: `${error instanceof Error ? error.message : String(error)}（草稿已保留）`,
+          message: translate("{{v0}} (draft preserved)", { v0: error instanceof Error ? error.message : String(error) }),
         });
       } finally {
         setBusy(null);
@@ -287,7 +291,7 @@ export function WorkbenchIssuePanel({
         delete copy[draftKey(itemId, itemVersion, issueId)];
         return copy;
       });
-      setNotice({ kind: "ok", message: "已删除该问题（其他问题保持不变）" });
+      setNotice({ kind: "ok", message: translate("Issue deleted (other issues unchanged)") });
     } catch (error) {
       setNotice({
         kind: "error",
@@ -327,7 +331,7 @@ export function WorkbenchIssuePanel({
             else setUserCollapsed(false);
           }}
           className="rounded p-1 text-fg-3 hover:bg-bg-2 hover:text-fg transition-colors"
-          title="展开问题面板"
+          title={t("Expand issues panel")}
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -338,7 +342,7 @@ export function WorkbenchIssuePanel({
             else setUserCollapsed(false);
           }}
           className="flex flex-col items-center gap-1 rounded p-1 hover:bg-bg-2 transition-colors"
-          title={`问题与修改要求 (${issues.length})`}
+          title={t("Issues and revision instructions ({{v0}})", { v0: issues.length })}
         >
           <MessageSquareWarning className="h-3.5 w-3.5 text-accent" />
           <span className="rounded-full bg-bg-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-3">
@@ -370,8 +374,8 @@ export function WorkbenchIssuePanel({
           </div>
         )}
         <div className="sr-only">
-          <span>问题与修改要求</span>
-          <span>暂无问题记录</span>
+          <span>{t("Issues and revision instructions")}</span>
+          <span>{t("No issues recorded")}</span>
           <span>{emptyHint}</span>
         </div>
       </div>
@@ -388,7 +392,7 @@ export function WorkbenchIssuePanel({
         <span className="flex items-center gap-1.5 text-xs font-semibold text-fg">
           <MessageSquareWarning className="h-3.5 w-3.5 text-accent" />
           <span className="font-mono text-[11px] text-fg-2">{issues.length}</span>
-          <span className="sr-only">问题与修改要求</span>
+          <span className="sr-only">{t("Issues and revision instructions")}</span>
         </span>
         <button
           type="button"
@@ -397,7 +401,7 @@ export function WorkbenchIssuePanel({
             else setUserCollapsed(true);
           }}
           className="rounded p-1 text-fg-3 hover:bg-bg-2 hover:text-fg transition-colors"
-          title="收起问题面板"
+          title={t("Collapse issues panel")}
         >
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
@@ -407,9 +411,7 @@ export function WorkbenchIssuePanel({
         <div className="shrink-0 border-b border-border bg-bg-2/60 px-3 py-2">
           <div className="flex items-center gap-1.5 text-[11px] font-medium text-accent">
             <Sparkles className="h-3 w-3 shrink-0" />
-            <span className="truncate">
-              Agent 建议 · {agentGuidance.branchName} / {agentGuidance.nodeSlotLabel}
-            </span>
+            <span className="truncate">{t("Agent suggestion · {{v0}} / {{v1}}", { v0: agentGuidance.branchName, v1: agentGuidance.nodeSlotLabel })}</span>
           </div>
           <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-fg-2">
             {agentGuidance.whatToDoNext}
@@ -423,12 +425,12 @@ export function WorkbenchIssuePanel({
             notice.kind === "error" ? "bg-status-error/10 text-status-error" : "bg-bg-2 text-fg-2"
           }`}
         >
-          <span className="min-w-0 break-words">{notice.message}</span>
+          <span className="min-w-0 break-words"><LocalizedMessage>{notice.message}</LocalizedMessage></span>
           <button
             type="button"
             onClick={() => setNotice(null)}
             className="shrink-0 text-fg-3 hover:text-fg"
-            title="关闭提示"
+            title={t("Dismiss notice")}
           >
             ×
           </button>
@@ -439,7 +441,7 @@ export function WorkbenchIssuePanel({
         {issues.length === 0 ? (
           <div className="rounded-xl border border-border bg-bg-2 p-4 text-center">
             <Crosshair className="mx-auto h-4 w-4 text-accent" />
-            <div className="mt-1 text-xs text-fg-2">暂无问题记录</div>
+            <div className="mt-1 text-xs text-fg-2">{t("No issues recorded")}</div>
             <div className="mt-1 text-[11px] leading-relaxed text-fg-3">{emptyHint}</div>
           </div>
         ) : (
@@ -476,7 +478,7 @@ export function WorkbenchIssuePanel({
                           <Crosshair className="h-3 w-3 shrink-0 text-accent" />
                         )}
                         <span className="truncate">
-                          选区 <strong className="text-accent">#{selectedIssue.indexNumber}</strong> ·{" "}
+                          {t("Selection")}<strong className="text-accent">#{selectedIssue.indexNumber}</strong> ·{" "}
                           {selectedIssue.coordinateLabel}
                         </span>
                       </div>
@@ -490,7 +492,7 @@ export function WorkbenchIssuePanel({
                         {selectedIssue.tool && <span>{selectedIssue.tool}</span>}
                         {selectedIssue.annotationCount !== undefined &&
                           selectedIssue.annotationCount > 0 && (
-                            <span>· {selectedIssue.annotationCount} 处圈注</span>
+                            <span>{t("· Annotations: {{v0}}", { v0: selectedIssue.annotationCount })}</span>
                           )}
                         <span
                           className={
@@ -498,7 +500,7 @@ export function WorkbenchIssuePanel({
                           }
                         >
                           · v{selectedIssue.version}
-                          {selectedIssue.staleVersion ? " · 非当前版本" : ""}
+                          {selectedIssue.staleVersion ? t(" · Not the current version") : ""}
                         </span>
                       </div>
                     </div>
@@ -507,7 +509,7 @@ export function WorkbenchIssuePanel({
                       onClick={() => void handleDelete(selectedIssue.id)}
                       disabled={busy !== null}
                       className="shrink-0 rounded p-1 text-fg-3 transition-colors hover:text-status-error disabled:opacity-40"
-                      title="删除此问题（不影响其他问题）"
+                      title={t("Delete this issue (other issues unchanged)")}
                       data-testid="workbench-issue-delete"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -524,8 +526,8 @@ export function WorkbenchIssuePanel({
                     }
                     onKeyDown={(event) => event.stopPropagation()}
                     rows={4}
-                    placeholder="输入问题说明或返工建议；可引用下方来源标签。"
-                    aria-label="问题建议"
+                    placeholder={t("Enter an issue description or rework suggestion. You can reference source tags below.")}
+                    aria-label={t("Issue suggestion")}
                     className="w-full resize-none rounded-lg border border-border bg-bg-2 p-2 text-xs leading-relaxed text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none"
                   />
 
@@ -537,22 +539,20 @@ export function WorkbenchIssuePanel({
                       data-testid="workbench-issue-saved-state"
                     >
                       <Check className="h-2.5 w-2.5" />
-                      当前版本已保存{savedFeedback.isDraft ? "（草稿）" : ""} · v
+                      {t("Current version saved")}{savedFeedback.isDraft ? t("(draft)") : ""} · v
                       {savedFeedback.itemVersion}
                     </div>
                   ) : historicalFeedback ? (
-                    <div className="text-[10px] text-status-warning">
-                      该问题在 v{historicalFeedback.itemVersion} 有历史反馈；当前 v{itemVersion} 尚未保存
-                    </div>
+                    <div className="text-[10px] text-status-warning">{t("This issue has historical feedback in v{{v0}}; the current v{{v1}} has not been saved", { v0: historicalFeedback.itemVersion, v1: itemVersion })}</div>
                   ) : (
-                    <div className="text-[10px] text-fg-3">当前版本尚未保存反馈</div>
+                    <div className="text-[10px] text-fg-3">{t("No feedback saved for the current version")}</div>
                   )}
 
                   {provenanceTags.length > 0 || unresolvedTagIds.length > 0 ? (
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className="inline-flex items-center text-[10px] text-fg-3" title="引用来源（点击插入 @ 引用并随反馈保存）">
+                      <span className="inline-flex items-center text-[10px] text-fg-3" title={t("Source references (click to insert an @reference and save with feedback)")}>
                         <Tag className="h-2.5 w-2.5" />
-                        <span className="sr-only">引用来源（点击插入 @ 引用并随反馈保存）</span>
+                        <span className="sr-only">{t("Source references (click to insert an @reference and save with feedback)")}</span>
                       </span>
                       {provenanceTags.map((tag) => {
                         const active = draft?.tagIds.includes(tag.id) ?? false;
@@ -589,17 +589,16 @@ export function WorkbenchIssuePanel({
                               ),
                             })
                           }
-                          title="该来源引用已失效（标签不存在或同名多版本无法确定身份）；保存时不会静默丢弃，可移除后重新选择"
+                          title={t("This source reference is unavailable (missing tag or ambiguous same-name versions). Saving will not silently discard it; remove it and select another reference.")}
                           className="flex items-center gap-1 rounded border border-status-error/40 bg-status-error/10 px-1.5 py-0.5 font-mono text-[10px] text-status-error"
                           data-testid="workbench-issue-unresolved-tag"
                         >
                           <CircleAlert className="h-2.5 w-2.5" />
-                          @{id}（引用失效）
-                        </button>
+                          @{id}{t("(reference unavailable)")}</button>
                       ))}
                     </div>
                   ) : (
-                    <div className="sr-only">该条目没有可引用的来源标签</div>
+                    <div className="sr-only">{t("This item has no source tags to reference")}</div>
                   )}
 
                   <div className="flex items-center gap-1.5 pt-0.5">
@@ -608,7 +607,7 @@ export function WorkbenchIssuePanel({
                       onClick={() => void handleSave(false)}
                       disabled={busy !== null || (draft?.text.trim().length ?? 0) === 0}
                       className="flex flex-1 items-center justify-center gap-1 rounded-md bg-accent px-2 py-1 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent-strong disabled:opacity-40"
-                      title="保存反馈（不发布交接，不通知 Agent）"
+                      title={t("Save feedback (does not publish a handoff or notify the Agent)")}
                       data-testid="workbench-issue-save"
                     >
                       {busy === "save" ? (
@@ -616,14 +615,13 @@ export function WorkbenchIssuePanel({
                       ) : (
                         <Check className="h-3 w-3" />
                       )}
-                      保存反馈
-                    </button>
+                      {t("Save feedback")}</button>
                     <button
                       type="button"
                       onClick={() => void handleSave(true)}
                       disabled={busy !== null || (draft?.text.trim().length ?? 0) === 0}
                       className="flex flex-1 items-center justify-center gap-1 rounded-md border border-status-warning/50 bg-status-warning/10 px-2 py-1 text-xs font-medium text-status-warning transition-colors hover:bg-status-warning/20 disabled:opacity-40"
-                      title="保存反馈并把条目标为待返工（仍需发布交接）"
+                      title={t("Save feedback and mark for rework (handoff publication still required)")}
                       data-testid="workbench-issue-rework"
                     >
                       {busy === "rework" ? (
@@ -631,8 +629,7 @@ export function WorkbenchIssuePanel({
                       ) : (
                         <MessageSquareWarning className="h-3 w-3" />
                       )}
-                      保存并标返工
-                    </button>
+                      {t("Save and mark for rework")}</button>
                   </div>
                 </div>
               </>
@@ -640,7 +637,7 @@ export function WorkbenchIssuePanel({
 
             <div className="space-y-1.5">
               <div className="text-[11px] font-medium text-fg-2">
-                全部问题 <span className="font-mono text-fg-3">({issues.length})</span>
+                {t("All issues")}<span className="font-mono text-fg-3">({issues.length})</span>
               </div>
               {issues.map((issue) => {
                 const active = issue.id === selectedIssue?.id;
@@ -672,15 +669,15 @@ export function WorkbenchIssuePanel({
                       </span>
                     </div>
                     <div className="mt-0.5 line-clamp-2 text-xs text-fg">
-                      {issue.note || "（无说明）"}
+                      {issue.note || t("(no description)")}
                     </div>
                   </button>
                   <div className="pointer-events-none absolute right-1.5 top-1.5 flex gap-1 rounded bg-bg-1 p-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
                     <button
                       type="button"
                       onClick={() => onSelectIssue(issue.id)}
-                      title={`定位问题 #${issue.indexNumber}`}
-                      aria-label={`定位问题 #${issue.indexNumber}`}
+                      title={t("Locate issue #{{v0}}", { v0: issue.indexNumber })}
+                      aria-label={t("Locate issue #{{v0}}", { v0: issue.indexNumber })}
                       className="rounded p-1 text-accent hover:bg-bg-3 focus-visible:outline focus-visible:outline-accent"
                     >
                       <Crosshair className="h-3.5 w-3.5" />
@@ -689,8 +686,8 @@ export function WorkbenchIssuePanel({
                       type="button"
                       onClick={() => void handleDelete(issue.id)}
                       disabled={busy !== null}
-                      title={`删除问题 #${issue.indexNumber}`}
-                      aria-label={`删除问题 #${issue.indexNumber}`}
+                      title={t("Delete issue #{{v0}}", { v0: issue.indexNumber })}
+                      aria-label={t("Delete issue #{{v0}}", { v0: issue.indexNumber })}
                       className="rounded p-1 text-status-error hover:bg-status-error/10 disabled:opacity-40 focus-visible:outline focus-visible:outline-status-error"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -703,11 +700,9 @@ export function WorkbenchIssuePanel({
 
             {lastFeedback && (
               <div className="rounded-lg border border-border bg-bg-2 p-2">
-                <div className="text-[10px] font-medium text-fg-3">
-                  最近保存的条目反馈{lastFeedback.isDraft ? "（草稿）" : ""}
-                </div>
+                <div className="text-[10px] font-medium text-fg-3">{t("Latest saved item feedback{{v0}}", { v0: lastFeedback.isDraft ? t("(draft)") : "" })}</div>
                 <div className="mt-0.5 line-clamp-3 text-[11px] text-fg-2">
-                  {lastFeedback.text || "（空）"}
+                  {lastFeedback.text || t("(empty)")}
                 </div>
                 {lastFeedback.referencedTagIds.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">

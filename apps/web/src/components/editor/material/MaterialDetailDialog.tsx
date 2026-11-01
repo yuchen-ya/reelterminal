@@ -125,14 +125,14 @@ export function MaterialDetailDialog() {
     }
     await load(record.id);
     await refresh();
-    toast.success(t("material.saved"), result.value.material.title);
+    toast.success(t("material.saved"), result.value.material.title, { localizeMessage: false });
   };
 
   const attach = async () => {
     if (!record) return;
     setBusy(true);
     if (record.kind === "instruction") {
-      try { await addLibraryInstruction(useProjectStore, record); toast.success(t("material.attached"), record.title); }
+      try { await addLibraryInstruction(useProjectStore, record); toast.success(t("material.attached"), record.title, { localizeMessage: false }); }
       catch (error) { toast.error(t("material.attachFailed"), String(error)); }
       finally { setBusy(false); }
       return;

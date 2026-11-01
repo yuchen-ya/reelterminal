@@ -1,3 +1,7 @@
+import { afterEach } from "vitest";
+import { changeAppLanguage, SYSTEM_LANGUAGE, t } from "../i18n";
+import { legacyCleanupHandoffIdentity } from "./cleanup-handoff-identity";
+afterEach(() => changeAppLanguage(SYSTEM_LANGUAGE));
 import { describe, expect, it, beforeEach } from "vitest";
 import { createEmptyProject } from "../stores/project/project-helpers";
 import { useProjectStore } from "../stores/project-store";
@@ -117,4 +121,23 @@ describe("cleanup handoff", () => {
     await expect(publishCleanupReview(target, ["node-a", "node-a"]))
       .rejects.toThrow("contains duplicates");
   });
+  it("keeps a legacy cleanup task identical across language changes and display-copy changes", async () => {
+    const identity = legacyCleanupHandoffIdentity("purge-work-files", [], ["file-a"]);
+    expect(identity.scope).toBe("清理选中的临时文件与未采用结果；选中节点 0 个；选中过程文件 file-a。另审查未采用生成尝试和失败作业残留，无法确认用途的文件保留。");
+    await changeAppLanguage("zh-CN");
+    const first = await publishCleanupReview({ ...target, ...identity, presentation: { scope: "本次显示说明", retention: "保留用户原件" } }, []);
+    expect(first.title).toBe(t("Review cleanup for export {{exportId}}", { exportId: target.exportId }));
+    await changeAppLanguage("en");
+    const next = { ...target, ...legacyCleanupHandoffIdentity("purge-work-files", [], ["file-a"]), presentation: { scope: "Display-only scope", retention: "Keep user originals" } };
+    expect(await publishCleanupReview(next, [])).toEqual(first);
+    expect(useProjectStore.getState().project.requirements?.items).toHaveLength(1);
+    const reviewing = await advanceCleanupReviewPhase(next, [], "reviewing");
+    expect(reviewing.id).toBe(first.id);
+    expect(reviewing.cleanupHandoff?.scope).toBe(identity.scope);
+    expect(reviewing.cleanupHandoff?.retention).toBe(identity.retention);
+    await advanceCleanupReviewPhase(next, [], "awaiting_confirmation");
+    await expect(advanceCleanupReviewPhase(next, [], "executing")).rejects.toThrow("User confirmation");
+    expect(useProjectStore.getState().project.requirements?.items).toHaveLength(1);
+  });
+
 });

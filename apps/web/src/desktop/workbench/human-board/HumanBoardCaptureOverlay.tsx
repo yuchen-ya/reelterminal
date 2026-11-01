@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
@@ -31,6 +33,7 @@ export function HumanBoardCaptureOverlay({
   onConfirm,
   onCancel,
 }: HumanBoardCaptureOverlayProps): JSX.Element {
+  const { t } = useTranslation();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<CaptureShapeMode>("rect");
   const [transparentBg, setTransparentBg] = useState(false);
@@ -158,18 +161,18 @@ export function HumanBoardCaptureOverlay({
 
   const hintText =
     mode === "rect"
-      ? "拖拽框选矩形区域"
+      ? translate("Drag to select a rectangular region")
       : mode === "polygon"
         ? isClosed
-          ? "可拖拽顶点微调轮廓 · 回车生成"
+          ? translate("Drag vertices to adjust the outline · Enter to generate")
           : vertices.length === 0
-            ? "点击画面依次添加多边形顶点"
+            ? translate("Click to add polygon vertices")
             : vertices.length < 3
-              ? `已添加 ${vertices.length} 个点（至少 3 个点）`
-              : "点击起点或双击闭合 · Backspace 退格"
+              ? translate("Points added: {{v0}} (at least 3 required)", { v0: vertices.length })
+              : translate("Click the start point or double-click to close · Backspace to undo a point")
         : isClosed
-          ? "已闭合自由选区 · 重新拖拽可重绘"
-          : "按住左键自由涂抹轮廓，松开自动闭合";
+          ? translate("Freehand selection closed · Drag again to redraw")
+          : translate("Hold the left mouse button to draw an outline; release to close it");
 
   return (
     <div
@@ -303,7 +306,7 @@ export function HumanBoardCaptureOverlay({
             }`}
           >
             <Square className="h-3 w-3" />
-            <span>矩形</span>
+            <span>{t("Rectangle")}</span>
           </button>
           <button
             type="button"
@@ -316,7 +319,7 @@ export function HumanBoardCaptureOverlay({
             }`}
           >
             <Pentagon className="h-3 w-3" />
-            <span>多边形</span>
+            <span>{t("Polygon")}</span>
           </button>
           <button
             type="button"
@@ -329,7 +332,7 @@ export function HumanBoardCaptureOverlay({
             }`}
           >
             <Lasso className="h-3 w-3" />
-            <span>自由形状</span>
+            <span>{t("Freehand")}</span>
           </button>
         </div>
 
@@ -341,7 +344,7 @@ export function HumanBoardCaptureOverlay({
             className="h-3.5 w-3.5 rounded border-border accent-accent"
             data-testid="human-board-capture-transparent"
           />
-          <span>透明底</span>
+          <span>{t("Transparent background")}</span>
         </label>
 
         <div className="h-3.5 w-px bg-border" />
@@ -352,7 +355,7 @@ export function HumanBoardCaptureOverlay({
             type="button"
             onClick={resetSelection}
             className={wbButton.ghost}
-            title="重置选区"
+            title={t("Reset selection")}
             data-testid="human-board-capture-reset"
           >
             <RotateCcw className="h-3.5 w-3.5" />
@@ -365,9 +368,7 @@ export function HumanBoardCaptureOverlay({
             className={wbButton.secondary}
             data-testid="human-board-capture-close-polygon"
             onClick={() => setIsClosed(true)}
-          >
-            闭合轮廓
-          </button>
+          >{t("Close outline")}</button>
         )}
 
         <button
@@ -378,16 +379,12 @@ export function HumanBoardCaptureOverlay({
           onClick={() => {
             if (region) onConfirm(region);
           }}
-        >
-          生成 PNG
-        </button>
+        >{t("Generate PNG")}</button>
         <button
           type="button"
           className={wbButton.secondary}
           onClick={onCancel}
-        >
-          取消
-        </button>
+        >{t("review.cancel")}</button>
       </div>
 
       {/* Rect visual selection box */}

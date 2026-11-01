@@ -1,3 +1,4 @@
+import { getAppLocale } from "../i18n";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import i18next from "i18next";
@@ -166,7 +167,7 @@ function expectedFirstNodeName(): string {
  * formatToParts, even for the same locale and options.
  */
 function timestampNodeName(time: number): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(getAppLocale(), {
     month: "numeric",
     day: "numeric",
     hour: "2-digit",

@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 /**
  * Voiceover / music task history and artifact management.
  *
@@ -248,7 +249,7 @@ function TaskRow({
           data-testid="amt-auto-confirm-notice"
           className="mt-1.5 rounded-md border border-status-warning/30 bg-status-warning/8 px-2 py-1.5 text-[10px] leading-relaxed text-status-warning"
         >
-          {t("agentMediaTasks.autoConfirmBadge")}：{record.autoConfirmNotice}
+          {t("agentMediaTasks.autoConfirmBadge")}：<LocalizedMessage>{record.autoConfirmNotice}</LocalizedMessage>
         </p>
       ) : null}
       {record.status === "error" || record.failureReason ? (
@@ -256,8 +257,8 @@ function TaskRow({
           role="alert"
           className="mt-1.5 rounded-md border border-status-error/30 bg-status-error/8 px-2 py-1.5 text-[10px] leading-relaxed text-status-error"
         >
-          {record.error ? `${record.error.code}：` : ""}
-          {record.failureReason}
+          <LocalizedMessage>{record.error ? `${record.error.code}：` : ""}</LocalizedMessage>
+          <LocalizedMessage>{record.failureReason}</LocalizedMessage>
         </p>
       ) : null}
       {rowError ? (
@@ -266,7 +267,7 @@ function TaskRow({
           data-testid="amt-row-error"
           className="mt-1.5 rounded-md border border-status-error/30 bg-status-error/8 px-2 py-1.5 text-[10px] leading-relaxed text-status-error"
         >
-          {rowError.message}
+          <LocalizedMessage>{rowError.message}</LocalizedMessage>
         </p>
       ) : null}
       {record.status === "awaiting_import" ? (
@@ -527,7 +528,7 @@ export const AgentMediaTaskDialog: React.FC = () => {
                   {t("agentMediaTasks.listFailedTitle")}
                 </p>
                 <p className="mt-1 break-all text-[10px] leading-relaxed text-fg-muted">
-                  {listError}
+                  <LocalizedMessage>{listError}</LocalizedMessage>
                 </p>
                 <Button
                   label={t("agentMediaTasks.retry")}

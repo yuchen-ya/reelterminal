@@ -1,3 +1,4 @@
+import { t as translate } from "../../i18n";
 import { saveModelObservation } from "../../services/review-workspace/model-feedback";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MediaItem, WorkbenchHandoff, WorkbenchProjectState } from "@reelterminal/core";
@@ -42,7 +43,7 @@ function commandReadScope(name: keyof WorkbenchSlice, args: unknown[]): ReviewRe
 function outcome(error: unknown): Extract<WorkbenchMutationResult, { ok: false }> {
   const code = (error as { code?: unknown })?.code;
   if (typeof code === "string" && (FACADE_ERROR_CODES as readonly string[]).includes(code)) return { ok: false, code, message: (error as Error).message };
-  if (error instanceof DOMException && error.name === "QuotaExceededError") return { ok: false, code: "ACTION_FAILED", message: "存储空间不足，审阅修改未提交" };
+  if (error instanceof DOMException && error.name === "QuotaExceededError") return { ok: false, code: "ACTION_FAILED", message: translate("Storage is full; review changes were not committed") };
   throw error;
 }
 
@@ -127,7 +128,7 @@ export function useReviewController(target: Target) {
         }
         return;
       }
-      throw reviewError("CONFLICT", "审阅内容正在更新，请刷新后重试");
+      throw reviewError("CONFLICT", translate("Review content is being updated; refresh and try again"));
     };
     void load().catch(problem => {
       if (!cancelled) { setError(problem instanceof Error ? problem.message : String(problem)); setLoading(false); }
@@ -164,7 +165,7 @@ export function useReviewController(target: Target) {
     };
     void load().catch(problem => {
       if (!cancelled) {
-        setError(`审阅内容未载入，尚未显示最新版本：${problem instanceof Error ? problem.message : String(problem)}`);
+        setError(translate("Review content has not loaded; the latest version is not shown: {{v0}}", { v0: problem instanceof Error ? problem.message : String(problem) }));
         setDetailLoading(false);
       }
     });
@@ -211,12 +212,12 @@ export function useReviewController(target: Target) {
     let ownRevision = overview?.node.revision;
     return async (name: keyof WorkbenchSlice, args: unknown[]): Promise<WorkbenchMutationOutcome> => {
       const expected = ownRevision;
-      if (expected === undefined) return { ok: false, code: "CONFLICT", message: "审阅节点尚未载入" };
-      if (loaded && loaded.node.revision !== expected) return { ok: false, code: "CONFLICT", message: "新版本内容尚未载入，请稍后重试" };
+      if (expected === undefined) return { ok: false, code: "CONFLICT", message: translate("The review node has not loaded") };
+      if (loaded && loaded.node.revision !== expected) return { ok: false, code: "CONFLICT", message: translate("The new version has not loaded; try again shortly") };
       try {
         const readScope = commandReadScope(name, args);
         const snapshot = await reviewService.getNode(target, readScope);
-        if (snapshot.node.revision !== expected) throw reviewError("CONFLICT", "审阅节点已更新，请刷新后重试");
+        if (snapshot.node.revision !== expected) throw reviewError("CONFLICT", translate("The review node has changed; refresh and try again"));
         const repairResource = name === "commitWorkbenchImageRepair" ? prepared.current.get(args[1] as string) : undefined;
         const commands = createWorkbenchCommands(() => snapshot.state, async (actions, label, actor) => {
           if (!actions.length) return { ok: true };
@@ -255,7 +256,7 @@ export function useReviewController(target: Target) {
   const commandSource = useCallback(() => commands, [commands]);
 
   const history = useCallback(async (direction: "undo" | "redo"): Promise<WorkbenchMutationResult> => {
-    if (!overview) return { ok: false, code: "CONFLICT", message: "审阅节点尚未载入" };
+    if (!overview) return { ok: false, code: "CONFLICT", message: translate("The review node has not loaded") };
     try {
       await reviewService.history({ target, expectedNodeRevision: overview.node.revision, requestId: crypto.randomUUID(), actor: "human", direction });
       return { ok: true };
@@ -356,10 +357,10 @@ export function useReviewController(target: Target) {
   const commitBranchNod = useCallback(async (items: readonly WorkbenchItemView[]): Promise<WorkbenchMutationResult> => {
     try {
       const snapshot = await reviewService.getNode(target);
-      if (snapshot.node.revision !== overview?.node.revision) throw reviewError("CONFLICT", "审阅节点已更新，请刷新后重试");
+      if (snapshot.node.revision !== overview?.node.revision) throw reviewError("CONFLICT", translate("The review node has changed; refresh and try again"));
       const views = items.map(view => {
         const item = snapshot.state.items.find(item => item.id === view.id);
-        if (!item) throw reviewError("NOT_FOUND", "所选条目不属于此节点");
+        if (!item) throw reviewError("NOT_FOUND", translate("The selected item does not belong to this node"));
         return toItemView(item, id => mediaItems.find(media => media.id === id), snapshot.state.feedback.filter(feedback => feedback.itemId === item.id), null, null);
       });
       return await controller.commitBranchNod(views);
@@ -372,7 +373,7 @@ export function useReviewController(target: Target) {
     selectItem: (id: string, modifiers?: import("./types").SelectModifiers) => { readItem(id); controller.selectItem(id, modifiers); },
     focusItem: (id: string) => { readItem(id); controller.focusItem(id); },
     saveModelObservation: async (input: import("../../services/review-workspace/model-feedback").SaveModelObservation): Promise<WorkbenchMutationResult> => {
-    try { if (!overview) throw reviewError("CONFLICT", "节点未载入"); await saveModelObservation(target, overview.node.revision, input); return { ok: true }; }
+    try { if (!overview) throw reviewError("CONFLICT", translate("Node not loaded")); await saveModelObservation(target, overview.node.revision, input); return { ok: true }; }
     catch (problem) { refresh(); return outcome(problem); }
   } }, overview, loading: loading || detailLoading || awaitingCurrentDetail || previewLoading, error, refresh, pageNumber: previousCursors.length + 1,
     hasPrevious: previousCursors.length > 0, hasNext: !!page.cursor,

@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { formatDuration } from "../../utils/format";
 import {
@@ -644,7 +645,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
                           {label}
                         </div>
                         <div className="text-[10px] text-text-muted mt-0.5">
-                          {hint}
+                          <LocalizedMessage>{hint}</LocalizedMessage>
                         </div>
                       </SelectableCard>
                     ))}

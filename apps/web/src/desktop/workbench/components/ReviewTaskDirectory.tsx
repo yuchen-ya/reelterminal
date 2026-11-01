@@ -1,3 +1,6 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { getAppLocale } from "../../../i18n";
+import { t as translate } from "../../../i18n";
 import type { JSX, ReactNode } from "react";
 import type React from "react";
 import { useRef, useState } from "react";
@@ -130,7 +133,7 @@ export function ReviewTaskDirectory({
       if (!source || !UUID.test(source.nodeId) || source.target?.kind !== "review" ||
         source.target.reviewWorkspaceId !== directoryScope.target.reviewWorkspaceId ||
         source.target.instanceId !== directoryScope.target.instanceId || source.revision !== directoryScope.revision) {
-        throw new Error("审阅目录已更新，请重新拖放任务");
+        throw new Error(translate("The review directory has changed. Drag the task again."));
       }
       if (source.groupId !== destination) onMoveNode?.(source.nodeId, destination, directoryScope.revision);
     } catch (error) {
@@ -176,7 +179,7 @@ export function ReviewTaskDirectory({
         {!node.trashedAt && <Item disabled={busy} onSelect={() => onUpdateNode(node.id, { archived: !node.archivedAt })}>
           {t(node.archivedAt ? "review.unarchive" : "review.archive")}
         </Item>}
-        {onBranches && <Item disabled={busy} onSelect={() => onBranches(node)} data-testid="review-branches-open">查看历史任务关联</Item>}
+        {onBranches && <Item disabled={busy} onSelect={() => onBranches(node)} data-testid="review-branches-open">{t("View historical task links")}</Item>}
         <Separator />
         <Item disabled={busy} onSelect={() => onUpdateNode(node.id, { trashed: !node.trashedAt })}>
           {t(node.trashedAt ? "review.restore" : "review.moveToTrash")}
@@ -328,7 +331,7 @@ export function ReviewTaskDirectory({
       </form>}
 
       {/* 3 & 4 & 5. On-demand Filter/Search/Groups Drawer */}
-      {dropError && <p role="alert" className="text-xs text-status-error">{dropError}</p>}
+      {dropError && <p role="alert" className="text-xs text-status-error"><LocalizedMessage>{dropError}</LocalizedMessage></p>}
       <div className={showFilterDrawer ? "space-y-1.5" : "sr-only"}>
         <div className="relative px-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-fg-3 pointer-events-none" />
@@ -438,7 +441,7 @@ export function ReviewTaskDirectory({
                   <div
                     key={group.id}
                     data-review-node-drop-group={group.id}
-                    title="拖入审阅任务以更改分类"
+                    title={t("Drop a review task to change its category")}
                     onDragOver={groupOver}
                     onDrop={event => groupDrop(event, group.id)}
                     className={`group flex items-center justify-between rounded px-1.5 py-1 text-xs transition-colors ${
@@ -515,10 +518,10 @@ export function ReviewTaskDirectory({
                     >
                       {node.pinned ? "★ " : ""}
                       {node.name}
-                      {(node.incomingRevision ?? 0) > (seen[reviewSeenKey(node.id, "node")] ?? 0) && <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-label="有未查看的新内容" />}
+                      {(node.incomingRevision ?? 0) > (seen[reviewSeenKey(node.id, "node")] ?? 0) && <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-label={t("Unseen updates available")} />}
                     </span>
                     <span className="text-[10px] text-fg-3">
-                      {new Date(node.updatedAt).toLocaleDateString()}
+                      {new Date(node.updatedAt).toLocaleDateString(getAppLocale())}
                     </span>
                   </span>
                 </button>
@@ -552,7 +555,7 @@ export function ReviewTaskDirectory({
           )}
         </div>
       </div>
-      <button type="button" className="flex items-center gap-2 border-t border-border px-2 py-2 text-xs text-fg-2 hover:text-fg" aria-label="打开回收站" onClick={() => { onSelectView("trash"); onSelectGroup(""); }}>
+      <button type="button" className="flex items-center gap-2 border-t border-border px-2 py-2 text-xs text-fg-2 hover:text-fg" aria-label={t("Open the recycle bin")} onClick={() => { onSelectView("trash"); onSelectGroup(""); }}>
         <Trash2 className="h-3.5 w-3.5" />{t("review.trash")}
       </button>
     </aside>

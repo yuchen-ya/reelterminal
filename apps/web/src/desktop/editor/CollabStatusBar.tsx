@@ -100,7 +100,7 @@ export function CollabStatusBar({ onConnectRequested }: {
         </span>
         <span aria-hidden>·</span>
         <span data-testid="agent-access-mode">
-          {onConnectRequested ? "未连接" : t(
+          {onConnectRequested ? t("Not connected") : t(
             access === "write"
               ? "desktop.collaboration.writable"
               : "desktop.collaboration.readOnly",
@@ -135,9 +135,7 @@ export function CollabStatusBar({ onConnectRequested }: {
           data-testid="export-cleanup-entry"
           onClick={() => useUIStore.getState().setDesktopPage("deliver")}
           className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] text-fg-2 transition-colors duration-150 hover:bg-hover hover:text-fg motion-reduce:transition-none"
-        >
-          导出与整理
-        </button>
+        >{t("Exports and cleanup")}</button>
         <button
           type="button"
           data-testid="requirement-board-entry"

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type {
   JSX,
   PointerEvent as ReactPointerEvent,
@@ -86,6 +87,7 @@ export function ImageStage({
   onStagePointerCancel,
   onWheel,
 }: ImageStageProps): JSX.Element {
+  const { t } = useTranslation();
   const loupeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [loupePos, setLoupePos] = useState<{
     readonly normX: number;
@@ -319,7 +321,7 @@ export function ImageStage({
       {!ready && (
         <div className="absolute flex max-w-md flex-col items-center gap-2 rounded-xl border border-border bg-bg-1 px-6 py-8 text-center">
           <LoaderCircle className="h-6 w-6 animate-spin text-fg-3" />
-          <div className="text-sm text-fg-2">媒体加载中…</div>
+          <div className="text-sm text-fg-2">{t("Loading media…")}</div>
           <div className="text-xs text-fg-3">{activeMedia?.displayName}</div>
         </div>
       )}

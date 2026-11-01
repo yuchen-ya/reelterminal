@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Volume2,
@@ -659,7 +660,7 @@ export const AudioDuckingSection: React.FC<AudioDuckingSectionProps> = ({
         >
           <AlertCircle size={12} className="text-red-400" aria-hidden />
           <Text type="supporting" className="text-[9px] text-red-400">
-            {errorMessage}
+            <LocalizedMessage>{errorMessage}</LocalizedMessage>
           </Text>
         </Card>
       )}

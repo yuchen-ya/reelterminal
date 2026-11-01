@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftText as Text } from "@reelterminal/ui";
@@ -409,7 +410,7 @@ export const EditorInterface: React.FC = () => {
           <Text type="supporting" color="primary" className="text-fg-2 text-sm">{t("Initializing editor…")}</Text>
           <Text type="supporting" color="secondary" className="text-fg-muted text-xs mt-2">{initStatus}</Text>
           {initError && (
-            <Text type="supporting" className="text-status-error text-xs mt-2">{initError}</Text>
+            <Text type="supporting" className="text-status-error text-xs mt-2"><LocalizedMessage>{initError}</LocalizedMessage></Text>
           )}
         </div>
       </div>

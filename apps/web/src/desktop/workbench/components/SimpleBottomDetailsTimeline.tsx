@@ -1,3 +1,7 @@
+import { localizeUiMessage } from "../../../i18n/messages";
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 /**
  * Bottom details dock for the AI material workbench.
  *
@@ -56,28 +60,28 @@ export interface SimpleBottomDetailsTimelineProps {
 }
 
 const TYPE_LABELS: Record<WorkbenchContentType, string> = {
-  image: "图片",
-  text: "文本",
-  data: "数据",
-  video: "视频",
-  model3d: "3D 模型",
+  get image() { return translate("review.kind.image"); },
+  get text() { return translate("text"); },
+  get data() { return translate("Data"); },
+  get video() { return translate("review.kind.video"); },
+  get model3d() { return translate("review.kind.model3d"); },
 };
 
 const STATUS_LABELS: Record<WorkbenchDecisionStatus, string> = {
-  pending: "待处理",
-  kept: "保留",
-  modified: "已修改",
-  rework: "待返工",
-  discarded: "已丢弃",
+  get pending() { return translate("requirementBoard.status.ready"); },
+  get kept() { return translate("Keep"); },
+  get modified() { return translate("Modified"); },
+  get rework() { return translate("Needs rework"); },
+  get discarded() { return translate("Discarded"); },
 };
 
 function ProvenanceChip({ tag }: { tag: WorkbenchProvenanceTag }) {
   const verificationLabel =
     tag.verification === "verified"
-      ? "已验证"
+      ? translate("Verified")
       : tag.verification === "declared"
-        ? "已声明(未验证)"
-        : "验证状态未知";
+        ? translate("Declared (unverified)")
+        : translate("Verification status unknown");
   const iconClass =
     tag.verification === "verified"
       ? "text-accent"
@@ -113,6 +117,7 @@ export function SimpleBottomDetailsTimeline({
   onRedoLast,
   onAddUserTag,
 }: SimpleBottomDetailsTimelineProps) {
+  const { t } = useTranslation();
   const [newTagInput, setNewTagInput] = useState<string>("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -126,7 +131,7 @@ export function SimpleBottomDetailsTimeline({
       : currentItem
         ? [currentItem.id]
         : [];
-  const targetLabel = selectedIds !== undefined ? `选中 ${targetIds.length} 项` : "当前项";
+  const targetLabel = selectedIds !== undefined ? translate("Selected items: {{v0}}", { v0: targetIds.length }) : translate("Current item");
 
   const runMutation = useCallback(
     async (action: () => Promise<WorkbenchMutationResult>) => {
@@ -187,7 +192,7 @@ export function SimpleBottomDetailsTimeline({
     >
       {actionError && (
         <div className="px-3 py-1 border-b border-border bg-status-error/10 text-status-error flex items-center justify-between gap-2 shrink-0 text-xs">
-          <span className="truncate">{actionError}</span>
+          <span className="truncate"><LocalizedMessage>{actionError}</LocalizedMessage></span>
           <button
             type="button"
             onClick={() => setActionError(null)}
@@ -210,11 +215,11 @@ export function SimpleBottomDetailsTimeline({
           {(focus || conclusion) && (
             <div className="grid gap-x-4 gap-y-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))" }}>
               {focus && <section className="min-w-0">
-                <h3 className="mb-1 text-[11px] font-medium text-fg-3">重点</h3>
+                <h3 className="mb-1 text-[11px] font-medium text-fg-3">{t("Focus")}</h3>
                 <p className="whitespace-pre-wrap text-xs leading-relaxed text-fg" data-testid="workbench-review-focus">{focus}</p>
               </section>}
               {conclusion && <section className="min-w-0">
-                <h3 className="mb-1 text-[11px] font-medium text-fg-3">结论</h3>
+                <h3 className="mb-1 text-[11px] font-medium text-fg-3">{t("Decision")}</h3>
                 <p className="whitespace-pre-wrap text-xs leading-relaxed text-fg" data-testid="workbench-review-conclusion">{conclusion}</p>
               </section>}
             </div>
@@ -223,7 +228,7 @@ export function SimpleBottomDetailsTimeline({
           {!!lineage?.steps.length && <div className="flex flex-wrap gap-2 text-[11px] text-fg-2">
             {lineage.steps.map(step => <span key={step.version}>v{step.version}: {step.summary}</span>)}
           </div>}
-          {parentItemId && <button type="button" onClick={() => onSelectItemById(parentItemId)} className="text-[11px] text-accent hover:underline">查看来源条目</button>}
+          {parentItemId && <button type="button" onClick={() => onSelectItemById(parentItemId)} className="text-[11px] text-accent hover:underline">{t("View source item")}</button>}
           {hasTags && <div className="flex flex-wrap gap-1.5">
             {currentItem.provenanceTags.map(tag => <ProvenanceChip key={tag.id} tag={tag} />)}
             {currentItem.userCategoryTags.map(tag => <span key={tag} className="text-[11px] text-fg-2">#{tag}</span>)}
@@ -239,41 +244,35 @@ export function SimpleBottomDetailsTimeline({
             type="button"
             disabled={busy || targetIds.length === 0}
             onClick={() => handleCommit("kept", targetIds)}
-            title={`采用${targetLabel}的当前版本 (快捷键: 1)`}
+            title={t("Keep the current version of {{v0}} (shortcut: 1)", { v0: targetLabel })}
             className={`h-7 px-3 rounded-md text-xs font-semibold transition-colors disabled:opacity-40 inline-flex items-center justify-center select-none ${
               currentItem?.status === "kept"
                 ? "bg-accent text-accent-fg shadow-sm"
                 : "border border-accent/50 bg-accent/15 text-accent hover:bg-accent/25"
             }`}
-          >
-            保留
-          </button>
+          >{t("Keep")}</button>
           <button
             type="button"
             disabled={busy || targetIds.length === 0}
             onClick={() => handleCommit("rework", targetIds)}
-            title={`标记${targetLabel}需要修改；在问题栏填写具体要求 (快捷键: 3)`}
+            title={t("Mark {{v0}} for revision; enter details in the issues panel (shortcut: 3)", { v0: targetLabel })}
             className={`h-7 px-3 rounded-md text-xs font-semibold transition-colors disabled:opacity-40 inline-flex items-center justify-center select-none ${
               currentItem?.status === "rework"
                 ? "bg-amber-500 text-black shadow-sm"
                 : "border border-amber-500/50 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
             }`}
-          >
-            返工
-          </button>
+          >{t("Rework")}</button>
           <button
             type="button"
             disabled={busy || targetIds.length === 0}
             onClick={() => handleCommit("discarded", targetIds)}
-            title={`不采用${targetLabel}，保留原件与历史，可撤销 (快捷键: 4)`}
+            title={t("Discard {{v0}} while preserving its original and history; undo is available (shortcut: 4)", { v0: targetLabel })}
             className={`h-7 px-3 rounded-md text-xs font-semibold transition-colors disabled:opacity-40 inline-flex items-center justify-center select-none ${
               currentItem?.status === "discarded"
                 ? "bg-red-600 text-white shadow-sm"
                 : "border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20"
             }`}
-          >
-            丢弃
-          </button>
+          >{t("Discard")}</button>
 
           {guidance && (
             <button
@@ -282,8 +281,8 @@ export function SimpleBottomDetailsTimeline({
               onClick={() => handleCommit(guidance.nodDecision, [currentItem.id])}
               title={
                 nodExecutable
-                  ? `Agent 建议决定:${STATUS_LABELS[guidance.nodDecision]}(仅作用于当前项)`
-                  : "Agent 建议“已修改”，需先在内容编辑器保存实际修订"
+                  ? t("Agent suggestion: {{v0}} (current item only)", { v0: STATUS_LABELS[guidance.nodDecision] })
+                  : t("The Agent suggests Modified. Save an actual revision in the content editor first.")
               }
               className="h-7 px-2 rounded-md bg-accent/20 border border-accent/40 text-accent hover:bg-accent/30 text-xs font-semibold transition-colors flex items-center gap-1 disabled:opacity-40 select-none shrink-0"
             >
@@ -298,7 +297,7 @@ export function SimpleBottomDetailsTimeline({
                 ? "text-[11px] font-mono text-accent px-1.5 py-0.5 rounded bg-accent/10 border border-accent/30 select-none shrink-0"
                 : "sr-only"
             }
-            title="决定按钮作用范围"
+            title={t("Decision scope")}
           >
             {targetLabel}
           </span>
@@ -306,19 +305,19 @@ export function SimpleBottomDetailsTimeline({
             type="button"
             onClick={onSkipNext}
             className="h-7 w-7 text-xs inline-flex items-center justify-center rounded-md border border-border bg-bg-2 text-fg-2 hover:text-fg hover:bg-bg-3 transition-colors shrink-0"
-            title="跳到下一项"
-            aria-label="下一项"
+            title={t("Advance to next item")}
+            aria-label={t("Next item")}
           >
             <FastForward className="w-3.5 h-3.5" />
-            <span className="sr-only">下一项</span>
+            <span className="sr-only">{t("Next item")}</span>
           </button>
           <button
             type="button"
             onClick={handleUndo}
             disabled={!canUndo || busy}
             className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border bg-bg-2 text-fg-2 hover:text-fg hover:bg-bg-3 disabled:opacity-30 transition-colors shrink-0"
-            title={undoDisabledReason || "撤销上一次审阅操作"}
-            aria-label="撤销上一次审阅操作"
+            title={undoDisabledReason ? localizeUiMessage(undoDisabledReason) : t("Undo the last review action")}
+            aria-label={t("Undo the last review action")}
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
@@ -327,8 +326,8 @@ export function SimpleBottomDetailsTimeline({
             onClick={handleRedo}
             disabled={!canRedo || busy}
             className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border bg-bg-2 text-fg-2 hover:text-fg hover:bg-bg-3 disabled:opacity-30 transition-colors shrink-0"
-            title={redoDisabledReason || "重做审阅操作"}
-            aria-label="重做审阅操作"
+            title={redoDisabledReason ? localizeUiMessage(redoDisabledReason) : t("Redo the review action")}
+            aria-label={t("Redo the review action")}
             data-testid="workbench-redo"
           >
             <Redo2 className="w-3.5 h-3.5" />
@@ -380,11 +379,11 @@ export function SimpleBottomDetailsTimeline({
                   value={newTagInput}
                   onChange={(e) => setNewTagInput(e.target.value)}
                   onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="+ 标签"
+                  placeholder={t("+ Tag")}
                   className="w-14 bg-transparent border-b border-border focus:border-accent px-1 py-0.5 text-xs text-fg placeholder-fg-3 focus:outline-none"
                 />
                 {newTagInput.trim() && (
-                  <button type="submit" className="ml-1 text-accent hover:opacity-80" title="添加标签">
+                  <button type="submit" className="ml-1 text-accent hover:opacity-80" title={t("material.addTags")}>
                     <Plus className="w-3 h-3" />
                   </button>
                 )}
@@ -394,8 +393,8 @@ export function SimpleBottomDetailsTimeline({
                 <button
                   type="button"
                   onClick={() => setShowDetails((v) => !v)}
-                  title={showDetails ? "收起审阅重点与溯源详情" : "查看审阅重点与溯源详情"}
-                  aria-label="审阅详情"
+                  title={showDetails ? t("Collapse review focus and provenance details") : t("View review focus and provenance details")}
+                  aria-label={t("Review details")}
                   className={`h-6 w-6 inline-flex items-center justify-center rounded border transition-colors shrink-0 ${
                     showDetails
                       ? "border-accent/40 bg-accent/15 text-accent"
@@ -407,7 +406,7 @@ export function SimpleBottomDetailsTimeline({
               )}
             </>
           ) : (
-            <span className="text-xs text-fg-3 select-none">{targetIds.length ? `已选 ${targetIds.length} 项` : "未选择条目"}</span>
+            <span className="text-xs text-fg-3 select-none">{targetIds.length ? t("Selected: {{v0}}", { v0: targetIds.length }) : t("No item selected")}</span>
           )}
         </div>
 

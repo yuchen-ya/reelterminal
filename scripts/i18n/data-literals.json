@@ -1,0 +1,260 @@
+[
+  {
+    "file": "apps/desktop/src/main/screen-capture.ts",
+    "sha256": "2cd0f3be8738a86cede1a1452f874f31d569864bbb00cacd4130990f4610cb5c",
+    "reason": "Paired native fallback-menu copy selected from the trusted editor UI locale; OS source names are preserved.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/desktop/src/main/screen-capture.ts",
+    "sha256": "7b6354586b744220d689b4b142eec90d6c416f77a05716618e4092003bdaf1c6",
+    "reason": "Paired native fallback-menu copy selected from the trusted editor UI locale; OS source names are preserved.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/components/editor/panels/ExternalResourcesTab.tsx",
+    "sha256": "078838da4218490b632f45a3cf74015fe030dd9d833c3db6e2fbe4b692616ecc",
+    "reason": "Bilingual search vocabulary; not displayed UI copy.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/components/editor/panels/ExternalResourcesTab.tsx",
+    "sha256": "60033a3bf561e656bd4d70070fba680e0fc1ecd08117e38656e14dad3a1b0a60",
+    "reason": "Bilingual search vocabulary; not displayed UI copy.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/data/external-resources.ts",
+    "sha256": "078838da4218490b632f45a3cf74015fe030dd9d833c3db6e2fbe4b692616ecc",
+    "reason": "Bilingual search vocabulary; localized descriptions are paired en/zh data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/data/external-resources.ts",
+    "sha256": "60033a3bf561e656bd4d70070fba680e0fc1ecd08117e38656e14dad3a1b0a60",
+    "reason": "Bilingual search vocabulary; localized descriptions are paired en/zh data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/desktop/workbench/components/video/video-issue-helpers.ts",
+    "sha256": "1853552f0578dbdf119f447e561bac4f63c9aad504fe145573f004993860b0bc",
+    "reason": "Exact historical marker sentinel; changing its language breaks legacy row identity.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/audio-environment.ts",
+    "sha256": "72f76e5d2331b0b0662022907a913a8a73c2519d9b56cd296b6f4ef66b57ba3b",
+    "reason": "Explicitly paired Chinese/English Agent setup instructions selected by the caller locale.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/audio-environment.ts",
+    "sha256": "a1c50986c49511bc3aeaa6c1f807c1f9cc9b2c17969745e589ffe665894f2240",
+    "reason": "Explicitly paired Chinese/English Agent setup instructions selected by the caller locale.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/cleanup-handoff-identity.ts",
+    "sha256": "0a6286da8453305d36bcae200d6648d9c9e83346f717d54d7b2166b47d600730",
+    "reason": "Persisted legacy cleanup identity used by strict scope/retention equality; display copy is separate.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/cleanup-handoff-identity.ts",
+    "sha256": "0b0ea77839054d3458927749f3b3d5caa72e29504835963414e36af9f89e6506",
+    "reason": "Persisted legacy cleanup identity used by strict scope/retention equality; display copy is separate.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/cleanup-handoff-identity.ts",
+    "sha256": "40447c36c377cb6968465578cb48c7b172cd07035fc8f95079c2aec3fd81fe34",
+    "reason": "Persisted legacy cleanup identity used by strict scope/retention equality; display copy is separate.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/cleanup-handoff-identity.ts",
+    "sha256": "50c1f58ceaf578fae8a60c056a8805b9a13a635f6dac89edeb5dcdfab6a0383c",
+    "reason": "Persisted legacy cleanup identity used by strict scope/retention equality; display copy is separate.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/cleanup-handoff-identity.ts",
+    "sha256": "99650804d43a0d6bb261abc7624e29bec9f915eab88330e17f42e6e706a5dbc0",
+    "reason": "Persisted legacy cleanup identity used by strict scope/retention equality; display copy is separate.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/cleanup-handoff-identity.ts",
+    "sha256": "b6612a84276488ace803e97e6d82d5fc8b2c6dfa1089794987bfe3704c37b2a2",
+    "reason": "Persisted legacy cleanup identity used by strict scope/retention equality; display copy is separate.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/cleanup-handoff-identity.ts",
+    "sha256": "e7f7cf04a61483f465ad1e7fa6a5e81a8d53388e1d93627a1dc540c43561797d",
+    "reason": "Persisted legacy cleanup identity used by strict scope/retention equality; display copy is separate.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/cleanup-handoff-identity.ts",
+    "sha256": "f2212f050c0cb4a9e72d5757b4d72a90a0942abbfbc156d6d49bf514d6065b5b",
+    "reason": "Persisted legacy cleanup identity used by strict scope/retention equality; display copy is separate.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/cleanup-handoff-identity.ts",
+    "sha256": "f5ccf57d7b6661be6833d80f2247c7ad3ebe1143acf3c06646893d55cce80536",
+    "reason": "Persisted legacy cleanup identity used by strict scope/retention equality; display copy is separate.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/services/cleanup-handoff-identity.ts",
+    "sha256": "f7bf0639ff21a76eec5ca01146bc52e06f0986cb64641b1acdc04b359472103c",
+    "reason": "Persisted legacy cleanup identity used by strict scope/retention equality; display copy is separate.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "3bfb6269268340b9435257e71215fc0056c85880a81d8cff42c31113278184d7",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "58ea944d80c985e866ae84847cf85fccb1654fa5595f680e7b7c794e3d7daca0",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "5a1a51b878c23e33a4c57495716e05cd2af30effb63ddc3165a5653cc8a81270",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "7a40a51109bdd263223f69af852163d595466593758178a671a4f009a90abc8e",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "a39d3c60177c09aceef8325f9253c44c69c66a0ac77cebea658c4e6243ac0bd2",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "a4f74155a92b0b1f3e6db6ca625ead419ae31088ca3406085d981a8288d43536",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "a59b0beb20a487090ddcd28a8400197ab8d11c948df609426cb64d47c990a8aa",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "a5ce8e4a695f2e0720f4ccf0d36c3675d26da23699e259711dfa75f37ecfdc69",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "b4222a9471f3922c11d96ae0b76f8da2eae6f83c1d178afbc2785cad9aa57cbe",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "b7dc4682713cdc982201bc289e393685a2633c994d2998e05df28aa1e1364880",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "d0248c04fe9e345d07fe3cd6583fbfbd559d46950280ba46ad36d7b850fdb1f8",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "f809227f4c54c42be32eefa844e7df1347d07294a1e4e7b0a4253cf85c8f0894",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/review-sample.ts",
+    "sha256": "fb7bacb2bcff708f6111d995e395dde64a2ac55d3b97d3719adb7423579bd8ba",
+    "reason": "Authored example review content, including captions, task names and feedback; preserve as data.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/sample-project.ts",
+    "sha256": "4d97595221d7a179689af9bee1b382b6f9fc37c030e0b5782b1e286de352f751",
+    "reason": "Authored example project/media/caption data; language switching must not rewrite it.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/sample-project.ts",
+    "sha256": "60033a3bf561e656bd4d70070fba680e0fc1ecd08117e38656e14dad3a1b0a60",
+    "reason": "Authored example project/media/caption data; language switching must not rewrite it.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/sample-project.ts",
+    "sha256": "7ff43074b9a4775a545b76efc59a254e681439daddf4ba710aced1dbd95bdd65",
+    "reason": "Authored example project/media/caption data; language switching must not rewrite it.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/sample-project.ts",
+    "sha256": "87f577fca6a3a195a6451d6cf4359fb3c5e4c37826d4014d41e390d13be47bbd",
+    "reason": "Authored example project/media/caption data; language switching must not rewrite it.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/sample-project.ts",
+    "sha256": "97984e6d8aad4b174a33f490a3b0678d0a11da04fdf96cb277a47db75e070ae1",
+    "reason": "Authored example project/media/caption data; language switching must not rewrite it.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/sample-project.ts",
+    "sha256": "a8b78f0747133c7cfdc6b91d66929ac830d6f4d328174e79a1aa3fc7933ad303",
+    "reason": "Authored example project/media/caption data; language switching must not rewrite it.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/sample-project.ts",
+    "sha256": "ad2eb9f1b42b996e8f73d9a1dd9a08319b8ef8d8c4beb0812a7c30d743a34e62",
+    "reason": "Authored example project/media/caption data; language switching must not rewrite it.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/sample-project.ts",
+    "sha256": "c20f7618d330a854e70c918789c8028a6ef3e642e7e6abac8e337aba741b3716",
+    "reason": "Authored example project/media/caption data; language switching must not rewrite it.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/sample-project.ts",
+    "sha256": "c3405f8c7d9d392aa3e2d073d5793bce795353c5f7ef0d27f3d6c1c8d2832681",
+    "reason": "Authored example project/media/caption data; language switching must not rewrite it.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/sample-project.ts",
+    "sha256": "c3de2f0a68987a13170215f45d292dc01aba5415478502da265438bdcec96fd2",
+    "reason": "Authored example project/media/caption data; language switching must not rewrite it.",
+    "occurrences": 1
+  },
+  {
+    "file": "apps/web/src/showcase/sample-project.ts",
+    "sha256": "d2fb42d62cf049c88fda0224a2cc4c4ddc10e47f6b88eed22026171275d5653a",
+    "reason": "Authored example project/media/caption data; language switching must not rewrite it.",
+    "occurrences": 1
+  }
+]

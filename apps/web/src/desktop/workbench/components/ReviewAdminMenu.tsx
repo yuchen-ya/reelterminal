@@ -42,8 +42,8 @@ export function ReviewAdminMenu({
           type="button"
           className={wbButton.ghost}
           data-testid="review-admin-menu-trigger"
-          title={t("review.adminMenu", "管理选项")}
-          aria-label={t("review.adminMenu", "管理选项")}
+          title={t("review.adminMenu", t("review.adminMenu"))}
+          aria-label={t("review.adminMenu", t("review.adminMenu"))}
         >
           <MoreHorizontal className="h-4 w-4" />
         </button>
@@ -54,9 +54,7 @@ export function ReviewAdminMenu({
             <DropdownMenuItem
               data-testid="human-board-menu-import"
               onSelect={onImportToBoard}
-            >
-              导入文件到画板…
-            </DropdownMenuItem>
+            >{t("Import files to the board…")}</DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
         )}

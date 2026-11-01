@@ -84,7 +84,7 @@ test("CLI image revisions retain decoded pixels, view state and explicit failure
     const image = () => page.locator('[data-testid="image-stage"] > img').first();
     await vi.waitFor(async () => expect(await image().evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(fixture.width));
     await page.getByTestId("image-mode-navigate").click();
-    await page.getByTestId("image-toolbar").getByRole("button", { name: "放大 (支持滚轮缩放)", exact: true }).click();
+    await page.getByTestId("image-toolbar").getByRole("button", { name: "Zoom in (mouse wheel supported)", exact: true }).click();
     const surface = page.getByTestId("image-stage-pointer-surface");
     const box = (await surface.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -189,7 +189,7 @@ test("CLI image revisions retain decoded pixels, view state and explicit failure
       gate.hold = true; gate.rejectNext = true;
     });
     await page.getByTestId("image-display-repaired").click();
-    await vi.waitFor(async () => expect(await page.getByTestId("image-update-status").textContent()).toMatch(/失败|不可用|未载入/));
+    await vi.waitFor(async () => expect(await page.getByTestId("image-update-status").textContent()).toMatch(/failed|unavailable|not loaded/i));
     expect(await image().getAttribute("src")).toContain(sourceId);
     await evidence.screenshot("failed-new-image-explicit");
     const sameItemFrames = await page.evaluate(() => (window as unknown as { continuityFrames: Array<{ width: number; height: number; opacity: string }> }).continuityFrames.slice());
@@ -216,12 +216,12 @@ test("CLI image revisions retain decoded pixels, view state and explicit failure
     const activity = page.getByTestId("review-command-activity");
     expect(await activity.getAttribute("open")).toBeNull();
     expect(await page.getByTestId("review-command-current").textContent()).toBe("review.repair.inspect");
-    expect(await page.getByTestId("review-command-current-status").textContent()).toContain("成功");
+    expect(await page.getByTestId("review-command-current-status").textContent()).toContain("Succeeded");
     const decodeCount = await page.evaluate(() => (window as unknown as { reviewDecodeGate: { decodes: number } }).reviewDecodeGate.decodes);
     await page.getByTestId("review-command-toggle").click();
     const applyEntries = page.getByTestId("review-command-entry").filter({ has: page.locator('code', { hasText: "review.repair.apply" }) });
     expect(await applyEntries.count()).toBe(6);
-    expect(await applyEntries.filter({ hasText: "复用回执" }).count()).toBe(1);
+    expect(await applyEntries.filter({ hasText: "reused receipt" }).count()).toBe(1);
     const failedEntry = page.locator('[data-testid="review-command-entry"][data-verb="review.repair.apply"][data-state="failed"]');
     await failedEntry.locator("summary").click();
     expect(await failedEntry.textContent()).toMatch(/CONFLICT|版本|revision/i);

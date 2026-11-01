@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import { MediaProductionEditor } from "./MediaProductionEditor";
 import { captureWorkAssetFromClip, captureWorkAssetFromClips } from "@reelterminal/core/work-assets/capture";
 import { openBoardForEntities } from "../../services/requirement-board";
@@ -116,7 +117,7 @@ export function useMediaContextMenuItems({
         void (async () => {
           const result = await saveProjectMediaToLibrary(item);
           if (result.ok) {
-            toast.success(t("material.savedToLibrary"), result.material?.title ?? "");
+            toast.success(t("material.savedToLibrary"), result.material?.title ?? "", { localizeMessage: false });
             window.dispatchEvent(
               new CustomEvent("reelterminal:material-library-changed"),
             );
@@ -137,7 +138,7 @@ export function useMediaContextMenuItems({
           const { saveMediaAsWorkAsset } = useProjectStore.getState();
           const saved = await saveMediaAsWorkAsset(item.id);
           if (saved.ok) {
-            toast.success(t("workAssets.saved"), saved.asset.name);
+            toast.success(t("workAssets.saved"), saved.asset.name, { localizeMessage: false });
           } else {
             toast.error(t("workAssets.captureFailed"), saved.message);
           }
@@ -709,7 +710,7 @@ const EmptyState: React.FC<{ onImport: () => void }> = ({ onImport }) => {
 const LoadingIndicator: React.FC<{ message: string }> = ({ message }) => (
   <div className="absolute inset-0 bg-bg-1/90 backdrop-blur-sm flex flex-col items-center justify-center z-50">
     <div className="w-10 h-10 border-2 border-accent border-t-transparent rounded-full animate-spin mb-3" />
-    <Text type="body" color="secondary" display="block" className="text-sm text-fg-2">{message}</Text>
+    <Text type="body" color="secondary" display="block" className="text-sm text-fg-2"><LocalizedMessage>{message}</LocalizedMessage></Text>
   </div>
 );
 
@@ -969,7 +970,7 @@ export const AssetsPanel: React.FC<{ onImportRequested?: () => void }> = ({
               setNodeScope(null);
               setMediaType("subtitle");
               setMediaSearch("");
-              toast.success(t("projectMediaFilters.subtitleImported"), file.name);
+              toast.success(t("projectMediaFilters.subtitleImported"), file.name, { localizeMessage: false });
               if (result.errors.length) toast.warning(t("projectMediaFilters.subtitleWarnings"), result.errors.join("\n"));
             }
             continue;
@@ -1385,7 +1386,7 @@ export const AssetsPanel: React.FC<{ onImportRequested?: () => void }> = ({
       if (result.ok) {
         setCaptureName(null);
         setAssetFilter("all");
-        toast.success(t("workAssets.saved"), result.asset.name);
+        toast.success(t("workAssets.saved"), result.asset.name, { localizeMessage: false });
       } else toast.error(t("workAssets.captureFailed"), result.message);
     } finally {
       setCapturing(false);

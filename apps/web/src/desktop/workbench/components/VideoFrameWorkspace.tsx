@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 /**
  * VideoFrameWorkspace — real-playback video review surface for the AI
  * material workbench.
@@ -80,6 +82,7 @@ export function VideoFrameWorkspace({
   onStartResizeIssuePanel,
   toolbarLeading,
 }: VideoFrameWorkspaceProps): JSX.Element {
+  const { t } = useTranslation();
   const payload = item.videoPayload;
 
   // --- refs ---------------------------------------------------------------
@@ -366,7 +369,7 @@ export function VideoFrameWorkspace({
   // Flattened anchors & issue entries
   const anchors = useMemo<MarkerAnchorView[]>(
     () => buildVideoAnchors(markers),
-    [markers],
+    [markers, t],
   );
 
   const issueEntries = useMemo(
@@ -377,7 +380,7 @@ export function VideoFrameWorkspace({
   const handleSubmitFeedback = useCallback(async (): Promise<void> => {
     const text = feedbackDraft.trim();
     if (text.length === 0) {
-      setMutationError("反馈内容为空,未提交");
+      setMutationError(translate("Feedback is empty and was not submitted"));
       return;
     }
     const ok = await commitMarkers(markers, {
@@ -434,7 +437,7 @@ export function VideoFrameWorkspace({
       }
       video.play().catch((err: unknown) => {
         setMutationError(
-          `无法开始播放: ${err instanceof Error ? err.message : String(err)}`,
+          translate("Unable to start playback: {{v0}}", { v0: err instanceof Error ? err.message : String(err) }),
         );
       });
     } else {
@@ -481,7 +484,7 @@ export function VideoFrameWorkspace({
     if (existing) {
       if (existing.annotationContainer !== false) {
         void commitMarkers(markers.map(marker => marker.id === existing.id
-          ? { ...marker, annotationContainer: false, note: marker.note || `源帧 ${formatTimecode(t)} 待诊断问题` }
+          ? { ...marker, annotationContainer: false, note: marker.note || translate("Source frame {{v0}} requires diagnosis", { v0: formatTimecode(t) }) }
           : marker));
       }
       setSelectedAnchorId(existing.id);
@@ -492,7 +495,7 @@ export function VideoFrameWorkspace({
       annotationContainer: false,
       type: "frame",
       startPtsSec: t,
-      note: `源帧 ${formatTimecode(t)} 待诊断问题`,
+      note: translate("Source frame {{v0}} requires diagnosis", { v0: formatTimecode(t) }),
       version: item.version,
       annotations: [],
     };
@@ -526,7 +529,7 @@ export function VideoFrameWorkspace({
       type: "interval",
       startPtsSec: Number(start.toFixed(3)),
       endPtsSec: Number(end.toFixed(3)),
-      note: `区间 [${start.toFixed(2)}s, ${end.toFixed(2)}s) 待诊断`,
+      note: translate("Range [{{v0}}s, {{v1}}s) requires diagnosis", { v0: start.toFixed(2), v1: end.toFixed(2) }),
       version: item.version,
       annotations: [],
     };
@@ -553,7 +556,7 @@ export function VideoFrameWorkspace({
     ): Promise<WorkbenchMutationResult> => {
       const anchor = anchors.find((candidate) => candidate.anchorId === issueId);
       if (!anchor) {
-        return { ok: false, code: "NOT_FOUND", message: "问题锚点不存在" };
+        return { ok: false, code: "NOT_FOUND", message: translate("Issue anchor not found") };
       }
       const next = markers.map((marker) => {
         if (marker.id !== anchor.markerId) return marker;
@@ -602,7 +605,7 @@ export function VideoFrameWorkspace({
     async (issueId: string): Promise<WorkbenchMutationResult> => {
       const anchor = anchors.find((candidate) => candidate.anchorId === issueId);
       if (!anchor) {
-        return { ok: false, code: "NOT_FOUND", message: "问题锚点不存在" };
+        return { ok: false, code: "NOT_FOUND", message: translate("Issue anchor not found") };
       }
       const next = removeVideoIssue(markers, anchor);
       const result = await onUpdateVideoMarkers(
@@ -666,13 +669,11 @@ export function VideoFrameWorkspace({
   );
 
   const durationLabel =
-    duration !== null && duration > 0 ? `${duration.toFixed(3)}s` : "未提供";
+    duration !== null && duration > 0 ? `${duration.toFixed(3)}s` : translate("Not supplied");
 
   if (!payload) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg text-sm text-fg-3">
-        视频内容未提供(videoPayload 缺失)
-      </div>
+      <div className="flex h-full w-full items-center justify-center bg-bg text-sm text-fg-3">{t("No video content was supplied (missing videoPayload)")}</div>
     );
   }
 
@@ -785,7 +786,7 @@ export function VideoFrameWorkspace({
             const video = videoRef.current;
             const code = video?.error?.code;
             setVideoErrorMsg(
-              `视频加载/解码失败${code !== undefined ? `(错误码 ${code})` : ""}`,
+              translate("Video loading/decoding failed{{v0}}", { v0: code !== undefined ? translate("(error code {{v0}})", { v0: code }) : "" }),
             );
           }}
         />
@@ -796,7 +797,7 @@ export function VideoFrameWorkspace({
             aria-orientation="vertical"
             onPointerDown={onStartResizeIssuePanel}
             className="group flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-stage-bg"
-            title="拖拽调整问题栏宽度"
+            title={t("Drag to resize the issues panel")}
           >
             <div className="h-10 w-0.5 rounded-full bg-border-strong group-hover:bg-accent" />
           </div>
@@ -823,7 +824,7 @@ export function VideoFrameWorkspace({
               }
             : {})}
           widthPx={issuePanelWidth}
-          emptyHint="暂停后在画面拖拽框选问题位置，或使用下方「标问题帧 / 标问题区间」创建标记。"
+          emptyHint={t("Pause and drag a box over the issue, or use Mark issue frame / Mark issue range below.")}
         />
       </div>
 

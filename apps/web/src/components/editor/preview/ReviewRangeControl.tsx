@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftPopover } from "@reelterminal/ui";
@@ -142,7 +143,7 @@ export function ReviewRangeControl() {
           </label>
           {error && (
             <p role="alert" className="text-red-400">
-              {error}
+              <LocalizedMessage>{error}</LocalizedMessage>
             </p>
           )}
           <button

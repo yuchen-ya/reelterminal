@@ -9,7 +9,7 @@ export type AgentTaskAutoConfirmDecision =
   | { readonly mode: "manual-only"; readonly reason: string };
 
 export const MANUAL_CONFIRM_NOTICE =
-  "该任务创建时无法自动确认结果，请在查看产物后手动确认或标记失败。";
+  "Automatic confirmation was unavailable when this task was created. Inspect its output, then confirm it manually or mark it failed.";
 
 /** Preserve the historical capability decision when reading or creating records in tests. */
 export function decideTaskAutoConfirmation(

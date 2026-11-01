@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { subscribePreviewFrames } from "./frame-notifications";
 import React, {
   useCallback,
@@ -333,7 +334,7 @@ export function ComparisonSourcePicker({ onClose }: { onClose: () => void }) {
           {t("Close reference comparison")}
         </button>
       )}
-      {error && <p role="alert" className="text-red-400">{error}</p>}
+      {error && <p role="alert" className="text-red-400"><LocalizedMessage>{error}</LocalizedMessage></p>}
     </div>
   );
 }
@@ -995,7 +996,7 @@ export const ReferenceComparisonPanel: React.FC<{
               : t("Reference playback has reached the aligned end.")}
           </p>
         )}
-        {error && <p role="alert" className="w-full text-red-300">{error}</p>}
+        {error && <p role="alert" className="w-full text-red-300"><LocalizedMessage>{error}</LocalizedMessage></p>}
       </div>
   );
 

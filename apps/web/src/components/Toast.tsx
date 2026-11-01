@@ -1,3 +1,4 @@
+import { localizeUiMessage } from "../i18n/messages";
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -172,7 +173,7 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
             transition={{ delay: 0.05 }}
             className={`text-sm font-semibold ${isDesktop ? "text-fg" : isDark ? "text-zinc-100" : "text-zinc-900"}`}
           >
-            {t(notification.title)}
+            {localizeUiMessage(notification.title)}
           </motion.p>
           {notification.message && (
             <motion.p
@@ -181,7 +182,7 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
               transition={{ delay: 0.1 }}
               className={`text-xs mt-1 leading-relaxed ${isDesktop ? "text-fg-2" : isDark ? "text-zinc-400" : "text-zinc-600"}`}
             >
-              {notification.message}
+              {notification.localizeMessage ? localizeUiMessage(notification.message) : notification.message}
             </motion.p>
           )}
         </div>

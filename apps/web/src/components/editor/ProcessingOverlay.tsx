@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import React from "react";
 import { Loader2, CheckCircle, XCircle, Clock } from "@/icons/lucide-compat";
 import { ToolcraftCard as Card } from "@reelterminal/ui";
@@ -65,7 +66,7 @@ const TaskItem: React.FC<{ task: ProcessingTask }> = ({ task }) => {
               maxLines={1}
               className="mt-0.5 text-[9px]"
             >
-              {task.message}
+              <LocalizedMessage>{task.message}</LocalizedMessage>
             </Text>
           </div>
         )}

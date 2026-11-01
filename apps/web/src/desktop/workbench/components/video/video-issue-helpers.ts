@@ -1,3 +1,4 @@
+import { t as translate } from "../../../../i18n";
 import type {
   WorkbenchSpatialAnnotation,
   WorkbenchVideoMarker,
@@ -18,6 +19,11 @@ export function removeVideoIssue(markers: readonly WorkbenchVideoMarker[], ancho
   });
 }
 
+/** i18n-data: persisted legacy sentinel; compare exact historical bytes in every UI language. */
+function legacyMarkerNote(seconds: number): string {
+  return `源帧 ${formatTimecode(seconds)} 待诊断问题`;
+}
+
 export function buildVideoAnchors(
   markers: readonly WorkbenchVideoMarker[],
 ): MarkerAnchorView[] {
@@ -25,15 +31,15 @@ export function buildVideoAnchors(
   let counter = 1;
   for (const m of markers) {
     const frameLabel =
-      m.startFrameIndex !== undefined ? ` · 帧 #${m.startFrameIndex}` : "";
+      m.startFrameIndex !== undefined ? translate(" · Frame #{{v0}}", { v0: m.startFrameIndex }) : "";
     const markerLabel =
       m.type === "frame"
-        ? `帧标记 @ ${m.startPtsSec.toFixed(3)}s${frameLabel}`
-        : `区间 [${m.startPtsSec.toFixed(3)}s, ${(m.endPtsSec ?? m.startPtsSec).toFixed(3)}s)`;
+        ? translate("Frame marker @ {{v0}}s{{v1}}", { v0: m.startPtsSec.toFixed(3), v1: frameLabel })
+        : translate("Range [{{v0}}s, {{v1}}s)", { v0: m.startPtsSec.toFixed(3), v1: (m.endPtsSec ?? m.startPtsSec).toFixed(3) });
     // Older automatic containers share their note with old manual markers.
     // Hide the redundant row while it has children, but never delete it by guessing.
     const legacyContainer = m.annotationContainer === undefined && m.type === "frame"
-      && m.annotations.length > 0 && m.note === `源帧 ${formatTimecode(m.startPtsSec)} 待诊断问题`;
+      && m.annotations.length > 0 && m.note === legacyMarkerNote(m.startPtsSec);
     if (!isAnnotationContainer(m) && !legacyContainer) list.push({
       anchorId: m.id,
       markerId: m.id,
@@ -47,7 +53,7 @@ export function buildVideoAnchors(
         markerId: m.id,
         kind: "annotation",
         indexNumber: counter++,
-        coordinateLabel: `${markerLabel} · 圈注 #${counter - 1}`,
+        coordinateLabel: translate("{{v0}} · Annotation #{{v1}}", { v0: markerLabel, v1: counter - 1 }),
       });
     }
   }

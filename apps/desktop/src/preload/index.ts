@@ -17,6 +17,7 @@ import { installPerformanceBridge } from "./performance-bridge";
 // The desktop bridge is exposed as window.reelterminal.
 const api = {
   platform: "desktop",
+  setUiLocale: (locale: "en" | "zh-CN") => ipcRenderer.invoke(CHANNELS.uiLocale, { locale }),
   inputHistory: (direction: "undo" | "redo") => ipcRenderer.invoke(CHANNELS.inputHistory, { direction }),
   reviewPackage: {
     inspect: (input: { directory: string; source: "user" | "agent" }) => ipcRenderer.invoke(CHANNELS.reviewPackageInspect, input),

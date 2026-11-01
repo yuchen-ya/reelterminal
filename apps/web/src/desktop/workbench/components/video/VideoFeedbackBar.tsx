@@ -1,3 +1,5 @@
+import { LocalizedMessage } from "../../../../i18n/LocalizedMessage";
+import { useTranslation } from "react-i18next";
 import type { JSX } from "react";
 import { Sparkles, TriangleAlert } from "lucide-react";
 import type {
@@ -38,12 +40,13 @@ export function VideoFeedbackBar({
   mutationError,
   onDismissMutationError,
 }: VideoFeedbackBarProps): JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className={mutationError || feedbackDraft ? "relative shrink-0 border-t border-border bg-bg-1 px-2.5 py-1 select-none" : "sr-only"}>
       {mutationError && (
         <div className="flex items-center gap-2 rounded-[5px] border border-status-error/40 bg-status-error/10 px-2 py-1 text-xs text-status-error">
           <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-          <span className="min-w-0 flex-1 break-all">{mutationError}</span>
+          <span className="min-w-0 flex-1 break-all"><LocalizedMessage>{mutationError}</LocalizedMessage></span>
           <button
             type="button"
             onClick={onDismissMutationError}
@@ -91,7 +94,7 @@ export function VideoFeedbackBar({
               onSubmitFeedback();
             }
           }}
-          placeholder="审阅意见"
+          placeholder={t("Review feedback")}
           className="h-7 min-w-0 flex-1 rounded-[4px] border border-border bg-bg-2 px-2 text-xs text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none"
         />
 
@@ -110,7 +113,7 @@ export function VideoFeedbackBar({
                       ? "border-accent bg-accent-soft text-accent"
                       : "border-border bg-bg-2 text-fg-3 hover:text-fg-2"
                   }`}
-                  title={`引用溯源标签 @${tag.shortName}`}
+                  title={t("Reference provenance tag @{{v0}}", { v0: tag.shortName })}
                 >
                   @{tag.shortName}
                 </button>
@@ -127,8 +130,7 @@ export function VideoFeedbackBar({
             onChange={(e) => onChangeMarkRework(e.target.checked)}
             className="accent-accent"
           />
-          标记返工
-        </label>
+          {t("Mark for rework")}</label>
 
         {/* Submit feedback button */}
         <button
@@ -136,9 +138,7 @@ export function VideoFeedbackBar({
           onClick={onSubmitFeedback}
           disabled={!canSubmitFeedback}
           className="inline-flex h-7 shrink-0 items-center justify-center rounded-[6px] border border-accent/40 bg-accent/10 px-2.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          提交反馈
-        </button>
+        >{t("Submit feedback")}</button>
       </div>
     </div>
   );

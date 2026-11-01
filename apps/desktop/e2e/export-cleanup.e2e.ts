@@ -89,7 +89,7 @@ test("human export, review handoff, explicit cleanup and retained media survive 
       .click();
     await page.getByTestId("export-cleanup-page").waitFor();
     await page.getByTestId("export-fixed-progress").waitFor();
-    await page.getByRole("button", { name: "返回编辑", exact: true }).click();
+    await page.getByRole("button", { name: "Return to editing", exact: true }).click();
     await page.getByTestId("agent-access-status").waitFor();
     await vi.waitFor(
       () => expect(existsSync(output) && statSync(output).size > 0).toBe(true),
@@ -98,17 +98,17 @@ test("human export, review handoff, explicit cleanup and retained media survive 
     await page
       .getByRole("button", { name: "Export", exact: true })
       .waitFor({ timeout: 120_000 });
-    await page.getByRole("button", { name: "导出与整理", exact: true }).click();
-    await page.getByText("导出完成", { exact: false }).first().waitFor();
+    await page.getByRole("button", { name: "Exports and cleanup", exact: true }).click();
+    await page.getByText("Export complete", { exact: false }).first().waitFor();
     execFileSync(
       ffmpeg,
       ["-v", "error", "-xerror", "-i", output, "-f", "null", "-"],
       { timeout: 60_000, windowsHide: true },
     );
 
-    await page.getByRole("checkbox", { name: "选择节点 整理验收节点" }).check();
-    await page.getByLabel("整理动作").selectOption("recycle-nodes");
-    await page.getByText("交给 Agent 协助检查（可选）", { exact: true }).click();
+    await page.getByRole("checkbox", { name: "Select node 整理验收节点" }).check();
+    await page.getByLabel("Cleanup action").selectOption("recycle-nodes");
+    await page.getByText("Ask an Agent to review (optional)", { exact: true }).click();
     const clipboardHostRoundTrip = await app.evaluate(async ({ clipboard }) => {
       const previous = await clipboard.readText();
       try {
@@ -125,9 +125,9 @@ test("human export, review handoff, explicit cleanup and retained media survive 
       return capture;
     });
     await page
-      .getByRole("button", { name: "复制提示词给 Agent", exact: true })
+      .getByRole("button", { name: "Copy prompt for Agent", exact: true })
       .click();
-    await page.getByText("已复制审查提示词。", { exact: true }).waitFor();
+    await page.getByText("Review prompt copied.", { exact: true }).waitFor();
     const prompt = await clipboardCapture.evaluate((capture) => {
       navigator.clipboard.writeText = capture.original;
       return capture.submitted;
@@ -139,13 +139,13 @@ test("human export, review handoff, explicit cleanup and retained media survive 
     expect(prompt).toContain(target.projectId);
     expect(prompt).toContain(target.workspaceId);
     expect(prompt).toContain(saved.node.id);
-    expect(prompt).toContain("确认");
+    expect(prompt).toContain("explicitly confirms the exact proposed operation");
     expect(prompt).not.toMatch(/Bearer |live-endpoint\.json/);
     await page
-      .getByRole("button", { name: "发布清理任务到看板", exact: true })
+      .getByRole("button", { name: "Publish cleanup review to the board", exact: true })
       .click();
     await page
-      .getByText("清理审查任务已发布到需求看板；尚未授权删除。", {
+      .getByText("Cleanup review published to the requirements board; deletion is not authorized.", {
         exact: true,
       })
       .waitFor();
@@ -157,10 +157,10 @@ test("human export, review handoff, explicit cleanup and retained media survive 
     expect(reviewTask.cleanupHandoff.phase).toBe("pending_review");
 
     await page
-      .getByRole("button", { name: "预览清理内容", exact: true })
+      .getByRole("button", { name: "Preview cleanup", exact: true })
       .click();
     await page.getByTestId("cleanup-confirmation").waitFor();
-    await page.getByRole("button", { name: "取消", exact: true }).click();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
     expect(
       value(
         await agent.callCommand<{ nodes: { id: string }[] }>(
@@ -170,10 +170,10 @@ test("human export, review handoff, explicit cleanup and retained media survive 
       ).nodes.some((node) => node.id === saved.node.id),
     ).toBe(true);
     await page
-      .getByRole("button", { name: "预览清理内容", exact: true })
+      .getByRole("button", { name: "Preview cleanup", exact: true })
       .click();
     await page
-      .getByRole("button", { name: "确认执行", exact: true })
+      .getByRole("button", { name: "Confirm execution", exact: true })
       .click();
     await vi.waitFor(async () =>
       expect(
@@ -281,20 +281,20 @@ test("human export, review handoff, explicit cleanup and retained media survive 
     expect(existsSync(residualFile.path)).toBe(true);
     const recordsWhileArtifactsExist = value(await agent.callCommand<any>("media.cleanup.plan", { ...target, action: "purge-failed-jobs", jobIds: [residualJobId] }));
     expect(recordsWhileArtifactsExist.status).toBe("review-required");
-    await page.getByRole("button", { name: "刷新检查", exact: true }).click();
-    await page.getByText("临时文件与未采用结果（高级）", { exact: true }).click();
-    await page.getByRole("checkbox", { name: `选择过程文件 ${residualFile.selectionId}`, exact: true }).check();
-    await page.getByLabel("整理动作").selectOption("purge-work-files");
-    await page.getByRole("button", { name: "预览清理内容", exact: true }).click();
+    await page.getByRole("button", { name: "Refresh checks", exact: true }).click();
+    await page.getByText("Temporary files and unadopted results (advanced)", { exact: true }).click();
+    await page.getByRole("checkbox", { name: `Select intermediate file ${residualFile.selectionId}`, exact: true }).check();
+    await page.getByLabel("Cleanup action").selectOption("purge-work-files");
+    await page.getByRole("button", { name: "Preview cleanup", exact: true }).click();
     await page.getByTestId("cleanup-confirmation").getByText(residualFile.path, { exact: true }).waitFor();
-    await page.getByRole("button", { name: "确认执行", exact: true }).click();
+    await page.getByRole("button", { name: "Confirm execution", exact: true }).click();
     await vi.waitFor(() => expect(existsSync(residualFile.path)).toBe(false));
-    const workResult = page.getByRole("status").filter({ has: page.getByRole("heading", { name: "整理结果", exact: true }) });
+    const workResult = page.getByRole("status").filter({ has: page.getByRole("heading", { name: "Cleanup results", exact: true }) });
     await vi.waitFor(async () => {
       const resultText = await workResult.textContent();
-      expect(resultText).toContain("1 个过程文件");
-      expect(resultText).toContain(`实际释放 ${(residualFile.sizeBytes / 1024).toFixed(1)} KiB`);
-      expect(resultText).toContain(`已删除 ${residualFile.path}`);
+      expect(resultText).toContain("intermediate files: 1");
+      expect(resultText).toContain(`Freed ${(residualFile.sizeBytes / 1024).toFixed(1)} KiB`);
+      expect(resultText).toContain(`Removed ${residualFile.path}`);
     });
     const remainingResidual = value(await agent.callCommand<any>("media.cleanup.review", target));
     expect(remainingResidual.workFiles.files.some((file: any) => file.jobId === residualJobId)).toBe(false);
@@ -337,7 +337,7 @@ test("human export, review handoff, explicit cleanup and retained media survive 
       { timeout: 120_000 },
     );
     await launched.page
-      .getByText("导出完成", { exact: false })
+      .getByText("Export complete", { exact: false })
       .first()
       .waitFor({ timeout: 120_000 });
     execFileSync(

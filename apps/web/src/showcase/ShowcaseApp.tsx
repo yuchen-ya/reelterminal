@@ -1,3 +1,4 @@
+import { t as translate } from "../i18n";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -108,7 +109,7 @@ export function ShowcaseApp() {
       setNotice(null);
     } catch (error) {
       toast.error(
-        "恢复样例失败",
+        translate("Sample reset failed"),
         error instanceof Error ? error.message : String(error),
       );
     } finally {
@@ -166,9 +167,9 @@ export function ShowcaseApp() {
           {mode === "video" ? <EditPage
             onImportRequested={desktopOnly}
             onConnectRequested={desktopOnly}
-          /> : reviewError ? <div role="alert" className="p-6 text-sm">审阅示例加载失败：{reviewError}<button className="ml-3 underline" onClick={() => selectMode("workbench")}>重试</button></div>
-            : !reviewReady ? <div role="status" className="p-6 text-sm">正在准备审阅示例…</div>
-            : <Suspense fallback={<div role="status" className="p-6 text-sm">正在打开审阅工作台…</div>}><ReviewPage browserDemo /></Suspense>}
+          /> : reviewError ? <div role="alert" className="p-6 text-sm">{t("Review sample could not be loaded:")}{reviewError}<button className="ml-3 underline" onClick={() => selectMode("workbench")}>{t("review.retry")}</button></div>
+            : !reviewReady ? <div role="status" className="p-6 text-sm">{t("Preparing review sample…")}</div>
+            : <Suspense fallback={<div role="status" className="p-6 text-sm">{t("Opening Review Workspace…")}</div>}><ReviewPage browserDemo /></Suspense>}
         </div>
         <SettingsDialog />
         <DesktopHelpDialog open={helpOpen} onOpenChange={setHelpOpen} canTour />
@@ -181,16 +182,16 @@ export function ShowcaseApp() {
         >
           <DialogContent className="reelterminal-desktop border-border bg-bg-1 text-fg">
             <DialogTitle>
-              {notice === "reset" ? "恢复样例工程？" : "在桌面版中继续"}
+              {notice === "reset" ? t("Reset the sample project?") : t("Continue in the desktop app")}
             </DialogTitle>
             <DialogDescription className="text-fg-2">
               {notice === "reset"
-                ? "当前编辑将替换为初始样例。已创建的存档点会保留。"
-                : "官网使用正式编辑器界面。素材导入、Agent 连接、本地模型和成片导出需要桌面版。"}
+                ? t("The current edit will be replaced by the initial sample. Saved snapshots are retained.")
+                : t("The website uses the real editor interface. Media import, Agent connections, local models and video export require the desktop app.")}
             </DialogDescription>
             {notice === "reset" ? (
               <Button
-                label={resetting ? "正在恢复…" : "恢复样例"}
+                label={resetting ? t("Resetting…") : t("Reset sample")}
                 isDisabled={resetting}
                 onClick={() => void reset()}
               />
@@ -200,9 +201,7 @@ export function ShowcaseApp() {
                 href="https://github.com/yuchen-ya/reelterminal/releases"
                 target="_blank"
                 rel="noreferrer"
-              >
-                下载桌面版
-              </a>
+              >{t("Download desktop app")}</a>
             )}
           </DialogContent>
         </Dialog>

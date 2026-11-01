@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { JSX } from "react";
 import type React from "react";
 import {
@@ -61,6 +62,7 @@ export function VideoTransportBar({
   onScrubPointerMove,
   onScrubPointerUp,
 }: VideoTransportBarProps): JSX.Element {
+  const { t } = useTranslation();
   const scrubberDisabled = duration === null || duration <= 0;
   const playheadPct =
     duration !== null && duration > 0
@@ -76,7 +78,7 @@ export function VideoTransportBar({
           onClick={() => onStep(-1)}
           disabled={!videoReady}
           className="inline-flex h-6 w-6 items-center justify-center rounded-[5px] border border-border bg-bg-2 text-fg-2 transition-colors hover:bg-bg-3 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
-          title={`后退 ${stepSec}s`}
+          title={t("Back {{v0}}s", { v0: stepSec })}
         >
           <ChevronLeft className="h-3.5 w-3.5" />
           <span className="sr-only">-{stepSec}s</span>
@@ -86,7 +88,7 @@ export function VideoTransportBar({
           onClick={onTogglePlay}
           disabled={!videoReady}
           className="inline-flex h-6 w-7 items-center justify-center rounded-[5px] bg-fg text-bg transition-colors hover:bg-fg/90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-          title={isPlaying ? "暂停" : "播放"}
+          title={isPlaying ? t("Pause") : t("Play")}
         >
           {isPlaying ? (
             <Pause className="h-3 w-3 fill-current" />
@@ -99,14 +101,13 @@ export function VideoTransportBar({
           onClick={() => onStep(1)}
           disabled={!videoReady}
           className="inline-flex h-6 w-6 items-center justify-center rounded-[5px] border border-border bg-bg-2 text-fg-2 transition-colors hover:bg-bg-3 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
-          title={`前进 ${stepSec}s`}
+          title={t("Forward {{v0}}s", { v0: stepSec })}
         >
           <ChevronRight className="h-3.5 w-3.5" />
           <span className="sr-only">+{stepSec}s</span>
         </button>
         <label className="sr-only">
-          步长(s)
-          <input
+          {t("Step (s)")}<input
             type="number"
             min={0.01}
             max={1}
@@ -134,7 +135,7 @@ export function VideoTransportBar({
         className={`relative h-5 min-w-[120px] flex-1 select-none overflow-hidden rounded-[5px] border border-border bg-bg ${
           scrubberDisabled ? "pointer-events-none opacity-50" : "cursor-pointer"
         }`}
-        title={scrubberDisabled ? "媒体时长未知,暂不可拖动" : "点击/拖动跳转播放位置"}
+        title={scrubberDisabled ? t("Media duration is unknown; seeking is unavailable") : t("Click or drag to seek")}
       >
         {duration !== null && duration > 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-end justify-between px-2 pb-0.5 opacity-40">
@@ -167,7 +168,7 @@ export function VideoTransportBar({
                 }}
                 style={{ left: `${leftPct}%`, width: `${Math.max(1.5, widthPct)}%` }}
                 className="absolute bottom-0.5 top-0.5 rounded-sm border-x-2 border-amber-500/80 bg-amber-500/20 hover:bg-amber-500/30"
-                title={`[${m.startPtsSec.toFixed(3)}s → ${end.toFixed(3)}s) ${m.note} — 点击跳转`}
+                title={t("[{{v0}}s → {{v1}}s) {{v2}} — click to seek", { v0: m.startPtsSec.toFixed(3), v1: end.toFixed(3), v2: m.note })}
               />
             );
           }
@@ -182,7 +183,7 @@ export function VideoTransportBar({
               }}
               style={{ left: `${leftPct}%` }}
               className="absolute bottom-0 top-0 w-1.5 -ml-0.5 bg-rose-500 hover:brightness-125"
-              title={`${m.startPtsSec.toFixed(3)}s ${m.note} — 点击跳转`}
+              title={t("{{v0}}s {{v1}} — click to seek", { v0: m.startPtsSec.toFixed(3), v1: m.note })}
             />
           );
         })}
@@ -201,12 +202,12 @@ export function VideoTransportBar({
           type="button"
           onClick={onMarkCurrentFrame}
           disabled={!videoReady}
-          title={`标问题帧 @ ${videoTime.toFixed(2)}s`}
+          title={t("Mark issue frame @ {{v0}}s", { v0: videoTime.toFixed(2) })}
           className="inline-flex h-6 items-center gap-1 rounded-[5px] border border-border bg-bg-2 px-1.5 text-xs text-fg transition-colors hover:bg-bg-3 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />
           <Flag className="h-3 w-3 shrink-0 text-fg-2" />
-          <span className="sr-only">标问题帧 @ {videoTime.toFixed(2)}s</span>
+          <span className="sr-only">{t("Mark issue frame @ {{v0}}s", { v0: videoTime.toFixed(2) })}</span>
         </button>
 
         <div className="inline-flex h-6 items-center gap-0.5 rounded-[5px] border border-border bg-bg p-0.5 text-xs">
@@ -217,12 +218,10 @@ export function VideoTransportBar({
             className={`rounded-[3px] px-1.5 py-0.5 font-mono text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               inPts !== null ? "bg-amber-500/15 text-amber-300" : "bg-bg-2 text-fg-3 hover:text-fg"
             }`}
-            title={`把当前播放位置设为区间入点 (${inPts !== null ? `${inPts.toFixed(3)}s` : "未设置"})`}
+            title={t("Set the current playback position as the range start ({{v0}})", { v0: inPts !== null ? `${inPts.toFixed(3)}s` : t("Not set") })}
           >
             [
-            <span className="sr-only">
-              In: 入点: {inPts !== null ? `${inPts.toFixed(3)}s` : "—"}
-            </span>
+            <span className="sr-only">{t("In: {{v0}}", { v0: inPts !== null ? `${inPts.toFixed(3)}s` : "—" })}</span>
           </button>
           <button
             type="button"
@@ -231,24 +230,20 @@ export function VideoTransportBar({
             className={`rounded-[3px] px-1.5 py-0.5 font-mono text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               outPts !== null ? "bg-amber-500/15 text-amber-300" : "bg-bg-2 text-fg-3 hover:text-fg"
             }`}
-            title={`把当前播放位置设为区间出点 (${outPts !== null ? `${outPts.toFixed(3)}s` : "未设置"})`}
+            title={t("Set the current playback position as the range end ({{v0}})", { v0: outPts !== null ? `${outPts.toFixed(3)}s` : t("Not set") })}
           >
             ]
-            <span className="sr-only">
-              Out: 出点: {outPts !== null ? `${outPts.toFixed(3)}s` : "—"}
-            </span>
+            <span className="sr-only">{t("Out: {{v0}}", { v0: outPts !== null ? `${outPts.toFixed(3)}s` : "—" })}</span>
           </button>
           <button
             type="button"
             onClick={onMarkInterval}
             disabled={!videoReady}
-            title={`标问题区间 [${inPts !== null ? inPts.toFixed(2) : "—"}, ${outPts !== null ? outPts.toFixed(2) : "—"})`}
+            title={t("Mark issue range [{{v0}}, {{v1}})", { v0: inPts !== null ? inPts.toFixed(2) : "—", v1: outPts !== null ? outPts.toFixed(2) : "—" })}
             className="inline-flex items-center gap-0.5 rounded-[3px] bg-bg-2 px-1.5 py-0.5 text-fg-2 hover:bg-bg-3 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Scissors className="h-3 w-3 shrink-0 text-amber-400" />
-            <span className="sr-only">
-              标问题区间 [{inPts !== null ? inPts.toFixed(2) : "—"}, {outPts !== null ? outPts.toFixed(2) : "—"})
-            </span>
+            <span className="sr-only">{t("Mark issue range [{{v0}}, {{v1}})", { v0: inPts !== null ? inPts.toFixed(2) : "—", v1: outPts !== null ? outPts.toFixed(2) : "—" })}</span>
           </button>
         </div>
       </div>

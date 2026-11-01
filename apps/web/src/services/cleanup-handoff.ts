@@ -1,3 +1,4 @@
+import { t as translate } from "../i18n";
 import type { CleanupHandoffPhase, ProjectCleanupHandoff, ProjectRequirement } from "@reelterminal/core";
 import { getActiveProjectRuntimeStore } from "../stores/project-store";
 import type { WorkspaceContextHandle } from "./workspace-manager";
@@ -11,6 +12,8 @@ export interface CleanupHandoffTarget {
   readonly exportId?: string;
   readonly scope: string;
   readonly retention: string;
+  /** Display copy only. Never participates in persisted handoff matching. */
+  readonly presentation?: { readonly scope: string; readonly retention: string };
 }
 
 function normalizedInput(
@@ -96,10 +99,10 @@ export async function publishCleanupReview(
 
   const result = await state.addProjectRequirement({
     title: target.exportId
-      ? `Review cleanup for export ${target.exportId}`
+      ? translate("Review cleanup for export {{exportId}}", { exportId: target.exportId })
       : nodeIds.length > 0
-        ? `Review cleanup for ${nodeIds.length} selected nodes`
-        : "Review workspace cleanup (no nodes selected)",
+        ? translate("Review cleanup for {{count}} selected nodes", { count: nodeIds.length })
+        : translate("Review workspace cleanup (no nodes selected)"),
     description: [
       "Review-only cleanup request. No files or project data are authorized for deletion or modification.",
       `Project: ${target.projectId}`,
@@ -109,8 +112,8 @@ export async function publishCleanupReview(
       nodeIds.length > 0
         ? `Nodes: ${nodeIds.join(", ")}`
         : "Nodes: none (workspace-level scope; no node selected)",
-      `Scope: ${target.scope}`,
-      `Retain: ${target.retention}`,
+      `Scope: ${target.presentation?.scope ?? target.scope}`,
+      `Retain: ${target.presentation?.retention ?? target.retention}`,
     ].join("\n"),
     instruction: "Review cleanup candidates and report a proposal only. Wait for the user to confirm the exact operation before execution.",
     acceptanceCriteria: [
@@ -224,8 +227,8 @@ export function buildCleanupAgentPrompt(
     nodeIds.length > 0
       ? `Node IDs: ${nodeIds.join(", ")}`
       : "Node IDs: none (workspace-level scope; no node selected)",
-    `Requested scope: ${redactCredentialLikeText(target.scope)}`,
-    `Retention rules: ${redactCredentialLikeText(target.retention)}`,
+    `Requested scope: ${redactCredentialLikeText(target.presentation?.scope ?? target.scope)}`,
+    `Retention rules: ${redactCredentialLikeText(target.presentation?.retention ?? target.retention)}`,
     "",
     "Resolve the explicit project, workspace, export binding and node IDs above. Source revision identifies the request's origin; rescan the current revision and bind the final plan to that revision. Report intervening edits and stop if the target identity differs.",
     ...(nodeIds.length === 0

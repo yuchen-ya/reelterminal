@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Search, Check, ArrowUpRight } from "@/icons/lucide-compat";
@@ -77,7 +78,7 @@ export function InstructionSelector({ items, busy, onSelect, onCreate, onManage 
       {builtins.length > 0 && <p className="px-3 pb-1 pt-2 text-[10px] text-fg-3">{t("material.builtinInstructions")}</p>}
       {builtins.map(choice => row(choice, choice.presetId))}
       {!loading && !records.length && !builtins.length && <p className="px-3 py-6 text-center text-xs text-fg-3">{t("collaborationInstructions.noMatches")}</p>}
-      {error && <p role="alert" className="px-3 py-2 text-xs text-status-error">{error}</p>}
+      {error && <p role="alert" className="px-3 py-2 text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
     </div>
     <div className="flex items-center justify-between gap-2 border-t border-border p-2">
       <button disabled={busy} onClick={onCreate} className="flex items-center gap-1.5 rounded px-2 py-2 text-xs text-fg hover:bg-hover"><Plus size={13} />{t("collaborationInstructions.writeOwn")}</button>

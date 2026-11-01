@@ -1,3 +1,4 @@
+import { t as translate } from "../../../i18n";
 import type { JSX } from "react";
 import {
   Database,
@@ -126,7 +127,7 @@ export function buildWorkbenchLineageGroups(
   items: readonly WorkbenchItemView[],
   options: WorkbenchLineageGroupOptions = {
     ungroupedId: "__ungrouped__",
-    ungroupedLabel: "本批内容",
+    ungroupedLabel: translate("This batch"),
   },
 ): WorkbenchLineageGroup[] {
   const entries = new Map<string, WorkbenchLineageNode>();
@@ -257,14 +258,14 @@ export function getWorkbenchStatusView(status: WorkbenchItemView["status"]): {
 } {
   switch (status) {
     case "pending":
-      return { label: "待审", className: "text-fg-2", dotClassName: "border border-fg-3 bg-transparent" };
+      return { label: translate("production.pending"), className: "text-fg-2", dotClassName: "border border-fg-3 bg-transparent" };
     case "kept":
-      return { label: "保留", className: "text-accent", dotClassName: "bg-accent/70" };
+      return { label: translate("Keep"), className: "text-accent", dotClassName: "bg-accent/70" };
     case "modified":
-      return { label: "已改", className: "text-status-info", dotClassName: "bg-status-info" };
+      return { label: translate("Modified"), className: "text-status-info", dotClassName: "bg-status-info" };
     case "rework":
-      return { label: "返工", className: "text-status-warning", dotClassName: "bg-status-warning" };
+      return { label: translate("Rework"), className: "text-status-warning", dotClassName: "bg-status-warning" };
     case "discarded":
-      return { label: "丢弃", className: "text-status-error", dotClassName: "bg-status-error/70" };
+      return { label: translate("Discard"), className: "text-status-error", dotClassName: "bg-status-error/70" };
   }
 }

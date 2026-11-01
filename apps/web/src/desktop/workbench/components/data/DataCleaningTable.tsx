@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { JSX } from "react";
 import type React from "react";
 import { ArrowDownUp, Edit2, Flag, Sparkles } from "lucide-react";
@@ -61,14 +62,13 @@ export function DataCleaningTable({
   setEditValue,
   cellKeyOf,
 }: DataCleaningTableProps): JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="w-full overflow-auto">
       <table className="w-full border-collapse text-left text-xs">
         <thead>
           <tr className="sticky top-0 z-10 border-b border-border bg-bg-2 text-fg-2 shadow-sm">
-            <th className="w-28 border-r border-border px-3 py-2 font-mono text-[11px]">
-              稳定 rowId
-            </th>
+            <th className="w-28 border-r border-border px-3 py-2 font-mono text-[11px]">{t("Stable rowId")}</th>
             {columns.map((col) => (
               <th
                 key={col.columnId}
@@ -79,7 +79,7 @@ export function DataCleaningTable({
                     type="button"
                     onClick={() => selectColumn(col.columnId)}
                     className="text-left transition-colors hover:text-fg"
-                    title="点击选中整列"
+                    title={t("Click to select the column")}
                   >
                     {col.title}
                     <span className="ml-1.5 font-mono text-[10px] text-fg-3">
@@ -100,7 +100,7 @@ export function DataCleaningTable({
                     className={`rounded p-1 hover:bg-bg-3 ${
                       sortCol === col.columnId ? "text-accent" : "text-fg-3"
                     }`}
-                    title="按此列排序（不改变稳定 rowId/columnId 定位）"
+                    title={t("Sort by this column (stable rowId/columnId identities are preserved)")}
                   >
                     <ArrowDownUp className="h-3 w-3" />
                   </button>
@@ -116,7 +116,7 @@ export function DataCleaningTable({
               <td
                 onClick={(e) => selectRow(row.rowId, e)}
                 className="cursor-pointer border-r border-border bg-bg px-3 py-2 font-mono text-[11px] text-fg-3 hover:text-fg"
-                title="点击选中整行（支持 Ctrl 多选）"
+                title={t("Click to select the row (Ctrl selects multiple rows)")}
               >
                 {row.rowId}
               </td>
@@ -175,16 +175,14 @@ export function DataCleaningTable({
                             commitManualCellEdit(row.rowId, col.columnId, val)
                           }
                           className="rounded bg-status-info px-1.5 py-0.5 text-[10px] font-semibold text-bg transition-opacity hover:opacity-90"
-                        >
-                          保存
-                        </button>
+                        >{t("review.save")}</button>
                         <button
                           type="button"
                           onClick={() =>
                             commitManualCellEdit(row.rowId, col.columnId, val, true)
                           }
                           className="rounded bg-bg-3 px-1.5 py-0.5 text-[10px] text-fg-2"
-                          title="设为显式 NULL (缺失值)"
+                          title={t("Set explicit NULL (missing value)")}
                         >
                           NULL
                         </button>
@@ -194,13 +192,9 @@ export function DataCleaningTable({
                         {/* Current Value vs Semantic NULL / Empty String */}
                         <div className="flex items-center justify-between gap-2">
                           {val === null ? (
-                            <span className="font-mono text-[11px] italic text-status-error/80">
-                              NULL (未记录/缺失)
-                            </span>
+                            <span className="font-mono text-[11px] italic text-status-error/80">{t("NULL (unrecorded/missing)")}</span>
                           ) : val === "" ? (
-                            <span className="font-mono text-[11px] italic text-fg-3">
-                              "" (空字符串)
-                            </span>
+                            <span className="font-mono text-[11px] italic text-fg-3">{t("\"\" (empty string)")}</span>
                           ) : (
                             <span className="text-fg">{val}</span>
                           )}
@@ -212,7 +206,7 @@ export function DataCleaningTable({
                               startManualCellEdit(row.rowId, col.columnId, val);
                             }}
                             className="p-0.5 text-fg-3 opacity-0 transition-opacity hover:text-fg focus:opacity-100 group-hover:opacity-100"
-                            title="直接修改单元格值"
+                            title={t("Edit cell value")}
                           >
                             <Edit2 className="h-3 w-3" />
                           </button>
@@ -224,8 +218,7 @@ export function DataCleaningTable({
                             data-testid="workbench-data-rework-badge"
                           >
                             <Flag className="h-3 w-3" />
-                            返工待处理（人工标记）
-                          </div>
+                            {t("Pending rework (human marked)")}</div>
                         )}
 
                         {/* Agent Cleaning Proposal Inline Comparison */}
@@ -243,20 +236,14 @@ export function DataCleaningTable({
                                     {prop.proposedValue ?? "NULL"}
                                   </span>
                                 </div>
-                                <span className="text-[10px] text-fg-3">待确认</span>
+                                <span className="text-[10px] text-fg-3">{t("requirementBoard.status.review")}</span>
                               </>
                             ) : prop.status === "accepted" ? (
-                              <span className="text-[10px] text-accent">
-                                ✓ 已确认清洗 (原值: {prop.originalValue})
-                              </span>
+                              <span className="text-[10px] text-accent">{t("✓ Cleaning accepted (original: {{v0}})", { v0: prop.originalValue })}</span>
                             ) : prop.status === "rejected" ? (
-                              <span className="text-[10px] text-fg-3">
-                                ✕ 已拒绝建议 ({prop.proposedValue})
-                              </span>
+                              <span className="text-[10px] text-fg-3">{t("✕ Suggestion rejected ({{v0}})", { v0: prop.proposedValue })}</span>
                             ) : (
-                              <span className="text-[10px] text-status-info">
-                                ✎ 人工改值 (原值: {prop.originalValue})
-                              </span>
+                              <span className="text-[10px] text-status-info">{t("✎ Edited by a human (original: {{v0}})", { v0: prop.originalValue })}</span>
                             )}
                           </div>
                         )}

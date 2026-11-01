@@ -1,3 +1,4 @@
+import { getAppLocale, t as translate } from "../i18n";
 import {
   beginPerfOperation,
   endPerfOperation,
@@ -353,7 +354,7 @@ interface PersistedTaskInput {
 type WorkspaceListener = () => void;
 type ProjectStore = ReturnType<typeof createProjectStore>;
 
-const FIRST_NODE_NAME_FALLBACK = "首次存档";
+const FIRST_NODE_NAME_FALLBACK = "Initial snapshot";
 
 function projectEngineeringBytes(project: Project): number {
   const cached = projectEngineeringByteCache.get(project);
@@ -1087,7 +1088,7 @@ export class WorkspaceManager {
       workspace = {
         id: workspaceId,
         projectId: project.id,
-        name: "默认工作区",
+        name: translate("Default workspace"),
         kind: "default",
         baseNodeId: null,
         revision: 0,
@@ -1159,7 +1160,7 @@ export class WorkspaceManager {
       record = {
         id: uuidv4(),
         projectId,
-        name: options.name?.trim() || "试剪工作区",
+        name: options.name?.trim() || translate("Trial workspace"),
         kind: "trial",
         baseNodeId: node?.id ?? sourceWorkspace?.baseNodeId ?? null,
         revision: 0,
@@ -2739,7 +2740,7 @@ export class WorkspaceManager {
         workspace = {
           id: workspaceId,
           projectId: projectRecord!.id,
-          name: "默认工作区",
+          name: translate("Default workspace"),
           kind: "default",
           baseNodeId: null,
           revision: current.workspaceRevision ?? 0,
@@ -3188,7 +3189,7 @@ export class WorkspaceManager {
       const translated = i18next.t("versioning.autoNameFirst", { defaultValue: FIRST_NODE_NAME_FALLBACK });
       return typeof translated === "string" && translated.length > 0 ? translated : FIRST_NODE_NAME_FALLBACK;
     }
-    return new Intl.DateTimeFormat(undefined, {
+    return new Intl.DateTimeFormat(getAppLocale(), {
       month: "numeric",
       day: "numeric",
       hour: "2-digit",

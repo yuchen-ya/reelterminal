@@ -1,3 +1,4 @@
+import { t as translate } from "../../../../i18n";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type {
   WorkbenchPixelStroke,
@@ -24,11 +25,11 @@ export const EMPTY_STROKES: readonly WorkbenchPixelStroke[] = [];
 export const EMPTY_ANNOTATIONS: readonly WorkbenchSpatialAnnotation[] = [];
 
 export const DECISION_STATUS_LABEL: Record<WorkbenchItemView["status"], string> = {
-  pending: "待审阅",
-  kept: "已保留",
-  modified: "已修改",
-  rework: "待返工",
-  discarded: "已丢弃",
+  get pending() { return translate("requirementBoard.cleanupPhase.pending_review"); },
+  get kept() { return translate("Kept"); },
+  get modified() { return translate("Modified"); },
+  get rework() { return translate("Needs rework"); },
+  get discarded() { return translate("Discarded"); },
 };
 
 export const STATUS_TEXT_CLASS: Record<WorkbenchItemView["status"], string> = {
@@ -138,13 +139,13 @@ export function annotationCoordinateLabel(
   ann: WorkbenchSpatialAnnotation,
   natural: { readonly w: number; readonly h: number } | null,
 ): string {
-  if (!natural) return "源像素坐标未提供";
+  if (!natural) return translate("Source pixel coordinates were not supplied");
   if (ann.tool === "box") {
     const px = Math.round(ann.x * natural.w);
     const py = Math.round(ann.y * natural.h);
     const pw = Math.round((ann.w ?? 0) * natural.w);
     const ph = Math.round((ann.h ?? 0) * natural.h);
-    return `源像素 [${px}, ${py}, ${pw}×${ph}]`;
+    return translate("Source pixels [{{v0}}, {{v1}}, {{v2}}×{{v3}}]", { v0: px, v1: py, v2: pw, v3: ph });
   }
-  return `源像素 (${Math.round(ann.x * natural.w)}, ${Math.round(ann.y * natural.h)})`;
+  return translate("Source pixels ({{v0}}, {{v1}})", { v0: Math.round(ann.x * natural.w), v1: Math.round(ann.y * natural.h) });
 }

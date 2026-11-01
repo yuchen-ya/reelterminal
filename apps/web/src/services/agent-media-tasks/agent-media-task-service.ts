@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 /**
  * Access service for the user-level agent media task ledger.
  *
@@ -360,7 +361,7 @@ export class AgentMediaTaskService {
           ? requireNonEmpty(input.requestId)
           : `req_${uuid()}`;
         if (!requestId) {
-          return fail("INVALID_PARAMS", "requestId 不能为空", { field: "requestId" });
+          return fail("INVALID_PARAMS", canonicalMessage("requestId must not be empty"), { field: "requestId" });
         }
         const replayed = this.requestIdIndex.get(requestId);
         if (replayed) {
@@ -378,11 +379,11 @@ export class AgentMediaTaskService {
           !promptText &&
           !(input.kind === "music" && taskHasRequirementText(input.requirementsText, input.overrides))
         ) {
-          return fail("INVALID_PARAMS", "promptText 不能为空", { field: "promptText" });
+          return fail("INVALID_PARAMS", canonicalMessage("promptText must not be empty"), { field: "promptText" });
         }
         const targetProjectId = requireNonEmpty(input.targetProjectId ?? "");
         if (!targetProjectId) {
-          return fail("INVALID_PARAMS", "targetProjectId 不能为空", {
+          return fail("INVALID_PARAMS", canonicalMessage("targetProjectId must not be empty"), {
             field: "targetProjectId",
           });
         }
@@ -506,7 +507,7 @@ export class AgentMediaTaskService {
         if (!current) return fail("NOT_FOUND", `task "${id}" was not found`, { id });
         const resultPath = requireNonEmpty(input.resultPath ?? "");
         if (!resultPath) {
-          return fail("INVALID_PARAMS", "resultPath 不能为空", { field: "resultPath" });
+          return fail("INVALID_PARAMS", canonicalMessage("resultPath must not be empty"), { field: "resultPath" });
         }
         return await this.transitionTask(
           current,
@@ -708,7 +709,7 @@ export class AgentMediaTaskService {
         if (!current) return fail("NOT_FOUND", `task "${id}" was not found`, { id });
         const trimmed = requireNonEmpty(clipId ?? "");
         if (!trimmed) {
-          return fail("INVALID_PARAMS", "clipId 不能为空", { field: "clipId" });
+          return fail("INVALID_PARAMS", canonicalMessage("clipId must not be empty"), { field: "clipId" });
         }
         if (current.insertedClipId === trimmed) {
           return { ok: true, value: current };

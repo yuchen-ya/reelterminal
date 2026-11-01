@@ -1,3 +1,5 @@
+import { t as translate } from "../../i18n";
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 import type { FileResource } from "@reelterminal/core/review/types";
 import type { BinaryFileData, BinaryFiles, DataURL } from "@excalidraw/excalidraw/types";
 import type { FileId } from "@excalidraw/excalidraw/element/types";
@@ -23,7 +25,7 @@ export function blobDataUrl(blob: Blob): Promise<DataURL> {
 
 export async function resourceImage(resource: FileResource, fileId = resource.id): Promise<BinaryFileData> {
   const response = await fetch(boardResourceUrl(resource.id));
-  if (!response.ok) throw new Error(`无法读取图片：${resource.originalFileName}`);
+  if (!response.ok) throw new Error(canonicalMessage("Unable to read image: {{v0}}", { v0: resource.originalFileName }));
   return { id: fileId as FileId, dataURL: await blobDataUrl(await response.blob()), mimeType: resource.mime as BinaryFileData["mimeType"], created: resource.createdAt };
 }
 
@@ -41,14 +43,14 @@ export async function retainBoardBlob(boardId: string, blob: Blob, name: string)
 
 /** Validate the entire mixed batch before copying; all entries append in one scene update. */
 export async function importBoardFiles(boardId: string, files: readonly File[]): Promise<BoardImport[]> {
-  if (!window.reelterminal?.reviewFiles) throw new Error("请在桌面版导入画板文件");
-  if (!files.length || files.length > 64) throw new Error("每次可导入 1–64 个文件");
+  if (!window.reelterminal?.reviewFiles) throw new Error(canonicalMessage("Use the desktop app to import board files"));
+  if (!files.length || files.length > 64) throw new Error(canonicalMessage("Import 1–64 files at a time"));
   const planned = files.map(file => {
     const extension = file.name.split(".").at(-1)?.toLowerCase();
     const mime = reviewMediaMime(file.name) ?? (extension === "glb" ? "model/gltf-binary" : file.type);
     const kind = mime.startsWith("image/") ? "image" : mime.startsWith("video/") ? "video" : extension === "glb" ? "model3d" : undefined;
-    if (!kind && !["txt", "md", "log", "html", "htm"].includes(extension ?? "")) throw new Error(`画板不支持该文件：${file.name}`);
-    if (!kind && file.size > 2 * 1024 * 1024) throw new Error(`文本过大：${file.name}`);
+    if (!kind && !["txt", "md", "log", "html", "htm"].includes(extension ?? "")) throw new Error(canonicalMessage("This file is unsupported on a board: {{v0}}", { v0: file.name }));
+    if (!kind && file.size > 2 * 1024 * 1024) throw new Error(canonicalMessage("Text is too large: {{v0}}", { v0: file.name }));
     return { file, mime, kind: kind as BoardMediaKind | undefined, extension };
   });
   const results: BoardImport[] = [];
@@ -59,7 +61,7 @@ export async function importBoardFiles(boardId: string, files: readonly File[]):
       const documentKind = extension === "md" ? "markdown" : ["html", "htm"].includes(extension ?? "") ? "html" : undefined;
       const imported = documentKind && sourcePath ? await window.reelterminal!.humanBoardDocuments!.import(sourcePath) : undefined;
       const text = imported?.source ?? decodeReviewText(await file.arrayBuffer());
-      if (text.length > 200000) throw new Error(`单条文本最多 200000 字符：${file.name}`);
+      if (text.length > 200000) throw new Error(canonicalMessage("A text entry supports at most 200000 characters: {{v0}}", { v0: file.name }));
       if (imported) resources.push(...imported.resources);
       if (documentKind) {
         const document: BoardDocumentBinding = { kind: documentKind, name: file.name, documentPath: file.name, source: text, assets: imported?.assets ?? [] };
@@ -75,9 +77,9 @@ export async function importBoardFiles(boardId: string, files: readonly File[]):
     const sourcePath = native.fs.getPathForFile(file);
     const resource = sourcePath
       ? (await prepareReviewFiles([{ resourceId: crypto.randomUUID(), sourcePath, mime }], crypto.randomUUID(), "user"))[0]
-      : await prepareReviewBlob(new Blob([file], { type: mime }), file.name || "粘贴图片.png", crypto.randomUUID(), crypto.randomUUID());
+      : await prepareReviewBlob(new Blob([file], { type: mime }), file.name || translate("Pasted image.png"), crypto.randomUUID(), crypto.randomUUID());
     resources.push(resource);
-    results.push({ name: file.name || "粘贴图片", kind, resource, ...(kind === "image" ? { image: await resourceImage(resource) } : {}) });
+    results.push({ name: file.name || translate("Pasted image"), kind, resource, ...(kind === "image" ? { image: await resourceImage(resource) } : {}) });
   }
   await humanBoardStorage.retain(boardId, resources);
   return results;
@@ -99,9 +101,9 @@ export async function prepareBoardHtmlPreview(binding: BoardDocumentBinding, boa
   ids.add(id); activeHtmlPreviews.set(boardId, ids);
   try {
     const png = await window.reelterminal!.humanBoardDocuments!.preview({ id, bounds: { x: 0, y: 0, width: 640, height: 448 }, source: binding.source!, documentPath: binding.documentPath, assets: binding.assets });
-    if (!ids.has(id)) throw new Error("HTML 预览已取消");
-    const resource = await prepareReviewBlob(new Blob([new Uint8Array(png)], { type: "image/png" }), `${binding.name}-视口.png`, crypto.randomUUID(), crypto.randomUUID());
-    if (!ids.has(id)) throw new Error("HTML 预览已取消");
+    if (!ids.has(id)) throw new Error(canonicalMessage("HTML preview cancelled"));
+    const resource = await prepareReviewBlob(new Blob([new Uint8Array(png)], { type: "image/png" }), canonicalMessage("{{v0}}-viewport.png", { v0: binding.name }), crypto.randomUUID(), crypto.randomUUID());
+    if (!ids.has(id)) throw new Error(canonicalMessage("HTML preview cancelled"));
     return resource;
   } finally { ids.delete(id); if (!ids.size && activeHtmlPreviews.get(boardId) === ids) activeHtmlPreviews.delete(boardId); }
 }
@@ -111,11 +113,11 @@ export async function importBoardImageUrl(boardId: string, url: string): Promise
   if (url.startsWith("data:image/")) blob = await (await fetch(url)).blob();
   else {
     const result = await window.reelterminal!.media.fetchUrl({ url, maxBytes: 32 * 1024 * 1024 });
-    if (!result.ok) throw new Error(result.error ?? `图片下载失败：${result.status}`);
-    if (!result.contentType.startsWith("image/")) throw new Error("拖入的链接没有返回图片");
+    if (!result.ok) throw new Error(result.error ?? canonicalMessage("Image download failed: {{v0}}", { v0: result.status }));
+    if (!result.contentType.startsWith("image/")) throw new Error(canonicalMessage("The dropped URL did not return an image"));
     blob = new Blob([result.body], { type: result.contentType.split(";")[0] });
   }
-  const name = `网页图片.${blob.type.split("/")[1].replace("jpeg", "jpg")}`;
+  const name = translate("Web image.{{v0}}", { v0: blob.type.split("/")[1].replace("jpeg", "jpg") });
   const resource = await retainBoardBlob(boardId, blob, name);
   return [{ name, kind: "image", resource, image: await resourceImage(resource) }];
 }

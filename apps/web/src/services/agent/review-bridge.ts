@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 import { REVIEW_SCHEMAS, reviewIngestInput, type ReviewIngestItem, type ReviewVerb } from "@reelterminal/agent-facade/review";
 import { validateObject } from "@reelterminal/agent-facade/validate";
 import { validateWorkbenchContentUpdateOp } from "@reelterminal/agent-facade/workbench";
@@ -60,12 +61,12 @@ export async function handleReviewCommand(verb: ReviewVerb, params: Record<strin
     case "review.repair.inspect": return inspectImageRepair(valid as unknown as Parameters<typeof inspectImageRepair>[0]);
     case "review.repair.apply": return applyImageRepair(valid as unknown as Parameters<typeof applyImageRepair>[0]);
     case "review.frames.capture": return captureReviewFrame(valid as unknown as Parameters<typeof captureReviewFrame>[0]);
-    case "review.branches.create": throw reviewError("UNSUPPORTED", "任务分支已停用。请在当前任务中分组提交内容，使用 review.items.submit 更新已有条目；只有用户明确要求独立目标时才新建任务。");
+    case "review.branches.create": throw reviewError("UNSUPPORTED", canonicalMessage("Task branches are retired. Submit groups within the current task and update existing items with review.items.submit. Create a new task only for an explicitly requested independent goal."));
     case "review.branches.compare": return reviewService.compareBranch(target);
     case "review.items.submit":
     case "review.branches.submit": {
       if (verb === "review.branches.submit" && !(await reviewService.getNodeMetadata(target)).branch) {
-        throw reviewError("INVALID_PARAMS", "旧分支提交接口仅适用于历史分支；当前任务请使用 review.items.submit。");
+        throw reviewError("INVALID_PARAMS", canonicalMessage("The legacy branch submission interface is for historical branches only; use review.items.submit for the current task."));
       }
       const results = valid.results as Array<{ itemId: string; expectedItemVersion: number; content: ReviewIngestItem["content"] }>;
       // Reuse the existing validated content conversion without ingesting a synthetic batch.

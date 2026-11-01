@@ -1,3 +1,7 @@
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../i18n";
+import { legacyCleanupHandoffIdentity } from "../../services/cleanup-handoff-identity";
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import {
@@ -46,13 +50,13 @@ const btnPrimary =
   "inline-flex items-center justify-center gap-1.5 rounded-md bg-accent px-4 py-2 text-xs font-semibold text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-40";
 
 const actionLabels: Record<string, string> = {
-  "purge-media": "清理不再使用的应用内素材",
-  "recycle-nodes": "将所选存档移入回收站",
-  "restore-nodes": "恢复所选存档",
-  "purge-deleted-nodes": "永久删除回收站中的所选存档",
-  "purge-cache": "清理可重建缓存",
-  "purge-failed-jobs": "清理失败任务记录",
-  "purge-work-files": "清理选中的临时文件与未采用结果",
+  get "purge-media"() { return translate("Remove unused app-managed media"); },
+  get "recycle-nodes"() { return translate("Move selected snapshots to the recycle bin"); },
+  get "restore-nodes"() { return translate("Restore selected snapshots"); },
+  get "purge-deleted-nodes"() { return translate("Permanently delete selected snapshots from the recycle bin"); },
+  get "purge-cache"() { return translate("Remove rebuildable cache"); },
+  get "purge-failed-jobs"() { return translate("Remove failed task records"); },
+  get "purge-work-files"() { return translate("Remove selected temporary files and unadopted results"); },
 };
 
 const spaceCleanupCards: Array<{
@@ -63,28 +67,29 @@ const spaceCleanupCards: Array<{
 }> = [
   {
     action: "purge-media",
-    title: "清理未使用素材",
-    desc: "清理不再被当前工程或保留存档引用的应用内素材",
+    get title() { return translate("Remove unused media"); },
+    get desc() { return translate("Remove app-managed media that is no longer referenced by the current project or retained snapshots"); },
     needsNodes: true,
   },
   {
     action: "purge-cache",
-    title: "清理可重建缓存",
-    desc: "释放帧缓存与代理文件（不影响工程，按需自动重建）",
+    get title() { return translate("Remove rebuildable cache"); },
+    get desc() { return translate("Free frame cache and proxy files (the project is preserved; files rebuild when needed)"); },
   },
   {
     action: "purge-work-files",
-    title: "清理临时与未采用文件",
-    desc: "清理生成尝试残留的过程文件（需在下方勾选具体文件）",
+    get title() { return translate("Remove temporary and unadopted files"); },
+    get desc() { return translate("Remove intermediate files left by generation attempts (select the exact files below)"); },
   },
   {
     action: "purge-failed-jobs",
-    title: "清理失败任务记录",
-    desc: "移除已失败或已取消作业的快照记录",
+    get title() { return translate("Remove failed task records"); },
+    get desc() { return translate("Remove snapshot records for failed or cancelled jobs"); },
   },
 ];
 
 export function ExportCleanupPage(): JSX.Element {
+  const { t } = useTranslation();
   const session = useDesktopExportStore((state) => state.session);
   const outputs = useDesktopExportStore((state) => state.outputs);
   const cancelExport = useDesktopExportStore((state) => state.cancel);
@@ -143,10 +148,10 @@ export function ExportCleanupPage(): JSX.Element {
       node,
       depth: Math.min(getDepth(node.nodeId), 4),
       parentName: node.parentNodeIds.length
-        ? (byId.get(node.parentNodeIds[0])?.name ?? "早期版本")
+        ? (byId.get(node.parentNodeIds[0])?.name ?? t("Earlier version"))
         : null,
     }));
-  }, [review]);
+  }, [review, t]);
 
   const deliveredOutputs = useMemo(
     () =>
@@ -210,7 +215,7 @@ export function ExportCleanupPage(): JSX.Element {
   }, [refresh]);
 
   const handoff = (overrideAction: Action = action) => {
-    if (!target || !review) throw new Error("请先完成引用审查");
+    if (!target || !review) throw new Error(translate("Complete the reference review first"));
     const effectiveNodes =
       overrideAction === "purge-cache" ||
       overrideAction === "purge-failed-jobs" ||
@@ -220,9 +225,11 @@ export function ExportCleanupPage(): JSX.Element {
     return {
       ...target,
       revision: session?.target.revision ?? review.revision,
-      scope: `${actionLabels[overrideAction]}；选中节点 ${effectiveNodes.length} 个${overrideAction === "purge-work-files" ? `；选中过程文件 ${workFileIds.join(", ")}` : ""}。另审查未采用生成尝试和失败作业残留，无法确认用途的文件保留。`,
-      retention:
-        "保留原件、成片、审阅工作台、模板、素材库、草稿/恢复、撤销/重做、后继节点和活动作业输入；导出完成不授权删除源素材。",
+      ...legacyCleanupHandoffIdentity(overrideAction, effectiveNodes, workFileIds),
+      presentation: {
+        scope: translate("cleanup.handoff.scope", { action: actionLabels[overrideAction], count: effectiveNodes.length, workFiles: overrideAction === "purge-work-files" ? translate("cleanup.handoff.workFiles", { files: workFileIds.join(", ") }) : "" }),
+        retention: translate("cleanup.handoff.retention"),
+      },
     };
   };
 
@@ -317,12 +324,8 @@ export function ExportCleanupPage(): JSX.Element {
               <HardDrive size={17} aria-hidden />
             </div>
             <div>
-              <h1 className="text-base font-semibold tracking-tight">
-                导出与整理
-              </h1>
-              <p className="text-xs text-fg-muted">
-                管理已导出的视频成片、历史版本存档，或安全释放项目空间（原始素材与已导出成片始终保留）
-              </p>
+              <h1 className="text-base font-semibold tracking-tight">{t("Exports and cleanup")}</h1>
+              <p className="text-xs text-fg-muted">{t("Manage exported videos and version snapshots, or free project space while preserving source media and delivered videos")}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -333,16 +336,14 @@ export function ExportCleanupPage(): JSX.Element {
               onClick={() => void refresh()}
             >
               <RefreshCw size={13} aria-hidden />
-              刷新检查
-            </button>
+              {t("Refresh checks")}</button>
             <button
               type="button"
               className={btnSecondary}
               onClick={() => useUIStore.getState().setDesktopPage("edit")}
             >
               <ArrowLeft size={13} aria-hidden />
-              返回编辑
-            </button>
+              {t("Return to editing")}</button>
           </div>
         </div>
 
@@ -356,7 +357,7 @@ export function ExportCleanupPage(): JSX.Element {
                     <Film size={14} className="text-accent" aria-hidden />
                     <span>
                       {session.projectName} ·{" "}
-                      {session.state.complete ? "导出完成" : session.state.phase}
+                      {session.state.complete ? t("Export complete") : session.state.phase}
                     </span>
                   </span>
                   <span className="font-mono text-fg-2">
@@ -367,7 +368,7 @@ export function ExportCleanupPage(): JSX.Element {
                   className="mt-2 h-1.5 w-full overflow-hidden rounded-full accent-accent"
                   max={100}
                   value={session.state.progress}
-                  aria-label="导出进度"
+                  aria-label={t("Export Progress")}
                 />
                 {session.state.error ? (
                   <p role="alert" className="mt-1.5 text-xs text-red-400">
@@ -376,14 +377,12 @@ export function ExportCleanupPage(): JSX.Element {
                 ) : null}
                 {session.state.isExporting ? (
                   <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
-                    <span>导出进行中，返回编辑不会影响当前导出任务。</span>
+                    <span>{t("Export is in progress. Returning to editing will not interrupt it.")}</span>
                     <button
                       type="button"
                       className="text-red-400 hover:underline"
                       onClick={() => cancelExport?.()}
-                    >
-                      取消导出
-                    </button>
+                    >{t("desktop.editor.cancelExport")}</button>
                   </div>
                 ) : null}
               </div>
@@ -394,11 +393,9 @@ export function ExportCleanupPage(): JSX.Element {
                 <div className="mb-2 flex items-center justify-between">
                   <h2 className="flex items-center gap-1.5 text-xs font-semibold text-fg">
                     <Film size={13} className="text-accent" aria-hidden />
-                    已导出成片（{deliveredOutputs.length}）
+                    {t("Delivered videos (")}{deliveredOutputs.length}）
                   </h2>
-                  <span className="text-[11px] text-fg-muted">
-                    空间清理不会删除已导出的成片视频
-                  </span>
+                  <span className="text-[11px] text-fg-muted">{t("Space cleanup does not delete delivered videos")}</span>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {deliveredOutputs.map((output) => (
@@ -414,7 +411,7 @@ export function ExportCleanupPage(): JSX.Element {
                           className="mt-0.5 truncate text-[11px] text-fg-muted"
                           title={output.outputPath}
                         >
-                          {output.outputPath ?? "已交给浏览器下载"}
+                          {output.outputPath ?? t("Handed to the browser for download")}
                         </div>
                       </div>
                       {output.outputPath ? (
@@ -430,8 +427,7 @@ export function ExportCleanupPage(): JSX.Element {
                           }
                         >
                           <FolderOpen size={12} aria-hidden />
-                          在文件夹中显示
-                        </button>
+                          {t("Show in folder")}</button>
                       ) : null}
                     </div>
                   ))}
@@ -441,9 +437,7 @@ export function ExportCleanupPage(): JSX.Element {
 
             {pendingOutputs.length > 0 ? (
               <details className="mt-2.5 text-xs text-fg-muted">
-                <summary className="cursor-pointer hover:text-fg">
-                  未完成的导出尝试（{pendingOutputs.length}）
-                </summary>
+                <summary className="cursor-pointer hover:text-fg">{t("Incomplete export attempts ({{v0}})", { v0: pendingOutputs.length })}</summary>
                 <div className="mt-1.5 space-y-1">
                   {pendingOutputs.map((output) => (
                     <p
@@ -469,7 +463,7 @@ export function ExportCleanupPage(): JSX.Element {
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Archive size={15} className="text-accent" aria-hidden />
-                <h2 className="text-sm font-semibold">历史版本存档</h2>
+                <h2 className="text-sm font-semibold">{t("Version snapshots")}</h2>
                 {review ? (
                   <span className="rounded-full bg-bg-3 px-2 py-0.5 text-[11px] text-fg-2">
                     {review.nodes.length}
@@ -485,34 +479,25 @@ export function ExportCleanupPage(): JSX.Element {
                     onClick={() =>
                       setNodeIds(review.nodes.map((node) => node.nodeId))
                     }
-                  >
-                    全选
-                  </button>
+                  >{t("Select all")}</button>
                   <span className="text-border">|</span>
                   <button
                     type="button"
                     className="text-fg-2 hover:text-fg hover:underline"
                     disabled={busy || nodeIds.length === 0}
                     onClick={() => setNodeIds([])}
-                  >
-                    清空
-                  </button>
+                  >{t("Clear")}</button>
                 </div>
               ) : null}
             </div>
-            <p className="mt-1 text-xs text-fg-muted">
-              勾选需要整理的存档版本；仍被当前编辑或其他保留版本使用的素材会自动保护。
-            </p>
+            <p className="mt-1 text-xs text-fg-muted">{t("Select snapshots to organize. Media still used by the current edit or other retained versions is protected.")}</p>
 
             {/* Quick Contextual Action Bar when nodes are selected */}
             {nodeIds.length > 0 ? (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs">
-                <span className="font-medium text-fg">
-                  已选 {nodeIds.length} 个存档
-                  {review
-                    ? ` · 独立占用 ${bytes(review.selected.reclaimableBytes)}`
-                    : ""}
-                </span>
+                <span className="font-medium text-fg">{t("Snapshots selected: {{v0}} {{v1}}", { v0: nodeIds.length, v1: review
+                    ? t(" · Exclusive space: {{v0}}", { v0: bytes(review.selected.reclaimableBytes) })
+                    : "" })}</span>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <button
                     type="button"
@@ -521,8 +506,7 @@ export function ExportCleanupPage(): JSX.Element {
                     onClick={() => runPreview("recycle-nodes")}
                   >
                     <Trash2 size={12} aria-hidden />
-                    移入回收站
-                  </button>
+                    {t("review.moveToTrash")}</button>
                   <button
                     type="button"
                     className={btnSecondary}
@@ -530,8 +514,7 @@ export function ExportCleanupPage(): JSX.Element {
                     onClick={() => runPreview("restore-nodes")}
                   >
                     <RotateCcw size={12} aria-hidden />
-                    恢复存档
-                  </button>
+                    {t("Restore snapshots")}</button>
                 </div>
               </div>
             ) : null}
@@ -564,7 +547,7 @@ export function ExportCleanupPage(): JSX.Element {
                   <input
                     type="checkbox"
                     className="mt-0.5 h-4 w-4 rounded border-border accent-accent"
-                    aria-label={`选择节点 ${node.name}`}
+                    aria-label={t("Select node {{v0}}", { v0: node.name })}
                     checked={isSelected}
                     disabled={busy}
                     onChange={(event) =>
@@ -582,18 +565,16 @@ export function ExportCleanupPage(): JSX.Element {
                       </span>
                       <div className="flex items-center gap-1.5">
                         {node.deletedAt !== undefined ? (
-                          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
-                            回收站
-                          </span>
+                          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">{t("review.trash")}</span>
                         ) : null}
                         <span className="rounded bg-bg-3 px-1.5 py-0.5 text-[10px] text-fg-muted">
-                          {parentName ? `源于 ${parentName}` : "初始存档"}
+                          {parentName ? t("Based on {{v0}}", { v0: parentName }) : t("Initial snapshot")}
                         </span>
                       </div>
                     </div>
 
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-2">
-                      <span>包含 {node.media.length} 个素材</span>
+                      <span>{t("Media items: {{v0}}", { v0: node.media.length })}</span>
                       <span>·</span>
                       <span
                         className={
@@ -601,13 +582,9 @@ export function ExportCleanupPage(): JSX.Element {
                             ? "font-medium text-accent"
                             : "text-fg-muted"
                         }
-                      >
-                        仅该存档占用 {bytes(exclusiveBytes)}
-                      </span>
+                      >{t("Exclusive to this snapshot: {{v0}}", { v0: bytes(exclusiveBytes) })}</span>
                       <span>·</span>
-                      <span className="text-fg-muted">
-                        共享 {bytes(sharedBytes)}
-                      </span>
+                      <span className="text-fg-muted">{t("Shared: {{v0}}", { v0: bytes(sharedBytes) })}</span>
                     </div>
                   </div>
                 </label>
@@ -617,9 +594,7 @@ export function ExportCleanupPage(): JSX.Element {
             {review && review.nodes.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-bg-1/40 p-8 text-center">
                 <Archive size={24} className="text-fg-muted" aria-hidden />
-                <p className="mt-2 text-sm text-fg-2">
-                  还没有项目存档。可以先在右侧清理缓存；当前编辑和自动恢复数据会保留。
-                </p>
+                <p className="mt-2 text-sm text-fg-2">{t("No project snapshots yet. You can remove cache on the right; current edits and recovery data are preserved.")}</p>
               </div>
             ) : null}
 
@@ -627,11 +602,10 @@ export function ExportCleanupPage(): JSX.Element {
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">
                 <h3 className="flex items-center gap-1.5 font-medium">
                   <AlertTriangle size={13} aria-hidden />
-                  需保留并继续审查
-                </h3>
+                  {t("Retain and review further")}</h3>
                 <ul className="mt-1.5 list-inside list-disc space-y-1">
                   {review.unknowns.map((unknown) => (
-                    <li key={unknown}>{unknown}</li>
+                    <li key={unknown}><LocalizedMessage>{unknown}</LocalizedMessage></li>
                   ))}
                 </ul>
               </div>
@@ -644,12 +618,10 @@ export function ExportCleanupPage(): JSX.Element {
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Sparkles size={15} className="text-accent" aria-hidden />
-              <h2 className="text-sm font-semibold">空间清理与操作</h2>
+              <h2 className="text-sm font-semibold">{t("Space cleanup and actions")}</h2>
             </div>
           </div>
-          <p className="mt-1 text-xs text-fg-muted">
-            选择下方清理类型并点击「预览清理内容」，系统会先列出待清理清单，经你确认后才会真正删除。
-          </p>
+          <p className="mt-1 text-xs text-fg-muted">{t("Choose an action and select Preview cleanup. Exact candidates are listed before you confirm deletion.")}</p>
 
           {/* 4 Visual Quick-Select Cards */}
           <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -691,8 +663,7 @@ export function ExportCleanupPage(): JSX.Element {
           {/* Action Selector + Preview Trigger Bar */}
           <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-bg-1 p-4 sm:flex-row sm:items-end">
             <label className="min-w-0 flex-1 text-xs font-medium text-fg-2">
-              整理动作
-              <select
+              {t("Cleanup action")}<select
                 className="mt-1.5 block w-full rounded-md border border-border bg-bg-2 px-3 py-2 text-xs text-fg focus:border-accent focus:outline-none"
                 value={action}
                 disabled={busy}
@@ -714,7 +685,7 @@ export function ExportCleanupPage(): JSX.Element {
               disabled={busy || !review}
               onClick={() => runPreview(action)}
             >
-              {busy ? "正在检查…" : "预览清理内容"}
+              {busy ? t("audioEnvironment.checking") : t("Preview cleanup")}
             </button>
           </div>
 
@@ -726,34 +697,20 @@ export function ExportCleanupPage(): JSX.Element {
             >
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
                 <div>
-                  <h3 className="text-sm font-semibold text-fg">
-                    确认清理清单
-                  </h3>
+                  <h3 className="text-sm font-semibold text-fg">{t("Confirm cleanup candidates")}</h3>
                   <p className="mt-0.5 text-xs text-fg-2">
                     {actionLabels[plan.action]}
                   </p>
                 </div>
-                <span className="rounded-md bg-accent/15 px-2.5 py-1 text-xs font-semibold text-accent">
-                  预计释放 {bytes(plan.reclaimableBytes)}
-                </span>
+                <span className="rounded-md bg-accent/15 px-2.5 py-1 text-xs font-semibold text-accent">{t("Estimated space to free: {{v0}}", { v0: bytes(plan.reclaimableBytes) })}</span>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-fg-muted">
-                <span className="rounded bg-bg-2 px-2 py-1">
-                  {plan.selection.nodeIds.length} 个存档节点
-                </span>
-                <span className="rounded bg-bg-2 px-2 py-1">
-                  {plan.selection.mediaIds.length} 个素材
-                </span>
-                <span className="rounded bg-bg-2 px-2 py-1">
-                  {plan.selection.cacheKeys.length} 项缓存
-                </span>
-                <span className="rounded bg-bg-2 px-2 py-1">
-                  {plan.selection.jobIds.length} 个失败作业
-                </span>
-                <span className="rounded bg-bg-2 px-2 py-1">
-                  {plan.candidateWorkFiles.length} 个过程文件
-                </span>
+                <span className="rounded bg-bg-2 px-2 py-1">{t("Snapshot nodes: {{v0}}", { v0: plan.selection.nodeIds.length })}</span>
+                <span className="rounded bg-bg-2 px-2 py-1">{t("Media items: {{v0}}", { v0: plan.selection.mediaIds.length })}</span>
+                <span className="rounded bg-bg-2 px-2 py-1">{t("Cache entries: {{v0}}", { v0: plan.selection.cacheKeys.length })}</span>
+                <span className="rounded bg-bg-2 px-2 py-1">{t("Failed jobs: {{v0}}", { v0: plan.selection.jobIds.length })}</span>
+                <span className="rounded bg-bg-2 px-2 py-1">{t("Intermediate files: {{v0}}", { v0: plan.candidateWorkFiles.length })}</span>
               </div>
 
               {plan.selection.nodeIds.length > 0 ? (
@@ -790,9 +747,7 @@ export function ExportCleanupPage(): JSX.Element {
                       key={media.mediaId}
                       className="rounded border border-border bg-bg-1 p-2"
                     >
-                      <p className="font-medium text-fg">
-                        素材 {media.mediaId} · {bytes(media.sizeBytes)}
-                      </p>
+                      <p className="font-medium text-fg">{t("Media {{v0}} · {{v1}}", { v0: media.mediaId, v1: bytes(media.sizeBytes) })}</p>
                       {media.files.map((file) => (
                         <p
                           key={file.path}
@@ -807,18 +762,14 @@ export function ExportCleanupPage(): JSX.Element {
                     <p
                       key={cache.key}
                       className="break-all rounded border border-border bg-bg-1 p-2"
-                    >
-                      可重建帧缓存 · {cache.key} · {bytes(cache.sizeBytes)}
-                    </p>
+                    >{t("Rebuildable frame cache · {{v0}} · {{v1}}", { v0: cache.key, v1: bytes(cache.sizeBytes) })}</p>
                   ))}
                   {plan.candidateJobs.map((job) => (
                     <div
                       className="rounded border border-border bg-bg-1 p-2"
                       key={job.jobId}
                     >
-                      <p className="font-medium text-fg">
-                        失败作业 {job.jobId} · {bytes(job.reclaimableBytes)}
-                      </p>
+                      <p className="font-medium text-fg">{t("Failed job {{v0}} · {{v1}}", { v0: job.jobId, v1: bytes(job.reclaimableBytes) })}</p>
                       {job.files.map((file) => (
                         <p
                           key={file.path}
@@ -838,7 +789,7 @@ export function ExportCleanupPage(): JSX.Element {
                   className="my-3 space-y-1 rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-300"
                 >
                   {plan.blockers.map((blocker) => (
-                    <li key={blocker}>{blocker}</li>
+                    <li key={blocker}><LocalizedMessage>{blocker}</LocalizedMessage></li>
                   ))}
                 </ul>
               ) : null}
@@ -847,9 +798,7 @@ export function ExportCleanupPage(): JSX.Element {
                 <p
                   role="status"
                   className="my-3 rounded-md border border-border bg-bg-2 px-3 py-2.5 text-xs text-fg-2"
-                >
-                  没有可清理的内容，无需执行。仍在使用或无法确认用途的文件已保留。
-                </p>
+                >{t("Nothing to remove. Files still in use or of uncertain purpose are retained.")}</p>
               )}
 
               <div className="mt-3 flex items-center justify-end gap-2">
@@ -858,9 +807,7 @@ export function ExportCleanupPage(): JSX.Element {
                   className={btnSecondary}
                   disabled={busy}
                   onClick={() => setPlan(null)}
-                >
-                  取消
-                </button>
+                >{t("review.cancel")}</button>
                 <button
                   type="button"
                   className="inline-flex items-center justify-center rounded-md border border-red-500/60 bg-red-500/15 px-4 py-1.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/25 disabled:opacity-40"
@@ -877,7 +824,7 @@ export function ExportCleanupPage(): JSX.Element {
                     })
                   }
                 >
-                  {busy ? "正在执行…" : "确认执行"}
+                  {busy ? t("Executing…") : t("Confirm execution")}
                 </button>
               </div>
             </div>
@@ -891,37 +838,21 @@ export function ExportCleanupPage(): JSX.Element {
             >
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={16} className="text-emerald-400" aria-hidden />
-                <h3 className="text-sm font-semibold text-fg">整理结果</h3>
+                <h3 className="text-sm font-semibold text-fg">{t("Cleanup results")}</h3>
               </div>
-              <p className="mt-1.5 text-xs text-fg-2">
-                实际释放 {bytes(result.reclaimedBytes)} · 删除{" "}
-                {result.deletedMediaIds.length} 个素材 /{" "}
-                {result.deletedNodeIds.length} 个节点 · 更新{" "}
-                {result.updatedNodeIds.length} 个节点 · 清理{" "}
-                {result.deletedCacheKeys.length} 项缓存 /{" "}
-                {result.deletedJobIds.length} 个失败作业 /{" "}
-                {result.deletedWorkFiles?.length ?? 0} 个过程文件
-              </p>
+              <p className="mt-1.5 text-xs text-fg-2">{t("Freed {{bytes}} · Removed media: {{media}} / nodes: {{nodes}} · Updated nodes: {{updated}} · Removed cache: {{cache}} / failed jobs: {{jobs}} / intermediate files: {{files}}", { bytes: bytes(result.reclaimedBytes), media: result.deletedMediaIds.length, nodes: result.deletedNodeIds.length, updated: result.updatedNodeIds.length, cache: result.deletedCacheKeys.length, jobs: result.deletedJobIds.length, files: result.deletedWorkFiles?.length ?? 0 })}</p>
               {result.reason ? (
-                <p className="mt-2 text-xs text-amber-400">
-                  需重新审查：{result.reason}
-                </p>
+                <p className="mt-2 text-xs text-amber-400">{t("Review again: {{v0}}", { v0: result.reason })}</p>
               ) : null}
               <ul className="mt-2.5 space-y-1 break-all text-xs text-fg-muted">
                 {result.deletedWorkFiles?.map((file) => (
-                  <li key={`${file.jobId}:${file.fileId}`}>
-                    已删除 {file.path} · {bytes(file.sizeBytes)}
-                  </li>
+                  <li key={`${file.jobId}:${file.fileId}`}>{t("Removed {{v0}} · {{v1}}", { v0: file.path, v1: bytes(file.sizeBytes) })}</li>
                 ))}
                 {result.skipped.map((item) => (
-                  <li key={`${item.kind}:${item.id}`}>
-                    已跳过 {item.id}：{item.reason}
-                  </li>
+                  <li key={`${item.kind}:${item.id}`}>{t("Skipped {{v0}}: {{v1}}", { v0: item.id, v1: item.reason })}</li>
                 ))}
                 {result.failed.map((item) => (
-                  <li key={`${item.kind}:${item.id}`} className="text-red-400">
-                    失败 {item.id}：{item.reason}
-                  </li>
+                  <li key={`${item.kind}:${item.id}`} className="text-red-400">{t("Failed {{v0}}: {{v1}}", { v0: item.id, v1: item.reason })}</li>
                 ))}
               </ul>
             </div>
@@ -932,7 +863,7 @@ export function ExportCleanupPage(): JSX.Element {
               role="status"
               className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300"
             >
-              {message}
+              <LocalizedMessage>{message}</LocalizedMessage>
             </p>
           ) : null}
 
@@ -942,12 +873,8 @@ export function ExportCleanupPage(): JSX.Element {
               className="rounded-lg border border-border bg-bg-1 p-3 text-xs"
               open={action === "purge-work-files" || undefined}
             >
-              <summary className="cursor-pointer font-medium text-fg-2 hover:text-fg">
-                临时文件与未采用结果（高级）
-              </summary>
-              <p className="mt-2 text-fg-muted">
-                勾选不再需要的生成尝试或中间文件后，选择「清理临时与未采用文件」并预览。已采用素材与成片会自动保留。
-              </p>
+              <summary className="cursor-pointer font-medium text-fg-2 hover:text-fg">{t("Temporary files and unadopted results (advanced)")}</summary>
+              <p className="mt-2 text-fg-muted">{t("Select unwanted generation attempts or intermediate files, choose Remove temporary and unadopted files, and preview. Adopted media and delivered videos are retained.")}</p>
               <div className="mt-2.5 space-y-2">
                 {review?.workFiles.files.map((file) => (
                   <label
@@ -957,7 +884,7 @@ export function ExportCleanupPage(): JSX.Element {
                     <input
                       type="checkbox"
                       className="mt-0.5 h-3.5 w-3.5 accent-accent"
-                      aria-label={`选择过程文件 ${file.selectionId}`}
+                      aria-label={t("Select intermediate file {{v0}}", { v0: file.selectionId })}
                       disabled={busy || !!file.retainedReason}
                       checked={workFileIds.includes(file.selectionId)}
                       onChange={(event) => {
@@ -978,15 +905,13 @@ export function ExportCleanupPage(): JSX.Element {
                         {file.path}
                       </span>
                       <span className="mt-1 block text-[11px] text-fg-muted">
-                        {file.retainedReason ?? "未发现引用，可勾选清理"}
+                        {file.retainedReason ?? t("No references found; eligible for selection")}
                       </span>
                     </span>
                   </label>
                 ))}
                 {!review?.workFiles.files.length ? (
-                  <p className="text-fg-muted">
-                    当前工程没有待清理的临时过程文件。
-                  </p>
+                  <p className="text-fg-muted">{t("This project has no temporary intermediate files to remove.")}</p>
                 ) : null}
               </div>
             </details>
@@ -995,12 +920,8 @@ export function ExportCleanupPage(): JSX.Element {
               className="rounded-lg border border-border bg-bg-1 p-3 text-xs"
               open={action === "purge-failed-jobs" || undefined}
             >
-              <summary className="cursor-pointer font-medium text-fg-2 hover:text-fg">
-                审查未采用生成尝试与失败作业
-              </summary>
-              <p className="mt-2 text-fg-muted">
-                仅移除已失败或已取消的任务快照记录，正式素材与输出文件不受影响。
-              </p>
+              <summary className="cursor-pointer font-medium text-fg-2 hover:text-fg">{t("Review unadopted attempts and failed jobs")}</summary>
+              <p className="mt-2 text-fg-muted">{t("Only failed or cancelled task snapshot records are removed. Saved media and output files are preserved.")}</p>
               {review?.failedJobs.tasks.map((task) => (
                 <div
                   key={task.jobId}
@@ -1009,7 +930,7 @@ export function ExportCleanupPage(): JSX.Element {
                   <p className="break-all font-medium text-fg">
                     {task.kind} · {task.state} · {task.jobId}
                   </p>
-                  <p className="mt-1 text-fg-muted">{task.retainedReason}</p>
+                  <p className="mt-1 text-fg-muted"><LocalizedMessage>{task.retainedReason}</LocalizedMessage></p>
                   {task.files.map((file) => (
                     <p
                       className="mt-1 break-all font-mono text-[11px] text-fg-muted"
@@ -1021,17 +942,13 @@ export function ExportCleanupPage(): JSX.Element {
                 </div>
               ))}
               {!review?.failedJobs.tasks.length ? (
-                <p className="mt-2 text-fg-muted">当前没有失败或取消的作业记录。</p>
+                <p className="mt-2 text-fg-muted">{t("No failed or cancelled job records.")}</p>
               ) : null}
             </details>
 
             <details className="rounded-lg border border-border bg-bg-1 p-3 text-xs">
-              <summary className="cursor-pointer font-medium text-fg-2 hover:text-fg">
-                交给 Agent 协助检查（可选）
-              </summary>
-              <p className="mt-2 text-fg-muted">
-                如果不确定哪些历史尝试文件可以安全清理，可发布检查任务或复制提示词交给 Agent 协助梳理（不会直接授权删除）。
-              </p>
+              <summary className="cursor-pointer font-medium text-fg-2 hover:text-fg">{t("Ask an Agent to review (optional)")}</summary>
+              <p className="mt-2 text-fg-muted">{t("If you are unsure which files can be removed, publish a review task or copy the prompt for an Agent. This does not authorize deletion.")}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -1046,14 +963,13 @@ export function ExportCleanupPage(): JSX.Element {
                         store,
                       });
                       setMessage(
-                        "清理审查任务已发布到需求看板；尚未授权删除。",
+                        translate("Cleanup review published to the requirements board; deletion is not authorized."),
                       );
                     })
                   }
                 >
                   <Bot size={13} aria-hidden />
-                  发布清理任务到看板
-                </button>
+                  {t("Publish cleanup review to the board")}</button>
                 <button
                   type="button"
                   className={btnSecondary}
@@ -1063,12 +979,10 @@ export function ExportCleanupPage(): JSX.Element {
                       await navigator.clipboard.writeText(
                         buildCleanupAgentPrompt(handoff(), cleanupNodeIds),
                       );
-                      setMessage("已复制审查提示词。");
+                      setMessage(translate("Review prompt copied."));
                     })
                   }
-                >
-                  复制提示词给 Agent
-                </button>
+                >{t("Copy prompt for Agent")}</button>
               </div>
             </details>
           </div>

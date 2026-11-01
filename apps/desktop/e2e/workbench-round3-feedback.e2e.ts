@@ -229,11 +229,11 @@ describe("workbench round 3 batch C: feedback reliability", () => {
     let state = await readProjectState(agent, identity);
     expect(feedbackFor(state, IMAGE_ID)).toHaveLength(0);
 
-    const textarea = panel.getByLabel("问题建议");
+    const textarea = panel.getByLabel("Issue suggestion");
     await textarea.fill("第一条建议");
     await panel.getByRole("button", { name: /母版/ }).click();
     await panel.getByTestId("workbench-issue-save").click();
-    await page.getByText(/反馈已保存/).first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByText(/Feedback saved/).first().waitFor({ state: "visible", timeout: 15_000 });
 
     await draw(0.55, 0.2, 0.75, 0.4);
     await panel.getByTestId("workbench-issue-card").nth(1).waitFor({ timeout: 10_000 });
@@ -241,7 +241,7 @@ describe("workbench round 3 batch C: feedback reliability", () => {
     await textarea.fill("第二条建议");
     await panel.getByRole("button", { name: /边缘清理/ }).click();
     await panel.getByTestId("workbench-issue-save").click();
-    await page.getByText(/反馈已保存/).first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByText(/Feedback saved/).first().waitFor({ state: "visible", timeout: 15_000 });
 
     state = await readProjectState(agent, identity);
     const item = state.project.workbench.items.find((candidate) => candidate.id === IMAGE_ID)!;
@@ -269,7 +269,7 @@ describe("workbench round 3 batch C: feedback reliability", () => {
     await expect(panel.getByTestId("workbench-issue-saved-state").isVisible()).resolves.toBe(true);
     await textarea.fill("第一条建议（更新）");
     await panel.getByTestId("workbench-issue-save").click();
-    await page.getByText(/反馈已保存/).first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByText(/Feedback saved/).first().waitFor({ state: "visible", timeout: 15_000 });
 
     state = await readProjectState(agent, identity);
     records = feedbackFor(state, IMAGE_ID);
@@ -289,10 +289,10 @@ describe("workbench round 3 batch C: feedback reliability", () => {
     const page = launched.page;
     const panel = page.getByTestId("workbench-issue-panel");
     await panel.getByTestId("workbench-issue-card").nth(0).click();
-    const textarea = panel.getByLabel("问题建议");
+    const textarea = panel.getByLabel("Issue suggestion");
     await textarea.fill("返工建议");
     await panel.getByTestId("workbench-issue-rework").click();
-    await page.getByText(/反馈已保存/).first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByText(/Feedback saved/).first().waitFor({ state: "visible", timeout: 15_000 });
 
     const reworked = await waitForItem(agent, identity, IMAGE_ID, (item) => item.status === "rework");
     expect(imageAnnotations(reworked)[0].label).toContain("返工建议");
@@ -300,7 +300,7 @@ describe("workbench round 3 batch C: feedback reliability", () => {
     expect(feedbackFor(state, IMAGE_ID)[0].text).toContain("返工建议");
 
     // One history entry: undo the whole save (annotation + feedback + rework).
-    await page.getByTitle("撤销上一次审阅操作").click();
+    await page.getByTitle("Undo the last review action").click();
     const undone = await waitForItem(agent, identity, IMAGE_ID, (item) => item.status === "pending");
     expect(imageAnnotations(undone)[0].label).toContain("第一条建议（更新）");
     state = await readProjectState(agent, identity);
@@ -325,7 +325,7 @@ describe("workbench round 3 batch C: feedback reliability", () => {
   test("text range uses the second repeated phrase, tag ids, and keeps its version", async () => {
     const page = launched.page;
     await selectTreeItem(page, "反馈语料");
-    await page.getByRole("button", { name: "原文与批注", exact: true }).click();
+    await page.getByRole("button", { name: "Source and comments", exact: true }).click();
     const body = page.locator(`[data-testid='text-body'][data-item-id='${TEXT_ID}']`);
     await body.waitFor({ timeout: 15_000 });
 
@@ -347,11 +347,11 @@ describe("workbench round 3 batch C: feedback reliability", () => {
     });
     expect(selectionInfo.quoted).toBe("重复短语");
 
-    const floatingInput = page.getByPlaceholder(/输入针对该字符区间的修改建议/);
+    const floatingInput = page.getByPlaceholder(/Enter revision suggestions for this character range/);
     await floatingInput.waitFor({ timeout: 10_000 });
     await floatingInput.fill("第二处重复短语建议压缩");
     await page.getByRole("button", { name: /母版/ }).click();
-    await page.getByRole("button", { name: /锚定区间批注/ }).click();
+    await page.getByRole("button", { name: /Annotate the anchored range/ }).click();
     await page.waitForTimeout(400);
 
     let state = await readProjectState(agent, identity);
@@ -369,16 +369,16 @@ describe("workbench round 3 batch C: feedback reliability", () => {
     const shot = await evidence.screenshot("03-text-range-second-phrase");
 
     // Save a text revision: the old comment stays bound to v1.
-    await page.getByRole("button", { name: "直接改文" }).first().click();
+    await page.getByRole("button", { name: "Edit text" }).first().click();
     const editor = page.getByTestId("workbench-content").locator("textarea").first();
     await editor.fill("第一段落包含重复短语。第二段落也有重复短语。\n第三行包含 emoji 🙂。修订版");
-    await page.getByTestId("workbench-content").getByRole("button", { name: "保存", exact: true }).click();
+    await page.getByTestId("workbench-content").getByRole("button", { name: "Save", exact: true }).click();
     const revised = await waitForItem(agent, identity, TEXT_ID, (item) => item.version === 2);
     expect(revised.version).toBe(2);
     state = await readProjectState(agent, identity);
     const stored = state.project.workbench.feedback.find((record) => record.id === comment!.id)!;
     expect(stored.target).toMatchObject({ kind: "text-range", version: 1 });
-    await page.getByText(/旧版本批注/).first().waitFor({ state: "visible", timeout: 10_000 });
+    await page.getByText(/annotation on an older version/).first().waitFor({ state: "visible", timeout: 10_000 });
 
     evidence.record("textRange", {
       selectionInfo,
@@ -425,11 +425,11 @@ describe("workbench round 3 batch C: feedback reliability", () => {
     await panel.getByTestId("workbench-issue-card").nth(0).click();
     const unresolved = panel.getByTestId("workbench-issue-unresolved-tag");
     await unresolved.waitFor({ timeout: 10_000 });
-    expect(await unresolved.textContent()).toContain("引用失效");
+    expect(await unresolved.textContent()).toContain("reference unavailable");
     const shot = await evidence.screenshot("04-unresolved-tag");
 
     await panel.getByTestId("workbench-issue-save").click();
-    await page.getByText(/反馈已保存/).first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByText(/Feedback saved/).first().waitFor({ state: "visible", timeout: 15_000 });
     const after = await readProjectState(agent, identity);
     const savedRecord = feedbackFor(after, IMAGE_ID).find(
       (record) => record.id === "fb-r3-unresolved",

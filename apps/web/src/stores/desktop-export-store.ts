@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../i18n/messages";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ExportRunnerState } from "../services/export-runner";
@@ -42,7 +43,7 @@ export const useDesktopExportStore = create<DesktopExportStore>()(
       update: (exportId, state) =>
         set((current) => {
           if (current.session?.target.exportId !== exportId) return {};
-          const unsuccessful = Boolean(state.error) || state.phase === "已取消";
+          const unsuccessful = Boolean(state.error) || state.phase === canonicalMessage("review.export.state.cancelled");
           const session = {
             ...current.session,
             state,

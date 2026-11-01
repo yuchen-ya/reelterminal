@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 import { convertToExcalidrawElements, exportToSvg, getCommonBounds } from "@excalidraw/excalidraw";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
@@ -22,7 +23,7 @@ export async function freezeBoardScene(elements: readonly ExcalidrawElement[], f
   const frozen = await Promise.all(snapshot.map(async element => {
     if (element.type !== "embeddable") return element;
     const capture = captures.get(element.id);
-    if (!capture) throw new Error(`媒体尚未就绪：${String(element.customData?.name ?? element.id)}`);
+    if (!capture) throw new Error(canonicalMessage("Media is not ready: {{v0}}", { v0: String(element.customData?.name ?? element.id) }));
     const blob = await capture();
     const id = crypto.randomUUID() as FileId;
     binaryFiles[id] = { id, dataURL: await blobDataUrl(blob), mimeType: "image/png", created: Date.now() };
@@ -35,10 +36,10 @@ export async function freezeBoardScene(elements: readonly ExcalidrawElement[], f
 /** SVG keeps source images/text/marks and clips at scene coordinates before rasterizing. */
 export async function renderBoardRegion(scene: FrozenBoardScene, region?: BoardRegion): Promise<Blob> {
   const visible = scene.elements.filter(element => !element.isDeleted);
-  if (!visible.length) throw new Error("画板没有可截图的内容");
+  if (!visible.length) throw new Error(canonicalMessage("The board has no content to capture"));
   const [left, top, right, bottom] = getCommonBounds(visible);
   const area = region ?? { x: left, y: top, width: right - left, height: bottom - top };
-  if (!(area.width > 0 && area.height > 0)) throw new Error("请框选一个有效区域");
+  if (!(area.width > 0 && area.height > 0)) throw new Error(canonicalMessage("Select a valid region"));
   let scale = 1;
   for (const element of visible) if (element.type === "image" && element.fileId && scene.files[element.fileId]) {
     const [x1, y1, x2, y2] = getCommonBounds([element]);
@@ -47,7 +48,7 @@ export async function renderBoardRegion(scene: FrozenBoardScene, region?: BoardR
     scale = Math.max(scale, (element.crop?.width ?? size.width) / element.width, (element.crop?.height ?? size.height) / element.height);
   }
   const width = Math.ceil(area.width * scale), height = Math.ceil(area.height * scale);
-  if (width > 16384 || height > 16384 || width * height > 64 * 1024 * 1024) throw new Error("该区域在源分辨率下超过 64MP 或 16384 像素，请缩小截图区域");
+  if (width > 16384 || height > 16384 || width * height > 64 * 1024 * 1024) throw new Error(canonicalMessage("This region exceeds 64MP or 16384 pixels at source resolution; select a smaller region"));
   const exportBackground = region?.transparentBackground ? false : scene.appState.exportBackground !== false;
   const svg = await exportToSvg({
     elements: visible,
@@ -81,6 +82,6 @@ export async function renderBoardRegion(scene: FrozenBoardScene, region?: BoardR
     if (area.points && area.points.length >= 3) {
       context.restore();
     }
-    return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("无法生成 PNG")), "image/png"));
+    return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error(canonicalMessage("Unable to generate PNG"))), "image/png"));
   } finally { URL.revokeObjectURL(url); }
 }

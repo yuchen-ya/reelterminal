@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
@@ -31,7 +32,7 @@ export function ReviewBranchListDialog({ target, onCompare, onClose }: {
   return <ToolcraftDialog isOpen onOpenChange={open => { if (!open) onClose(); }} width={560} purpose="review-branches">
     <ToolcraftDialogHeader title={t("review.branch.listTitle", "Task branches")} onOpenChange={open => { if (!open) onClose(); }} />
     <div className="max-h-[60vh] space-y-2 overflow-auto p-4" data-testid="review-branch-list">
-      {error && <p role="alert" className="text-xs text-status-error">{error}</p>}
+      {error && <p role="alert" className="text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
       {branches?.length === 0 && <p className="text-xs text-fg-3">{t("review.branch.empty", "No task branches yet. An Agent creates one when it starts a concrete edit.")}</p>}
       {branches?.map(branch => <button key={branch.id} type="button" className={`${wbButton.secondary} flex w-full justify-between`} onClick={() => onCompare(branch.id)} data-testid={`review-branch-compare-${branch.id}`}>
         <span>{branch.name}</span><span className="text-fg-3">r{branch.branch!.sourceNodeRevision} → r{branch.revision}</span>

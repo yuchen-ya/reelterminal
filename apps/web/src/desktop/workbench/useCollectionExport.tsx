@@ -1,3 +1,5 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
+import { t as translate } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import type { ReviewContext } from "@reelterminal/core/review/types";
@@ -51,7 +53,7 @@ export function useCollectionExport(source?: CollectionExportTarget) {
     event.preventDefault();
     if (ready.status?.state !== "ready") return;
     void window.reelterminal!.reviewExport!.startDrag(ready.status.exportId, ready.folder)
-      .then(() => setNotice("已交给系统拖动，请在目标位置松开；是否接收以目标程序为准。"))
+      .then(() => setNotice(translate("Handed to the system for dragging. Release at the destination; receipt depends on the destination application.")))
       .catch(error => {
         if (current.current?.exportId === ready.exportId) publish({ ...ready, error: String(error) });
       });
@@ -62,20 +64,20 @@ export function useCollectionExport(source?: CollectionExportTarget) {
     else prepare(scope);
   };
   const status = job?.status;
-  const statusText = status?.state === "ready" ? "已就绪，可以拖出" : status?.state === "failed" ? "导出失败" : status?.state === "cancelled" ? "已取消" : "正在准备，完成后请再次拖出";
+  const statusText = status?.state === "ready" ? translate("Ready to drag out") : status?.state === "failed" ? translate("review.export.state.failed") : status?.state === "cancelled" ? translate("review.export.state.cancelled") : translate("Preparing; drag out again when ready");
   const feedback = visible && job ? <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-bg-1 px-3 py-2 text-xs" role="status" data-testid="collection-drag-status">
-    <span>{job.name} · 当前已保存版本 · {statusText}{status ? `（${status.completedFiles}/${status.totalFiles}）` : ""}</span>
+    <span>{translate("{{v0}} · Current saved version · {{v1}}{{v2}}", { v0: job.name, v1: statusText, v2: status ? `（${status.completedFiles}/${status.totalFiles}）` : "" })}</span>
     {(job.error || status?.error) && <span role="alert" className="text-status-error">{job.error ?? status?.error?.message}</span>}
     {status?.state === "ready" && <>
-      <button className={`${wbButton.secondary} cursor-grab`} draggable onDragStart={event => start(event, job)}>{job.folder ? "拖出文件夹" : "拖出文件"}</button>
+      <button className={`${wbButton.secondary} cursor-grab`} draggable onDragStart={event => start(event, job)}>{job.folder ? translate("review.export.dragFolder") : translate("review.export.dragFiles")}</button>
       <button className={wbButton.secondary} onClick={() => {
         void window.reelterminal!.fs.showOpenDialog({ directory: true, filters: [] }).then(async directory => {
-          if (directory) { const result = await copyReviewExport(status.exportId, status.nodeId, directory, "user"); setNotice(`已保存到 ${result.directory}`); }
+          if (directory) { const result = await copyReviewExport(status.exportId, status.nodeId, directory, "user"); setNotice(translate("Saved to {{v0}}", { v0: result.directory })); }
         }).catch(error => publish({ ...job, error: String(error) }));
-      }}>保存到…</button>
+      }}>{translate("Save to…")}</button>
     </>}
-    {notice && <span>{notice}</span>}
-    <button className={wbButton.ghost} onClick={() => setVisible(false)}>关闭</button>
+    {notice && <span><LocalizedMessage>{notice}</LocalizedMessage></span>}
+    <button className={wbButton.ghost} onClick={() => setVisible(false)}>{translate("common.close")}</button>
   </div> : null;
   return { prepare, drag, feedback };
 }

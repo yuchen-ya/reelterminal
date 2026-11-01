@@ -1,3 +1,5 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
+import { t as translate } from "../../i18n";
 import { ModelViewerWorkspace } from "../workbench/components/ModelViewerWorkspace";
 import "../workbench/workbench.css";
 import type { JSX, ReactNode, DragEvent } from "react";
@@ -182,7 +184,7 @@ export function WorkbenchPanel({
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 3200);
   }, []);
-  const openHandoff = () => browserDemo ? showToast("请使用桌面版将审阅结果交给 Agent") : ui().setHandoffDialogOpen(true);
+  const openHandoff = () => browserDemo ? showToast(translate("Use the desktop app to hand review results to an Agent")) : ui().setHandoffDialogOpen(true);
   useEffect(() => {
     return () => {
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
@@ -198,7 +200,7 @@ export function WorkbenchPanel({
       if (result.ok) {
         if (success) showToast(success);
       } else {
-        showToast(result.message ?? "操作失败");
+        showToast(result.message ?? translate("Operation failed"));
       }
       return result;
     },
@@ -264,7 +266,7 @@ export function WorkbenchPanel({
   const scopeForItem = (itemId: string): SelectedBoardScope | null => {
     const group = batchLineageGroups.find(group => collectGroupItems(group).some(item => item.id === itemId));
     if (!group) return null;
-    return { id: `group:${group.id}`, title: group.isUngrouped ? "未分组" : group.baseName, itemIds: collectGroupItems(group).map(item => item.id) };
+    return { id: `group:${group.id}`, title: group.isUngrouped ? translate("projectLibrary.ungrouped") : group.baseName, itemIds: collectGroupItems(group).map(item => item.id) };
   };
 
   const returnScope = drilledFromBoard ?? (currentItem ? scopeForItem(currentItem.id) : null);
@@ -275,7 +277,7 @@ export function WorkbenchPanel({
     (itemId: string, modifiers?: SelectModifiers) => {
       const scope = scopeForItem(itemId);
       if (!scope) {
-        showToast("该条目不在当前页，请切换分页或筛选后查看");
+        showToast(translate("This item is not on the current page. Change the page or filters to view it."));
         return;
       }
       setActiveBoard(null);
@@ -324,17 +326,17 @@ export function WorkbenchPanel({
   const commit = async (decision: WorkbenchDecision, ids: readonly string[] = decisionTargets, reworkReason?: string) => {
     if (decision === "rework" && reworkReason === undefined) {
       const items = batchItems.filter(item => ids.includes(item.id));
-      if (!items.length) return { ok: false as const, code: "EMPTY", message: "请先选择条目" };
+      if (!items.length) return { ok: false as const, code: "EMPTY", message: translate("Select an item first") };
       setReason(""); setOperationError(null);
-      setOperation({ action: "rework", scope: { title: items.length === 1 ? items[0].title : "选中条目", items, folder: items.length > 1 }, revision: exportTarget?.revision });
+      setOperation({ action: "rework", scope: { title: items.length === 1 ? items[0].title : translate("Selected items"), items, folder: items.length > 1 }, revision: exportTarget?.revision });
       return { ok: true as const };
     }
-    if (committing.current) return { ok: false as const, code: "BUSY", message: "正在提交上一项操作" };
+    if (committing.current) return { ok: false as const, code: "BUSY", message: translate("Submitting the previous action") };
     committing.current = true;
     setBusy(true);
     try {
       const result = await report(controller.commitDecision(decision, ids, { reason: reworkReason, advance: !collection }),
-        `已${decision === "kept" ? "保留" : decision === "discarded" ? "丢弃" : "标记返工"} ${ids.length} 项，可撤销`);
+        translate("Applied “{{v0}}” to {{v1}} items. You can undo this action.", { v0: decision === "kept" ? translate("Keep") : decision === "discarded" ? translate("Discard") : translate("Mark for rework"), v1: ids.length }));
       if (result.ok && !effectiveBoard && collection && controller.autoAdvance) {
         const index = effectiveBoardItems.findIndex(item => item.id === currentItem?.id);
         const ordered = [...effectiveBoardItems.slice(index + 1), ...effectiveBoardItems.slice(0, index)];
@@ -355,7 +357,7 @@ export function WorkbenchPanel({
       const result = action === "retrieve"
         ? await (async () => {
           committing.current = true;
-          try { return await report(controller.retrieveItemsToPending(items.map(item => item.id)), `已将 ${items.length} 项恢复待审，可撤销`); }
+          try { return await report(controller.retrieveItemsToPending(items.map(item => item.id)), translate("Reopened {{v0}} items for review. You can undo this action.", { v0: items.length })); }
           finally { committing.current = false; }
         })()
         : await commit(action.startsWith("keep") ? "kept" : action.startsWith("discard") ? "discarded" : "rework", items.map(item => item.id), reworkReason);
@@ -399,7 +401,7 @@ export function WorkbenchPanel({
         if (controller.selectionCount === 0 && !currentItem) return;
         if (key === "2") {
           event.preventDefault();
-          showToast("“已修改”需先保存实际内容修订(文字/数据/修补),不能用快捷键直接标记");
+          showToast(translate("Save an actual text, data or repair revision before marking an item as modified. A shortcut cannot mark it directly."));
           return;
         }
         const decision: WorkbenchDecision =
@@ -464,10 +466,10 @@ export function WorkbenchPanel({
       if (!navigator.clipboard?.writeText) throw new Error("clipboard unavailable");
       await navigator.clipboard.writeText(text);
       setCopyState("copied");
-      showToast("接入说明已复制（不含 token，不会自动开启写权限）");
+      showToast(translate("Connection instructions copied. They contain no token and do not enable editing."));
     } catch {
       setCopyState("failed");
-      showToast("复制失败，请展开命令手动复制");
+      showToast(translate("Copy failed. Expand the command and copy it manually."));
     }
   }, [showToast, t]);
 
@@ -525,14 +527,14 @@ export function WorkbenchPanel({
             source.target.reviewWorkspaceId !== destination.target.reviewWorkspaceId ||
             source.target.instanceId !== destination.target.instanceId ||
             source.revision !== destination.revision || source.batchId !== batchId) {
-            throw new Error("只能在同一任务、同一批次和同一版本中归类；请刷新后重新拖放");
+            throw new Error(translate("Classification requires the same task, batch and version. Refresh and drag again."));
           }
           const changed = await moveReviewItems(destination.target, destination.revision, { batchId: source.batchId, itemIds: source.itemIds, groupId, targetItemId });
-          if (changed) showToast("归类完成，原始来源链已保留");
+          if (changed) showToast(translate("Classification complete. The original provenance chain is preserved."));
         } else if (files.length) {
           const plan = await planReviewFiles(files);
-          await importReviewFiles(destination.target, destination.revision, "拖入文件", plan, { batchId, groupId });
-          showToast(`已导入 ${files.length} 个文件`);
+          await importReviewFiles(destination.target, destination.revision, translate("Dropped files"), plan, { batchId, groupId });
+          showToast(translate("Imported {{v0}} files", { v0: files.length }));
         }
       } finally {
         committing.current = false;
@@ -551,17 +553,17 @@ export function WorkbenchPanel({
           setDrilledFromBoard(null);
         }}
         className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[11px] font-medium text-accent hover:bg-bg-2"
-        title={`返回集合：${returnScope.title}`}
+        title={t("Back to collection: {{v0}}", { v0: returnScope.title })}
       >
         <ArrowLeft className="h-3.5 w-3.5" />
         <LayoutGrid className="h-3.5 w-3.5" />
-        <span className="max-w-[140px] truncate">返回集合：{returnScope.title}</span>
+        <span className="max-w-[140px] truncate">{t("Back to collection: {{v0}}", { v0: returnScope.title })}</span>
       </button>
       <div className="flex items-center gap-0.5 text-fg-3">
         <button
           type="button"
-          aria-label="上一项"
-          title="上一项 (K)"
+          aria-label={t("Previous item")}
+          title={t("Previous item (K)")}
           disabled={currentNavigationIndex <= 0}
           onClick={() => navigate(-1)}
           className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-bg-2 hover:text-fg disabled:opacity-35"
@@ -570,8 +572,8 @@ export function WorkbenchPanel({
         </button>
         <button
           type="button"
-          aria-label="下一项"
-          title="下一项 (J)"
+          aria-label={t("Next item")}
+          title={t("Next item (J)")}
           disabled={currentNavigationIndex >= navigationItems.length - 1}
           onClick={() => navigate(1)}
           className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-bg-2 hover:text-fg disabled:opacity-35"
@@ -592,9 +594,7 @@ export function WorkbenchPanel({
           new CustomEvent("reelterminal:add-to-human-board", { detail: currentItem }),
         )
       }
-    >
-      加入自由画板
-    </button>
+    >{t("Add to Free Board")}</button>
   ) : undefined;
 
   return (
@@ -620,8 +620,8 @@ export function WorkbenchPanel({
 
       {toast && (
         <div role="status" className="fixed top-14 left-1/2 z-[var(--z-toast)] -translate-x-1/2 rounded-xl border border-accent/50 bg-bg-2 px-4 py-2 text-xs text-fg shadow-2xl">
-          {toast}
-          {controller.canUndo && <button className="ml-3 text-accent" onClick={() => { void report(controller.undoLast()); setToast(null); }}>撤销</button>}
+          <LocalizedMessage>{toast}</LocalizedMessage>
+          {controller.canUndo && <button className="ml-3 text-accent" onClick={() => { void report(controller.undoLast()); setToast(null); }}>{t("editorRail.undo")}</button>}
         </div>
       )}
 
@@ -637,13 +637,13 @@ export function WorkbenchPanel({
               type="button"
               onClick={() => ui().setLeftCollapsed(false)}
               className="rounded-lg bg-bg-2 p-1.5 text-accent hover:bg-bg-3"
-              title="展开上游血缘树"
+              title={t("Expand upstream provenance")}
             >
               <PanelLeftOpen className="h-4 w-4" />
             </button>
             <span
               className="font-mono text-[10px] font-bold text-accent"
-              title={`剩余待处理节点: ${pendingItems.length}`}
+              title={t("Items remaining: {{v0}}", { v0: pendingItems.length })}
             >
               {pendingItems.length}
             </span>
@@ -657,7 +657,7 @@ export function WorkbenchPanel({
                 }}
                 disabled={pendingItems.length === 0}
                 className="rounded p-1 text-fg-2 hover:bg-bg-2 hover:text-fg disabled:opacity-35"
-                title="上一个待处理节点 (K / ↑)"
+                title={t("Previous pending item (K / ↑)")}
                 data-testid="collapsed-prev-pending"
               >
                 <ChevronUp className="h-3.5 w-3.5" />
@@ -669,7 +669,7 @@ export function WorkbenchPanel({
                 }}
                 disabled={pendingItems.length === 0}
                 className="rounded p-1 text-fg-2 hover:bg-bg-2 hover:text-fg disabled:opacity-35"
-                title="下一个待处理节点 (J / ↓)"
+                title={t("Next pending item (J / ↓)")}
                 data-testid="collapsed-next-pending"
               >
                 <ChevronDown className="h-3.5 w-3.5" />
@@ -738,11 +738,11 @@ export function WorkbenchPanel({
                 onSelectItem={handleSelectItemFromTree}
                 paginationFooter={paginationFooter}
                 onRetrieveItem={(itemId) =>
-                  report(controller.retrieveToPending(itemId), "已取回至待审状态")
+                  report(controller.retrieveToPending(itemId), translate("Reopened for review"))
                 }
               />
             </div>
-            <ColumnHandle onPointerDown={treeW.onHandlePointerDown} title="拖拽调整队列宽度" />
+            <ColumnHandle onPointerDown={treeW.onHandlePointerDown} title={t("Drag to resize the queue")} />
           </>
         )}
 
@@ -751,14 +751,14 @@ export function WorkbenchPanel({
           {quickExport.feedback}
           {!loading && controller.activeBatch && controller.activeBatch.totalCount > 0 && controller.activeBatch.pendingCount === 0 && (
             <div role="status" data-testid="review-complete" className="flex shrink-0 items-center gap-3 border-b border-accent/30 bg-accent/10 px-3 py-2 text-xs">
-              <span>本批 {controller.activeBatch.totalCount} 条已全部审完</span>
-              <button className={wbButton.secondary} onClick={openHandoff}>发布本批结果</button>
+              <span>{t("All {{v0}} items in this batch have been reviewed", { v0: controller.activeBatch.totalCount })}</span>
+              <button className={wbButton.secondary} onClick={openHandoff}>{t("Publish this batch’s results")}</button>
               {controller.batches.some(batch => batch.id !== controller.activeBatch?.id && batch.pendingCount > 0) &&
-                <button className={wbButton.ghost} onClick={() => controller.setActiveBatchId(controller.batches.find(batch => batch.id !== controller.activeBatch?.id && batch.pendingCount > 0)!.id)}>下一待审批次</button>}
+                <button className={wbButton.ghost} onClick={() => controller.setActiveBatchId(controller.batches.find(batch => batch.id !== controller.activeBatch?.id && batch.pendingCount > 0)!.id)}>{t("Next pending batch")}</button>}
             </div>
           )}
           {!loading && controller.activeBatch && controller.activeBatch.pendingCount > 0 && collectionItems.length > 0 && !paginated && collectionItems.every(item => item.status !== "pending") && (
-            <div role="status" className="shrink-0 border-b border-border px-3 py-2 text-xs text-fg-2">本组已审完，本批还有 {controller.activeBatch.pendingCount} 项待审。</div>
+            <div role="status" className="shrink-0 border-b border-border px-3 py-2 text-xs text-fg-2">{t("This group is complete. This batch still has {{v0}} items to review.", { v0: controller.activeBatch.pendingCount })}</div>
           )}
           {returnScope && !effectiveBoard && currentItem?.type !== "image" && currentItem?.type !== "video" && (
             <div
@@ -775,12 +775,12 @@ export function WorkbenchPanel({
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 <LayoutGrid className="h-3.5 w-3.5" />
-                <span>返回集合：{returnScope.title}</span>
+                <span>{t("Back to collection: {{v0}}", { v0: returnScope.title })}</span>
               </button>
               <div className="flex min-w-0 items-center gap-2 text-fg-3">
                 <span className="truncate">{currentItem?.agentGuidance?.nodeSlotLabel ?? currentItem?.title}</span>
-                <button type="button" aria-label="上一项" disabled={currentNavigationIndex <= 0} onClick={() => navigate(-1)} className={wbButton.ghost}>上一项</button>
-                <button type="button" aria-label="下一项" disabled={currentNavigationIndex >= navigationItems.length - 1} onClick={() => navigate(1)} className={wbButton.ghost}>下一项</button>
+                <button type="button" aria-label={t("Previous item")} disabled={currentNavigationIndex <= 0} onClick={() => navigate(-1)} className={wbButton.ghost}>{t("Previous item")}</button>
+                <button type="button" aria-label={t("Next item")} disabled={currentNavigationIndex >= navigationItems.length - 1} onClick={() => navigate(1)} className={wbButton.ghost}>{t("Next item")}</button>
               </div>
             </div>
           )}
@@ -788,7 +788,7 @@ export function WorkbenchPanel({
           <div className="relative min-h-0 flex-1 overflow-hidden" data-testid="workbench-content">
             {collection && <div className={effectiveBoard ? "h-full" : "hidden"}>
               <AdaptiveBoardWorkspace key={collection.id} boardId={collection.id}
-                boardTitle={`${paginated ? "本页 · " : ""}${independent && (controller.typeFilter !== "all" || controller.searchQuery) ? "筛选结果 · " : ""}${collection.title}`}
+                boardTitle={`${paginated ? t("This page · ") : ""}${independent && (controller.typeFilter !== "all" || controller.searchQuery) ? t("Filtered results · ") : ""}${collection.title}`}
                 items={effectiveBoardItems} currentItem={currentItem} selectedIds={controller.selectedIds}
                 allItems={collectionItems}
                 onSelectItem={selectInCollection} onOpenChildItem={handleDrillIntoBoardItem}
@@ -890,23 +890,22 @@ export function WorkbenchPanel({
         filter={{ batchId: controller.activeBatch?.id, type: controller.typeFilter, query: controller.searchQuery }}
         onClose={() => setExportScope(null)} />}
       {operation && <ToolcraftDialog isOpen width={480} onOpenChange={open => { if (!open && !busy) setOperation(null); }}>
-        <ToolcraftDialogHeader title={operation.action === "rework" ? (operation.scope.items.length === 1 ? "返工说明" : "批量返工") : "覆盖本组审核结论"} />
+        <ToolcraftDialogHeader title={operation.action === "rework" ? (operation.scope.items.length === 1 ? t("Rework instructions") : t("Rework selected items")) : t("Replace this group’s review decisions")} />
         <form className="space-y-3 p-4 text-sm" data-workbench-modal="true" onSubmit={event => {
           event.preventDefault();
           if (busy || (operation.action === "rework" && !reason.trim())) return;
-          if (operation.revision !== exportTarget?.revision) { setOperationError("内容已更新，请关闭后重新选择操作范围。"); return; }
+          if (operation.revision !== exportTarget?.revision) { setOperationError(translate("The content has changed. Close this dialog and select the scope again.")); return; }
           void runCollectionAction(operation.action, operation.scope, reason.trim());
         }}>
-          <p>{operation.scope.title} · {operation.scope.items.length} 项 · 当前版本</p>
-          {operation.action === "rework" ? <label className="block">共同修改要求（保留已有圈注）
-            <textarea autoFocus value={reason} onChange={event => setReason(event.target.value)}
+          <p>{t("{{v0}} · {{v1}} items · current version", { v0: operation.scope.title, v1: operation.scope.items.length })}</p>
+          {operation.action === "rework" ? <label className="block">{t("Shared revision instructions (keep existing annotations)")}<textarea autoFocus value={reason} onChange={event => setReason(event.target.value)}
               onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
               className="mt-2 min-h-24 w-full rounded border border-border bg-bg-2 p-2" />
-          </label> : <p>将全部设为{operation.action === "keep-all" ? "保留" : "丢弃"}，包括已有结论的条目。操作后可以整体撤销。</p>}
-          {operationError && <p role="alert" className="text-status-error">{operationError}</p>}
+          </label> : <p>{t("Apply “{{v0}}” to all items, including those with an existing decision. You can undo the entire action.", { v0: operation.action === "keep-all" ? t("Keep") : t("Discard") })}</p>}
+          {operationError && <p role="alert" className="text-status-error"><LocalizedMessage>{operationError}</LocalizedMessage></p>}
           <div className="flex justify-end gap-2">
-            <button type="button" className={wbButton.secondary} disabled={busy} onClick={() => setOperation(null)}>取消</button>
-            <button type="submit" className={wbButton.primary} disabled={busy || (operation.action === "rework" && !reason.trim())}>确认{operation.action === "rework" ? "返工" : "覆盖"}</button>
+            <button type="button" className={wbButton.secondary} disabled={busy} onClick={() => setOperation(null)}>{t("review.cancel")}</button>
+            <button type="submit" className={wbButton.primary} disabled={busy || (operation.action === "rework" && !reason.trim())}>{t("Confirm: {{v0}}", { v0: operation.action === "rework" ? t("Rework") : t("Replace") })}</button>
           </div>
         </form>
       </ToolcraftDialog>}
@@ -920,10 +919,10 @@ export function WorkbenchPanel({
         onNodSingleItem={(item) =>
           item.agentGuidance
             ? report(controller.commitDecision(item.agentGuidance.nodDecision, [item.id]))
-            : Promise.resolve({ ok: false, code: "NO_GUIDANCE", message: "该条目没有 Agent 建议" })
+            : Promise.resolve({ ok: false, code: "NO_GUIDANCE", message: translate("This item has no Agent suggestion") })
         }
         onNodEntireGroup={(items) =>
-          report(controller.commitBranchNod(items), "整枝确认已执行")
+          report(controller.commitBranchNod(items), translate("Branch confirmation applied"))
         }
       />
 
@@ -932,7 +931,7 @@ export function WorkbenchPanel({
         batchItems={batchItems}
         preparing={loading}
         onPublish={(itemIds) =>
-          report(controller.publishHandoff(itemIds), "已发布交接快照,等待 Agent 读取")
+          report(controller.publishHandoff(itemIds), translate("Handoff snapshot published. Waiting for the Agent to read it."))
         }
       />
       <CreateWorkbenchBatchDialog
@@ -942,7 +941,7 @@ export function WorkbenchPanel({
         onOpenMediaLibrary={openMediaLibrary}
         onCreate={async (input) => {
           const result = await controller.createBatchFromMedia(input);
-          if (result.ok) showToast("已创建本地批次，等待审阅");
+          if (result.ok) showToast(translate("Local batch created and ready for review"));
           return result;
         }}
       />

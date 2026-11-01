@@ -1,4 +1,4 @@
-import i18n from "i18next";
+import i18n, { type TOptions } from "i18next";
 import { initReactI18next } from "react-i18next";
 
 import en from "./locales/en/translation.json";
@@ -98,6 +98,7 @@ void i18n.use(initReactI18next).init({
   nonExplicitSupportedLngs: false,
   interpolation: { escapeValue: false },
   keySeparator: false,
+  nsSeparator: false,
   returnEmptyString: false,
   react: { useSuspense: false },
 });
@@ -108,6 +109,7 @@ export async function changeAppLanguage(preference: LanguagePreference): Promise
   if (typeof document !== "undefined") {
     document.documentElement.lang = i18n.language;
   }
+  await syncDesktopUiLocale();
 }
 
 if (typeof document !== "undefined") {
@@ -117,6 +119,31 @@ if (typeof document !== "undefined") {
 export default i18n;
 
 /** Translate catalog strings from non-React modules (bridges, stores, and services). */
-export function t(key: string): string {
-  return i18n.t(key);
+export function t(key: string, options?: TOptions): string {
+  return i18n.t(key, options);
 }
+
+/** Locale-sensitive display only; never rewrites persisted names or identifiers. */
+export function getAppLocale(): Locale {
+  return normalizeLocale(i18n.resolvedLanguage ?? i18n.language);
+}
+
+export function formatDateTime(value: number | Date, options?: Intl.DateTimeFormatOptions): string {
+  return new Date(value).toLocaleString(getAppLocale(), options);
+}
+
+export function formatNumber(value: number, options?: Intl.NumberFormatOptions): string {
+  return value.toLocaleString(getAppLocale(), options);
+}
+
+/** Native app menus follow the app preference; OS-owned pickers remain OS-controlled. */
+export async function syncDesktopUiLocale(): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    await window.reelterminal?.setUiLocale?.(getAppLocale());
+  } catch (error) {
+    console.warn("Unable to sync the application locale to native menus", error);
+  }
+}
+
+void syncDesktopUiLocale();

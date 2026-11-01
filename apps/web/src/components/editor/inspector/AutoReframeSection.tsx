@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useState, useCallback, useEffect } from "react";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { ToolcraftCard as Card } from "@reelterminal/ui";
@@ -380,7 +381,7 @@ export const AutoReframeSection: React.FC<AutoReframeSectionProps> = ({
           <Card variant="muted" padding={2} className="space-y-1">
             <div className="flex items-center justify-between">
               <Text type="supporting" color="secondary" className="text-[9px]">
-                {progressMessage}
+                <LocalizedMessage>{progressMessage}</LocalizedMessage>
               </Text>
               <Text type="supporting" color="secondary" className="text-[9px]">
                 {progress}%

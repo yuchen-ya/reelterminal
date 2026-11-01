@@ -1,3 +1,10 @@
+import { changeAppLanguage, SYSTEM_LANGUAGE } from "../../../i18n";
+import { beforeEach as beforeChineseCopyTest, afterEach as afterChineseCopyTest } from "vitest";
+
+// These interaction fixtures deliberately assert the Simplified Chinese UI.
+beforeChineseCopyTest(() => changeAppLanguage("zh-CN"));
+afterChineseCopyTest(() => changeAppLanguage(SYSTEM_LANGUAGE));
+
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImageViewerWorkspace } from "./ImageViewerWorkspace";
@@ -199,6 +206,11 @@ describe("ImageViewerWorkspace repair painting", () => {
       expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("画笔修补 (1)"),
     );
 
+    await act(() => changeAppLanguage("en"));
+    expect(screen.getByTestId("image-stage-pointer-surface")).toBe(surface);
+    expect(screen.getByTestId("image-mode-repair")).toHaveTextContent("Brush repair (1)");
+    expect(submittedStrokes).toBeUndefined();
+    await act(() => changeAppLanguage("zh-CN"));
     fireEvent.click(screen.getByRole("button", { name: /保存修补/ }));
     await waitFor(() => expect(submittedStrokes).toHaveLength(1));
     expect(submittedStrokes?.[0]?.points.map(({ x, y }) => ({ x, y }))).toEqual([

@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useCallback, useState, useEffect } from "react";
 import { ToolcraftText as Text } from "@reelterminal/ui";
 import { Loader2 } from "@/icons/lucide-compat";
@@ -92,7 +93,7 @@ export const BehindSubjectSection: React.FC<BehindSubjectSectionProps> = ({
       )}
       {error && (
         <Text type="supporting" className="text-[9px] text-red-400">
-          {error}
+          <LocalizedMessage>{error}</LocalizedMessage>
         </Text>
       )}
     </div>

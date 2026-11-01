@@ -19,7 +19,7 @@ describe("checkTargetProjectAvailability", () => {
     if (check.ok) return;
     expect(check.code).toBe("TARGET_PROJECT_MISSING");
     expect(check.message).toContain("proj-gone");
-    expect(check.message).toContain("不会转投其他项目");
+    expect(check.message).toContain("will not be sent to another project");
   });
 
   it("fails on an empty index", () => {

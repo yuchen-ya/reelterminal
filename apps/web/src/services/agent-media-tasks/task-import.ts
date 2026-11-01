@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 /**
  * Artifact receiving and import for agent media tasks — the renderer
  * orchestrator between the task ledger, the desktop import channel, and the
@@ -117,7 +118,7 @@ export async function importAwaitingTask(
     return failure(
       taskId,
       "PROJECT_MISMATCH",
-      "当前打开的项目不是该任务的目标项目；请切换回目标项目后再导入",
+      canonicalMessage("The open project is not this task’s target. Switch back to the target project before importing."),
       record,
     );
   }
@@ -133,25 +134,25 @@ export async function importAwaitingTask(
     return failure(
       taskId,
       "TARGET_PROJECT_MISSING",
-      "目标项目已不存在，任务已标记失败；产物不会转投其他项目",
+      canonicalMessage("The target project no longer exists. The task was marked failed; its output will not be sent to another project."),
       updated.ok ? updated.value : undefined,
     );
   }
   if (!record.resultPath) {
-    return failure(taskId, "NO_ARTIFACT_FILE", "任务没有已确认的产物路径", record);
+    return failure(taskId, "NO_ARTIFACT_FILE", canonicalMessage("The task has no confirmed output path"), record);
   }
   const filePresent = await artifactExists(record.resultPath);
   if (filePresent === false) {
     const marked = await service.markError(taskId, {
       code: "ARTIFACT_MISSING",
-      message: "产物文件已不存在，无法导入；可重试重新生成",
+      message: canonicalMessage("The output file no longer exists and cannot be imported; retry generation"),
     });
     return marked.ok
-      ? failure(taskId, "ARTIFACT_MISSING", "产物文件已不存在，无法导入；可重试重新生成", marked.value)
+      ? failure(taskId, "ARTIFACT_MISSING", canonicalMessage("The output file no longer exists and cannot be imported; retry generation"), marked.value)
       : failure(taskId, marked.code, marked.message);
   }
   if (importsInFlight.has(taskId)) {
-    return failure(taskId, "IMPORT_IN_PROGRESS", "该任务的导入正在进行中", record);
+    return failure(taskId, "IMPORT_IN_PROGRESS", canonicalMessage("This task’s import is already in progress"), record);
   }
   importsInFlight.add(taskId);
   try {
@@ -221,7 +222,7 @@ export async function confirmTaskArtifactManually(
     return failure(
       taskId,
       "NO_ARTIFACT_FILE",
-      "该任务没有预铸产物目录，无法扫描产物",
+      canonicalMessage("The task has no reserved output directory to scan"),
       record,
     );
   }
@@ -248,7 +249,7 @@ export async function markTaskFailedManually(
     code: "MANUAL_MARKED_FAILED",
     message:
       reason?.trim() ||
-      "用户在任务面板手动标记失败；此前已转交的外部任务可能仍会继续运行",
+      canonicalMessage("The user marked this task failed in the task panel; an external task already handed off may still be running"),
   });
   if (!marked.ok) return failure(taskId, marked.code, marked.message);
   return { ok: true, taskId, record: marked.value };

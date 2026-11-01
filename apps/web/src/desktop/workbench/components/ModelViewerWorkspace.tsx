@@ -1,3 +1,6 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 import { useEffect, useState } from "react";
 import type { WorkbenchFeedbackTarget } from "@reelterminal/core/types/workbench";
 import type { WorkbenchController, WorkbenchItemView } from "../types";
@@ -7,6 +10,7 @@ import { wbButton } from "../wb-button";
 type ObservationTarget = Extract<WorkbenchFeedbackTarget, { kind: "model-view" }>;
 
 export function ModelViewerWorkspace({ item, save }: { item: WorkbenchItemView; save: WorkbenchController["saveModelObservation"] }) {
+  const { t } = useTranslation();
   const [capture, setCapture] = useState<ModelCapture>();
   const [snapshotUrl, setSnapshotUrl] = useState<string>();
   const [restore, setRestore] = useState<{ target: ObservationTarget; version: number }>();
@@ -33,7 +37,7 @@ export function ModelViewerWorkspace({ item, save }: { item: WorkbenchItemView; 
         itemId: item.id, itemVersion: item.version, resourceId: item.modelPayload!.resourceId,
         observationId: issueId, blob: capture.blob, observation: capture.observation, text, rework
       });
-      if (!result.ok) setError(result.message); else { setMessage("已保存观察反馈"); setCapture(undefined); }
+      if (!result.ok) setError(result.message); else { setMessage(translate("Observation feedback saved")); setCapture(undefined); }
     } finally { setBusy(false); }
   };
 
@@ -52,54 +56,47 @@ export function ModelViewerWorkspace({ item, save }: { item: WorkbenchItemView; 
       </div>
       <aside className={`${isCompact ? "w-[220px]" : "w-64"} shrink-0 space-y-3 overflow-y-auto border-l border-border bg-bg-1 p-3 text-xs transition-all`}>
         <div className="space-y-1">
-          <p className="font-semibold text-fg">观察反馈 · v{item.version}</p>
-          <p className="text-fg-3 leading-relaxed">截图绑定版本、相机与动画；新版本不继承旧面或顶点身份。</p>
+          <p className="font-semibold text-fg">{t("Observation feedback · v{{v0}}", { v0: item.version })}</p>
+          <p className="text-fg-3 leading-relaxed">{t("Captures bind to the version, camera and animation. New versions do not inherit face or vertex identities.")}</p>
         </div>
 
         {restore && (
           <div className="space-y-2 rounded-lg border border-border bg-bg-2/50 p-2.5">
-            <p className="font-medium text-fg">正在查看保存的 v{restore.version} 观察</p>
-            <img alt="保存的模型观察" src={`app://reelterminal/review-media/${restore.target.screenshotResourceId}`} className="w-full rounded border border-border" />
-            <button className={wbButton.secondary} onClick={() => setRestore(undefined)}>返回当前版本</button>
+            <p className="font-medium text-fg">{t("Viewing the saved v{{v0}} observation", { v0: restore.version })}</p>
+            <img alt={t("Saved model observation")} src={`app://reelterminal/review-media/${restore.target.screenshotResourceId}`} className="w-full rounded border border-border" />
+            <button className={wbButton.secondary} onClick={() => setRestore(undefined)}>{t("Return to current version")}</button>
           </div>
         )}
 
         {capture && (
           <div className="space-y-2.5 rounded-lg border border-border bg-bg-2/50 p-2.5">
-            <img alt="待保存模型截图" src={snapshotUrl} className="w-full rounded border border-border" />
-            <p className="text-fg-3">动画 {capture.observation.animation?.time.toFixed(3) ?? "—"} s</p>
+            <img alt={t("Model capture to save")} src={snapshotUrl} className="w-full rounded border border-border" />
+            <p className="text-fg-3">{t("Animation {{v0}} s", { v0: capture.observation.animation?.time.toFixed(3) ?? "—" })}</p>
             <textarea
-              aria-label="模型观察备注"
+              aria-label={t("Model observation note")}
               className="w-full rounded-[6px] border border-border bg-bg-1 p-2 text-fg focus:outline-none focus:ring-1 focus:ring-accent"
               rows={3}
               value={text}
               onChange={event => setText(event.target.value)}
               maxLength={200000}
-              placeholder="请输入观察反馈..."
+              placeholder={t("Enter observation feedback…")}
             />
             <label className="flex items-center gap-1.5 cursor-pointer text-fg-2">
               <input type="checkbox" className="accent-accent" checked={rework} onChange={event => setRework(event.target.checked)} />
-              标记返工
-            </label>
+              {t("Mark for rework")}</label>
             <div className="flex items-center gap-1.5 pt-1">
-              <button className={wbButton.primary} disabled={busy || !text.trim()} onClick={() => void submit()} data-testid="model-save-feedback">
-                保存观察反馈
-              </button>
-              <button className={wbButton.ghost} disabled={busy} onClick={() => setCapture(undefined)}>
-                取消
-              </button>
+              <button className={wbButton.primary} disabled={busy || !text.trim()} onClick={() => void submit()} data-testid="model-save-feedback">{t("Save observation feedback")}</button>
+              <button className={wbButton.ghost} disabled={busy} onClick={() => setCapture(undefined)}>{t("review.cancel")}</button>
             </div>
           </div>
         )}
 
         {!capture && (
-          <button className={wbButton.secondary} onClick={() => { setIssueId(crypto.randomUUID()); setText(""); setRestore(undefined); setMessage("请截图创建新问题"); }}>
-            新问题
-          </button>
+          <button className={wbButton.secondary} onClick={() => { setIssueId(crypto.randomUUID()); setText(""); setRestore(undefined); setMessage(translate("Capture a view to create an issue")); }}>{t("New issue")}</button>
         )}
 
-        {error && <p role="alert" className="text-status-error">{error}</p>}
-        {message && <p role="status" className="text-accent">{message}</p>}
+        {error && <p role="alert" className="text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
+        {message && <p role="status" className="text-accent"><LocalizedMessage>{message}</LocalizedMessage></p>}
 
         <div className="space-y-1.5">
           {observations.map(feedback => (

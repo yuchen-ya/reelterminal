@@ -1,4 +1,5 @@
-import { app, desktopCapturer, Menu, type BrowserWindow } from "electron";
+import { getUiLocale } from "./ui-locale";
+import { desktopCapturer, Menu, type BrowserWindow } from "electron";
 import { isAllowedNavigation } from "./nav-guard";
 import { APP_INDEX } from "./protocol";
 
@@ -11,7 +12,7 @@ export function installScreenCapture(win: BrowserWindow): void {
       return;
     }
     const frame = request.frame;
-    const chinese = app.getLocale().startsWith("zh");
+    const chinese = getUiLocale() === "zh-CN";
     let sources: Electron.DesktopCapturerSource[];
     try {
       sources = await desktopCapturer.getSources({

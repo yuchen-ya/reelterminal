@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { formatDuration } from "../../../utils/format";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
@@ -251,7 +252,7 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
         {error && (
           <div className="space-y-1">
             <Text type="supporting" className="block text-[10px] text-red-400">
-              {error}
+              <LocalizedMessage>{error}</LocalizedMessage>
             </Text>
             {failureDetail && (
               <Text

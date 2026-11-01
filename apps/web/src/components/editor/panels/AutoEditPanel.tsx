@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useState, useCallback, useMemo } from "react";
 import { Music, Zap, Loader2 } from "@/icons/lucide-compat";
 import { ToolcraftSegmentedControl } from "@reelterminal/ui";
@@ -282,7 +283,7 @@ export const AutoEditPanel: React.FC<AutoEditPanelProps> = ({ onClose }) => {
           {error && (
             <Card variant="red" padding={2}>
               <Text type="supporting" className="text-[9px]">
-                {error}
+                <LocalizedMessage>{error}</LocalizedMessage>
               </Text>
             </Card>
           )}

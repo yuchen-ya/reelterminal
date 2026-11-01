@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 /**
  * Timeline insertion for a done agent media task ("插入时间线").
  *
@@ -84,7 +85,7 @@ export async function insertDoneTaskTimeline(
     return insertFailure(
       taskId,
       "INVALID_STATUS",
-      "只有已完成导入的任务才能插入时间线",
+      canonicalMessage("Only imported tasks can be inserted into the timeline"),
     );
   }
   const currentProjectId = getCurrentProjectId();
@@ -92,14 +93,14 @@ export async function insertDoneTaskTimeline(
     return insertFailure(
       taskId,
       "PROJECT_MISMATCH",
-      "当前打开的项目不是该任务的目标项目；插入已取消",
+      canonicalMessage("The open project is not this task’s target; insertion cancelled"),
     );
   }
   if (!getMediaItem(record.resultMediaId)) {
     return insertFailure(
       taskId,
       "MEDIA_NOT_FOUND",
-      "产物媒体不在当前项目中（可能已被删除）",
+      canonicalMessage("The output media is not in the current project (it may have been removed)"),
     );
   }
 
@@ -109,7 +110,7 @@ export async function insertDoneTaskTimeline(
     return insertFailure(
       taskId,
       result.error?.code ?? "INSERT_FAILED",
-      result.error?.message ?? "插入时间线失败",
+      result.error?.message ?? canonicalMessage("Timeline insertion failed"),
     );
   }
   const createdClipId = collectClipIds().find((clipId) => !before.has(clipId));
@@ -120,7 +121,7 @@ export async function insertDoneTaskTimeline(
     return insertFailure(
       taskId,
       "CLIP_ID_UNRESOLVED",
-      "插入已完成，但未能记录片段标识；请手动检查时间线，勿重复点击插入",
+      canonicalMessage("Insertion completed but its clip identity was not recorded. Inspect the timeline manually; do not insert again."),
     );
   }
   const recorded = await service.setInsertedClip(taskId, createdClipId);

@@ -1,3 +1,6 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 /**
  * Text corpus multi-row review workspace (migrated from the AI-material
  * workbench prototype).
@@ -106,6 +109,7 @@ export function TextCorpusWorkspace({
   onConfirmDuplicate,
   onCommitDecision,
 }: TextCorpusWorkspaceProps): JSX.Element {
+  const { t } = useTranslation();
   // Edit drafts are keyed by `${itemId}:${version}` so switching rows never
   // crosses drafts and a saved revision starts a fresh draft slot.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -124,10 +128,10 @@ export function TextCorpusWorkspace({
     try {
       const result = await action();
       if (result.ok) return true;
-      setMutationError(`${label}失败：${result.message}`);
+      setMutationError(translate("{{v0}} failed: {{v1}}", { v0: label, v1: result.message }));
       return false;
     } catch (error) {
-      setMutationError(`${label}失败：${error instanceof Error ? error.message : String(error)}`);
+      setMutationError(translate("{{v0}} failed: {{v1}}", { v0: label, v1: error instanceof Error ? error.message : String(error) }));
       return false;
     }
   };
@@ -152,7 +156,7 @@ export function TextCorpusWorkspace({
       quotedText,
     });
     setRangeTagIds([]);
-    setRangeSuggestionInput(`针对字符 [${offsets.start}, ${offsets.end})：建议精简表述`);
+    setRangeSuggestionInput(translate("Characters [{{v0}}, {{v1}}): consider more concise wording", { v0: offsets.start, v1: offsets.end }));
   };
 
   const commitRangeComment = async (): Promise<void> => {
@@ -165,7 +169,7 @@ export function TextCorpusWorkspace({
       // Stable provenance ids from the real tag chips; never parsed @names.
       referencedTags: [...rangeTagIds],
     };
-    const ok = await runMutation("锚定区间批注", () =>
+    const ok = await runMutation(translate("Annotate the anchored range"), () =>
       onAddRangeComment(activeRange.itemId, comment, activeRange.version),
     );
     if (ok) {
@@ -208,7 +212,7 @@ export function TextCorpusWorkspace({
       cancelEditing();
       return;
     }
-    const ok = await runMutation("保存文本修订", () => onSaveTextRevision(item.id, draft));
+    const ok = await runMutation(translate("Save text revision"), () => onSaveTextRevision(item.id, draft));
     if (ok) {
       const key = editingKey;
       setDrafts((prev) => {
@@ -222,11 +226,11 @@ export function TextCorpusWorkspace({
 
   const quickDecision = (decision: WorkbenchDecision, itemId: string): void => {
     if (!onCommitDecision) return;
-    void runMutation("快速决定", () => onCommitDecision(decision, [itemId]));
+    void runMutation(translate("Quick decision"), () => onCommitDecision(decision, [itemId]));
   };
 
   const confirmDuplicate = (itemId: string, action: "discard" | "dismiss_proposal"): void => {
-    void runMutation(action === "discard" ? "确认丢弃重复项" : "忽略重复提议", () =>
+    void runMutation(action === "discard" ? translate("Confirm discarding duplicate") : translate("Ignore duplicate suggestion"), () =>
       onConfirmDuplicate(itemId, action),
     );
   };
@@ -240,32 +244,28 @@ export function TextCorpusWorkspace({
       {/* Top Sub-bar */}
       <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-border bg-bg-1 px-3">
         <div className="flex items-center gap-2 text-xs text-fg-2">
-          <span className="font-semibold text-fg">文本审阅{!singleItem && ` (${batchTextItems.length} 条)`}</span>
-          <div className="flex gap-1" role="group" aria-label="文本显示方式">
+          <span className="font-semibold text-fg">{t("Text review{{v0}}", { v0: !singleItem && t(" ({{v0}} entries)", { v0: batchTextItems.length }) })}</span>
+          <div className="flex gap-1" role="group" aria-label={t("Text display mode")}>
             {(["markdown", "source"] as const).map(mode => <button key={mode} type="button"
               aria-pressed={readingMode === mode} onClick={() => { setReadingMode(mode); setActiveRange(null); }}
               className={`rounded px-2 py-1 ${readingMode === mode ? "bg-bg-3 text-fg" : "text-fg-3"}`}>
-              {mode === "markdown" ? "阅读" : "原文与批注"}
+              {mode === "markdown" ? t("Read") : t("Source and comments")}
             </button>)}
           </div>
           <span
             className="inline-flex cursor-help items-center text-fg-3 hover:text-fg"
-            title="阅读模式显示 Markdown 排版；切换“原文与批注”后可拖选原文添加精确区间批注。"
+            title={t("Reading mode renders Markdown. Switch to Source and comments to select exact source ranges and annotate them.")}
           >
             <Info className="h-3.5 w-3.5" />
-            <span className="sr-only">
-              点击左侧行号槽选整条（蓝色/翠绿边框），直接拖选正文锁定 UTF-16 字符区间（琥珀色高亮）
-            </span>
+            <span className="sr-only">{t("Click the line-number gutter to select an entry (blue/green border), or drag across text to select a UTF-16 character range (amber highlight).")}</span>
           </span>
         </div>
         <div className="flex items-center gap-2 font-mono text-xs tabular-nums text-fg-3">
-          {!singleItem && <span>整条已选: {batchTextItems.filter((item) => selectedIds.includes(item.id)).length}</span>}
+          {!singleItem && <span>{t("Selected entry: {{v0}}", { v0: batchTextItems.filter((item) => selectedIds.includes(item.id)).length })}</span>}
           {activeRange && (
             <>
               <span>·</span>
-              <span className="text-status-warning">
-                字符选区: [{activeRange.startOffset}, {activeRange.endOffset})
-              </span>
+              <span className="text-status-warning">{t("Character selection: [{{v0}}, {{v1}})", { v0: activeRange.startOffset, v1: activeRange.endOffset })}</span>
             </>
           )}
         </div>
@@ -274,12 +274,12 @@ export function TextCorpusWorkspace({
       {/* Mutation error strip (controller failures are never silent) */}
       {mutationError && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-status-error/40 bg-status-error/10 px-4 py-2 text-xs text-status-error">
-          <span className="truncate">{mutationError}</span>
+          <span className="truncate"><LocalizedMessage>{mutationError}</LocalizedMessage></span>
           <button
             type="button"
             onClick={() => setMutationError(null)}
             className="shrink-0 hover:text-fg"
-            title="关闭错误提示"
+            title={t("Dismiss error")}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -291,9 +291,7 @@ export function TextCorpusWorkspace({
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-status-warning/40 bg-bg-2 px-4 py-2.5">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 whitespace-nowrap font-mono text-xs text-status-warning">
-                字符选区 v{activeRange.version} [{activeRange.startOffset}, {activeRange.endOffset}):
-              </span>
+              <span className="shrink-0 whitespace-nowrap font-mono text-xs text-status-warning">{t("Character selection v{{v0}} [{{v1}}, {{v2}}):", { v0: activeRange.version, v1: activeRange.startOffset, v2: activeRange.endOffset })}</span>
               <span className="max-w-[220px] truncate text-xs italic text-fg">
                 “{activeRange.quotedText}”
               </span>
@@ -305,13 +303,13 @@ export function TextCorpusWorkspace({
                   e.stopPropagation();
                   if (e.key === "Enter") void commitRangeComment();
                 }}
-                placeholder="输入针对该字符区间的修改建议..."
+                placeholder={t("Enter revision suggestions for this character range…")}
                 className="flex-1 rounded-md border border-border-strong bg-bg px-2.5 py-1 text-xs text-fg focus:border-status-warning focus:outline-none"
               />
             </div>
             {activeRangeItem.provenanceTags.length > 0 && (
               <div className="flex flex-wrap items-center gap-1 pl-0.5">
-                <span className="text-[10px] text-fg-3">引用来源:</span>
+                <span className="text-[10px] text-fg-3">{t("Source references:")}</span>
                 {activeRangeItem.provenanceTags.map((tag) => {
                   const active = rangeTagIds.includes(tag.id);
                   return (
@@ -330,7 +328,7 @@ export function TextCorpusWorkspace({
                           ? "border-status-warning bg-status-warning/15 text-status-warning"
                           : "border-border bg-bg text-fg-3 hover:text-fg"
                       }`}
-                      title={`引用 ${tag.shortName}${tag.version ? ` ${tag.version}` : ""}（稳定 id）`}
+                      title={t("Reference {{v0}}{{v1}} (stable ID)", { v0: tag.shortName, v1: tag.version ? ` ${tag.version}` : "" })}
                     >
                       @{tag.shortName}
                       {tag.version ? ` ${tag.version}` : ""}
@@ -347,8 +345,7 @@ export function TextCorpusWorkspace({
               className="flex items-center gap-1 whitespace-nowrap rounded-md bg-status-warning px-2.5 py-1 text-xs font-semibold text-bg transition-opacity hover:opacity-90"
             >
               <MessageSquarePlus className="h-3.5 w-3.5" />
-              锚定区间批注
-            </button>
+              {t("Annotate the anchored range")}</button>
             <button
               type="button"
               onClick={() => {
@@ -357,7 +354,7 @@ export function TextCorpusWorkspace({
                 window.getSelection()?.removeAllRanges();
               }}
               className="p-1 text-fg-3 hover:text-fg"
-              title="取消字符选区"
+              title={t("Clear character selection")}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -374,9 +371,7 @@ export function TextCorpusWorkspace({
               <div
                 key={item.id}
                 className="rounded-xl border border-border bg-bg-1 p-3 text-xs text-fg-3"
-              >
-                {item.title} · 文本内容未提供
-              </div>
+              >{t("{{v0}} · No text content was supplied", { v0: item.title })}</div>
             );
           }
 
@@ -416,7 +411,7 @@ export function TextCorpusWorkspace({
                     ? "border-border bg-accent/10 text-accent"
                     : "border-border bg-bg-2/40 text-fg-3 hover:bg-bg-2 hover:text-fg"
                 }`}
-                title="点击行边选择整条语料（支持 Ctrl 多选 / Shift 连选）"
+                title={t("Click the gutter to select an entry (Ctrl for multiple entries / Shift for a range)")}
               >
                 <div
                   className={`flex h-4 w-4 items-center justify-center rounded border ${
@@ -448,9 +443,7 @@ export function TextCorpusWorkspace({
                           confirmDuplicate(item.id, "discard");
                         }}
                         className="inline-flex h-6 items-center whitespace-nowrap rounded-[4px] border border-status-error/40 bg-status-error/15 px-2 text-xs font-medium text-status-error transition-colors hover:bg-status-error/25"
-                      >
-                        确认丢弃重复项
-                      </button>
+                      >{t("Confirm discarding duplicate")}</button>
                       <button
                         type="button"
                         onClick={(e) => {
@@ -458,9 +451,7 @@ export function TextCorpusWorkspace({
                           confirmDuplicate(item.id, "dismiss_proposal");
                         }}
                         className="inline-flex h-6 items-center whitespace-nowrap rounded-[4px] border border-border-strong bg-bg-2 px-2 text-xs text-fg-2 transition-colors hover:text-fg"
-                      >
-                        忽略提议·保留
-                      </button>
+                      >{t("Ignore suggestion · Keep")}</button>
                     </div>
                   </div>
                 )}
@@ -474,15 +465,11 @@ export function TextCorpusWorkspace({
                       <span className="truncate text-fg-2">{payload.speakerOrContext}</span>
                     </>}
                     <span className="text-fg-3">·</span>
-                    <span className="font-mono text-[11px] text-fg-3">
-                      {payload.currentText.length} 字符
-                    </span>
+                    <span className="font-mono text-[11px] text-fg-3">{t("Characters: {{v0}}", { v0: payload.currentText.length })}</span>
                     {item.hasManualRevision && (
                       <>
                         <span className="text-fg-3">·</span>
-                        <span className="font-medium text-status-info">
-                          已修订 (v{item.version})
-                        </span>
+                        <span className="font-medium text-status-info">{t("Revised (v{{v0}})", { v0: item.version })}</span>
                       </>
                     )}
                   </div>
@@ -496,8 +483,8 @@ export function TextCorpusWorkspace({
                           e.stopPropagation();
                           setShowDiffMap((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
                         }}
-                        title={showDiff ? "隐藏原文对比" : "查看修改前后"}
-                        aria-label={showDiff ? "隐藏原文对比" : "查看修改前后"}
+                        title={showDiff ? t("Hide source comparison") : t("Compare before and after")}
+                        aria-label={showDiff ? t("Hide source comparison") : t("Compare before and after")}
                         className={`inline-flex h-6 w-6 items-center justify-center rounded-[4px] border text-[11px] transition-colors ${
                           showDiff
                             ? "border-status-info/40 bg-status-info/15 text-status-info"
@@ -505,7 +492,7 @@ export function TextCorpusWorkspace({
                         }`}
                       >
                         <Eye className="h-3.5 w-3.5" />
-                        <span className="sr-only">{showDiff ? "隐藏原文对比" : "查看修改前后"}</span>
+                        <span className="sr-only">{showDiff ? t("Hide source comparison") : t("Compare before and after")}</span>
                       </button>
                     )}
 
@@ -516,12 +503,12 @@ export function TextCorpusWorkspace({
                           e.stopPropagation();
                           startEditing(item, payload);
                         }}
-                        title="直接改文"
-                        aria-label="直接改文"
+                        title={t("Edit text")}
+                        aria-label={t("Edit text")}
                         className="inline-flex h-6 w-6 items-center justify-center rounded-[4px] border border-border bg-bg-2 text-[11px] text-fg-2 transition-colors hover:text-fg"
                       >
                         <Edit3 className="h-3.5 w-3.5" />
-                        <span className="sr-only">直接改文</span>
+                        <span className="sr-only">{t("Edit text")}</span>
                       </button>
                     )}
 
@@ -534,9 +521,7 @@ export function TextCorpusWorkspace({
                             quickDecision("kept", item.id);
                           }}
                           className="inline-flex h-6 items-center whitespace-nowrap rounded-[4px] border border-accent/40 bg-accent/10 px-2 text-[11px] font-medium text-accent transition-colors hover:bg-accent/20"
-                        >
-                          保留
-                        </button>
+                        >{t("Keep")}</button>
                         <button
                           type="button"
                           onClick={(e) => {
@@ -544,9 +529,7 @@ export function TextCorpusWorkspace({
                             quickDecision("discarded", item.id);
                           }}
                           className="inline-flex h-6 items-center whitespace-nowrap rounded-[4px] border border-border bg-bg-2 px-2 text-[11px] text-fg-2 transition-colors hover:text-status-error"
-                        >
-                          丢弃
-                        </button>
+                        >{t("Discard")}</button>
                       </>
                     )}
                   </div>
@@ -556,39 +539,33 @@ export function TextCorpusWorkspace({
                 {isEditing ? (
                   <div className="mt-1 space-y-2" onClick={(e) => e.stopPropagation()}>
                     <div onKeyDown={event => event.stopPropagation()}>
-                      <Suspense fallback={<p className="p-3 text-xs text-fg-3">正在载入编辑器…</p>}>
+                      <Suspense fallback={<p className="p-3 text-xs text-fg-3">{t("desktop.editor.loading")}</p>}>
                         <ReviewMarkdown source={draftText} editing
                           onChange={value => setDrafts(previous => ({ ...previous, [rowKey]: value }))} />
                       </Suspense>
                     </div>
                     <div className="flex items-center justify-end gap-3 text-xs text-fg-3">
-                      <span className="sr-only">
-                        编辑框聚焦时：退格/Delete 仅删改文字，绝不触发丢弃素材快捷键；保存后生成新版本 v
-                        {payload.currentVersion + 1}，旧版批注保留在原版本。
-                      </span>
+                      <span className="sr-only">{t("While the editor is focused, Backspace/Delete edits text without discarding media. Saving creates v{{v0}}; existing annotations stay on their original version.", { v0: payload.currentVersion + 1 })}</span>
                       <div className="flex shrink-0 items-center gap-2">
                         <button
                           type="button"
                           onClick={cancelEditing}
                           className="rounded bg-bg-2 px-2.5 py-1 text-fg-2 hover:text-fg"
-                        >
-                          取消
-                        </button>
+                        >{t("review.cancel")}</button>
                         <button
                           type="button"
                           onClick={() => void saveEditing(item, payload)}
                           className="flex items-center gap-1 rounded bg-status-info px-3 py-1 font-semibold text-bg transition-opacity hover:opacity-90"
                         >
                           <Save className="h-3.5 w-3.5" />
-                          保存
-                        </button>
+                          {t("review.save")}</button>
                       </div>
                     </div>
                   </div>
                 ) : readingMode === "markdown" ? (
                   <div data-testid="text-body" data-mode="markdown" data-item-id={item.id}
                     className="mx-auto max-w-[90ch] select-text rounded-lg border border-border bg-bg p-5">
-                    <Suspense fallback={<p className="text-xs text-fg-3">正在载入正文…</p>}>
+                    <Suspense fallback={<p className="text-xs text-fg-3">{t("Loading content…")}</p>}>
                       <ReviewMarkdown source={payload.currentText} />
                     </Suspense>
                   </div>
@@ -607,11 +584,11 @@ export function TextCorpusWorkspace({
                 {/* Original / Current Text Contrast when toggled */}
                 {showDiff && item.hasManualRevision && (
                   <div className="mt-2 space-y-1 rounded-lg border border-border bg-bg-2 p-2.5 text-xs">
-                    <div className="font-mono text-fg-3">原文保留 (v{payload.originalVersion})：</div>
+                    <div className="font-mono text-fg-3">{t("Retained source (v{{v0}}):", { v0: payload.originalVersion })}</div>
                     <div className="leading-relaxed text-status-error/80 line-through whitespace-pre-line">
                       {payload.originalText}
                     </div>
-                    <div className="font-mono text-fg-3">当前 (v{payload.currentVersion})：</div>
+                    <div className="font-mono text-fg-3">{t("Current (v{{v0}}):", { v0: payload.currentVersion })}</div>
                     <div className="leading-relaxed text-fg whitespace-pre-line">
                       {payload.currentText}
                     </div>
@@ -629,10 +606,7 @@ export function TextCorpusWorkspace({
                           className="flex items-center justify-between gap-2 rounded-md border border-border bg-bg-2 px-2.5 py-1.5 text-xs"
                         >
                           <div className="flex min-w-0 items-center gap-2">
-                            <span className="whitespace-nowrap font-mono text-[11px] text-status-warning">
-                              v{rc.version} 偏移 [{rc.startOffset}, {rc.endOffset})
-                              {isStaleVersion ? " (旧版本批注，不自动挪用偏移)" : ""}
-                            </span>
+                            <span className="whitespace-nowrap font-mono text-[11px] text-status-warning">{t("v{{v0}} offsets [{{v1}}, {{v2}}) {{v3}}", { v0: rc.version, v1: rc.startOffset, v2: rc.endOffset, v3: isStaleVersion ? t(" (annotation on an older version; offsets are not moved automatically)") : "" })}</span>
                             <span className="truncate text-fg-3">“{rc.quotedText}”</span>
                             <span className="text-fg-3">→</span>
                             <span className="truncate text-fg-2">{rc.suggestion}</span>
@@ -643,8 +617,8 @@ export function TextCorpusWorkspace({
                                   key={ref}
                                   title={
                                     resolved.valid
-                                      ? "来源引用（稳定 id）"
-                                      : "来源引用失效：标签不存在或同名多版本，无法确定身份"
+                                      ? t("Source references (stable IDs)")
+                                      : t("Source reference unavailable: the tag is missing or has multiple same-name versions, so its identity is ambiguous")
                                   }
                                   className={`shrink-0 rounded border px-1 py-0.5 font-mono text-[10px] ${
                                     resolved.valid
@@ -653,7 +627,7 @@ export function TextCorpusWorkspace({
                                   }`}
                                 >
                                   {resolved.label}
-                                  {resolved.valid ? "" : " (引用失效)"}
+                                  {resolved.valid ? "" : t(" (reference unavailable)")}
                                 </span>
                               );
                             })}

@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -784,7 +785,7 @@ export function ProjectLibrary({
           role="alert"
           className="mb-3 flex flex-wrap items-center gap-3 rounded border border-red-400/40 p-3 text-sm text-red-400"
         >
-          {error}
+          <LocalizedMessage>{error}</LocalizedMessage>
           <button
             type="button"
             className={buttonClass}
@@ -797,7 +798,7 @@ export function ProjectLibrary({
       )}
       {notice && (
         <p role="status" className="mb-3 text-sm text-accent">
-          {notice}
+          <LocalizedMessage>{notice}</LocalizedMessage>
         </p>
       )}
       {loading ? (
@@ -904,7 +905,7 @@ export function ProjectLibrary({
                 )}
                 {error && (
                   <p role="alert" className="mt-3 text-sm text-red-400">
-                    {error}
+                    <LocalizedMessage>{error}</LocalizedMessage>
                   </p>
                 )}
                 <div className="mt-5 flex justify-end gap-2">

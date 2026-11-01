@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import type React from "react";
@@ -109,6 +110,7 @@ export function VideoCanvasStage({
   compareVideoRef,
   onCompareLoadedMetadata,
 }: VideoCanvasStageProps): JSX.Element {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const loupeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const panDragRef = useRef<{
@@ -258,7 +260,7 @@ export function VideoCanvasStage({
       return (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-fg-2">
           <Loader2 className="h-6 w-6 animate-spin text-accent" />
-          <span className="text-xs">媒体加载中…</span>
+          <span className="text-xs">{t("Loading media…")}</span>
         </div>
       );
     }
@@ -266,18 +268,16 @@ export function VideoCanvasStage({
       return (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-6 text-center">
           <TriangleAlert className="h-6 w-6 text-status-error" />
-          <span className="text-sm font-medium text-status-error">媒体加载失败</span>
-          <span className="text-xs text-fg-3">{mediaError ?? "未知错误"}</span>
+          <span className="text-sm font-medium text-status-error">{t("Media failed to load")}</span>
+          <span className="text-xs text-fg-3">{mediaError ?? t("Unknown error")}</span>
         </div>
       );
     }
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-6 text-center">
         <TriangleAlert className="h-6 w-6 text-status-warning" />
-        <span className="text-sm font-medium text-fg-2">媒体不可用</span>
-        <span className="text-xs text-fg-3">
-          该条目的源媒体未挂载(无可用 URL),无法播放或标注
-        </span>
+        <span className="text-sm font-medium text-fg-2">{t("Media unavailable")}</span>
+        <span className="text-xs text-fg-3">{t("The item’s source media is not attached (no usable URL). Playback and annotation are unavailable.")}</span>
       </div>
     );
   };
@@ -307,12 +307,10 @@ export function VideoCanvasStage({
     >
       {/* Keep screen-reader / test status hooks without visual HUD clutter */}
       <div className="sr-only">
-        <span>播放时间: {videoTime.toFixed(3)}s</span>
-        <span>帧索引不可用(无解码映射)</span>
+        <span>{t("Playback time: {{v0}}s", { v0: videoTime.toFixed(3) })}</span>
+        <span>{t("Frame index unavailable (no decode mapping)")}</span>
         {activeMarker && (
-          <span>
-            ⚑ 当前位置含 {activeMarker.annotations.length} 处圈注(单击框体可在下方编辑)
-          </span>
+          <span>{t("⚑ Annotations at this position: {{v0}} (click a box to edit below)", { v0: activeMarker.annotations.length })}</span>
         )}
       </div>
 
@@ -328,10 +326,8 @@ export function VideoCanvasStage({
             data-testid="video-compare-reference-pane"
           >
             <div className="z-10 flex h-6 shrink-0 items-center justify-between border-b border-white/10 bg-bg-1/90 px-2 text-[11px]">
-              <span className="truncate font-medium text-status-warning">
-                对比基准: {compareTitle ?? "参考视频"}
-              </span>
-              <span className="font-mono text-[10px] text-fg-3">同步联动</span>
+              <span className="truncate font-medium text-status-warning">{t("Comparison baseline: {{v0}}", { v0: compareTitle ?? t("Reference video") })}</span>
+              <span className="font-mono text-[10px] text-fg-3">{t("Synchronize")}</span>
             </div>
             <div className="relative flex-1 overflow-hidden">
               <div
@@ -358,7 +354,7 @@ export function VideoCanvasStage({
                 ) : (
                   <div className="flex flex-col items-center justify-center gap-1.5 text-xs text-fg-3">
                     <Loader2 className="h-4 w-4 animate-spin text-accent" />
-                    <span>正在加载对比视频…</span>
+                    <span>{t("Loading comparison video…")}</span>
                   </div>
                 )}
               </div>
@@ -369,10 +365,8 @@ export function VideoCanvasStage({
         <div className="relative flex h-full w-full min-w-0 flex-col overflow-hidden">
           {showCompareSplit && (
             <div className="z-10 mb-0.5 flex h-6 shrink-0 items-center justify-between rounded-t-[6px] border border-b-0 border-white/10 bg-bg-1/90 px-2 text-[11px]">
-              <span className="truncate font-medium text-accent">
-                当前审阅: {currentTitle ?? "当前视频"}
-              </span>
-              <span className="font-mono text-[10px] text-fg-3">可框选标注</span>
+              <span className="truncate font-medium text-accent">{t("Reviewing: {{v0}}", { v0: currentTitle ?? t("Current video") })}</span>
+              <span className="font-mono text-[10px] text-fg-3">{t("Box annotation available")}</span>
             </div>
           )}
           <div

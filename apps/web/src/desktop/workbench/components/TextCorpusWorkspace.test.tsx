@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { changeAppLanguage, SYSTEM_LANGUAGE } from "../../../i18n";
+import { beforeEach as beforeChineseCopyTest, afterEach as afterChineseCopyTest } from "vitest";
+
+// These interaction fixtures deliberately assert the Simplified Chinese UI.
+beforeChineseCopyTest(() => changeAppLanguage("zh-CN"));
+afterChineseCopyTest(() => changeAppLanguage(SYSTEM_LANGUAGE));
+
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { TextCorpusWorkspace } from "./TextCorpusWorkspace";
 import ReviewMarkdown from "./ReviewMarkdown";
@@ -47,6 +54,13 @@ it("edits Markdown through the package editor and anchors comments only to exact
   const editor = await screen.findByRole("textbox", { name: "Markdown 原文" });
   expect(editor).toHaveValue(markdown);
   fireEvent.change(editor, { target: { value: `${markdown}\n\n> 新备注` } });
+  await act(() => changeAppLanguage("en"));
+  expect(screen.getByRole("textbox", { name: "Markdown source" })).toBe(editor);
+  expect(editor).toHaveValue(`${markdown}\n\n> 新备注`);
+  expect(screen.getByRole("button", { name: /^Save$/ })).toBeInTheDocument();
+  expect(save).not.toHaveBeenCalled();
+  await act(() => changeAppLanguage("zh-CN"));
+  expect(screen.getByRole("textbox", { name: "Markdown 原文" })).toBe(editor);
   fireEvent.click(screen.getByRole("button", { name: /^保存$/ }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(item.id, `${markdown}\n\n> 新备注`));
 });

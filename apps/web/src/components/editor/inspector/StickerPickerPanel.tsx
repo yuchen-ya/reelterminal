@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useState, useCallback, useMemo, useRef } from "react";
 import { Check, Smile, Sticker, Search, Plus } from "@/icons/lucide-compat";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
@@ -369,7 +370,7 @@ export const StickerPickerPanel: React.FC = () => {
         {importMessage ? (
           <div className="mt-2 flex items-center gap-1.5 rounded-md border border-accent/20 bg-accent-soft px-2 py-1.5 text-[9px] text-accent">
             <Check size={11} aria-hidden />
-            <span>{importMessage}</span>
+            <span><LocalizedMessage>{importMessage}</LocalizedMessage></span>
           </div>
         ) : null}
         {importError ? (
@@ -379,7 +380,7 @@ export const StickerPickerPanel: React.FC = () => {
             className="mt-2 rounded-md border border-danger/20 bg-danger/10 px-2 py-1.5 text-[9px] text-danger"
             role="alert"
           >
-            {importError}
+            <LocalizedMessage>{importError}</LocalizedMessage>
           </Text>
         ) : null}
       </div>

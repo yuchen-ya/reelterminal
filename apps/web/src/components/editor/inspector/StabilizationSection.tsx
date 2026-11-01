@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useState, useCallback, useMemo } from "react";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { ToolcraftCard as Card } from "@reelterminal/ui";
@@ -208,7 +209,7 @@ export const StabilizationSection: React.FC<StabilizationSectionProps> = ({
       {error && !processing && (
         <Card variant="muted" padding={2} className="border border-destructive/50 bg-destructive/10">
           <Text type="supporting" className="text-[11px] text-destructive">
-          {error}
+          <LocalizedMessage>{error}</LocalizedMessage>
           </Text>
         </Card>
       )}

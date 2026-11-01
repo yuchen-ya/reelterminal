@@ -104,7 +104,7 @@ test("a first repair decode failure shows the original and its reason, then a ne
     await page.getByTestId("workbench-tree-panel").getByText("First-open house", { exact: true }).click();
     const image = page.getByTestId("image-stage-image");
     await vi.waitFor(async () => expect(await image.getAttribute("src")).toContain(sourceId));
-    expect(await page.getByTestId("repair-notice").innerText()).toMatch(/已回退原图.*图片解码失败/);
+    expect(await page.getByTestId("repair-notice").innerText()).toMatch(/Showing the original.*Image decoding failed/);
     expect(await image.getAttribute("data-display-mode")).toBe("original");
     await evidence.screenshot("first-repair-fallback-visible");
     const replacementId = await apply("#40ff20");

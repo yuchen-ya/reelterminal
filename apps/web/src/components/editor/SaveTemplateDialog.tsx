@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Template } from "@reelterminal/core";
@@ -59,7 +60,7 @@ export function SaveTemplateDialog({ isOpen, onClose, onSaved, template }: SaveT
         closeLabel={t("Close dialog")} onOpenChange={(open) => { if (!open) close(); }} />}
         content={<ToolcraftLayoutContent className="space-y-4">
           {!template && <p className="text-xs leading-5 text-text-muted">{t("personalTemplates.saveNotice", { name: sourceStore.getState().project.name })}</p>}
-          {error && <p role="alert" className="text-sm text-status-error">{error}</p>}
+          {error && <p role="alert" className="text-sm text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
           <label className="block text-xs">{t("personalTemplates.name")}<input autoFocus required maxLength={100} value={name}
             onChange={(event) => setName(event.target.value)} className={inputClass} /></label>
           <label className="block text-xs">{t("personalTemplates.description")}<textarea rows={3} value={description}

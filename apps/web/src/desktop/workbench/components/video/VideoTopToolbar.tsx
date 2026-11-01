@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { JSX, ReactNode } from "react";
 import {
   ArrowUpRight,
@@ -61,6 +62,7 @@ export function VideoTopToolbar({
   isPinnedRef = false,
   onTogglePinCurrent,
 }: VideoTopToolbarProps): JSX.Element {
+  const { t } = useTranslation();
   const hasCompareOptions = compareCandidates.length > 0;
 
   return (
@@ -90,8 +92,8 @@ export function VideoTopToolbar({
                 data-testid="video-pin-reference"
                 title={
                   isPinnedRef
-                    ? "已将当前视频固定为对比基准 (点击取消)"
-                    : "将当前视频设为对比基准，切换到其他视频即可并排对比"
+                    ? t("This video is pinned as the comparison baseline (click to clear)")
+                    : t("Pin this video as a baseline, then open another video for side-by-side comparison")
                 }
                 className={`inline-flex h-6 items-center gap-1 rounded-[5px] border px-1.5 font-sans text-[11px] transition-colors ${
                   isPinnedRef
@@ -101,7 +103,7 @@ export function VideoTopToolbar({
               >
                 <Pin className="h-3 w-3" />
                 <span className="hidden sm:inline">
-                  {isPinnedRef ? "已钉基准" : "钉为基准"}
+                  {isPinnedRef ? t("Baseline pinned") : t("Pin as baseline")}
                 </span>
               </button>
             )}
@@ -115,8 +117,8 @@ export function VideoTopToolbar({
                 data-testid="video-compare-toggle"
                 title={
                   hasCompareOptions
-                    ? "开启/关闭双视频并排同步对比 (共用播放与逐帧控制)"
-                    : "同批次暂无其他可对比的视频条目"
+                    ? t("Toggle synchronized side-by-side videos (shared playback and frame controls)")
+                    : t("No other video in this batch is available for comparison")
                 }
                 className={`inline-flex h-6 items-center gap-1 rounded-[5px] border px-1.5 font-sans text-[11px] transition-colors disabled:opacity-40 ${
                   showCompareSplit
@@ -125,7 +127,7 @@ export function VideoTopToolbar({
                 }`}
               >
                 <Columns2 className="h-3 w-3" />
-                <span>并排对比</span>
+                <span>{t("Side-by-side comparison")}</span>
               </button>
             )}
 
@@ -133,14 +135,12 @@ export function VideoTopToolbar({
               <select
                 value={compareTargetId ?? ""}
                 onChange={(e) => onSelectCompareTarget(e.target.value || null)}
-                aria-label="选择对比视频"
+                aria-label={t("Choose comparison video")}
                 data-testid="video-compare-select"
                 className="h-6 max-w-[160px] truncate rounded-[5px] border border-border bg-bg-2 px-1.5 font-sans text-[11px] text-fg focus:border-accent focus:outline-none"
               >
                 {compareCandidates.map((cand) => (
-                  <option key={cand.id} value={cand.id}>
-                    对比: {cand.title}
-                  </option>
+                  <option key={cand.id} value={cand.id}>{t("Compare: {{v0}}", { v0: cand.title })}</option>
                 ))}
               </select>
             )}
@@ -154,8 +154,8 @@ export function VideoTopToolbar({
             type="button"
             onClick={() => onSelectDrawTool("box")}
             disabled={!videoReady}
-            title="框选问题位置"
-            aria-label="框选问题位置"
+            title={t("Mark the issue area")}
+            aria-label={t("Mark the issue area")}
             className={`inline-flex h-6 w-6 items-center justify-center rounded-[4px] text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               drawTool === "box"
                 ? "bg-bg-3 font-medium text-fg shadow-sm"
@@ -163,14 +163,14 @@ export function VideoTopToolbar({
             }`}
           >
             <Square className="h-3.5 w-3.5" />
-            <span className="sr-only">框选问题位置</span>
+            <span className="sr-only">{t("Mark the issue area")}</span>
           </button>
           <button
             type="button"
             onClick={() => onSelectDrawTool("arrow")}
             disabled={!videoReady}
-            title="箭头指出位置"
-            aria-label="箭头指出位置"
+            title={t("Point to the location")}
+            aria-label={t("Point to the location")}
             className={`inline-flex h-6 w-6 items-center justify-center rounded-[4px] text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               drawTool === "arrow"
                 ? "bg-bg-3 font-medium text-fg shadow-sm"
@@ -178,14 +178,14 @@ export function VideoTopToolbar({
             }`}
           >
             <ArrowUpRight className="h-3.5 w-3.5" />
-            <span className="sr-only">箭头指出位置</span>
+            <span className="sr-only">{t("Point to the location")}</span>
           </button>
           <button
             type="button"
             onClick={() => onSelectDrawTool("pan")}
             disabled={!videoReady}
-            title="抓手拖动画面 (也可用鼠标中键拖动)"
-            aria-label="拖动画面"
+            title={t("Pan the view (middle-drag also works)")}
+            aria-label={t("Pan the image")}
             className={`inline-flex h-6 w-6 items-center justify-center rounded-[4px] text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               drawTool === "pan"
                 ? "bg-bg-3 font-medium text-fg shadow-sm"
@@ -193,7 +193,7 @@ export function VideoTopToolbar({
             }`}
           >
             <Hand className="h-3.5 w-3.5" />
-            <span className="sr-only">拖动画面</span>
+            <span className="sr-only">{t("Pan the image")}</span>
           </button>
         </div>
 
@@ -207,7 +207,7 @@ export function VideoTopToolbar({
             disabled={!videoReady}
             aria-pressed={loupeEnabled}
             data-testid="video-loupe-toggle"
-            title="局部放大镜 (悬停画面 3x 放大细节)"
+            title={t("Magnifier (hover for 3× detail)")}
             className={`inline-flex h-6 w-6 items-center justify-center rounded-[5px] border transition-colors disabled:opacity-40 ${
               loupeEnabled
                 ? "border-accent/60 bg-accent/15 text-accent"
@@ -215,7 +215,7 @@ export function VideoTopToolbar({
             }`}
           >
             <Search className="h-3.5 w-3.5" />
-            <span className="sr-only">局部放大镜</span>
+            <span className="sr-only">{t("Magnifier")}</span>
           </button>
         )}
 
@@ -226,7 +226,7 @@ export function VideoTopToolbar({
               onClick={() => onStepZoom(-25)}
               disabled={!videoReady || zoom <= 100}
               className="p-0.5 text-fg-3 hover:text-fg disabled:opacity-30"
-              title="缩小画面 (支持滚轮缩放)"
+              title={t("Zoom out (mouse wheel supported)")}
             >
               <ZoomOut className="h-3 w-3" />
             </button>
@@ -235,7 +235,7 @@ export function VideoTopToolbar({
               onClick={onResetZoom}
               disabled={!videoReady}
               className="px-1 font-mono text-[11px] tabular-nums text-fg-2 hover:text-accent"
-              title="点击重置为 100% (滚轮可在画布局部缩放)"
+              title={t("Click to reset to 100% (scroll to zoom around the pointer)")}
             >
               {zoom}%
             </button>
@@ -244,7 +244,7 @@ export function VideoTopToolbar({
               onClick={() => onStepZoom(25)}
               disabled={!videoReady || zoom >= 500}
               className="p-0.5 text-fg-3 hover:text-fg disabled:opacity-30"
-              title="放大画面 (支持滚轮缩放)"
+              title={t("Zoom in (mouse wheel supported)")}
             >
               <ZoomIn className="h-3 w-3" />
             </button>
@@ -253,7 +253,7 @@ export function VideoTopToolbar({
                 type="button"
                 onClick={onResetZoom}
                 className="p-0.5 text-fg-3 hover:text-accent"
-                title="重置缩放与位置"
+                title={t("Reset zoom and position")}
               >
                 <RotateCcw className="h-3 w-3" />
               </button>

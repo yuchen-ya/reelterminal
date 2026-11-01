@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Copy, Check, ChevronDown } from "@/icons/lucide-compat";
@@ -220,7 +221,7 @@ export function AudioEnvironmentPanel() {
       {copyState && <p role="status">{copyState}</p>}
       {error && (
         <p role="alert" className="break-words text-status-error">
-          {error}
+          <LocalizedMessage>{error}</LocalizedMessage>
         </p>
       )}
       {!window.reelterminal?.audioEnvironment && (

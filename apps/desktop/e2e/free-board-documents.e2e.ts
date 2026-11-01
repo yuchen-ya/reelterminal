@@ -137,7 +137,7 @@ test("free board preserves rich Markdown source, managed relative assets and edi
     await evidence.screenshot("readme-preview");
     await select(page, markdown);
     await page.getByTestId("human-board-document-edit").click();
-    const editor = page.getByRole("textbox", { name: "Markdown 原文", exact: true });
+    const editor = page.getByRole("textbox", { name: "Markdown source", exact: true });
     expect(await editor.inputValue()).toBe(readme.source.replace(/\r\n/g, "\n"));
     await editor.fill(`${readme.source}\n\n## Saved edit\nPreserved markup.`);
     await page.getByTestId("human-board-document-save").click(); await saved(page);
@@ -166,7 +166,7 @@ test("free board preserves rich Markdown source, managed relative assets and edi
     await page.getByTestId("human-board-output-image").waitFor({ timeout: 30_000 });
     const markdownPng = Buffer.from(await page.getByTestId("human-board-output-image").evaluate(async image => [...new Uint8Array(await (await fetch((image as HTMLImageElement).src)).arrayBuffer())]));
     evidence.writePng("readme-rendered-viewport", markdownPng);
-    await page.getByRole("button", { name: "关闭输出", exact: true }).click();
+    await page.getByRole("button", { name: "Close output", exact: true }).click();
     await rename(fixtureDir, `${fixtureDir}-removed`);
     await agent.close();
     launched = await launched.relaunch(); page = launched.page; evidence.bindPage(page);
@@ -291,7 +291,7 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     expect(local.customData?.snapshotResourceId).toBeTruthy();
     await activateEditor();
     await select(page, local); await page.getByTestId("human-board-document-edit").click();
-    await page.getByRole("textbox", { name: "HTML 原文", exact: true }).fill(`${htmlSource}\n<!-- edited source -->`);
+    await page.getByRole("textbox", { name: "HTML source", exact: true }).fill(`${htmlSource}\n<!-- edited source -->`);
     await page.getByTestId("human-board-document-save").click();
     await page.getByTestId("human-board-document-source").waitFor({ state: "hidden", timeout: 30_000 }); await saved(page);
     expect((await boards(page))[0].elements.find(element => element.id === local.id)?.customData?.snapshotResourceId).not.toBe(local.customData?.snapshotResourceId);
@@ -407,7 +407,7 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     expect(markdownColors.find(entry => entry.name === "second-markdown.md")).toMatchObject({ redPixels: 0 });
     expect(markdownColors.find(entry => entry.name === "second-markdown.md")!.greenPixels).toBeGreaterThan(400);
     await evidence.screenshot("seven-types-capture");
-    await page.getByRole("button", { name: "关闭输出", exact: true }).click();
+    await page.getByRole("button", { name: "Close output", exact: true }).click();
     const firstMarkdown = visible.find(element => element.customData?.name === "seven-markdown.md")!;
     await select(page, firstMarkdown);
     await page.locator('[data-document-kind="markdown"]').filter({ has: page.getByRole("heading", { name: "First Markdown", exact: true }) }).getByRole("link", { name: "Fixture webpage", exact: true }).click();
@@ -457,7 +457,7 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     // Excalidraw 0.18.1 matches Cmd+Alt+] to both bring-forward and
     // bring-to-front on macOS, then cancels the ambiguous shortcut. Exercise
     // the native drawing control that remains available on every platform.
-    await page.getByTestId("human-board-scene").getByRole("button", { name: /^置于顶层/ }).click();
+    await page.getByTestId("human-board-scene").getByRole("button", { name: /^Bring to front/ }).click();
     await saved(page);
     await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted).at(-1)?.id).toBe(local.id));
     await page.mouse.dblclick(localCorner.x, localCorner.y);
@@ -485,7 +485,7 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
     await page.mouse.click(webCorner.x, webCorner.y);
     await vi.waitFor(async () => expect(await page.getByTestId("human-board-canvas").getAttribute("data-selected-element-id")).toBe(webpage.id));
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus();
-    await page.getByTestId("human-board-scene").getByRole("button", { name: /^置于顶层/ }).click();
+    await page.getByTestId("human-board-scene").getByRole("button", { name: /^Bring to front/ }).click();
     await saved(page);
     await vi.waitFor(async () => expect((await boards(page))[0].elements.filter(element => !element.isDeleted).at(-1)?.id).toBe(webpage.id));
     const currentWebBounds = (await page.locator('[data-document-kind="webpage"]').boundingBox())!;
@@ -539,7 +539,7 @@ test("background HTML source previews preserve another native window's focus", a
       const expected = { windowFocused: false, mainFocused: false, foregroundFocused: true };
       await vi.waitFor(async () => expect(await backgroundFocus()).toEqual(expected), { timeout: 5_000 });
       evidence.record("focusBeforeBackgroundHTMLPreview", await backgroundFocus());
-      await page.getByRole("textbox", { name: "HTML 原文", exact: true }).fill(`${localHtmlSource}\n<!-- background preview -->`);
+      await page.getByRole("textbox", { name: "HTML source", exact: true }).fill(`${localHtmlSource}\n<!-- background preview -->`);
       await page.getByTestId("human-board-document-save").click();
       await page.getByTestId("human-board-document-source").waitFor({ state: "hidden", timeout: 30_000 }); await saved(page);
       const edited = (await boards(page))[0].elements.find(element => element.id === local.id)!;
@@ -565,9 +565,22 @@ test("Display-P3 Markdown snapshots retain sRGB asset colours in the composite",
   const launched = await launchApp({ chromiumArgs: ["--force-color-profile=display-p3-d65"] }), page = launched.page;
   const evidence = createEvidence("free-board-p3-markdown", page);
   try {
-    const display = await launched.app.evaluate(({ BrowserWindow, screen }) => screen.getDisplayMatching(BrowserWindow.getAllWindows()[0].getBounds()).colorSpace);
-    evidence.record("displayColourSpace", display);
-    expect(display).toContain("primaries:P3");
+    const colourSetup = await launched.app.evaluate(({ app, BrowserWindow, screen }) => ({
+      requestedProfile: app.commandLine.getSwitchValue("force-color-profile"),
+      display: screen.getDisplayMatching(BrowserWindow.getAllWindows()[0].getBounds()).colorSpace,
+      gpu: app.getGPUFeatureStatus(),
+    }));
+    evidence.record("colourSetup", colourSetup);
+    evidence.record("rendererP3Gamut", await page.evaluate(() => matchMedia("(color-gamut: p3)").matches));
+    expect(colourSetup.requestedProfile).toBe("display-p3-d65");
+    // Display information is refreshed asynchronously after GPU discovery on
+    // Windows. Retain the P3 precondition and all pixel assertions; never count
+    // an sRGB-only run as P3 coverage.
+    await vi.waitFor(async () => {
+      const display = await launched.app.evaluate(({ BrowserWindow, screen }) => screen.getDisplayMatching(BrowserWindow.getAllWindows()[0].getBounds()).colorSpace);
+      evidence.record("displayColourSpace", display);
+      expect(display).toContain("primaries:P3");
+    }, { timeout: 15_000, interval: 250 });
     await openBoard(page);
     const files: string[] = [];
     for (const [name, colour] of [["red", [255, 0, 0, 255]], ["green", [0, 220, 0, 255]]] as const) {

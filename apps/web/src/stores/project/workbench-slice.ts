@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 import { v4 as uuidv4 } from "uuid";
 import type { StoreApi } from "zustand";
 import type {
@@ -146,7 +147,7 @@ function buildDecideAfterRevision(
 export function createWorkbenchSlice(_set: Set, get: Get): WorkbenchSlice {
   return createWorkbenchCommands(() => currentWorkbenchState(get().project), async (actions, groupLabel, actor) => {
     await recoverReviewMigration({ getState: get, setState: _set });
-    if (get().project.reviewMigration) return { ok: false, code: "CONFLICT", message: "MIGRATED: 此项目工作台已迁移，请使用独立审阅节点；旧数据为只读备份。" };
+    if (get().project.reviewMigration) return { ok: false, code: "CONFLICT", message: canonicalMessage("MIGRATED: This project workbench was migrated. Use the independent review node; legacy data remains a read-only backup.") };
     if (!actions.length) return { ok: true };
     const batch = await get().submitActionBatch([...actions], { groupLabel, historyOwner: actor });
     return resultToOutcome(batch.result, groupLabel);
@@ -195,7 +196,7 @@ export function createWorkbenchCommands(
       const actions = [...built.actions];
       if (reworkReason?.trim()) {
         if (targets.some(target => target.decision !== "rework")) {
-          return { ok: false, code: "INVALID_PARAMS", message: "修改要求只能随返工决定提交" };
+          return { ok: false, code: "INVALID_PARAMS", message: canonicalMessage("Revision instructions can be submitted only with a rework decision") };
         }
         const now = Date.now();
         for (const target of targets) {
@@ -296,7 +297,7 @@ export function createWorkbenchCommands(
       itemVersion: number,
       cells: readonly { rowId: string; columnId: string }[],
     ) => {
-      if (!cells.length) return { ok: false, code: "INVALID_PARAMS", message: "没有要取消的返工标记" };
+      if (!cells.length) return { ok: false, code: "INVALID_PARAMS", message: canonicalMessage("No rework marks to clear") };
       return commit(
         [
           {

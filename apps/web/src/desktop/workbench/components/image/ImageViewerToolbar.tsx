@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { JSX, ReactNode } from "react";
 import {
   ArrowUpRight,
@@ -105,6 +106,7 @@ export function ImageViewerToolbar({
   loupeEnabled = false,
   onToggleLoupe,
 }: ImageViewerToolbarProps): JSX.Element {
+  const { t } = useTranslation();
   const toolButton = (active: boolean, activeColorClass: string) =>
     `inline-flex h-6 items-center justify-center gap-1 px-1.5 whitespace-nowrap rounded-[4px] text-xs transition-colors ${
       active
@@ -123,21 +125,21 @@ export function ImageViewerToolbar({
             onClick={() => setViewMode("grid")}
             className={wbButton.segmentedItem(viewMode === "grid")}
             aria-pressed={viewMode === "grid"}
-            title={`返回当前集合 (${batchImageItemsCount})，点击选择，双击放大查看`}
+            title={t("Return to the current collection ({{v0}}); click to select, double-click to enlarge", { v0: batchImageItemsCount })}
           >
             <LayoutGrid className="h-3.5 w-3.5" />
             <span className="ml-1 font-mono text-[11px]">{batchImageItemsCount}</span>
-            <span className="sr-only">返回集合 ({batchImageItemsCount})</span>
+            <span className="sr-only">{t("Back to collection ({{v0}})", { v0: batchImageItemsCount })}</span>
           </button>
           <button
             type="button"
             onClick={() => setViewMode("zoom")}
             className={wbButton.segmentedItem(viewMode === "zoom")}
             aria-pressed={viewMode === "zoom"}
-            title="查看大图"
+            title={t("View full image")}
           >
             <Maximize2 className="h-3.5 w-3.5" />
-            <span className="sr-only">查看大图</span>
+            <span className="sr-only">{t("View full image")}</span>
           </button>
         </div>}
 
@@ -152,7 +154,7 @@ export function ImageViewerToolbar({
                 setPinnedRefId((prev) => (prev === currentItemId ? null : currentItemId))
               }
               aria-pressed={pinnedRefId === currentItemId}
-              title={pinnedRefId === currentItemId ? "取消参考图" : "固定当前图片作为参考图"}
+              title={pinnedRefId === currentItemId ? t("Clear reference image") : t("Pin the current image as a reference")}
               className={`inline-flex h-6 w-6 items-center justify-center rounded-[5px] border transition-colors ${
                 pinnedRefId === currentItemId
                   ? "border-status-warning/40 bg-status-warning/15 text-status-warning"
@@ -161,7 +163,7 @@ export function ImageViewerToolbar({
             >
               <Pin className="h-3 w-3" />
               <span className="sr-only">
-                {pinnedRefId === currentItemId ? "取消参考图" : "设为参考图"}
+                {pinnedRefId === currentItemId ? t("Clear reference image") : t("Set as reference")}
               </span>
             </button>
             <button
@@ -169,7 +171,7 @@ export function ImageViewerToolbar({
               onClick={() => setShowCompareSplit((prev) => !prev)}
               disabled={!pinnedRefId}
               aria-pressed={showCompareSplit}
-              title={pinnedRefId ? "在左侧并排对比参考图" : "先将一张图片设为参考图"}
+              title={pinnedRefId ? t("Compare the reference image on the left") : t("Set an image as the reference first")}
               className={`inline-flex h-6 w-6 items-center justify-center rounded-[5px] border transition-colors disabled:opacity-35 ${
                 showCompareSplit
                   ? "border-accent/40 bg-accent/15 text-accent"
@@ -177,7 +179,7 @@ export function ImageViewerToolbar({
               }`}
             >
               <Columns2 className="h-3.5 w-3.5" />
-              <span className="sr-only">对比参考图</span>
+              <span className="sr-only">{t("Compare reference")}</span>
             </button>
           </>
         )}
@@ -193,38 +195,38 @@ export function ImageViewerToolbar({
               className={wbButton.segmentedItem(workMode === "navigate")}
               data-testid="image-mode-navigate"
               aria-pressed={workMode === "navigate"}
-              title="拖动画面"
+              title={t("Pan the image")}
             >
               <Move className="h-3.5 w-3.5" />
-              <span className="sr-only">拖动画面</span>
+              <span className="sr-only">{t("Pan the image")}</span>
             </button>
             <button
               type="button"
               onClick={() => setWorkMode("annotate")}
               data-testid="image-mode-annotate"
               aria-pressed={workMode === "annotate"}
-              title={`标记问题 (${annotationsCount})`}
+              title={t("Mark issues ({{v0}})", { v0: annotationsCount })}
               className={`${wbButton.segmentedItem(workMode === "annotate")} gap-1`}
             >
               <Square className="h-3.5 w-3.5" />
               {annotationsCount > 0 && (
                 <span className="font-mono text-[10px]">{annotationsCount}</span>
               )}
-              <span className="sr-only">标记问题 ({annotationsCount})</span>
+              <span className="sr-only">{t("Mark issues ({{v0}})", { v0: annotationsCount })}</span>
             </button>
             <button
               type="button"
               onClick={() => setWorkMode("repair")}
               data-testid="image-mode-repair"
               aria-pressed={workMode === "repair"}
-              title={`画笔修补 (${draftStrokesCount})`}
+              title={t("Brush repair ({{v0}})", { v0: draftStrokesCount })}
               className={`${wbButton.segmentedItem(workMode === "repair")} gap-1`}
             >
               <Brush className="h-3.5 w-3.5" />
               {draftStrokesCount > 0 && (
                 <span className="font-mono text-[10px]">{draftStrokesCount}</span>
               )}
-              <span className="sr-only">画笔修补 ({draftStrokesCount})</span>
+              <span className="sr-only">{t("Brush repair ({{v0}})", { v0: draftStrokesCount })}</span>
             </button>
           </div>
 
@@ -234,38 +236,38 @@ export function ImageViewerToolbar({
                 type="button"
                 onClick={() => setAnnotateTool("box")}
                 className={toolButton(annotateTool === "box", "bg-bg-3 text-fg")}
-                title="矩形框选位置"
+                title={t("Mark a rectangular area")}
               >
                 <Square className="h-3 w-3" />
-                <span className="sr-only">方框</span>
+                <span className="sr-only">{t("Box")}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setAnnotateTool("arrow")}
                 className={toolButton(annotateTool === "arrow", "bg-bg-3 text-fg")}
-                title="箭头指向问题"
+                title={t("Point an arrow at the issue")}
               >
                 <ArrowUpRight className="h-3 w-3" />
-                <span className="sr-only">箭头</span>
+                <span className="sr-only">{t("Arrow")}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setAnnotateTool("text")}
                 className={toolButton(annotateTool === "text", "bg-bg-3 text-fg")}
-                title="点击锚定问题点"
+                title={t("Click to anchor an issue point")}
               >
                 <Type className="h-3 w-3" />
-                <span className="sr-only">标记点</span>
+                <span className="sr-only">{t("Markers")}</span>
               </button>
               {annotationsCount > 0 && (
                 <button
                   type="button"
                   onClick={() => void onClearAnnotations()}
                   className="inline-flex h-5 w-5 items-center justify-center rounded text-fg-3 transition-colors hover:text-status-error"
-                  title="清空全部圈注"
+                  title={t("Clear all annotations")}
                 >
                   <Trash2 className="h-3 w-3" />
-                  <span className="sr-only">清空</span>
+                  <span className="sr-only">{t("Clear")}</span>
                 </button>
               )}
             </div>
@@ -276,9 +278,7 @@ export function ImageViewerToolbar({
               <span
                 className="whitespace-nowrap font-mono text-[10px] text-fg-3"
                 data-testid="repair-base-label"
-              >
-                底图：{repairBase === "latest" && repair ? `已保存修补 v${repair.producedVersion}` : "原图"}
-              </span>
+              >{t("Base image: {{v0}}", { v0: repairBase === "latest" && repair ? t("Saved repair v{{v0}}", { v0: repair.producedVersion }) : t("production.original") })}</span>
               {repair && (
                 <button
                   type="button"
@@ -286,10 +286,10 @@ export function ImageViewerToolbar({
                     setRepairBase((prev) => (prev === "latest" ? "source" : "latest"))
                   }
                   className="whitespace-nowrap rounded border border-border bg-bg-1 px-1.5 py-0.5 text-[10px] text-fg-2 hover:text-fg"
-                  title="切换修补底图；保存会记录本次基线，不会把旧基线再叠加一次"
+                  title={t("Switch the repair base. Saving records this baseline without applying the old baseline again.")}
                   data-testid="repair-base-toggle"
                 >
-                  {repairBase === "latest" ? "从原图重新修补" : "使用已保存修补"}
+                  {repairBase === "latest" ? t("Start a repair from the original") : t("Use the saved repair")}
                 </button>
               )}
               <span className="mx-0.5 h-3.5 w-px bg-border" />
@@ -297,45 +297,45 @@ export function ImageViewerToolbar({
                 type="button"
                 onClick={() => setRepairTool("eyedropper")}
                 className={toolButton(repairTool === "eyedropper", "bg-bg-3 text-fg")}
-                title="取色(吸取画面颜色作为画笔色)"
+                title={t("Pick a color from the image for the brush")}
               >
                 <Pipette className="h-3 w-3" />
-                <span className="sr-only">取色</span>
+                <span className="sr-only">{t("Pick color")}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setRepairTool("brush")}
                 className={toolButton(repairTool === "brush", "bg-bg-3 text-fg")}
-                title="修补画笔"
+                title={t("Repair brush")}
               >
                 <Brush className="h-3 w-3" />
-                <span className="sr-only">画笔</span>
+                <span className="sr-only">{t("Brush")}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setRepairTool("eraser")}
                 className={toolButton(repairTool === "eraser", "bg-bg-3 text-fg")}
-                title="橡皮擦(仅擦除修补层)"
+                title={t("Eraser (repair layer only)")}
               >
                 <Eraser className="h-3 w-3" />
-                <span className="sr-only">橡皮擦</span>
+                <span className="sr-only">{t("Eraser")}</span>
               </button>
               <input
                 type="color"
                 value={brushColor}
                 onChange={(e) => setBrushColor(e.target.value)}
                 className="h-4 w-4 cursor-pointer rounded border-0 bg-transparent p-0"
-                title="画笔颜色"
+                title={t("Brush color")}
               />
               <button
                 type="button"
                 onClick={onUndoStroke}
                 disabled={draftStrokesCount === 0}
                 className="inline-flex h-5 w-5 items-center justify-center rounded text-fg-3 transition-colors hover:text-fg disabled:opacity-30"
-                title="撤销上一笔(未提交草稿)"
+                title={t("Undo the last stroke (uncommitted draft)")}
               >
                 <RotateCcw className="h-3 w-3" />
-                <span className="sr-only">撤销一笔</span>
+                <span className="sr-only">{t("Undo stroke")}</span>
               </button>
               <button
                 type="button"
@@ -343,7 +343,7 @@ export function ImageViewerToolbar({
                 disabled={draftStrokesCount === 0 || savingRepair}
                 className="inline-flex h-5 items-center justify-center rounded-[4px] bg-accent px-2 text-[11px] font-medium text-accent-fg transition-colors hover:brightness-110 disabled:opacity-40"
               >
-                {savingRepair ? "保存中…" : `保存修补(${draftStrokesCount} 笔)`}
+                {savingRepair ? t("settings.autoSaveSaving") : t("Save repair ({{v0}} strokes)", { v0: draftStrokesCount })}
               </button>
             </div>
           )}
@@ -362,8 +362,7 @@ export function ImageViewerToolbar({
                   className={wbButton.segmentedItem(displayMode === "original")}
                   data-testid="image-display-original"
                 >
-                  原图
-                  <span className="sr-only">查看原图</span>
+                  {t("production.original")}<span className="sr-only">{t("View original")}</span>
                 </button>
                 <button
                   type="button"
@@ -372,8 +371,7 @@ export function ImageViewerToolbar({
                   className={wbButton.segmentedItem(displayMode === "repaired")}
                   data-testid="image-display-repaired"
                 >
-                  修补
-                  <span className="sr-only">查看修补</span>
+                  {t("Repair")}<span className="sr-only">{t("View repair")}</span>
                 </button>
               </div>
             )}
@@ -385,10 +383,10 @@ export function ImageViewerToolbar({
                 onPointerLeave={() => setHoldOriginal(false)}
                 onPointerCancel={() => setHoldOriginal(false)}
                 className={holdOriginal ? wbButton.primary : wbButton.ghost}
-                title="按住临时查看真原图（无笔画/无修补）"
+                title={t("Hold to view the original without strokes or repairs")}
               >
                 <Eye className="h-3.5 w-3.5" />
-                <span className="sr-only">按住看原图</span>
+                <span className="sr-only">{t("Hold to view original")}</span>
               </button>
             )}
             {onToggleLoupe && (
@@ -397,7 +395,7 @@ export function ImageViewerToolbar({
                 onClick={onToggleLoupe}
                 aria-pressed={loupeEnabled}
                 data-testid="image-loupe-toggle"
-                title="局部放大镜 (悬停画面 3x 放大细节)"
+                title={t("Magnifier (hover for 3× detail)")}
                 className={`inline-flex h-6 w-6 items-center justify-center rounded-[5px] border transition-colors ${
                   loupeEnabled
                     ? "border-accent/60 bg-accent/15 text-accent"
@@ -405,7 +403,7 @@ export function ImageViewerToolbar({
                 }`}
               >
                 <Search className="h-3.5 w-3.5" />
-                <span className="sr-only">局部放大镜</span>
+                <span className="sr-only">{t("Magnifier")}</span>
               </button>
             )}
             <div className="flex h-6 items-center rounded-[5px] border border-border bg-bg-2 px-0.5">
@@ -413,7 +411,7 @@ export function ImageViewerToolbar({
                 type="button"
                 onClick={() => stepZoom(-20)}
                 className="p-0.5 text-fg-3 hover:text-fg"
-                title="缩小 (支持滚轮缩放)"
+                title={t("Zoom out (mouse wheel supported)")}
               >
                 <ZoomOut className="h-3 w-3" />
               </button>
@@ -421,7 +419,7 @@ export function ImageViewerToolbar({
                 type="button"
                 onClick={onResetZoom}
                 className="px-1 font-mono text-[11px] tabular-nums text-fg-2 hover:text-accent"
-                title="点击重置 100% (支持滚轮缩放)"
+                title={t("Click to reset to 100% (mouse wheel supported)")}
               >
                 {zoom}%
               </button>
@@ -429,7 +427,7 @@ export function ImageViewerToolbar({
                 type="button"
                 onClick={() => stepZoom(20)}
                 className="p-0.5 text-fg-3 hover:text-fg"
-                title="放大 (支持滚轮缩放)"
+                title={t("Zoom in (mouse wheel supported)")}
               >
                 <ZoomIn className="h-3 w-3" />
               </button>

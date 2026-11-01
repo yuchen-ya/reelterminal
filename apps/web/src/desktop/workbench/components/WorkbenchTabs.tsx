@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useRef } from "react";
 import { Plus, X } from "lucide-react";
 import { useWorkbenchTabsStore, workbenchTabKey } from "../../../stores/workbench-tabs-store";
@@ -18,6 +19,7 @@ export function WorkbenchTabs({
   onOpen: () => void;
   onCloseManager?: () => void;
 }) {
+  const { t } = useTranslation();
   const { tabs, activeKey, move } = useWorkbenchTabsStore();
   const dragging = useRef<string | null>(null);
   return (
@@ -27,7 +29,7 @@ export function WorkbenchTabs({
     >
       <div
         role="tablist"
-        aria-label="审阅工作台"
+        aria-label={t("review.title")}
         className="relative z-10 flex min-w-0 items-end gap-0.5 overflow-x-auto scrollbar-none"
       >
         {tabs.map((tab, index) => {
@@ -105,7 +107,7 @@ export function WorkbenchTabs({
                     ? "text-fg-3 hover:bg-bg-2 hover:text-fg"
                     : "text-fg-3 opacity-70 group-hover:opacity-100 hover:bg-bg-2 hover:text-fg"
                 }`}
-                aria-label={`关闭 ${tab.name}`}
+                aria-label={t("Close {{v0}}", { v0: tab.name })}
                 data-testid={`close-tab-${tab.kind}-${tab.id}`}
                 onClick={() => onClose(key)}
               >
@@ -132,19 +134,19 @@ export function WorkbenchTabs({
               aria-selected={true}
               disabled={locked}
               className="flex h-full min-w-0 flex-1 items-center gap-2 pl-3 pr-1 text-left text-xs font-medium text-fg disabled:opacity-50"
-              title="打开与管理工作台"
+              title={t("Open and manage workspaces")}
             >
               <span className="shrink-0 text-accent" aria-hidden>
                 <WorkspaceDirectoryIcon className="h-3.5 w-3.5" />
               </span>
-              <span className="min-w-0 flex-1 truncate">打开与管理</span>
+              <span className="min-w-0 flex-1 truncate">{t("Open / Manage")}</span>
             </button>
             {onCloseManager && (
               <button
                 type="button"
                 disabled={locked}
                 className="mr-1.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-fg-3 transition-colors hover:bg-bg-2 hover:text-fg disabled:opacity-40"
-                aria-label="关闭打开与管理标签页"
+                aria-label={t("Close the Open / Manage tab")}
                 data-testid="close-tab-manager"
                 onClick={onCloseManager}
               >
@@ -159,12 +161,12 @@ export function WorkbenchTabs({
         disabled={locked}
         className="relative z-10 mb-1 ml-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-2 transition-colors hover:bg-bg-1 hover:text-fg disabled:opacity-40"
         data-testid="review-workspace-open"
-        aria-label="打开或管理审阅任务与自由画板"
+        aria-label={t("Open or manage review tasks and free boards")}
         onClick={onOpen}
-        title="打开或管理审阅任务与自由画板"
+        title={t("Open or manage review tasks and free boards")}
       >
         <Plus className="h-4 w-4" />
-        <span className="sr-only">打开 / 管理</span>
+        <span className="sr-only">{t("Open / Manage")}</span>
       </button>
     </div>
   );

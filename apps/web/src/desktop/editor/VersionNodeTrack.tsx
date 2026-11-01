@@ -1,3 +1,4 @@
+import { getAppLocale } from "../../i18n";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -359,7 +360,7 @@ export function VersionNodeTrack({
             if (event.key === "Enter") commitRename();
           }} />
           <button type="button" disabled={!rename.trim() || busy} onClick={commitRename}>{t("versioning.menuRename")}</button></div> : <h3 className="break-words font-medium">{selected.name}</h3>}
-        <p className="text-fg-3">{new Date(selected.createdAt).toLocaleString()}</p>
+        <p className="text-fg-3">{new Date(selected.createdAt).toLocaleString(getAppLocale())}</p>
         {selected.summary ? <p className="whitespace-pre-wrap break-words leading-relaxed text-fg-2">{selected.summary}</p> : null}
         {selected.missingDependencies.length ? <p className="leading-relaxed text-status-warning">{t("versioning.missing")}</p> : null}
         <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => previewNode(selected.id)} className={`rounded border border-border px-2 py-1.5 hover:bg-hover ${feedback}`}>{t("versioning.menuPreview")}</button>

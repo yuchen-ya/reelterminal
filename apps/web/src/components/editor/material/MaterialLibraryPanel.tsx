@@ -196,7 +196,7 @@ function MaterialItemsPanel() {
     }
     setAddLinkOpen(false);
     setAddLinkValue("");
-    toast.success(t("material.added"), result.value.material.title);
+    toast.success(t("material.added"), result.value.material.title, { localizeMessage: false });
     await store.refresh();
     await store.refreshJournal();
   };
@@ -224,7 +224,7 @@ function MaterialItemsPanel() {
     }
     setAddMethodOpen(false);
     setAddMethodValue({ skillName: "", prompt: "", steps: "" });
-    toast.success(t("material.added"), result.value.material.title);
+    toast.success(t("material.added"), result.value.material.title, { localizeMessage: false });
     await store.refresh();
     await store.refreshJournal();
   };

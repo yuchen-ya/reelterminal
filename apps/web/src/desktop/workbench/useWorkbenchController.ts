@@ -1,3 +1,6 @@
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../i18n";
+import { getAppLocale } from "../../i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   MediaItem,
@@ -68,31 +71,31 @@ function mediaRefFor(
   };
 }
 
-function targetSummary(feedback: WorkbenchFeedback): string {
+function targetSummary(feedback: WorkbenchFeedback, translateMessage: typeof translate = translate): string {
   const target = feedback.target;
-  if (!target) return "整条条目";
+  if (!target) return translateMessage("Entire item");
   switch (target.kind) {
     case "model-view":
-      return `模型观察 ${target.observationId.slice(0, 8)}`;
+      return translateMessage("Model observation {{v0}}", { v0: target.observationId.slice(0, 8) });
     case "pixel-region":
-      return `图上区域 #${target.annotationId.slice(0, 6)} (${Math.round(target.x * 100)}%, ${Math.round(target.y * 100)}%)`;
+      return translateMessage("Image region #{{v0}} ({{v1}}%, {{v2}}%)", { v0: target.annotationId.slice(0, 6), v1: Math.round(target.x * 100), v2: Math.round(target.y * 100) });
     case "text-range":
-      return `字符区间 [${target.startOffset}, ${target.endOffset}) v${target.version}`;
+      return translateMessage("Character range [{{v0}}, {{v1}}) v{{v2}}", { v0: target.startOffset, v1: target.endOffset, v2: target.version });
     case "data-cell":
-      return `单元格 ${target.rowId} · ${target.columnId}${target.proposalId ? " (提议)" : ""}`;
+      return translateMessage("Cell {{v0}} · {{v1}}{{v2}}", { v0: target.rowId, v1: target.columnId, v2: target.proposalId ? translateMessage(" (suggestion)") : "" });
     case "video-marker":
-      return `播放时间 ${target.startPtsSec.toFixed(3)}s${target.endPtsSec !== undefined ? ` ~ ${target.endPtsSec.toFixed(3)}s` : ""}${target.hasFrameMapping ? "" : " (无源帧映射，外部处理时间可能偏移)"}`;
+      return translateMessage("Playback time {{v0}}s{{v1}}{{v2}}", { v0: target.startPtsSec.toFixed(3), v1: target.endPtsSec !== undefined ? ` ~ ${target.endPtsSec.toFixed(3)}s` : "", v2: target.hasFrameMapping ? "" : translateMessage(" (no source-frame mapping; external processing times may differ)") });
     default:
-      return "整条条目";
+      return translateMessage("Entire item");
   }
 }
 
-function toFeedbackView(feedback: WorkbenchFeedback): import("./types").FeedbackView {
+function toFeedbackView(feedback: WorkbenchFeedback, translateMessage: typeof translate = translate): import("./types").FeedbackView {
   return {
     id: feedback.id,
     text: feedback.text,
     referencedTagIds: [...(feedback.referencedTagIds ?? [])],
-    targetSummary: targetSummary(feedback),
+    targetSummary: targetSummary(feedback, translateMessage),
     ...(feedback.target ? { target: feedback.target } : {}),
     itemVersion: feedback.itemVersion,
     wantsRework: feedback.intent === "rework",
@@ -109,6 +112,7 @@ export function toItemView(
   feedbackForItem: readonly WorkbenchFeedback[],
   currentMedia: { mediaId: string; ref: WorkbenchMediaRef } | null,
   currentRepair: { mediaId: string; ref: WorkbenchMediaRef } | null,
+  translateMessage: typeof translate = translate,
 ): WorkbenchItemView {
   const feedback = pickLatestFeedback(feedbackForItem);
   const feedbackViews = [...feedbackForItem]
@@ -118,7 +122,7 @@ export function toItemView(
         a.createdAt - b.createdAt ||
         a.id.localeCompare(b.id),
     )
-    .map(toFeedbackView);
+    .map(feedback => toFeedbackView(feedback, translateMessage));
   const content = item.content;
   const textPayload =
     content.type === "text"
@@ -213,7 +217,7 @@ export function toItemView(
     ...(item.placement ? { placement: item.placement } : {}),
     ...(item.reworkOrigin ? { reworkOrigin: item.reworkOrigin } : {}),
     ...(feedback
-      ? { feedback: toFeedbackView(feedback) }
+      ? { feedback: toFeedbackView(feedback, translateMessage) }
       : {}),
     feedbacks: feedbackViews,
     ...(textPayload ? { textPayload } : {}),
@@ -260,7 +264,7 @@ export function useWorkbenchMedia(id: string | null, open: WorkbenchControllerSo
     setState({ id, url: null, status: "loading" });
     open(id).then(media => {
       if (cancelled) { media?.release(); return; }
-      if (!media) { setState({ id, url: null, status: "error", error: "媒体原件未找到" }); return; }
+      if (!media) { setState({ id, url: null, status: "error", error: translate("Original media not found") }); return; }
       release = media.release;
       setState({ id, url: media.url, status: "ready" });
     }).catch((error: unknown) => {
@@ -274,16 +278,16 @@ export function useWorkbenchMedia(id: string | null, open: WorkbenchControllerSo
 const projectWorkbench = () => useProjectStore.getState().project.workbench ?? emptyWorkbenchState();
 export async function projectHistory(direction: "undo" | "redo"): Promise<WorkbenchMutationResult> {
   const result = await useProjectStore.getState()[direction]({ scope: "workbench" });
-  return result.success ? { ok: true } : ERROR(result.error?.code ?? "HISTORY_FAILED", result.error?.message ?? "历史操作失败");
+  return result.success ? { ok: true } : ERROR(result.error?.code ?? "HISTORY_FAILED", result.error?.message ?? translate("History action failed"));
 }
 const projectUndo = () => projectHistory("undo");
 const projectRedo = () => projectHistory("redo");
 async function importProjectRepair(file: File): Promise<WorkbenchMutationResult & { mediaId?: string }> {
   const result = await useProjectStore.getState().importMedia(file);
-  if (!result.success) return ERROR(result.error?.code ?? "IMPORT_FAILED", result.error?.message ?? "修补媒体导入失败");
+  if (!result.success) return ERROR(result.error?.code ?? "IMPORT_FAILED", result.error?.message ?? translate("Repair media import failed"));
   const media = [...useProjectStore.getState().project.mediaLibrary.items].reverse()
     .find(media => media.name === file.name || media.sourceFile?.name === file.name);
-  return media ? { ok: true, mediaId: media.id } : ERROR("IMPORT_FAILED", "修补媒体已导入但无法定位");
+  return media ? { ok: true, mediaId: media.id } : ERROR("IMPORT_FAILED", translate("Repair media was imported but could not be located"));
 }
 
 /** Legacy project host, retained for reviewing data before migration. */
@@ -305,6 +309,7 @@ export function useWorkbenchController(): WorkbenchController {
 
 /** Shared interaction logic. Persistence and media access belong to the explicit host. */
 export function useWorkbenchControllerSource(source: WorkbenchControllerSource): WorkbenchController {
+  const { t } = useTranslation();
   const { workbench, mediaItems, getWorkbench, openMedia, importRepair, canUndo, canRedo } = source;
   const storeApi = source.commands;
   const activeBatchId = useWorkbenchUiStore((s) => s.activeBatchId);
@@ -369,28 +374,28 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
     async (input: CreateWorkbenchBatchInput): Promise<CreateWorkbenchBatchResult> => {
       const mediaIds = [...new Set(input.mediaIds)];
       if (!mediaIds.length) {
-        return { ok: false, code: "INVALID_PARAMS", message: "请至少选择一项图片或视频" };
+        return { ok: false, code: "INVALID_PARAMS", message: translate("Select at least one image or video") };
       }
       if (input.itemIds && input.itemIds.length !== mediaIds.length) {
-        return { ok: false, code: "INVALID_PARAMS", message: "提交身份与选材数量不一致" };
+        return { ok: false, code: "INVALID_PARAMS", message: translate("Submission identity does not match the selected media count") };
       }
       const media = mediaIds.map((id) => mediaLookup(id));
       const missing = mediaIds.filter((_, index) => !media[index]);
       if (missing.length > 0) {
-        return { ok: false, code: "NOT_FOUND", message: `素材不存在: ${missing.join(", ")}` };
+        return { ok: false, code: "NOT_FOUND", message: translate("Media not found: {{v0}}", { v0: missing.join(", ") }) };
       }
       const batchId =
         input.batchId ?? `wb-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}`;
       const itemIds =
         input.itemIds ??
         mediaIds.map(() => `wb-item-${crypto.randomUUID()}`);
-      const name = input.name.trim() || `素材审阅 ${new Date().toLocaleString()}`;
+      const name = input.name.trim() || translate("Media review {{v0}}", { v0: new Date().toLocaleString(getAppLocale()) });
       const batchTag: import("@reelterminal/core").WorkbenchProvenanceTag = {
         id: `prov-batch-${batchId}`,
         category: "batch",
-        shortName: "本地导入",
+        shortName: translate("Local import"),
         verification: "declared",
-        detailSummary: "项目素材库",
+        detailSummary: translate("Project media library"),
       };
       const items = mediaIds.map((mediaId, index) => {
         const source = media[index] as MediaItem;
@@ -401,7 +406,7 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
           shortName: title,
           verification: "declared",
           upstreamRef: mediaId,
-          detailSummary: `项目媒体 ${source.name}`,
+          detailSummary: translate("Project media {{v0}}", { v0: source.name }),
         };
         return {
           id: itemIds[index],
@@ -564,10 +569,10 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
   }, [workbench.feedback]);
 
   const batchItems = useMemo(() => {
-    const loaded = rawBatchItems.map(item => toItemView(item, mediaLookup, feedbackByItem.get(item.id) ?? [], null, null));
+    const loaded = rawBatchItems.map(item => toItemView(item, mediaLookup, feedbackByItem.get(item.id) ?? [], null, null, t));
     const loadedById = new Map(loaded.map(item => [item.id, item]));
     return source.summaries ? source.summaries.map(summary => loadedById.get(summary.id) ?? summary) : loaded;
-  }, [source.summaries, mediaLookup, feedbackByItem, rawBatchItems]);
+  }, [source.summaries, mediaLookup, feedbackByItem, rawBatchItems, t]);
   const visibleItems = useMemo(() => {
     const ids = new Set(visibleIds);
     return batchItems.filter(item => ids.has(item.id));
@@ -584,8 +589,8 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
   // The view is built from the same visible raw item, so the viewer can never
   // show/act on an item hidden by the current filter/search.
   const currentItem = useMemo(
-    () => (currentTargetItem ? toItemView(currentTargetItem, mediaLookup, feedbackByItem.get(currentTargetItem.id) ?? [], currentMedia, currentRepair) : null),
-    [currentTargetItem, mediaLookup, feedbackByItem, currentMedia, currentRepair],
+    () => (currentTargetItem ? toItemView(currentTargetItem, mediaLookup, feedbackByItem.get(currentTargetItem.id) ?? [], currentMedia, currentRepair, t) : null),
+    [currentTargetItem, mediaLookup, feedbackByItem, currentMedia, currentRepair, t],
   );
 
   const batches: readonly WorkbenchBatchView[] = useMemo(
@@ -705,9 +710,9 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
     ): Promise<WorkbenchMutationResult> => {
       const targets = explicitTargetIds ?? selectedIds;
       if (targets.length === 0) {
-        return ERROR("NO_TARGETS", "未选择条目:批量操作需要明确的作用范围");
+        return ERROR("NO_TARGETS", translate("No items selected: bulk actions require an explicit scope"));
       }
-      if (!effectiveBatchId) return ERROR("NO_BATCH", "没有活动批次");
+      if (!effectiveBatchId) return ERROR("NO_BATCH", translate("No active batch"));
       const result = await storeApi().decideWorkbenchItems(
         effectiveBatchId,
         targets.map((itemId) => ({ itemId, decision })),
@@ -722,10 +727,10 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
 
   const commitBranchNod = useCallback(
     async (items: readonly WorkbenchItemView[]): Promise<WorkbenchMutationResult> => {
-      if (!effectiveBatchId) return ERROR("NO_BATCH", "没有活动批次");
+      if (!effectiveBatchId) return ERROR("NO_BATCH", translate("No active batch"));
       const withoutGuidance = items.filter((item) => !item.agentGuidance);
       if (withoutGuidance.length === items.length) {
-        return ERROR("NO_GUIDANCE", "所选条目没有 Agent 建议,无法整枝点头");
+        return ERROR("NO_GUIDANCE", translate("Selected items have no Agent suggestions; branch acceptance is unavailable"));
       }
       const skipped: string[] = [];
       const plainTargets: Array<{ itemId: string; decision: WorkbenchDecision }> = [];
@@ -751,7 +756,7 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
       if (plainTargets.length === 0 && dataTargets.length === 0) {
         return ERROR(
           "NO_EXECUTABLE",
-          `整枝确认无可执行项:${skipped.length} 项建议为“修改”但不存在可执行 patch,已全部跳过`,
+          translate("No executable branch suggestions: {{v0}} request modification without an executable patch; all were skipped", { v0: skipped.length }),
         );
       }
       if (plainTargets.length > 0) {
@@ -803,9 +808,9 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
   const addUserTag = useCallback(
     async (itemId: string, tag: string): Promise<WorkbenchMutationResult> => {
       const clean = tag.replace(/^#/, "").trim();
-      if (!clean) return ERROR("INVALID_TAG", "标签为空");
+      if (!clean) return ERROR("INVALID_TAG", translate("Tag is empty"));
       const item = rawBatchItems.find((candidate) => candidate.id === itemId);
-      if (!item) return ERROR("NOT_FOUND", "条目不存在");
+      if (!item) return ERROR("NOT_FOUND", translate("Item not found"));
       if (item.userTags.includes(clean)) return { ok: true };
       return storeApi().setWorkbenchUserTags(itemId, [...item.userTags, clean]);
     },
@@ -829,12 +834,12 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
       const state = getWorkbench();
       const item = state.items.find((candidate) => candidate.id === itemId);
       if (!item || item.content.type !== "text") {
-        return ERROR("NOT_FOUND", "文本条目不存在");
+        return ERROR("NOT_FOUND", translate("Text item not found"));
       }
       if (expectedVersion !== undefined && item.version !== expectedVersion) {
         return ERROR(
           "CONFLICT",
-          `文本已更新到 v${item.version}（选区来自 v${expectedVersion}），请重新选择文本后再批注`,
+          translate("The text was updated to v{{v0}} (selection from v{{v1}}). Select the text again before annotating.", { v0: item.version, v1: expectedVersion }),
         );
       }
       const target: import("@reelterminal/core").WorkbenchFeedbackTarget = {
@@ -888,16 +893,16 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
       expectedVersion?: number,
     ): Promise<WorkbenchMutationResult> => {
       if (patches.length === 0) {
-        return ERROR("NO_PATCHES", "没有显式单元格修改(不支持整表覆盖)");
+        return ERROR("NO_PATCHES", translate("No explicit cell edits (whole-table replacement is unsupported)"));
       }
       if (expectedVersion !== undefined) {
         const state = getWorkbench();
         const item = state.items.find((candidate) => candidate.id === itemId);
-        if (!item) return ERROR("NOT_FOUND", "数据条目不存在");
+        if (!item) return ERROR("NOT_FOUND", translate("Data item not found"));
         if (item.version !== expectedVersion) {
           return ERROR(
             "CONFLICT",
-            `条目已更新到 v${item.version}（编辑基于 v${expectedVersion}），草稿未写入，请基于最新内容重试`,
+            translate("The item was updated to v{{v0}} (edits based on v{{v1}}). The draft was not written; retry with the latest content.", { v0: item.version, v1: expectedVersion }),
           );
         }
       }
@@ -921,7 +926,7 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
       cells: readonly DataReworkCell[],
       reason?: string,
     ): Promise<WorkbenchMutationResult> => {
-      if (cells.length === 0) return ERROR("NO_CELLS", "请先选择要标记返工的单元格");
+      if (cells.length === 0) return ERROR("NO_CELLS", translate("Select cells to mark for rework first"));
       return storeApi().markWorkbenchDataRework({
         itemId,
         itemVersion,
@@ -938,7 +943,7 @@ export function useWorkbenchControllerSource(source: WorkbenchControllerSource):
       itemVersion: number,
       cells: readonly DataReworkCell[],
     ): Promise<WorkbenchMutationResult> => {
-      if (cells.length === 0) return ERROR("NO_CELLS", "请先选择要取消返工的单元格");
+      if (cells.length === 0) return ERROR("NO_CELLS", translate("Select cells whose rework marks should be cleared"));
       return storeApi().clearWorkbenchDataRework(
         itemId,
         itemVersion,
@@ -1000,12 +1005,12 @@ type IssueFeedbackInput = {
       const state = getWorkbench();
       const item = state.items.find((candidate) => candidate.id === itemId);
       if (!item || item.content.type !== "image") {
-        return ERROR("NOT_FOUND", "图片条目不存在");
+        return ERROR("NOT_FOUND", translate("Image item not found"));
       }
       if (expectedVersion !== undefined && item.version !== expectedVersion) {
         return ERROR(
           "CONFLICT",
-          `条目已更新到 v${item.version}（编辑器为 v${expectedVersion}），请查看最新内容后重试`,
+          translate("The item was updated to v{{v0}} (editor on v{{v1}}). View the latest content and try again.", { v0: item.version, v1: expectedVersion }),
         );
       }
       // Geometry-only edits (draw/delete/clear) never create feedback.
@@ -1030,12 +1035,12 @@ type IssueFeedbackInput = {
     ): Promise<WorkbenchMutationResult> => {
       const item = rawBatchItems.find((candidate) => candidate.id === itemId);
       if (!item || item.content.type !== "image") {
-        return ERROR("NOT_FOUND", "图片条目不存在");
+        return ERROR("NOT_FOUND", translate("Image item not found"));
       }
-      if (strokes.length === 0) return ERROR("NO_STROKES", "没有修补笔画");
+      if (strokes.length === 0) return ERROR("NO_STROKES", translate("No repair strokes"));
       const blob = await renderPatchedImage();
       if (!blob) {
-        return ERROR("RENDER_FAILED", "无法生成修补图像(原图位图不可用),修补未提交");
+        return ERROR("RENDER_FAILED", translate("Unable to generate the repaired image (original bitmap unavailable); repair not committed"));
       }
       const fileName = `wb-repair-${itemId}-v${item.version}.png`;
       const file = new File([blob], fileName, { type: "image/png" });
@@ -1056,12 +1061,12 @@ type IssueFeedbackInput = {
       const state = getWorkbench();
       const item = state.items.find((candidate) => candidate.id === itemId);
       if (!item || item.content.type !== "video") {
-        return ERROR("NOT_FOUND", "视频条目不存在");
+        return ERROR("NOT_FOUND", translate("Video item not found"));
       }
       if (expectedVersion !== undefined && item.version !== expectedVersion) {
         return ERROR(
           "CONFLICT",
-          `条目已更新到 v${item.version}（编辑器为 v${expectedVersion}），请查看最新内容后重试`,
+          translate("The item was updated to v{{v0}} (editor on v{{v1}}). View the latest content and try again.", { v0: item.version, v1: expectedVersion }),
         );
       }
       if (!feedback) {
@@ -1080,7 +1085,7 @@ type IssueFeedbackInput = {
     async (itemId: string, draft: FeedbackDraftInput): Promise<WorkbenchMutationResult> => {
       const state = getWorkbench();
       const item = state.items.find((candidate) => candidate.id === itemId);
-      if (!item) return ERROR("NOT_FOUND", "条目不存在");
+      if (!item) return ERROR("NOT_FOUND", translate("Item not found"));
       const record = buildIssueFeedbackRecord(
         item,
         {
@@ -1099,7 +1104,7 @@ type IssueFeedbackInput = {
 
   const publishHandoff = useCallback(
     async (itemIds?: readonly string[]): Promise<WorkbenchMutationResult> => {
-      if (!effectiveBatchId) return ERROR("NO_BATCH", "没有活动批次");
+      if (!effectiveBatchId) return ERROR("NO_BATCH", translate("No active batch"));
       return storeApi().publishWorkbenchHandoff(effectiveBatchId, itemIds);
     },
     [effectiveBatchId, storeApi],

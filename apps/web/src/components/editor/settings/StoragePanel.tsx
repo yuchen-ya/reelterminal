@@ -97,7 +97,7 @@ export const StoragePanel: React.FC = () => {
         return;
       }
       if (result.requiresRestart) {
-        toast.success(t("settings.storage.restartRequired"), picked);
+        toast.success(t("settings.storage.restartRequired"), picked, { localizeMessage: false });
       } else {
         toast.success(t("settings.storage.sameLocation"));
       }

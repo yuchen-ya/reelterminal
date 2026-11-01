@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import { NODE_PALETTE } from "./node-palette";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
@@ -167,7 +168,7 @@ export function CollaborationInstructionsPanel({ store, active = true }: { store
             </div>
           </details>
       </fieldset>
-      {error && <p role="alert" className="px-4 pb-2 text-xs text-status-error">{error}</p>}
+      {error && <p role="alert" className="px-4 pb-2 text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
       <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
         {original && <button type="button" disabled={busy} aria-label={label("delete")} onClick={() => void commit(original, original, true)} className="mr-auto rounded p-2 text-fg-3 hover:bg-hover hover:text-status-error"><Trash2 size={14} /></button>}
         <button type="button" disabled={busy} onClick={() => setView("list")} className={`${buttonClass} text-fg-2`}>{label("cancel")}</button>
@@ -188,7 +189,7 @@ export function CollaborationInstructionsPanel({ store, active = true }: { store
           onOpenChange={open => { if (!busy) { setError(""); setView(open ? "presets" : "list"); } }}
           content={view === "presets" ? <>
             <InstructionSelector items={items} busy={busy} onSelect={choose} onCreate={() => edit()} onManage={manageLibrary} />
-            {error && <p role="alert" className="px-3 pb-3 text-xs text-status-error">{error}</p>}
+            {error && <p role="alert" className="px-3 pb-3 text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
           </> : (!original || !items.some(item => item.id === original.id)) ? editor : null}
         >
           <button disabled={busy} className="flex h-8 items-center gap-1.5 rounded-md border border-border bg-bg-2 px-2.5 text-xs font-medium text-fg hover:border-accent hover:bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
@@ -262,7 +263,7 @@ export function CollaborationInstructionsPanel({ store, active = true }: { store
             ))}
           </div>
         </TooltipProvider>
-        {error && view === "list" && <p role="alert" className="mt-3 text-xs text-status-error">{error}</p>}
+        {error && view === "list" && <p role="alert" className="mt-3 text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
       </div>
     </section>
   );

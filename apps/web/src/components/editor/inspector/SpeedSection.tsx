@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useState, useEffect } from "react";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { ToolcraftCard as Card } from "@reelterminal/ui";
@@ -80,7 +81,7 @@ export const SpeedSection: React.FC<SpeedSectionProps> = ({ clip }) => {
 
   return (
     <div className="space-y-3">
-      {error && <Text type="supporting" color="secondary" role="alert">{error}</Text>}
+      {error && <Text type="supporting" color="secondary" role="alert"><LocalizedMessage>{error}</LocalizedMessage></Text>}
       <div className="grid grid-cols-3 gap-2">
         {SPEED_PRESETS.map((preset) => (
           <ClickableCard

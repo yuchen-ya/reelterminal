@@ -1,3 +1,5 @@
+import { t as translate } from "../../i18n";
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 import type { FileResource } from "@reelterminal/core/review/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState } from "@excalidraw/excalidraw/types";
@@ -37,7 +39,7 @@ export const humanBoardStorage = {
     request.onsuccess = () => result((request.result as HumanBoard[]).sort((a, b) => b.updatedAt - a.updatedAt));
   }),
   async create(name: string): Promise<HumanBoard> {
-    const board: HumanBoard = { id: crypto.randomUUID(), name: name.trim().slice(0, 200) || "未命名画板", revision: 0, updatedAt: Date.now(), elements: [], imageFiles: {}, appState: { viewBackgroundColor: "#ffffff", theme: "light" }, resourceIds: [] };
+    const board: HumanBoard = { id: crypto.randomUUID(), name: name.trim().slice(0, 200) || translate("Untitled board"), revision: 0, updatedAt: Date.now(), elements: [], imageFiles: {}, appState: { viewBackgroundColor: "#ffffff", theme: "light" }, resourceIds: [] };
     await transaction(["humanBoards"], "readwrite", (tx, result) => { tx.objectStore("humanBoards").add(board); result(undefined); });
     return board;
   },
@@ -45,7 +47,7 @@ export const humanBoardStorage = {
     const store = tx.objectStore("humanBoards");
     const request = store.get(board.id);
     request.onsuccess = () => {
-      if (!request.result || request.result.revision !== board.revision) { fail(new Error("画板已在其他窗口修改，请重新打开；当前场景尚未覆盖磁盘内容")); return; }
+      if (!request.result || request.result.revision !== board.revision) { fail(new Error(canonicalMessage("The board was edited in another window. Reopen it; the current scene has not overwritten saved content."))); return; }
       const next = { ...board, appState: { ...board.appState, viewBackgroundColor: "#ffffff", theme: "light" as const }, resourceIds: [...new Set([...request.result.resourceIds, ...board.resourceIds])], revision: board.revision + 1, updatedAt: Date.now() };
       store.put(next); result(next);
     };
@@ -54,7 +56,7 @@ export const humanBoardStorage = {
   retain: (boardId: string, resources: readonly FileResource[]) => transaction<void>(["humanBoards", "fileResources", "resourceRefs"], "readwrite", (tx, result, fail) => {
     const request = tx.objectStore("humanBoards").get(boardId);
     request.onsuccess = () => {
-      if (!request.result) { fail(new Error("画板已删除")); return; }
+      if (!request.result) { fail(new Error(canonicalMessage("The board was deleted"))); return; }
       const board = request.result as HumanBoard;
       for (const resource of resources) {
         tx.objectStore("fileResources").put(resource);
@@ -67,13 +69,13 @@ export const humanBoardStorage = {
   resources: (boardId: string) => transaction<FileResource[]>(["humanBoards", "fileResources"], "readonly", (tx, result, fail) => {
     const request = tx.objectStore("humanBoards").get(boardId);
     request.onsuccess = () => {
-      if (!request.result) { fail(new Error("画板不存在")); return; }
+      if (!request.result) { fail(new Error(canonicalMessage("Board not found"))); return; }
       const ids = (request.result as HumanBoard).resourceIds;
       if (!ids.length) { result([]); return; }
       const requests = ids.map(id => tx.objectStore("fileResources").get(id));
       let pending = requests.length;
       for (const item of requests) item.onsuccess = () => { if (!--pending) {
-        if (requests.some(entry => !entry.result)) { fail(new Error("画板资源记录缺失")); return; }
+        if (requests.some(entry => !entry.result)) { fail(new Error(canonicalMessage("Board resource record missing"))); return; }
         result(requests.map(entry => entry.result));
       } };
     };

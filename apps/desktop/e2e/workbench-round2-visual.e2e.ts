@@ -157,11 +157,11 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     await page.getByTestId("workbench-tree-empty").waitFor({ state: "visible" });
     await page.getByTestId("workbench-start-panel").waitFor({ state: "visible" });
     await page.getByTestId("workbench-bottom-dock").waitFor({ state: "visible" });
-    expect(await page.getByText(/这里不提供模拟数据入口/).count()).toBe(0);
+    expect(await page.getByText(/这里不提供模拟数据入口|mock data/i).count()).toBe(0);
 
     // No target ⇒ publishing / mind-map are disabled, not dead.
-    expect(await page.getByRole("button", { name: /发布审阅结果/ }).isDisabled()).toBe(true);
-    expect(await page.getByRole("button", { name: /全景血缘导图/ }).isDisabled()).toBe(true);
+    expect(await page.getByRole("button", { name: /Publish review results/ }).isDisabled()).toBe(true);
+    expect(await page.getByRole("button", { name: /Provenance overview/ }).isDisabled()).toBe(true);
 
     await page.getByTestId("workbench-ingest-help").click();
     expect(
@@ -183,7 +183,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     });
     try {
       await page.getByTestId("workbench-copy-ingest").click();
-      await page.getByText("已复制接入说明").waitFor({ state: "visible" });
+      await page.getByText("Connection instructions copied").waitFor({ state: "visible" });
       const calls = await clipboardHandle.evaluate(state => state.calls);
       expect(calls).toHaveLength(1);
       expectVideoStartupPrompt(calls[0], identity);
@@ -193,8 +193,8 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
         navigator.clipboard.writeText = async () => { throw new DOMException("Denied", "NotAllowedError"); };
       });
       await page.getByTestId("workbench-copy-ingest").click();
-      await page.getByText("复制失败，请确认项目工作区已就绪后重试", { exact: true }).waitFor({ state: "visible" });
-      expect(await page.getByText("已复制接入说明").count()).toBe(0);
+      await page.getByText("Copy failed. Check that the project workspace is ready and try again.", { exact: true }).waitFor({ state: "visible" });
+      expect(await page.getByText("Connection instructions copied").count()).toBe(0);
       evidence.record("clipboardInternal", { payloadMatchesDisplayedInstructions: true, rejectionShown: true, adapterStub: true });
     } finally {
       await clipboardHandle.evaluate(state => { navigator.clipboard.writeText = state.original; });
@@ -217,7 +217,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     }
     const page = launched.page;
     await page.getByTestId("workbench-copy-ingest").click();
-    await page.getByText("已复制接入说明").waitFor({ state: "visible", timeout: 10_000 });
+    await page.getByText("Connection instructions copied").waitFor({ state: "visible", timeout: 10_000 });
     let clipboardText = "";
     await vi.waitFor(async () => {
       clipboardText = await launched.app.evaluate(({ clipboard }) => clipboard.readText());
@@ -357,11 +357,11 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     evidence.record("imageLayout", { contentBox, panelBox, bottomBox, zoomShot });
 
     // The collection view exposes the same card-level quick decisions.
-    await page.getByRole("button", { name: /返回集合/ }).click();
+    await page.getByRole("button", { name: /Back to collection/ }).click();
     const imageCard = page.getByTestId(`board-card-${IMAGE_ID}`);
     await imageCard.hover();
-    await imageCard.getByTitle("保留此项").waitFor({ state: "visible" });
-    await imageCard.getByTitle("丢弃此项").waitFor({ state: "visible" });
+    await imageCard.getByTitle("Keep this item").waitFor({ state: "visible" });
+    await imageCard.getByTitle("Discard this item").waitFor({ state: "visible" });
     const gridShot = await evidence.screenshot("03-image-grid");
     evidence.record("imageGridShot", gridShot);
     await page.getByTestId(`board-open-item-${IMAGE_ID}`).click();
@@ -387,7 +387,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     await panel.getByTestId("workbench-issue-card").first().waitFor({ timeout: 10_000 });
     expect(await panel.getByTestId("workbench-issue-card").count()).toBe(1);
 
-    const textarea = panel.getByLabel("问题建议");
+    const textarea = panel.getByLabel("Issue suggestion");
     const note = "边缘溢色与毛刺，请按来源标签处理";
     await textarea.fill(note);
     await panel.getByRole("button", { name: /母版/ }).click();
@@ -396,7 +396,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     evidence.record("imageIssueDraftShot", draftShot);
 
     await panel.getByTestId("workbench-issue-save").click();
-    await page.getByText(/反馈已保存/).first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByText(/Feedback saved/).first().waitFor({ state: "visible", timeout: 15_000 });
 
     const state = await readProjectState(agent, identity);
     const item = state.project.workbench.items.find((candidate) => candidate.id === IMAGE_ID)!;
@@ -427,11 +427,11 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     const textShot = await evidence.screenshot("05-text-multiline");
     evidence.record("textShot", textShot);
 
-    await page.getByRole("button", { name: "直接改文" }).first().click();
+    await page.getByRole("button", { name: "Edit text" }).first().click();
     const editor = page.getByTestId("workbench-content").locator("textarea").first();
     await editor.fill("人工修订后的正文。\n第二行保留 emoji 🙂。");
-    await page.getByTestId("workbench-content").getByRole("button", { name: "保存", exact: true }).click();
-    await page.getByText(/已修改/).first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByTestId("workbench-content").getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByText(/Modified/).first().waitFor({ state: "visible", timeout: 15_000 });
 
     const state = await readProjectState(agent, identity);
     const item = state.project.workbench.items.find((candidate) => candidate.id === TEXT_ID)!;
@@ -449,8 +449,8 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     const dataShot = await evidence.screenshot("06-data-table");
     evidence.record("dataShot", dataShot);
 
-    await page.getByRole("button", { name: /全选待清洗建议/ }).first().click();
-    await page.getByRole("button", { name: /^确认建议 \(/ }).first().click();
+    await page.getByRole("button", { name: /Select all pending cleaning suggestions/ }).first().click();
+    await page.getByRole("button", { name: /^Accept suggestions \(/ }).first().click();
     await page.getByText("2026-01-05", { exact: true }).and(page.locator("td:visible span.text-fg")).waitFor({
       timeout: 15_000,
     });
@@ -482,7 +482,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
       undefined,
       { timeout: 30_000 },
     );
-    await page.getByText(/帧索引不可用/).first().waitFor({ state: "visible" });
+    await page.getByText(/Frame index unavailable/).first().waitFor({ state: "visible" });
 
     // Seek to ~50% through the real 2 s fixture, then mark the frame.
     const scrubber = page.locator("[title='点击/拖动跳转播放位置']");
@@ -495,7 +495,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     const seekedTime = await video.evaluate((element: HTMLVideoElement) => element.currentTime);
     expect(seekedTime).toBeGreaterThan(0.5);
 
-    await page.getByRole("button", { name: /标问题帧/ }).click();
+    await page.getByRole("button", { name: /Mark issue frame/ }).click();
     const panel = page.getByTestId("workbench-issue-panel");
     await panel.getByTestId("workbench-issue-card").first().waitFor({ timeout: 10_000 });
     expect(await panel.getByTestId("workbench-issue-card").count()).toBe(1);
@@ -531,13 +531,13 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     const currentTime = await video.evaluate((element: HTMLVideoElement) => element.currentTime);
 
     // Edit the marker note, reference a tag and save through the controller.
-    const textarea = panel.getByLabel("问题建议");
+    const textarea = panel.getByLabel("Issue suggestion");
     const note = "该处画面撕裂，请按来源标签重修";
     await textarea.fill(note);
     await panel.getByRole("button", { name: /边缘清理/ }).click();
     const videoShot = await evidence.screenshot("07-video-issue-panel");
     await panel.getByTestId("workbench-issue-save").click();
-    await page.getByText(/反馈已保存/).first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByText(/Feedback saved/).first().waitFor({ state: "visible", timeout: 15_000 });
 
     const after = await readProjectState(agent, identity);
     const videoItem = after.project.workbench.items.find(
@@ -583,12 +583,12 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     const page = launched.page;
     // Decide the image so the batch has something publishable.
     await selectTreeItem(page, "真实图片");
-    await page.getByRole("button", { name: /^保留$/ }).first().click();
+    await page.getByRole("button", { name: /^Keep$/ }).first().click();
     await vi.waitFor(async () => expect((await readProjectState(agent, identity)).project.workbench.items.find(item => item.id === IMAGE_ID)?.status).toBe("kept"));
     // Let the decision toast clear before opening the dialog.
     await page.waitForTimeout(3400);
 
-    const handoffButton = page.getByRole("button", { name: /发布审阅结果/ });
+    const handoffButton = page.getByRole("button", { name: /Publish review results/ });
     expect(await handoffButton.isEnabled()).toBe(true);
     await handoffButton.click();
     const dialog = page.getByRole("dialog");
@@ -645,7 +645,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     expect(after!.width).toBeGreaterThan(before!.width + 20);
 
     // Drag the left queue divider to verify the persisted panel width.
-    const treeHandle = page.getByTitle("拖拽调整队列宽度");
+    const treeHandle = page.getByTitle("Drag to resize the queue");
     const treeBox = await treeHandle.boundingBox();
     expect(treeBox).not.toBeNull();
     const originalTreeWidth = await page.evaluate(() => Number(localStorage.getItem("reelterminal-workbench-tree-w") ?? 220));
@@ -655,9 +655,9 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     await page.mouse.up();
 
     // Left queue collapse/expand.
-    await page.getByTitle("折叠侧栏").click();
+    await page.getByTitle("Collapse the sidebar").click();
     expect(await page.getByTestId("workbench-tree-panel").count()).toBe(0);
-    await page.getByTitle("展开上游血缘树").click();
+    await page.getByTitle("Expand upstream provenance").click();
     await page.getByTestId("workbench-tree-panel").waitFor({ state: "visible" });
 
     await waitForNoHorizontalOverflow(page);

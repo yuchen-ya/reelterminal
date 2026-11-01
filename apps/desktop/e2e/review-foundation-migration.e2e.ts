@@ -61,17 +61,17 @@ describe("legacy project review migration", () => {
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * .6, box.y + box.height * .5, { steps: 8 });
     await page.mouse.up();
-    await page.getByRole("button", { name: /保存修补/ }).click();
+    await page.getByRole("button", { name: /Save repair/ }).click();
     await vi.waitFor(async () => expect((await readProjectState(agent, identity)).project.workbench.items.find(item => item.id === "legacy-image")?.version).toBe(2));
     await page.getByTestId("image-mode-navigate").click();
     const keep = async (title: string) => {
       await select(title);
-      await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "保留", exact: true }).click();
+      await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "Keep", exact: true }).click();
     };
     const publish = async () => {
-      await page.getByRole("button", { name: /发布审阅结果/ }).click();
-      await page.getByRole("button", { name: /发布交接结果|更新交接结果/ }).click();
-      await page.getByText(/等待 Agent 读取/).first().waitFor();
+      await page.getByRole("button", { name: /Publish review results/ }).click();
+      await page.getByRole("button", { name: /Publish handoff results|Update handoff results/ }).click();
+      await page.getByText(/waiting for the Agent to read/i).first().waitFor();
       await page.keyboard.press("Escape");
     };
     for (const title of ["Migration image", "Migration missing video", "Migration text", "Migration data"]) await keep(title);

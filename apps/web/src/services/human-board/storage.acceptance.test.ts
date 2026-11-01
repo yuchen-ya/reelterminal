@@ -28,7 +28,7 @@ test("board saves keep imported resources through scene removal and reject a sta
   const removed = await humanBoardStorage.save({ ...saved, imageFiles: {} });
   expect([...removed.resourceIds].sort()).toEqual([first.id, replacement.id].sort());
   expect((await humanBoardStorage.resources(board.id)).map(resource => resource.id).sort()).toEqual([first.id, replacement.id].sort());
-  await expect(humanBoardStorage.save({ ...saved, name: "Stale overwrite" })).rejects.toThrow(/其他窗口修改/);
+  await expect(humanBoardStorage.save({ ...saved, name: "Stale overwrite" })).rejects.toThrow(/edited in another window/);
   const reopened = (await humanBoardStorage.list())[0];
   expect(reopened).toEqual(removed);
   expect(reopened).not.toHaveProperty("files");

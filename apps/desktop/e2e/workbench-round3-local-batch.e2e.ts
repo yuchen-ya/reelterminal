@@ -134,8 +134,8 @@ describe("workbench round 3 batch B: local media batch", () => {
       .getByText(imageItem.title, { exact: true })
       .first()
       .click();
-    await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "保留", exact: true }).click();
-    await page.getByTitle(/已处理 1 \/ 2/).waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "Keep", exact: true }).click();
+    await page.getByTitle(/Processed 1 \/ 2/).waitFor({ state: "visible", timeout: 15_000 });
     await page.waitForTimeout(3_400);
 
     await page.getByTestId("workbench-new-batch").click();
@@ -144,8 +144,8 @@ describe("workbench round 3 batch B: local media batch", () => {
     const cards = dialog.getByTestId("create-batch-media-card");
     await cards.first().waitFor({ timeout: 10_000 });
 
-    const processed = dialog.getByText("已审阅", { exact: true });
-    const pending = dialog.getByText("已在工作台 · 待处理", { exact: true });
+    const processed = dialog.getByText("Reviewed", { exact: true });
+    const pending = dialog.getByText("In the workbench · Pending", { exact: true });
     await processed.waitFor({ timeout: 10_000 });
     await pending.waitFor({ timeout: 10_000 });
     await dialog.getByTestId("create-batch-name").fill("本地素材批 E2E 第二轮");

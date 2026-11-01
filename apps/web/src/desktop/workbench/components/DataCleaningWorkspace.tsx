@@ -1,3 +1,6 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 /**
  * Data cleaning table workspace (migrated from the AI-material workbench
  * prototype).
@@ -75,6 +78,7 @@ export function DataCleaningWorkspace({
   onMarkDataRework,
   onClearDataRework,
 }: DataCleaningWorkspaceProps): JSX.Element {
+  const { t } = useTranslation();
   const payload = currentItem.dataPayload;
   const [selectedCellKeys, setSelectedCellKeys] = useState<readonly string[]>([]);
   const [sortCol, setSortCol] = useState<string | null>(null);
@@ -109,7 +113,7 @@ export function DataCleaningWorkspace({
     setPageIndex(0);
     if (previous.id === currentItem.id && discarded) {
       setScopeNotice(
-        `条目已更新到 v${currentItem.version}：未保存的单元格编辑草稿已丢弃，请基于最新内容重试。`,
+        translate("This item was updated to v{{v0}}. Unsaved cell edits were discarded; retry with the latest content.", { v0: currentItem.version }),
       );
     } else {
       setScopeNotice(null);
@@ -220,19 +224,17 @@ export function DataCleaningWorkspace({
     try {
       const result = await action();
       if (result.ok) return true;
-      setMutationError(`${label}失败：${result.message}`);
+      setMutationError(translate("{{v0}} failed: {{v1}}", { v0: label, v1: result.message }));
       return false;
     } catch (error) {
-      setMutationError(`${label}失败：${error instanceof Error ? error.message : String(error)}`);
+      setMutationError(translate("{{v0}} failed: {{v1}}", { v0: label, v1: error instanceof Error ? error.message : String(error) }));
       return false;
     }
   };
 
   if (!payload) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg text-xs text-fg-3">
-        数据内容未提供
-      </div>
+      <div className="flex h-full w-full items-center justify-center bg-bg text-xs text-fg-3">{t("No data content was supplied")}</div>
     );
   }
 
@@ -279,7 +281,7 @@ export function DataCleaningWorkspace({
       proposalId: p.proposalId,
       proposalOutcome: "accepted",
     }));
-    void runMutation(`确认 ${patches.length} 项单元格清洗提议`, () =>
+    void runMutation(translate("Accept cell-cleaning suggestions ({{v0}})", { v0: patches.length }), () =>
       onUpdateDataCells(currentItem.id, patches, "modified", currentItem.version),
     );
   };
@@ -295,7 +297,7 @@ export function DataCleaningWorkspace({
       proposalId: p.proposalId,
       proposalOutcome: "rejected",
     }));
-    void runMutation(`拒绝 ${patches.length} 项清洗提议`, () =>
+    void runMutation(translate("Reject cleaning suggestions ({{v0}})", { v0: patches.length }), () =>
       onUpdateDataCells(currentItem.id, patches, undefined, currentItem.version),
     );
   };
@@ -304,7 +306,7 @@ export function DataCleaningWorkspace({
   // commit. Selection never derives rework from notes or text keywords.
   const handleMarkRework = (): void => {
     if (selectedDraftCells.length === 0) return;
-    void runMutation(`标记 ${selectedDraftCells.length} 格返工`, async () => {
+    void runMutation(translate("Mark cells for rework ({{v0}})", { v0: selectedDraftCells.length }), async () => {
       const result = await onMarkDataRework(
         currentItem.id,
         currentItem.version,
@@ -321,7 +323,7 @@ export function DataCleaningWorkspace({
       return cell && rowIds.has(cell.rowId) && columnIds.has(cell.columnId) ? [cell] : [];
     });
     if (cells.length === 0) return;
-    void runMutation(`取消 ${cells.length} 格返工标记`, () =>
+    void runMutation(translate("Clear cell rework marks ({{v0}})", { v0: cells.length }), () =>
       onClearDataRework(currentItem.id, currentItem.version, cells),
     );
   };
@@ -348,7 +350,7 @@ export function DataCleaningWorkspace({
     if (baseVersion !== null && baseVersion !== currentItem.version) {
       // The item moved while the draft was open: drop it explicitly.
       setScopeNotice(
-        `条目已更新到 v${currentItem.version}：基于 v${baseVersion} 的编辑未写入，请重试。`,
+        translate("This item was updated to v{{v0}}. Edits based on v{{v1}} were not written; try again.", { v0: currentItem.version, v1: baseVersion }),
       );
       return;
     }
@@ -366,7 +368,7 @@ export function DataCleaningWorkspace({
         : {}),
     };
     void runMutation(
-      `手动修改单元格 [${rowId}:${columnId}] -> ${finalValue === null ? "NULL(缺失)" : `"${finalValue}"`}`,
+      translate("Manually edited cell [{{v0}}:{{v1}}] -> {{v2}}", { v0: rowId, v1: columnId, v2: finalValue === null ? translate("NULL (missing)") : `"${finalValue}"` }),
       () =>
         onUpdateDataCells(
           currentItem.id,
@@ -402,8 +404,8 @@ export function DataCleaningWorkspace({
             }`}
           >
             <Filter className="h-3 w-3" />
-            <span>待确认 ({pendingProposals.length})</span>
-            <span className="sr-only">仅看含待确认建议行</span>
+            <span>{t("To confirm ({{v0}})", { v0: pendingProposals.length })}</span>
+            <span className="sr-only">{t("Show rows with unconfirmed suggestions")}</span>
           </button>
           <button
             type="button"
@@ -418,8 +420,8 @@ export function DataCleaningWorkspace({
             }`}
           >
             <Flag className="h-3 w-3" />
-            <span>返工行 ({activeReworkKeys.size})</span>
-            <span className="sr-only">仅看返工标记行</span>
+            <span>{t("Rework rows ({{v0}})", { v0: activeReworkKeys.size })}</span>
+            <span className="sr-only">{t("Show rows marked for rework")}</span>
           </button>
           <button
             type="button"
@@ -430,20 +432,15 @@ export function DataCleaningWorkspace({
             }
             className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-[5px] border border-border bg-bg-2 px-2 text-[11px] text-fg-2 transition-colors hover:text-fg"
           >
-            <span>全选建议 ({pendingProposals.length})</span>
-            <span className="sr-only">全选待清洗建议项</span>
+            <span>{t("Select all suggestions ({{v0}})", { v0: pendingProposals.length })}</span>
+            <span className="sr-only">{t("Select all pending cleaning suggestions")}</span>
           </button>
         </div>
 
         {/* Explicit Batch Scope Action Buttons (always shows scope count; disabled if 0) */}
         <div className="flex shrink-0 items-center gap-1 whitespace-nowrap">
           <span className="mr-1 font-mono text-[11px] tabular-nums text-fg-3 whitespace-nowrap">
-            已选 {selectedCellKeys.length} 格
-            <span className="sr-only">
-              {" "}
-              ({selectedPendingProposals.length} 项待确认提议 ·{" "}
-              {selectedReworkCells.length} 格返工)
-            </span>
+            {t("Selected cells: {{count}}", { count: selectedCellKeys.length })}<span className="sr-only">{t("{{v0}} (Suggestions to confirm: {{v1}} ·{{v2}} Rework cells: {{v3}})", { v0: " ", v1: selectedPendingProposals.length, v2: " ", v3: selectedReworkCells.length })}</span>
           </span>
           <button
             type="button"
@@ -453,8 +450,7 @@ export function DataCleaningWorkspace({
             data-testid="workbench-data-mark-rework"
           >
             <Flag className="h-3 w-3" />
-            标记返工 ({selectedDraftCells.length} 格)
-          </button>
+            {t("Mark for rework (")}{selectedDraftCells.length} {t(" cells)")}</button>
           <button
             type="button"
             onClick={handleClearRework}
@@ -463,8 +459,7 @@ export function DataCleaningWorkspace({
             data-testid="workbench-data-clear-rework"
           >
             <XCircle className="h-3 w-3" />
-            取消返工 ({selectedReworkCells.length} 格)
-          </button>
+            {t("Clear rework (")}{selectedReworkCells.length} {t(" cells)")}</button>
           <button
             type="button"
             onClick={handleBatchAcceptProposals}
@@ -472,8 +467,7 @@ export function DataCleaningWorkspace({
             className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-[5px] bg-accent px-2 text-[11px] font-semibold text-accent-fg transition-colors hover:brightness-110 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40"
           >
             <CheckCircle2 className="h-3 w-3" />
-            确认建议 ({selectedPendingProposals.length} 项)
-          </button>
+            {t("Accept suggestions ({{count}} items)", { count: selectedPendingProposals.length })}</button>
           <button
             type="button"
             onClick={handleBatchRejectProposals}
@@ -481,8 +475,7 @@ export function DataCleaningWorkspace({
             className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-[5px] border border-border-strong bg-bg-2 px-2 text-[11px] font-medium text-fg-2 transition-colors hover:text-fg disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40"
           >
             <XCircle className="h-3 w-3" />
-            拒绝建议 ({selectedPendingProposals.length} 项)
-          </button>
+            {t("Reject suggestions (")}{selectedPendingProposals.length} {t(" items)")}</button>
         </div>
       </div>
 
@@ -492,12 +485,12 @@ export function DataCleaningWorkspace({
           className="flex shrink-0 items-center justify-between gap-3 border-b border-status-warning/40 bg-status-warning/10 px-3 py-1.5 text-xs text-status-warning"
           data-testid="workbench-data-scope-notice"
         >
-          <span className="truncate">{scopeNotice}</span>
+          <span className="truncate"><LocalizedMessage>{scopeNotice}</LocalizedMessage></span>
           <button
             type="button"
             onClick={() => setScopeNotice(null)}
             className="shrink-0 hover:text-fg"
-            title="关闭提示"
+            title={t("Dismiss notice")}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -505,12 +498,12 @@ export function DataCleaningWorkspace({
       )}
       {mutationError && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-status-error/40 bg-status-error/10 px-3 py-1.5 text-xs text-status-error">
-          <span className="truncate">{mutationError}</span>
+          <span className="truncate"><LocalizedMessage>{mutationError}</LocalizedMessage></span>
           <button
             type="button"
             onClick={() => setMutationError(null)}
             className="shrink-0 hover:text-fg"
-            title="关闭错误提示"
+            title={t("Dismiss error")}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -548,9 +541,7 @@ export function DataCleaningWorkspace({
         {selectedPendingProposals.length > 0 && (
           <div className="flex shrink-0 items-center justify-between gap-3 border-t border-status-warning/35 bg-bg-1 px-3 py-1.5 text-xs">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 font-medium text-status-warning">
-                选中包含 {selectedPendingProposals.length} 项清洗提议：
-              </span>
+              <span className="shrink-0 font-medium text-status-warning">{t("The selection contains {{v0}} cleaning suggestions:", { v0: selectedPendingProposals.length })}</span>
               <span className="truncate font-mono text-[11px] text-fg-2">
                 {selectedPendingProposals
                   .map(
@@ -564,9 +555,7 @@ export function DataCleaningWorkspace({
               type="button"
               onClick={handleBatchAcceptProposals}
               className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-[4px] bg-accent px-2.5 text-[11px] font-semibold text-accent-fg transition-colors hover:brightness-110"
-            >
-              立即确认这 {selectedPendingProposals.length} 项清洗
-            </button>
+            >{t("Accept these cleaning suggestions ({{v0}})", { v0: selectedPendingProposals.length })}</button>
           </div>
         )}
 
@@ -577,8 +566,8 @@ export function DataCleaningWorkspace({
         >
           <span>
             {visibleRows.length === 0
-              ? "无匹配行"
-              : `显示第 ${firstVisibleRow + 1}–${Math.min(firstVisibleRow + pageRows.length, visibleRows.length)} 行，共 ${visibleRows.length} 行`}
+              ? t("No matching rows")
+              : t("Rows {{v0}}–{{v1}} of {{v2}}", { v0: firstVisibleRow + 1, v1: Math.min(firstVisibleRow + pageRows.length, visibleRows.length), v2: visibleRows.length })}
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -586,17 +575,13 @@ export function DataCleaningWorkspace({
               onClick={() => setPageIndex(0)}
               disabled={currentPageIndex === 0}
               className="inline-flex h-6 items-center rounded-[4px] border border-border px-2 text-xs hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
-            >
-              首页
-            </button>
+            >{t("First page")}</button>
             <button
               type="button"
               onClick={() => setPageIndex(currentPageIndex - 1)}
               disabled={currentPageIndex === 0}
               className="inline-flex h-6 items-center rounded-[4px] border border-border px-2 text-xs hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
-            >
-              上一页
-            </button>
+            >{t("review.previous")}</button>
             <span className="min-w-16 text-center font-mono tabular-nums">
               {currentPageIndex + 1} / {pageCount}
             </span>
@@ -605,17 +590,13 @@ export function DataCleaningWorkspace({
               onClick={() => setPageIndex(currentPageIndex + 1)}
               disabled={currentPageIndex >= pageCount - 1}
               className="inline-flex h-6 items-center rounded-[4px] border border-border px-2 text-xs hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
-            >
-              下一页
-            </button>
+            >{t("review.next")}</button>
             <button
               type="button"
               onClick={() => setPageIndex(pageCount - 1)}
               disabled={currentPageIndex >= pageCount - 1}
               className="inline-flex h-6 items-center rounded-[4px] border border-border px-2 text-xs hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-40"
-            >
-              末页
-            </button>
+            >{t("Last page")}</button>
           </div>
         </div>
       </div>

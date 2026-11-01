@@ -1,3 +1,5 @@
+import { t as translate } from "../../i18n";
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 import type { ModelObservation, WorkbenchFeedback } from "@reelterminal/core/types/workbench";
 import { workbenchFeedbackId } from "@reelterminal/core/types/workbench";
 import type { ReviewContext } from "@reelterminal/core/review/types";
@@ -13,13 +15,13 @@ export interface SaveModelObservation {
 export async function saveModelObservation(target: ReviewContext["target"], expectedNodeRevision: number, input: SaveModelObservation) {
   const requestId = crypto.randomUUID(), screenshotResourceId = crypto.randomUUID();
   const now = Date.now();
-  return reviewService.commit({ target, expectedNodeRevision, requestId, actor: "human", label: "保存模型观察反馈",
+  return reviewService.commit({ target, expectedNodeRevision, requestId, actor: "human", label: translate("Save model observation feedback"),
     readScope: { itemIds: [input.itemId] },
     request: { ...input, blob: { size: input.blob.size, type: input.blob.type } },
     prepareResources: async () => [await prepareReviewBlob(input.blob, "model-observation.png", requestId, screenshotResourceId)],
     build: state => {
       const item = state.items.find(item => item.id === input.itemId);
-      if (!item || item.version !== input.itemVersion || item.content.type !== "model3d" || item.content.resourceId !== input.resourceId) throw reviewError("CONFLICT", "模型版本已变化，请重新截图");
+      if (!item || item.version !== input.itemVersion || item.content.type !== "model3d" || item.content.resourceId !== input.resourceId) throw reviewError("CONFLICT", canonicalMessage("The model version changed; capture it again"));
       const id = workbenchFeedbackId(item.id, item.version, `model-${input.observationId}`);
       const previous = state.feedback.find(feedback => feedback.id === id);
       const feedback: WorkbenchFeedback = { id, itemId: item.id, itemVersion: item.version, text: input.text,

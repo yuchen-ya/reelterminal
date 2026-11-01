@@ -126,7 +126,7 @@ it("keeps the original deadline while a page copy is pending and ignores its lat
     native.editor.webContents.endFrameSubscription.mockClear();
     native.editor.webContents.capturePage.mockReset().mockImplementation(() => new Promise(resolve => { finishCopy = resolve; }));
     const capture = native.handlers.get(CHANNELS.boardDocumentCaptureEditor)!({ x: 0, y: 8, width: 640, height: 448, frameToken: 0x40000002 });
-    const failed = expect(capture).rejects.toThrow("文档预览未完成绘制");
+    const failed = expect(capture).rejects.toThrow("The document preview has not finished painting");
     native.present(editorFrame(0x40000002, 1, "receipt"));
     await new Promise(resolve => setImmediate(resolve));
     await vi.advanceTimersByTimeAsync(10001);
@@ -156,7 +156,7 @@ it("cancels a pending page copy when the editor is destroyed", async () => {
   native.editor.webContents.removeListener.mockClear();
   native.editor.webContents.capturePage.mockReset().mockImplementation(() => new Promise(resolve => { finishCopy = resolve; }));
   const capture = native.handlers.get(CHANNELS.boardDocumentCaptureEditor)!({ x: 0, y: 8, width: 640, height: 448, frameToken: 0x40000002 });
-  const failed = expect(capture).rejects.toThrow("文档截图已取消");
+  const failed = expect(capture).rejects.toThrow("Document capture cancelled");
   native.present(editorFrame(0x40000002, 1, "receipt"));
   await new Promise(resolve => setImmediate(resolve));
   const destroyed = native.editor.webContents.once.mock.calls.at(-1)!;

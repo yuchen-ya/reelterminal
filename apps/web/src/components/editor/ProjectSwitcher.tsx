@@ -358,7 +358,7 @@ export const ProjectSwitcher: React.FC<{ onNewProject?: () => void }> = ({ onNew
                 </Text>
               </ClickableCard>
               <ClickableCard
-                label="导出记录与空间清理"
+                label={t("Export history and space cleanup")}
                 onClick={() => closeAfter(() => useUIStore.getState().setDesktopPage("deliver"))}
                 isDisabled={!activeTarget}
                 padding={3}
@@ -368,9 +368,7 @@ export const ProjectSwitcher: React.FC<{ onNewProject?: () => void }> = ({ onNew
                 <span className="rounded-md bg-background-tertiary p-1.5 text-text-muted group-hover:text-text-secondary">
                   <Layers className="h-4 w-4" aria-hidden />
                 </span>
-                <Text type="supporting" color="primary" className="text-sm font-medium">
-                  导出记录与空间清理
-                </Text>
+                <Text type="supporting" color="primary" className="text-sm font-medium">{t("Export history and space cleanup")}</Text>
               </ClickableCard>
               <ClickableCard
                 label={t("versioning.copyAgentPrompt")}

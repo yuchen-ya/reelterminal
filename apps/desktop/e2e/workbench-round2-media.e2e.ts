@@ -154,7 +154,7 @@ describe("workbench round 2: real media repair and marker persistence", () => {
     await selectTreeItem(page, "待修补图片");
     await waitForImageStage(page);
 
-    await page.getByRole("button", { name: /画笔修补/ }).click();
+    await page.getByRole("button", { name: /Brush repair/ }).click();
     const stage = page.getByTestId("image-stage");
     const box = await stage.boundingBox();
     expect(box).not.toBeNull();
@@ -164,8 +164,8 @@ describe("workbench round 2: real media repair and marker persistence", () => {
       steps: 10,
     });
     await page.mouse.up();
-    await page.getByRole("button", { name: /保存修补/ }).click();
-    await page.getByText(/修改|已修改/).first().waitFor({ state: "visible", timeout: 30_000 });
+    await page.getByRole("button", { name: /Save repair/ }).click();
+    await page.getByText(/Modified/).first().waitFor({ state: "visible", timeout: 30_000 });
 
     await expect.poll(async () => {
       const current = await readProjectState(agent, identity);
@@ -234,15 +234,15 @@ describe("workbench round 2: real media repair and marker persistence", () => {
       scrubBox!.x + scrubBox!.width * 0.45,
       scrubBox!.y + scrubBox!.height / 2,
     );
-    await page.getByRole("button", { name: /标问题帧/ }).click();
+    await page.getByRole("button", { name: /Mark issue frame/ }).click();
 
     const panel = page.getByTestId("workbench-issue-panel");
     await panel.getByTestId("workbench-issue-card").first().waitFor({ timeout: 10_000 });
     expect(await panel.getByTestId("workbench-issue-card").count()).toBe(1);
     markerNote = "真实视频问题帧：请重算该处 Alpha";
-    await panel.getByLabel("问题建议").fill(markerNote);
+    await panel.getByLabel("Issue suggestion").fill(markerNote);
     await panel.getByTestId("workbench-issue-save").click();
-    await page.getByText(/反馈已保存/).first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByText(/Feedback saved/).first().waitFor({ state: "visible", timeout: 15_000 });
 
     const state = await readProjectState(agent, identity);
     const item = state.project.workbench.items.find((candidate) => candidate.id === VIDEO_ID)!;
@@ -308,12 +308,12 @@ describe("workbench round 2: real media repair and marker persistence", () => {
     persistedIssueWidth = resizedWidth;
     expect(resizedWidth).toBeGreaterThan(before!.width + 20);
 
-    await page.getByRole("button", { name: /发布审阅结果/ }).click();
+    await page.getByRole("button", { name: /Publish review results/ }).click();
     const publish = page
-      .getByRole("button", { name: /发布交接结果|更新交接结果/ });
+      .getByRole("button", { name: /Publish handoff results|Update handoff results/ });
     await publish.waitFor({ timeout: 10_000 });
     await publish.click();
-    await page.getByText(/等待 Agent 读取/).first().waitFor({ state: "visible", timeout: 15_000 });
+    await page.getByText(/waiting for the Agent to read/i).first().waitFor({ state: "visible", timeout: 15_000 });
     await page.keyboard.press("Escape");
 
     const changes = await agent.callCommand<{
@@ -367,10 +367,10 @@ describe("workbench round 2: real media repair and marker persistence", () => {
       .waitFor({ timeout: 20_000 });
     await selectTreeItem(launched.page, "待修补图片");
     await launched.page
-      .getByText(/已修改/)
+      .getByText(/Modified/)
       .first()
       .waitFor({ state: "visible", timeout: 20_000 });
-    const reopenIssuePanel = launched.page.getByTitle("展开问题面板", { exact: true });
+    const reopenIssuePanel = launched.page.getByTitle("Expand issues panel", { exact: true });
     if (await reopenIssuePanel.isVisible()) await reopenIssuePanel.click();
     const reopenedPanelWidth = (await launched.page
       .getByTestId("workbench-issue-panel")
@@ -438,16 +438,16 @@ describe("workbench round 2: real media repair and marker persistence", () => {
 
   test("adding a video marker republishes execution content without changing the old snapshot", async () => {
     const page = launched.page;
-    await page.getByRole("button", { name: "返工", exact: true }).click();
+    await page.getByRole("button", { name: "Rework", exact: true }).click();
     const reworkDialog = page.getByRole("dialog");
     if (await reworkDialog.isVisible()) {
-      await reworkDialog.getByLabel(/共同修改要求/).fill("保留问题标记并提交修订结果");
-      await reworkDialog.getByRole("button", { name: "确认返工", exact: true }).click();
+      await reworkDialog.getByLabel(/Shared revision instructions/).fill("保留问题标记并提交修订结果");
+      await reworkDialog.getByRole("button", { name: "Confirm: Rework", exact: true }).click();
     }
     const publish = async () => {
-      await page.getByRole("button", { name: /发布审阅结果/ }).click();
-      await page.getByRole("button", { name: /发布交接结果|更新交接结果/ }).click();
-      await page.getByRole("button", { name: "关闭窗口" }).click();
+      await page.getByRole("button", { name: /Publish review results/ }).click();
+      await page.getByRole("button", { name: /Publish handoff results|Update handoff results/ }).click();
+      await page.getByRole("button", { name: "Close window" }).click();
       const result = await agent.callCommand<{ handoffEvents: Array<{ handoffId: string }> }>("workbench.changes", { batchId: BATCH_ID });
       expect(result.ok).toBe(true);
       return result.value!.handoffEvents[0].handoffId;
@@ -460,7 +460,7 @@ describe("workbench round 2: real media repair and marker persistence", () => {
     const scrub = await page.locator("[title='点击/拖动跳转播放位置']").boundingBox();
     expect(scrub).not.toBeNull();
     await page.mouse.click(scrub!.x + scrub!.width * 0.7, scrub!.y + scrub!.height / 2);
-    await page.getByRole("button", { name: /标问题帧/ }).click();
+    await page.getByRole("button", { name: /Mark issue frame/ }).click();
     await expect.poll(async () => {
       const state = await readProjectState(agent, identity);
       return (state.project.workbench.items.find((item) => item.id === VIDEO_ID)!.content as { markers: unknown[] }).markers.length;

@@ -1,3 +1,5 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { getAppLocale } from "../../../i18n";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
@@ -60,7 +62,7 @@ export function ReviewExportDialog({ target, revision, selectedIds, filter, refe
       <ToolcraftDialogHeader title={t("review.export.title")} onOpenChange={open => { if (!open && !busy) onClose(); }} />
       <div className="space-y-4 p-5 text-xs" data-testid="review-export-dialog" data-workbench-modal="true" data-workbench-scope="true">
         <p className="leading-relaxed text-fg-2">{t("review.export.description")}</p>
-        {scopeName && <p>{scopeName} · {selectedIds.length} 项（所选范围）</p>}
+        {scopeName && <p>{t("{{v0}} · {{v1}} items (selected scope)", { v0: scopeName, v1: selectedIds.length })}</p>}
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-xs">
             {t("review.export.mode")}
@@ -73,7 +75,7 @@ export function ReviewExportDialog({ target, revision, selectedIds, filter, refe
             >
               {reference && <option value="version">{t("review.export.version")}</option>}
               <option value="original">{t("review.export.original")}</option>
-              <option value="current">当前已保存版本</option>
+              <option value="current">{t("Current saved version")}</option>
               <option value="adopted">{t("review.export.adopted")}</option>
               <option value="node-package">{t("review.export.package")}</option>
             </select>
@@ -101,18 +103,18 @@ export function ReviewExportDialog({ target, revision, selectedIds, filter, refe
           </p>
         )}
         <p className="text-xs text-fg-3">{t("review.export.serialization")}</p>
-        {error && <p role="alert" className="text-xs text-status-error">{error}</p>}
+        {error && <p role="alert" className="text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
         {status && (
           <div className="space-y-2 rounded-[6px] border border-border bg-bg-2 p-3 text-xs tabular-nums" data-testid="review-export-status" data-state={status.state} data-export-id={status.exportId}>
             <p className="font-medium text-fg">
               {t(`review.export.state.${status.state}`)} · {status.completedFiles} / {status.totalFiles} · r{status.nodeRevision}
             </p>
-            {status.error && <p role="alert" className="text-status-error">{status.error.reason}: {status.error.message}</p>}
+            {status.error && <p role="alert" className="text-status-error">{status.error.reason}: <LocalizedMessage>{status.error.message}</LocalizedMessage></p>}
             {status.manifest && (
               <ul className="max-h-40 overflow-auto space-y-1 font-mono text-[11px] text-fg-2">
                 {status.manifest.entries.map(entry => (
                   <li key={entry.itemId ?? entry.resourceId}>
-                    {entry.relativePath}{entry.itemVersion !== undefined ? ` · v${entry.itemVersion}` : ""} · {entry.size.toLocaleString()} B
+                    {entry.relativePath}{entry.itemVersion !== undefined ? ` · v${entry.itemVersion}` : ""} · {entry.size.toLocaleString(getAppLocale())} B
                   </li>
                 ))}
               </ul>

@@ -20,11 +20,11 @@ describe("sanitizeGenerationInfo", () => {
       "generated C:\\Users\\u\\secret\\voice.wav done",
     );
     expect(out).not.toContain("C:\\Users\\u\\secret\\voice.wav");
-    expect(out).toContain("[路径已省略]");
+    expect(out).toContain("[path omitted]");
 
     const posix = sanitizeGenerationInfo("written to /home/u/secret/take1.wav");
     expect(posix).not.toContain("/home/u/secret/take1.wav");
-    expect(posix).toContain("[路径已省略]");
+    expect(posix).toContain("[path omitted]");
 
     const uri = sanitizeGenerationInfo("saved file:///C:/secret/a.mp3 ok");
     expect(uri).not.toContain("file:///C:/secret/a.mp3");
@@ -33,32 +33,32 @@ describe("sanitizeGenerationInfo", () => {
   it("collapses UNC windows paths", () => {
     const out = sanitizeGenerationInfo("copied \\\\nas\\share\\voice.wav done");
     expect(out).not.toContain("\\\\nas\\share\\voice.wav");
-    expect(out).toContain("[路径已省略]");
+    expect(out).toContain("[path omitted]");
   });
 
   it("collapses posix paths that follow punctuation like =", () => {
     const out = sanitizeGenerationInfo("output=/home/u/secret/a.wav");
     expect(out).not.toContain("/home/u/secret/a.wav");
-    expect(out).toContain("[路径已省略]");
+    expect(out).toContain("[path omitted]");
   });
 
   it("removes credential-shaped assignments", () => {
     const out = sanitizeGenerationInfo("used api_key=sk-abc123 and token: t-xyz; done");
     expect(out).not.toContain("sk-abc123");
     expect(out).not.toContain("t-xyz");
-    expect(out).toContain("[凭据已移除]");
+    expect(out).toContain("[credentials removed]");
   });
 
   it("removes the bearer scheme together with its token", () => {
     const out = sanitizeGenerationInfo("authorization: Bearer abc123");
     expect(out).not.toContain("abc123");
-    expect(out).toContain("[凭据已移除]");
+    expect(out).toContain("[credentials removed]");
   });
 
   it("redacts long opaque token runs", () => {
     const out = sanitizeGenerationInfo("ref aGVsbG93b3JsZGhlbGxvd29ybGQxMjM0NTY3ODkw ok");
     expect(out).not.toContain("aGVsbG93b3JsZGhlbGxvd29ybGQxMjM0NTY3ODkw");
-    expect(out).toContain("[已脱敏]");
+    expect(out).toContain("[redacted]");
   });
 
   it("bounds the stored summary length", () => {

@@ -1,3 +1,10 @@
+import { changeAppLanguage, SYSTEM_LANGUAGE } from "../../../i18n";
+import { beforeEach as beforeChineseCopyTest, afterEach as afterChineseCopyTest } from "vitest";
+
+// These interaction fixtures deliberately assert the Simplified Chinese UI.
+beforeChineseCopyTest(() => changeAppLanguage("zh-CN"));
+afterChineseCopyTest(() => changeAppLanguage(SYSTEM_LANGUAGE));
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

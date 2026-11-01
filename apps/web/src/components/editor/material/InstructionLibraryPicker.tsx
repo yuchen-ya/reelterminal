@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MaterialRecord } from "@reelterminal/core";
@@ -46,6 +47,6 @@ export function InstructionLibraryPicker({ onSelect }: { onSelect?: (record: Mat
       <div className="flex flex-wrap gap-2">{items.map(item => <button key={item.id} className={button} title={item.kind === "instruction" ? item.prompt : item.title} onClick={() => onSelect ? onSelect(item) : useMaterialLibraryStore.getState().openDetail(item.id)}>{item.title}</button>)}</div>
       <details><summary className="cursor-pointer text-xs text-fg-2">{t("material.builtinInstructions")}</summary><div className="mt-2 flex flex-wrap gap-2">{INSTRUCTION_PRESETS.map(id => <button key={id} className={button} onClick={() => setDraft({ title: t(`collaborationInstructions.presets.${id}.title`), description: t(`collaborationInstructions.presets.${id}.description`) })}>{t(`collaborationInstructions.presets.${id}.title`)}</button>)}</div></details>
     </>}
-    {error && <p role="alert" className="text-xs text-status-error">{error}</p>}
+    {error && <p role="alert" className="text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
   </div>;
 }

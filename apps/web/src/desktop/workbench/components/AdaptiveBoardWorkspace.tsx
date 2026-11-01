@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { JSX, MouseEvent as ReactMouseEvent } from "react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
@@ -59,6 +60,7 @@ export function AdaptiveBoardWorkspace({
   ensureItemsLoaded,
   openMediaUrl,
 }: AdaptiveBoardWorkspaceProps): JSX.Element {
+  const { t } = useTranslation();
   const defaultCols: ColumnCount = items.length === 2 ? 2 : items.length >= 3 ? 3 : "auto";
   const [columns, setColumns] = useState<ColumnCount>(defaultCols);
   const [previewMode, setPreviewMode] = useState<"fit" | "actual" | "pixel">("fit");
@@ -152,7 +154,7 @@ export function AdaptiveBoardWorkspace({
       {/* Top compact toolbar */}
       <div className="flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-2 py-1 border-b border-border bg-bg-1 px-2.5 text-xs select-none">
         <div className="flex min-w-0 items-center gap-2">
-          {onOpenBatch && <button className="shrink-0 text-fg-3 hover:text-fg" onClick={onOpenBatch}>本批内容</button>}
+          {onOpenBatch && <button className="shrink-0 text-fg-3 hover:text-fg" onClick={onOpenBatch}>{t("This batch")}</button>}
           <div className="flex items-center gap-0.5 rounded-[5px] border border-border bg-bg-2 p-0.5">
             {([2, 3, 4] as const).map((col) => (
               <button
@@ -164,7 +166,7 @@ export function AdaptiveBoardWorkspace({
                     ? "bg-bg-3 font-semibold text-fg shadow-xs"
                     : "text-fg-3 hover:text-fg-2"
                 }`}
-                title={`每行 ${col} 列`}
+                title={t("{{v0}} columns per row", { v0: col })}
               >
                 <Grid className="h-3 w-3" />
                 {col}
@@ -177,14 +179,12 @@ export function AdaptiveBoardWorkspace({
           <span className="truncate font-semibold text-fg" title={boardTitle}>
             {boardTitle}
           </span>
-          <span className="shrink-0 font-mono text-[11px] text-fg-3">
-            共 {allItems.length} 项 · 当前结果 {items.length} · 待审 {pendingInBoard.length}
-          </span>
+          <span className="shrink-0 font-mono text-[11px] text-fg-3">{t("Total: {{v0}} · Results: {{v1}} · Pending: {{v2}}", { v0: allItems.length, v1: items.length, v2: pendingInBoard.length })}</span>
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
-          <select aria-label="图片预览方式" value={previewMode} onChange={event => setPreviewMode(event.target.value as typeof previewMode)} className="rounded border border-border bg-bg-2 px-2 py-1">
-            <option value="fit">完整显示</option><option value="actual">实际像素</option><option value="pixel">像素预览</option>
+          <select aria-label={t("Image preview mode")} value={previewMode} onChange={event => setPreviewMode(event.target.value as typeof previewMode)} className="rounded border border-border bg-bg-2 px-2 py-1">
+            <option value="fit">{t("Fit entire image")}</option><option value="actual">{t("Actual pixels")}</option><option value="pixel">{t("Pixel preview")}</option>
           </select>
           <span className="h-3.5 w-px bg-border" />
 
@@ -193,33 +193,29 @@ export function AdaptiveBoardWorkspace({
             onClick={() => void onCommitDecision("kept", pendingInBoard)}
             disabled={pendingInBoard.length === 0}
             className="inline-flex h-6 items-center rounded-[5px] border border-accent/50 bg-accent/15 px-2 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/25 disabled:opacity-40"
-            title="仅对本组待审项标记保留"
+            title={t("Keep only pending items in this group")}
             data-testid="board-keep-all"
-          >
-            保留本组待审项 ({pendingInBoard.length})
-          </button>
+          >{t("Keep pending items in this group ({{v0}})", { v0: pendingInBoard.length })}</button>
           <button
             type="button"
             onClick={() => void onCommitDecision("discarded", pendingInBoard)}
             disabled={pendingInBoard.length === 0}
             className="inline-flex h-6 items-center rounded-[5px] border border-status-error/40 bg-status-error/15 px-2 text-[11px] font-medium text-status-error transition-colors hover:bg-status-error/25 disabled:opacity-40"
-            title="仅对本组待审项标记丢弃（含筛选外条目）"
+            title={t("Discard only pending items in this group (including filtered-out items)")}
             data-testid="board-discard-all"
-          >
-            丢弃本组待审项 ({pendingInBoard.length})
-          </button>
+          >{t("Discard pending items in this group ({{v0}})", { v0: pendingInBoard.length })}</button>
           <CollectionActions scope={{ title: boardTitle, items: allItems, folder: true }} />
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-3 py-1.5 text-xs">
-        <button onClick={onSelectAll} disabled={!items.length}>全选当前结果（{items.length}）</button>
-        <span>已选 {selectedInBoard.length} 项</span>
-        {selectedInBoard.length > 0 && <button onClick={onClearSelection}>清除选择</button>}
+        <button onClick={onSelectAll} disabled={!items.length}>{t("Select all results ({{v0}})", { v0: items.length })}</button>
+        <span>{t("Selected: {{v0}}", { v0: selectedInBoard.length })}</span>
+        {selectedInBoard.length > 0 && <button onClick={onClearSelection}>{t("Clear selection")}</button>}
       </div>
 
       {/* Contact-sheet / Adaptive Board Canvas */}
       <div className="flex-1 overflow-auto bg-stage-bg p-3">
-        {items.length === 0 && <p className="p-6 text-center text-xs text-fg-3">当前筛选下没有条目；可切换至“全部”查看本组。</p>}
+        {items.length === 0 && <p className="p-6 text-center text-xs text-fg-3">{t("No items match these filters. Choose All to view this group.")}</p>}
         <div data-board-grid className={`grid gap-x-4 gap-y-3 ${gridClass}`}>
           {items.map((item) => {
             const isSelected = selectedIds.includes(item.id);
@@ -291,9 +287,7 @@ export function AdaptiveBoardWorkspace({
                       </span>
                     )}
                     {(annCount > 0 || markerCount > 0) && (
-                      <span className="shrink-0 rounded bg-status-warning/15 px-1 font-mono text-[10px] text-status-warning">
-                        {annCount + markerCount} 标
-                      </span>
+                      <span className="shrink-0 rounded bg-status-warning/15 px-1 font-mono text-[10px] text-status-warning">{t("{{v0}} marks", { v0: annCount + markerCount })}</span>
                     )}
                   </div>
 
@@ -306,10 +300,8 @@ export function AdaptiveBoardWorkspace({
                         void onCommitDecision("kept", [item.id]);
                       }}
                       className="rounded px-1.5 py-0.5 text-[10px] font-medium text-accent hover:bg-accent/20"
-                      title="保留此项"
-                    >
-                      保留
-                    </button>
+                      title={t("Keep this item")}
+                    >{t("Keep")}</button>
                     <button
                       type="button"
                       onClick={(e) => {
@@ -317,10 +309,8 @@ export function AdaptiveBoardWorkspace({
                         void onCommitDecision("discarded", [item.id]);
                       }}
                       className="rounded px-1.5 py-0.5 text-[10px] text-fg-3 hover:bg-status-error/20 hover:text-status-error"
-                      title="丢弃此项"
-                    >
-                      丢弃
-                    </button>
+                      title={t("Discard this item")}
+                    >{t("Discard")}</button>
                     <button
                       type="button"
                       onClick={(e) => {
@@ -328,7 +318,7 @@ export function AdaptiveBoardWorkspace({
                         onOpenChildItem(item.id);
                       }}
                       className="rounded p-0.5 text-fg-3 hover:bg-bg-3 hover:text-fg"
-                      title="进入单项精修/标注视图 (或双击卡片)"
+                      title={t("Open the item for repair or annotation (or double-click its card)")}
                       data-testid={`board-open-item-${item.id}`}
                     >
                       <Maximize2 className="h-3 w-3" />
@@ -345,7 +335,7 @@ export function AdaptiveBoardWorkspace({
                       <div className="flex h-40 w-full flex-col items-center justify-center gap-1 rounded border border-border/40 bg-bg-1/50 text-fg-3">
                         <ImageOff className="h-4 w-4" />
                         <span className="text-[11px]">
-                          {!item.detailsLoaded ? "正在载入图像…" : "图像未就绪"}
+                          {!item.detailsLoaded ? t("Loading image…") : t("Image not ready")}
                         </span>
                       </div>
                     )}
@@ -360,12 +350,12 @@ export function AdaptiveBoardWorkspace({
                     <div className="mb-1 flex items-center justify-between text-[11px] text-fg-3">
                       <span className="flex items-center gap-1">
                         <FileText className="h-3 w-3 text-status-info" />
-                        {item.textPayload?.speakerOrContext ?? "文本语料"}
+                        {item.textPayload?.speakerOrContext ?? t("Text corpus")}
                       </span>
-                      <span>双击打开阅读</span>
+                      <span>{t("Double-click to read")}</span>
                     </div>
                     <div className="review-markdown-summary max-h-52 overflow-hidden text-xs">
-                      <Suspense fallback={<span>正在载入文本…</span>}>
+                      <Suspense fallback={<span>{t("Loading text…")}</span>}>
                         <ReviewMarkdown source={item.textPayload?.currentText ?? item.textPayload?.originalText ?? ""} />
                       </Suspense>
                     </div>
@@ -376,13 +366,11 @@ export function AdaptiveBoardWorkspace({
                       <span className="flex items-center gap-1">
                         <Database className="h-3 w-3 text-status-warning" />
                         {item.dataPayload
-                          ? `${item.dataPayload.rows.length} 行 × ${item.dataPayload.columns.length} 列`
-                          : "数据表"}
+                          ? t("{{v0}} rows × {{v1}} columns", { v0: item.dataPayload.rows.length, v1: item.dataPayload.columns.length })
+                          : t("review.kind.data")}
                       </span>
                       {item.dataPayload && item.dataPayload.proposals.length > 0 && (
-                        <span className="text-status-warning">
-                          {item.dataPayload.proposals.filter((p) => p.status === "proposed").length} 项建议
-                        </span>
+                        <span className="text-status-warning">{t("Suggestions: {{v0}}", { v0: item.dataPayload.proposals.filter((p) => p.status === "proposed").length })}</span>
                       )}
                     </div>
                     {item.dataPayload ? (
@@ -418,7 +406,7 @@ export function AdaptiveBoardWorkspace({
                       </div>
                     ) : (
                       <div className="py-6 text-center text-[11px] text-fg-3">
-                        {!item.detailsLoaded ? "正在载入表格…" : "无表格内容"}
+                        {!item.detailsLoaded ? t("Loading table…") : t("No table content")}
                       </div>
                     )}
                   </div>
@@ -435,15 +423,13 @@ export function AdaptiveBoardWorkspace({
                       <div className="flex h-36 w-full flex-col items-center justify-center gap-1 text-fg-3">
                         <Film className="h-4 w-4 text-status-error" />
                         <span className="text-[11px]">
-                          {!item.detailsLoaded ? "正在载入视频…" : "双击打开视频审阅"}
+                          {!item.detailsLoaded ? t("Loading video…") : t("Double-click to review the video")}
                         </span>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="flex h-36 items-center justify-center rounded border border-border/50 bg-bg-1 text-xs text-fg-2">
-                    双击查看 3D 模型 ({item.title})
-                  </div>
+                  <div className="flex h-36 items-center justify-center rounded border border-border/50 bg-bg-1 text-xs text-fg-2">{t("Double-click to view the 3D model ({{v0}})", { v0: item.title })}</div>
                 )}
               </div>
               </CollectionActions>

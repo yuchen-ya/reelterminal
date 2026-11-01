@@ -879,7 +879,7 @@ export const Timeline: React.FC = () => {
         .project.timeline.tracks.find((candidate) => candidate.id === trackId);
       toast.success(
         tr("workAssets.added"),
-        track?.name ?? result.clipId,
+        track?.name ?? result.clipId, { localizeMessage: false },
       );
     },
     [tr],
@@ -904,7 +904,7 @@ export const Timeline: React.FC = () => {
         .project.timeline.tracks.find(
           (candidate) => candidate.id === result.trackId,
         );
-      toast.success(tr("workAssets.added"), track?.name ?? result.clipId);
+      toast.success(tr("workAssets.added"), track?.name ?? result.clipId, { localizeMessage: false });
     },
     [tr],
   );
@@ -1797,7 +1797,7 @@ export const Timeline: React.FC = () => {
                             t.clips.some(c => c.mediaId === newItem.id)
                           );
                         if (track) {
-                          toast.success(`Added to ${track.name}`, file.name);
+                          toast.success(`Added to ${track.name}`, file.name, { localizeMessage: false });
                         }
                       }
                     }

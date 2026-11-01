@@ -1,3 +1,4 @@
+import { t as translate } from "../../i18n";
 import type { WorkbenchFeedback, WorkbenchTextContent } from "@reelterminal/core";
 import type { TextRangeCommentView } from "./types";
 
@@ -32,7 +33,7 @@ export function buildTextRangeComments(
           ? quoted.length <= 80
             ? quoted
             : `${quoted.slice(0, 80)}…`
-          : "（绑定版本原文不可用）",
+          : translate("(source text for the bound version is unavailable)"),
         suggestion: record.text,
         referencedTags: [...record.referencedTagIds],
       };

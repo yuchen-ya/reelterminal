@@ -16,9 +16,9 @@ test("switching through legacy review keeps video history blocked across keyboar
       content: { type: "text", entryId: "legacy-entry", title: "Legacy text", speakerOrContext: "", text: "Review body" } }], "legacy-ingest");
     value(await applyOp(agent, identity, [{ op: "track.add", trackType: "video", trackId: "legacy-video-top" }]));
     await switchToWorkbench(page);
-    const undo = page.getByRole("button", { name: "撤销上一次审阅操作", exact: true });
+    const undo = page.getByRole("button", { name: "Undo the last review action", exact: true });
     await vi.waitFor(async () => expect(await undo.isDisabled()).toBe(true));
-    expect(await undo.getAttribute("title")).toContain("视频");
+    expect(await undo.getAttribute("title")).toContain("video");
     const before = await readProjectState(agent, identity);
     await page.getByTestId("workbench-tree-panel").getByText("Legacy text", { exact: true }).click();
     await page.keyboard.press("Control+z");

@@ -1,5 +1,9 @@
+import { changeAppLanguage, SYSTEM_LANGUAGE } from "../../i18n";
+import { beforeEach } from "vitest";
+beforeEach(async () => { vi.clearAllMocks(); await changeAppLanguage("zh-CN"); });
+afterEach(() => changeAppLanguage(SYSTEM_LANGUAGE));
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 const mocks = vi.hoisted(() => ({
   review: vi.fn(),
@@ -43,6 +47,18 @@ it("previews an empty cleanup without offering an executable deletion", async ()
   expect(screen.getByText("交给 Agent 协助检查（可选）").closest("details")).not.toHaveAttribute("open");
   fireEvent.click(screen.getByRole("button", { name: "预览清理内容" }));
   await screen.findByText(/没有可清理的内容/);
+  expect(screen.getByRole("button", { name: "确认执行" })).toBeDisabled();
+  expect(mocks.execute).not.toHaveBeenCalled();
+  const confirmation = screen.getByTestId("cleanup-confirmation");
+  const reviews = mocks.review.mock.calls.length;
+  await act(() => changeAppLanguage("en"));
+  expect(screen.getByTestId("cleanup-confirmation")).toBe(confirmation);
+  expect(screen.getByText("Nothing to remove. Files still in use or of uncertain purpose are retained.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Confirm execution" })).toBeDisabled();
+  expect(mocks.review).toHaveBeenCalledTimes(reviews);
+  expect(mocks.plan).toHaveBeenCalledTimes(1);
+  await act(() => changeAppLanguage("zh-CN"));
+  expect(screen.getByTestId("cleanup-confirmation")).toBe(confirmation);
   expect(screen.getByRole("button", { name: "确认执行" })).toBeDisabled();
   expect(mocks.execute).not.toHaveBeenCalled();
 });

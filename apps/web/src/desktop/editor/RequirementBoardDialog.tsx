@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import { adoptReviewCandidate } from "../../services/production-review";
 import { useTimelineStore } from "../../stores/timeline-store";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type JSX } from "react";
@@ -394,7 +395,7 @@ export function RequirementBoardDialog({
                 </button>
               </form>}
             {error && <p role="alert" className="mt-3 text-xs text-status-error">
-                {error}
+                <LocalizedMessage>{error}</LocalizedMessage>
               </p>}
           </aside>
         </div>

@@ -80,12 +80,12 @@ test("image repair drafts preview real pixels and save one version with durable 
     for (let y = 0; y < 4; y++) expected.fill(255, y * 16 * 4, (y * 16 + 4) * 4);
     expect(decodeRgbaPng(firstPreview.image.path).pixels).toEqual(expected);
     await page.getByTestId("review-repair-draft-preview").waitFor();
-    expect(await page.getByTestId("review-repair-draft-preview").textContent()).toContain("草稿预览 · 未保存");
+    expect(await page.getByTestId("review-repair-draft-preview").textContent()).toContain("Draft preview · Unsaved");
     const previewHeight = (await page.getByTestId("review-repair-draft-previews").boundingBox())!.height;
     const second = { ...identity, requestId: randomUUID(), expectedDraftRevision: 1, region: full,
       operations: [{ kind: "patch", resourceId: patchId, x: 8, y: 8, width: 4, height: 4, opacity: 1 }] };
     value(await call("review.repair.draft.apply", second));
-    expect(await page.getByTestId("review-repair-draft-preview").textContent()).toContain("等待 inspect 更新");
+    expect(await page.getByTestId("review-repair-draft-preview").textContent()).toContain("waiting for inspect to update");
     expect((await page.getByTestId("review-repair-draft-previews").boundingBox())!.height).toBe(previewHeight);
     const invalid = await call("review.repair.draft.apply", { ...second, requestId: randomUUID(), expectedDraftRevision: 2,
       operations: [first.operations[0], { ...first.operations[0], resourceId: randomUUID() }] });

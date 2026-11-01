@@ -1,3 +1,5 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { getAppLocale } from "../../../i18n";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
@@ -39,7 +41,7 @@ export function ReviewPurgeDialog({ target, onClose, onPurged }: { target: Revie
       <ToolcraftDialogHeader title={t("review.purge.title")} onOpenChange={open => { if (!open && !busy) onClose(); }} />
       <div className="space-y-4 p-5 text-xs" data-testid="review-purge-dialog" data-workbench-modal="true" data-workbench-scope="true">
         <p className="leading-relaxed text-fg-2">{t("review.purge.description")}</p>
-        {error && <p role="alert" className="text-status-error">{error}</p>}
+        {error && <p role="alert" className="text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
         {preview ? (
           <div className="space-y-3 rounded-[6px] border border-border bg-bg-2 p-3 tabular-nums">
             <p className="font-semibold text-fg">{preview.data.name} · r{preview.data.nodeRevision}</p>
@@ -52,7 +54,7 @@ export function ReviewPurgeDialog({ target, onClose, onPurged }: { target: Revie
                 </li>
               ))}
             </ul>
-            <p className="text-fg-3">{t("review.purge.cleanup", { bytes: preview.data.reclaimableBytes.toLocaleString() })}</p>
+            <p className="text-fg-3">{t("review.purge.cleanup", { bytes: preview.data.reclaimableBytes.toLocaleString(getAppLocale()) })}</p>
             <label className="flex items-start gap-2 pt-1 text-status-error cursor-pointer select-none">
               <input
                 type="checkbox"

@@ -18,7 +18,7 @@ import { ShowcaseApp } from "./ShowcaseApp";
 
 localStorage.setItem(ONBOARDING_KEY, "true");
 useThemeStore.getState().setMode("dark");
-await i18n.changeLanguage("zh-CN");
+// Use the same saved/System language preference as the editor.
 await workspaceManager.initialize();
 const existing = workspaceManager
   .getSnapshot()
@@ -38,7 +38,7 @@ if (existing) {
     workspaceId: created.defaultWorkspaceId,
   };
   await workspaceManager.switchView(target);
-  await workspaceManager.saveNode({ target, name: "初始版本" });
+  await workspaceManager.saveNode({ target, name: i18n.t("versioning.autoNameFirst") });
 }
 useUIStore.getState().clearSelection();
 useUIStore.getState().showCurrentArchive();

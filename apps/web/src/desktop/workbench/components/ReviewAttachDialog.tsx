@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
@@ -67,7 +68,7 @@ export function ReviewAttachDialog({ target, revision, itemId, onClose }: {
         </label>
         {!options.length && <p className="text-fg-3">{t("review.attach.noProjects")}</p>}
         {attempt && <p className="break-all font-mono text-[11px] text-fg-3">{attempt.destination.projectId} / {attempt.destination.workspaceId}</p>}
-        {error && <p role="alert" className="text-status-error">{error}</p>}
+        {error && <p role="alert" className="text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
         {result && <p role="status" className="font-medium text-accent" data-testid="review-attach-result" data-media-id={result.mediaId}>{t(result.present ? "review.attach.done" : "review.attach.removed", { version: result.version })}</p>}
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
           <button type="button" className={wbButton.secondary} onClick={onClose} disabled={busy}>

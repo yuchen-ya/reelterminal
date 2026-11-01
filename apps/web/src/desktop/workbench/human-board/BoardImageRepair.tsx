@@ -1,3 +1,6 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 import { useEffect, useRef, useState } from "react";
 import type { ExcalidrawImageElement } from "@excalidraw/excalidraw/element/types";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
@@ -10,6 +13,7 @@ export function BoardImageRepair({ element, files, onClose, onSave, onHistoryRea
   element: ExcalidrawImageElement; files: BinaryFiles; onClose: () => void; onSave: (blob: Blob) => Promise<void>;
   onHistoryReady: (callback: ((direction: "undo" | "redo") => void) | null) => void;
 }) {
+  const { t } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const base = useRef<HTMLCanvasElement | undefined>(undefined);
@@ -83,7 +87,7 @@ export function BoardImageRepair({ element, files, onClose, onSave, onHistoryRea
     return () => onHistoryReady(null);
   }, [onHistoryReady, busy]);
 
-  return <div ref={host} tabIndex={-1} role="dialog" aria-modal="true" aria-label="画板图片修补" className="absolute inset-3 z-50 flex flex-col overflow-hidden rounded-lg border border-border bg-bg-1 shadow-2xl outline-none" data-testid="human-board-repair-dialog" onKeyDown={event => {
+  return <div ref={host} tabIndex={-1} role="dialog" aria-modal="true" aria-label={t("Board image repair")} className="absolute inset-3 z-50 flex flex-col overflow-hidden rounded-lg border border-border bg-bg-1 shadow-2xl outline-none" data-testid="human-board-repair-dialog" onKeyDown={event => {
     if ((event.target as HTMLElement).closest("input,textarea,[contenteditable=true]")) return;
     const key = event.key.toLowerCase();
     if (!(event.ctrlKey || event.metaKey) || event.altKey || !["z", "y"].includes(key)) return;
@@ -91,32 +95,32 @@ export function BoardImageRepair({ element, files, onClose, onSave, onHistoryRea
     applyHistory(key === "y" || event.shiftKey ? "redo" : "undo");
   }}>
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-3 text-xs">
-      <strong>源像素修补</strong>
-      <select aria-label="修补工具" className="rounded bg-bg-2 p-1" value={tool} onChange={event => setTool(event.target.value as typeof tool)}><option value="brush">画笔</option><option value="eraser">橡皮（当前修补层）</option><option value="clone">仿制图章</option><option value="patch">外部贴片</option></select>
-      <input type="color" aria-label="画笔颜色" value={color} onChange={event => setColor(event.target.value)} />
-      <label>尺寸 <input className="w-16 rounded bg-bg-2 p-1" aria-label="像素工具尺寸" type="number" min={1} max={2048} value={size} onChange={event => setSize(Math.max(1, Math.min(2048, Number(event.target.value))))} /></label>
-      <label>不透明度 <input aria-label="贴片仿制不透明度" type="range" min={0} max={1} step={0.05} value={opacity} onChange={event => setOpacity(Number(event.target.value))} /></label>
-      {tool === "clone" && <><label>硬度 <input aria-label="仿制硬度" type="range" min={0} max={1} step={0.05} value={hardness} onChange={event => setHardness(Number(event.target.value))} /></label><span>{source ? `取样 ${source.x.toFixed(0)}, ${source.y.toFixed(0)}` : "Alt + 单击选择取样点"}</span></>}
-      {tool === "patch" && <label className={wbButton.secondary}>导入贴片<input type="file" accept="image/*" hidden onChange={event => {
+      <strong>{t("Source-pixel repair")}</strong>
+      <select aria-label={t("Repair tools")} className="rounded bg-bg-2 p-1" value={tool} onChange={event => setTool(event.target.value as typeof tool)}><option value="brush">{t("Brush")}</option><option value="eraser">{t("Eraser (current repair layer)")}</option><option value="clone">{t("Clone Stamp")}</option><option value="patch">{t("External patch")}</option></select>
+      <input type="color" aria-label={t("Brush color")} value={color} onChange={event => setColor(event.target.value)} />
+      <label>{t("Size")}<input className="w-16 rounded bg-bg-2 p-1" aria-label={t("Pixel tool size")} type="number" min={1} max={2048} value={size} onChange={event => setSize(Math.max(1, Math.min(2048, Number(event.target.value))))} /></label>
+      <label>{t("Opacity")}<input aria-label={t("Patch / clone opacity")} type="range" min={0} max={1} step={0.05} value={opacity} onChange={event => setOpacity(Number(event.target.value))} /></label>
+      {tool === "clone" && <><label>{t("Hardness")}<input aria-label={t("Clone hardness")} type="range" min={0} max={1} step={0.05} value={hardness} onChange={event => setHardness(Number(event.target.value))} /></label><span>{source ? t("Sample {{v0}}, {{v1}}", { v0: source.x.toFixed(0), v1: source.y.toFixed(0) }) : t("Alt + click to choose a sample point")}</span></>}
+      {tool === "patch" && <label className={wbButton.secondary}>{t("Import patch")}<input type="file" accept="image/*" hidden onChange={event => {
         const file = event.target.files?.[0]; if (!file) return;
         void createImageBitmap(file).then(image => { const id = crypto.randomUUID(); patches.current.set(id, image); setPatch({ id, width: image.width, height: image.height }); }).catch(report);
       }} /></label>}
-      <button className={wbButton.secondary} disabled={!ready || cursor.current === 0} onClick={() => moveHistory(-1)}>撤销修补</button>
-      <button className={wbButton.secondary} disabled={!ready || cursor.current >= operations.current.length} onClick={() => moveHistory(1)}>重做修补</button>
+      <button className={wbButton.secondary} disabled={!ready || cursor.current === 0} onClick={() => moveHistory(-1)}>{t("Undo repair")}</button>
+      <button className={wbButton.secondary} disabled={!ready || cursor.current >= operations.current.length} onClick={() => moveHistory(1)}>{t("Redo repair")}</button>
       <button className={`${wbButton.primary} ml-auto`} data-testid="human-board-repair-save" disabled={!ready || busy || version === 0} onClick={() => {
         setBusy(true); void canvasToPngBlob(composite.current!).then(onSave).catch(report).finally(() => setBusy(false));
-      }}>保存到此图片</button><button className={wbButton.secondary} disabled={busy} onClick={onClose}>取消</button>
+      }}>{t("Save to this image")}</button><button className={wbButton.secondary} disabled={busy} onClick={onClose}>{t("review.cancel")}</button>
     </div>
-    <p className="px-3 py-2 text-xs text-fg-3">修补原件像素；画板上的裁剪、旋转、翻转会保留。外部贴片在点击位置放置，宽度为工具尺寸的 4 倍。</p>
-    {error && <p role="alert" className="px-3 text-xs text-status-error">{error}</p>}
+    <p className="px-3 py-2 text-xs text-fg-3">{t("Repair source pixels while preserving board crop, rotation and flip. External patches are placed at the click point with a width four times the tool size.")}</p>
+    {error && <p role="alert" className="px-3 text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
     <div className="grid min-h-0 flex-1 place-items-center overflow-auto bg-stage-bg p-4">
       <canvas ref={canvas} className="max-h-full max-w-full touch-none object-contain" style={{ cursor: tool === "clone" ? "crosshair" : "default" }} data-testid="human-board-repair-canvas"
         onPointerDown={event => {
           if (!ready) return;
           const position = point(event);
           if (tool === "clone" && event.altKey) { setSource(position); return; }
-          if (tool === "clone" && !source) { setError("请先 Alt + 单击选择取样点"); return; }
-          if (tool === "patch" && !patch) { setError("请先导入贴片"); return; }
+          if (tool === "clone" && !source) { setError(translate("Alt + click to choose a sample point first")); return; }
+          if (tool === "patch" && !patch) { setError(translate("Import a patch first")); return; }
           event.currentTarget.setPointerCapture(event.pointerId); draft.current = [position];
           paint(execute(draft.current).composite);
         }}

@@ -1,3 +1,4 @@
+import { getAppLocale, t as translate } from "../../i18n";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -28,12 +29,12 @@ export function RecoveryDraftsDialog({ target, onClose }: { target: WorkspaceTar
       .catch((error: unknown) => {
         if (!active) return;
         setDrafts([]);
-        toast.error(t("versioning.failed"), error instanceof Error ? error.message : String(error));
+        toast.error(translate("versioning.failed"), error instanceof Error ? error.message : String(error));
       });
     return () => {
       active = false;
     };
-  }, [target, t]);
+  }, [target]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -83,7 +84,7 @@ export function RecoveryDraftsDialog({ target, onClose }: { target: WorkspaceTar
                 className="mb-2 block w-full rounded border border-border p-2 text-left hover:bg-hover disabled:opacity-50"
                 onClick={() => void recover(draft.id)}
               >
-                {new Date(draft.createdAt).toLocaleString()} · {t(draft.source === "restore-protection" ? "versioning.protectedEdit" : "versioning.manualDraft")}
+                {new Date(draft.createdAt).toLocaleString(getAppLocale())} · {t(draft.source === "restore-protection" ? "versioning.protectedEdit" : "versioning.manualDraft")}
               </button>
             ))
           )}

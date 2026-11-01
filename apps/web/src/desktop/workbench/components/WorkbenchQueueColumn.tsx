@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 import type { JSX, ReactNode } from "react";
 import { useMemo, useState } from "react";
 import {
@@ -74,6 +76,7 @@ export function WorkbenchQueueColumn({
   paginationFooter,
   onRetrieveItem,
 }: WorkbenchQueueColumnProps): JSX.Element {
+  const { t } = useTranslation();
   const { batchItems, activeBatch } = controller;
   const processedCount =
     batchItems.length - batchItems.filter((i) => i.status === "pending").length;
@@ -95,20 +98,20 @@ export function WorkbenchQueueColumn({
     label: string;
     count: number;
   }> = [
-    { id: "all", label: `全部 (${typeCounts.all})`, count: typeCounts.all },
-    { id: "image", label: `图片 (${typeCounts.image})`, count: typeCounts.image },
-    { id: "text", label: `语料 (${typeCounts.text})`, count: typeCounts.text },
-    { id: "data", label: `数据表 (${typeCounts.data})`, count: typeCounts.data },
+    { id: "all", label: translate("All ({{v0}})", { v0: typeCounts.all }), count: typeCounts.all },
+    { id: "image", label: translate("Images ({{v0}})", { v0: typeCounts.image }), count: typeCounts.image },
+    { id: "text", label: translate("Text ({{v0}})", { v0: typeCounts.text }), count: typeCounts.text },
+    { id: "data", label: translate("Tables ({{v0}})", { v0: typeCounts.data }), count: typeCounts.data },
     ...(independent || typeCounts.model3d > 0
       ? [
           {
             id: "model3d" as const,
-            label: `3D 模型 (${typeCounts.model3d})`,
+            label: translate("3D models ({{v0}})", { v0: typeCounts.model3d }),
             count: typeCounts.model3d,
           },
         ]
       : []),
-    { id: "video", label: `视频 (${typeCounts.video})`, count: typeCounts.video },
+    { id: "video", label: translate("Videos ({{v0}})", { v0: typeCounts.video }), count: typeCounts.video },
   ];
 
   // Only render "all", types with count > 0, or the currently active filter type
@@ -128,9 +131,9 @@ export function WorkbenchQueueColumn({
       {/* Batch scope stays visible; tools do not compete with its name. */}
       <div className="shrink-0 space-y-1.5 border-b border-border p-1.5">
         <div className="flex h-7 items-center justify-between px-1">
-          <span className="text-xs font-semibold text-fg">审阅内容</span>
-          <button type="button" onClick={onCreateBatch} data-testid="workbench-new-batch" aria-label={independent ? "导入内容" : "新建批次"} className="inline-flex items-center gap-1 text-xs text-accent">
-            <Plus className="h-3.5 w-3.5" />{independent ? "导入" : "新建批次"}
+          <span className="text-xs font-semibold text-fg">{t("Review content")}</span>
+          <button type="button" onClick={onCreateBatch} data-testid="workbench-new-batch" aria-label={independent ? t("Import content") : t("New batch")} className="inline-flex items-center gap-1 text-xs text-accent">
+            <Plus className="h-3.5 w-3.5" />{independent ? t("review.import") : t("New batch")}
           </button>
         </div>
         <div className="flex items-center">
@@ -139,14 +142,14 @@ export function WorkbenchQueueColumn({
               <button
                 type="button"
                 disabled={!hasBatch}
-                aria-label="切换批次"
-                title={activeBatch?.name ?? "暂无批次"}
+                aria-label={t("Switch batch")}
+                title={activeBatch?.name ?? t("No batches yet")}
                 data-testid="workbench-batch-select"
                 data-batch-id={activeBatch?.id}
                 className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-bg-2 px-2 text-left text-xs font-semibold text-fg hover:bg-bg-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
               >
-                <span className="min-w-0 flex-1 truncate">{activeBatch?.name ?? "暂无批次"}</span>
-                {controller.batches.some(batch => batch.isNew) && <span data-testid="workbench-batch-new" className="shrink-0 rounded bg-accent px-1 py-0.5 text-[10px] font-bold leading-none text-bg" title="有批次包含未查看的新内容">NEW</span>}
+                <span className="min-w-0 flex-1 truncate">{activeBatch?.name ?? t("No batches yet")}</span>
+                {controller.batches.some(batch => batch.isNew) && <span data-testid="workbench-batch-new" className="shrink-0 rounded bg-accent px-1 py-0.5 text-[10px] font-bold leading-none text-bg" title={t("A batch has unseen updates")}>{t("New updates")}</span>}
                 <ChevronDown className="h-3 w-3 shrink-0 text-fg-3" />
               </button>
             </DropdownMenuTrigger>
@@ -155,9 +158,7 @@ export function WorkbenchQueueColumn({
               className="w-72 max-w-[calc(100vw-24px)] border-border bg-bg-1 text-fg"
               data-testid="workbench-batch-menu"
             >
-              <DropdownMenuLabel className="text-xs text-fg-2">
-                内容批次 ({controller.batches.length})
-              </DropdownMenuLabel>
+              <DropdownMenuLabel className="text-xs text-fg-2">{t("Content batches ({{v0}})", { v0: controller.batches.length })}</DropdownMenuLabel>
               <DropdownMenuRadioGroup value={activeBatch?.id ?? ""} onValueChange={controller.setActiveBatchId}>
                 {controller.batches.map((batch) => (
                   <DropdownMenuRadioItem
@@ -168,7 +169,7 @@ export function WorkbenchQueueColumn({
                     className="cursor-pointer whitespace-normal break-words py-1.5 text-xs focus:bg-bg-3 focus:text-fg data-[state=checked]:text-accent"
                   >
                     <span className="min-w-0 flex-1">{batch.name}</span>
-                    {batch.isNew && <span className="ml-2 shrink-0 rounded bg-accent px-1 text-[10px] font-bold text-bg">NEW</span>}
+                    {batch.isNew && <span className="ml-2 shrink-0 rounded bg-accent px-1 text-[10px] font-bold text-bg">{t("New updates")}</span>}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -176,13 +177,13 @@ export function WorkbenchQueueColumn({
           </DropdownMenu>
         </div>
         <div className="flex h-7 items-center gap-1">
-          <span className="min-w-0 flex-1 px-1 text-[11px] text-fg-3">分组与条目</span>
+          <span className="min-w-0 flex-1 px-1 text-[11px] text-fg-3">{t("Groups and items")}</span>
           <button
             type="button"
             onClick={() => setFilterOpen((v) => !v)}
             disabled={!hasBatch}
             aria-expanded={showFilterDrawer}
-            title="筛选与检索条目"
+            title={t("Filter and search items")}
             className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors disabled:opacity-40 ${
               hasActiveFilter
                 ? "border-accent/50 bg-accent/15 text-accent"
@@ -196,8 +197,8 @@ export function WorkbenchQueueColumn({
             type="button"
             onClick={controller.openMindMapModal}
             disabled={!hasBatch}
-            aria-label="全景血缘导图"
-            title={hasBatch ? "打开全景血缘导图" : "暂无批次，无可定位的节点"}
+            aria-label={t("Provenance overview")}
+            title={hasBatch ? t("Open the provenance overview") : t("No batches or items to locate yet")}
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-bg-2 text-fg-3 transition-colors hover:bg-bg-3 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Network className="h-3.5 w-3.5" />
@@ -207,7 +208,7 @@ export function WorkbenchQueueColumn({
             type="button"
             onClick={onCollapse}
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-bg-2 text-fg-3 transition-colors hover:bg-bg-3 hover:text-fg"
-            title="折叠侧栏"
+            title={t("Collapse the sidebar")}
           >
             <PanelLeftClose className="h-3.5 w-3.5" />
           </button>
@@ -224,9 +225,7 @@ export function WorkbenchQueueColumn({
                   ? "bg-bg-3 text-fg shadow-xs"
                   : "text-fg-3 hover:text-fg"
               }`}
-            >
-              全部 ({treeFilterCounts.all})
-            </button>
+            >{t("All ({{v0}})", { v0: treeFilterCounts.all })}</button>
             <button
               type="button"
               onClick={() => onTreeFilterChange("pending")}
@@ -235,9 +234,7 @@ export function WorkbenchQueueColumn({
                   ? "bg-bg-3 text-accent shadow-xs"
                   : "text-fg-3 hover:text-fg"
               }`}
-            >
-              待审 ({treeFilterCounts.pending})
-            </button>
+            >{t("Pending ({{v0}})", { v0: treeFilterCounts.pending })}</button>
             <button
               type="button"
               onClick={() => onTreeFilterChange("rework_chain")}
@@ -246,9 +243,7 @@ export function WorkbenchQueueColumn({
                   ? "bg-status-warning/15 text-status-warning shadow-xs"
                   : "text-fg-3 hover:text-status-warning"
               }`}
-            >
-              有返工 ({treeFilterCounts.rework})
-            </button>
+            >{t("Rework ({{v0}})", { v0: treeFilterCounts.rework })}</button>
           </div>
 
           <div className="flex flex-wrap items-center gap-1">
@@ -276,7 +271,7 @@ export function WorkbenchQueueColumn({
               value={controller.searchQuery}
               onChange={(e) => controller.setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.stopPropagation()}
-              placeholder="筛选条目..."
+              placeholder={t("Filter items…")}
               className="w-full rounded-md border border-border bg-bg py-1 pl-7 pr-6 text-xs text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none"
             />
             {controller.searchQuery && (
@@ -313,10 +308,8 @@ export function WorkbenchQueueColumn({
             data-testid="workbench-tree-empty"
           >
             <Inbox className="h-5 w-5 text-fg-3" />
-            <p className="text-xs font-medium text-fg-2">暂无待处理条目</p>
-            <p className="text-[11px] leading-relaxed text-fg-3">
-              批次到达后，待审条目会出现在这里；已处理条目可在「全部」中取回。
-            </p>
+            <p className="text-xs font-medium text-fg-2">{t("No pending items")}</p>
+            <p className="text-[11px] leading-relaxed text-fg-3">{t("Pending items appear here when a batch arrives. Reopen processed items from All.")}</p>
           </div>
         )}
       </div>
@@ -335,7 +328,7 @@ export function WorkbenchQueueColumn({
         <div className="flex items-center justify-between gap-1.5">
           <span
             className="font-mono text-[11px] text-fg-2 tabular-nums"
-            title={`已处理 ${processedCount} / ${batchItems.length} · 待处理 ${activeBatch?.pendingCount ?? 0}`}
+            title={t("Processed {{v0}} / {{v1}} · Pending {{v2}}", { v0: processedCount, v1: batchItems.length, v2: activeBatch?.pendingCount ?? 0 })}
           >
             <strong className="text-fg">{processedCount}</strong>/{batchItems.length}
           </span>
@@ -349,11 +342,11 @@ export function WorkbenchQueueColumn({
                 ? "border border-accent/40 bg-accent/10 text-accent"
                 : "border border-border bg-bg-2 text-fg-3 hover:text-fg"
             }`}
-            title={`审阅决定后自动跳转至下一项 (${controller.autoAdvance ? "已开启" : "已关闭"})`}
-            aria-label={`自动下一项: ${controller.autoAdvance ? "开" : "关"}`}
+            title={t("Advance to the next item after a review decision ({{v0}})", { v0: controller.autoAdvance ? t("Enabled") : t("Disabled") })}
+            aria-label={t("Auto-advance: {{v0}}", { v0: controller.autoAdvance ? t("On") : t("Off") })}
           >
             <FastForward className="h-3 w-3" />
-            <span className="sr-only">自动下一项: {controller.autoAdvance ? "开" : "关"}</span>
+            <span className="sr-only">{t("Auto-advance: {{v0}}", { v0: controller.autoAdvance ? t("On") : t("Off") })}</span>
           </button>
 
           <button
@@ -362,14 +355,14 @@ export function WorkbenchQueueColumn({
             disabled={processedCount === 0}
             title={
               processedCount === 0
-                ? "还没有可发布的已处理条目"
-                : "预览本轮已处理结果，确认后发布给 Agent 读取"
+                ? t("No processed items are ready to publish")
+                : t("Preview the processed results, then confirm publication for the Agent to read.")
             }
             className="flex h-7 flex-1 items-center justify-center gap-1 rounded-md bg-accent px-2 text-xs font-semibold text-accent-fg transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Send className="h-3 w-3 shrink-0" />
-            <span className="truncate">发布 ({processedCount})</span>
-            <span className="sr-only">发布审阅结果 ({processedCount})</span>
+            <span className="truncate">{t("Publish ({{v0}})", { v0: processedCount })}</span>
+            <span className="sr-only">{t("Publish review results ({{v0}})", { v0: processedCount })}</span>
           </button>
         </div>
 

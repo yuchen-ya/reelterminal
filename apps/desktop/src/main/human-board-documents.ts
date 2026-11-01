@@ -1,3 +1,4 @@
+import { uiMessageKey } from "@reelterminal/core/ui-message";
 import { randomUUID } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
@@ -23,16 +24,16 @@ export function isDocumentPathWithin(root: string, file: string): boolean {
 export function decodeDocument(bytes: Uint8Array): string {
   const encoding = bytes[0] === 0xff && bytes[1] === 0xfe ? "utf-16le" : bytes[0] === 0xfe && bytes[1] === 0xff ? "utf-16be" : "utf-8";
   try { return new TextDecoder(encoding, { fatal: true }).decode(bytes); }
-  catch (error) { if (!(error instanceof TypeError)) throw error; throw new Error("文档需要使用 UTF-8，或带 BOM 的 UTF-16 编码"); }
+  catch (error) { if (!(error instanceof TypeError)) throw error; throw new Error(uiMessageKey("Documents must use UTF-8 or UTF-16 with a BOM")); }
 }
 
 /** Copy only referenced files under this document's directory, including linked documents. */
 export async function importBoardDocument(sourcePath: string) {
   const original = await realpath(sourcePath);
   const root = path.dirname(original);
-  if ((await stat(original)).size > 2 * 1024 * 1024) throw new Error("文档超过 2 MiB");
+  if ((await stat(original)).size > 2 * 1024 * 1024) throw new Error(uiMessageKey("Document exceeds 2 MiB"));
   const source = decodeDocument(await readFile(original));
-  if (source.length > 200000) throw new Error("单条文档最多 200000 字符");
+  if (source.length > 200000) throw new Error(uiMessageKey("A document supports at most 200000 characters"));
   const assets: DocumentAsset[] = [];
   const resources: FileResource[] = [];
   const visited = new Set<string>([original]);
@@ -43,7 +44,7 @@ export async function importBoardDocument(sourcePath: string) {
     for (const reference of documentReferences(document.source)) {
       let decoded: string;
       try { decoded = decodeURIComponent(reference.split(/[?#]/)[0]); }
-      catch (error) { if (!(error instanceof URIError)) throw error; assets.push({ path: reference, missing: "无效路径编码" }); continue; }
+      catch (error) { if (!(error instanceof URIError)) throw error; assets.push({ path: reference, missing: uiMessageKey("Invalid path encoding") }); continue; }
       const candidate = path.resolve(path.dirname(document.file), decoded);
       const relative = path.relative(root, candidate).split(path.sep).join("/");
       if (visited.has(candidate)) {
@@ -56,23 +57,23 @@ export async function importBoardDocument(sourcePath: string) {
         continue;
       }
       visited.add(candidate);
-      if (visited.size > 256) throw new Error("文档引用超过 256 个文件，请减少引用");
-      if (!isDocumentPathWithin(root, candidate)) { assets.push({ path: relative, missing: "引用超出导入文档目录" }); continue; }
+      if (visited.size > 256) throw new Error(uiMessageKey("The document references more than 256 files; reduce the references"));
+      if (!isDocumentPathWithin(root, candidate)) { assets.push({ path: relative, missing: uiMessageKey("Reference is outside the imported document directory") }); continue; }
       let file: string;
       try { file = await realpath(candidate); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; assets.push({ path: relative, missing: "引用文件缺失" }); continue; }
-      if (!isDocumentPathWithin(root, file)) { assets.push({ path: relative, missing: "引用链接超出导入文档目录" }); continue; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; assets.push({ path: relative, missing: uiMessageKey("Referenced file is missing") }); continue; }
+      if (!isDocumentPathWithin(root, file)) { assets.push({ path: relative, missing: uiMessageKey("Reference link is outside the imported document directory") }); continue; }
       const facts = await stat(file);
-      if (!facts.isFile()) { assets.push({ path: relative, missing: "引用不是文件" }); continue; }
+      if (!facts.isFile()) { assets.push({ path: relative, missing: uiMessageKey("Reference is not a file") }); continue; }
       totalBytes += facts.size;
-      if (totalBytes > 32 * 1024 * 1024) throw new Error("文档引用资产合计超过 32 MiB");
+      if (totalBytes > 32 * 1024 * 1024) throw new Error(uiMessageKey("Document assets exceed 32 MiB in total"));
       const extension = path.extname(file).toLowerCase();
       const mime = mimeTypes[extension] ?? "application/octet-stream";
       const resource = await getReviewFileStore().prepare({ sourcePath: file, operationId: randomUUID(), resourceId: randomUUID(), mime, source: "user" });
       resources.push(resource);
       assets.push({ path: relative, resourceId: resource.id, mime });
       if ([".md", ".html", ".htm", ".css"].includes(extension)) {
-        if (facts.size > 2 * 1024 * 1024) throw new Error(`引用文档超过 2 MiB：${relative}`);
+        if (facts.size > 2 * 1024 * 1024) throw new Error(uiMessageKey(`Referenced document exceeds 2 MiB: ${relative}`));
         queue.push({ file, source: decodeDocument(await readFile(file)) });
       }
     }

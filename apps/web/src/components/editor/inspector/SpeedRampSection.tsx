@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, {
   useState,
   useCallback,
@@ -452,7 +453,7 @@ export const SpeedRampSection: React.FC<SpeedRampSectionProps> = ({ clip }) => {
 
   return (
     <div className="space-y-3">
-      {error && <Text type="supporting" color="secondary" role="alert">{error}</Text>}
+      {error && <Text type="supporting" color="secondary" role="alert"><LocalizedMessage>{error}</LocalizedMessage></Text>}
       <Card variant="muted" padding={2} className="border border-border">
         <Text type="supporting" color="secondary" className="text-[10px]">
           {tr("Effective duration: ")}{formatDuration(effectiveDuration)}

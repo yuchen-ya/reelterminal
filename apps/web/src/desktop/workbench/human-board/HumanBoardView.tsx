@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { lazy, Suspense, useRef, useState } from "react";
 import type React from "react";
 import type { HumanBoard } from "../../../services/human-board/storage";
@@ -17,6 +18,7 @@ export default function HumanBoardView({ board, incoming, onIncomingConsumed, on
   onLayoutLockChange: (locked: boolean) => void;
   toolbarRight?: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   const [initialBoard] = useState(board);
   const [importedFiles, setImportedFiles] = useState<BoardIncoming | null>(null);
   const filesInput = useRef<HTMLInputElement>(null);
@@ -27,7 +29,7 @@ export default function HumanBoardView({ board, incoming, onIncomingConsumed, on
       event.target.value = "";
       if (files.length) setImportedFiles({ files });
     }} />
-    <Suspense fallback={<div className="p-8 text-sm">正在载入画板…</div>}>
+    <Suspense fallback={<div className="p-8 text-sm">{t("Loading the board…")}</div>}>
       <HumanBoardCanvas key={board.id} initialBoard={initialBoard} incoming={incoming ?? importedFiles} onIncomingConsumed={() => incoming ? onIncomingConsumed() : setImportedFiles(null)}
         onImport={() => filesInput.current?.click()} onSaved={onSaved} onFlush={onFlush} onOpenReview={onOpenReview} onLayoutLockChange={onLayoutLockChange} toolbarRight={toolbarRight} />
     </Suspense>

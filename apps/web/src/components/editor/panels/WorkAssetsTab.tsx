@@ -536,7 +536,7 @@ export const WorkAssetsTab: React.FC<{
         );
         return;
       }
-      toast.success(t("workAssets.added"), asset.name);
+      toast.success(t("workAssets.added"), asset.name, { localizeMessage: false });
     },
     [t],
   );

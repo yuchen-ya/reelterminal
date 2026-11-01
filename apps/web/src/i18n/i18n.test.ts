@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import i18n, {
   changeAppLanguage,
   detectSystemLocale,
@@ -74,4 +74,27 @@ describe("ReelTerminal locale foundation", () => {
     expect(entries.length).toBeGreaterThan(2000);
     expect(entries.every(([key, value]) => key.trim() && value.trim())).toBe(true);
   });
+});
+
+
+it("sends the resolved manual and System locale to native app menus", async () => {
+  const original = window.reelterminal;
+  const setUiLocale = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(window, "reelterminal", { configurable: true, value: { setUiLocale } });
+  vi.spyOn(navigator, "languages", "get").mockReturnValue(["zh-CN"]);
+  try {
+    await changeAppLanguage("en");
+    expect(setUiLocale).toHaveBeenLastCalledWith("en");
+    await changeAppLanguage(SYSTEM_LANGUAGE);
+    expect(setUiLocale).toHaveBeenLastCalledWith("zh-CN");
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["en-US"]);
+    await changeAppLanguage("zh-CN");
+    expect(setUiLocale).toHaveBeenLastCalledWith("zh-CN");
+    await changeAppLanguage(SYSTEM_LANGUAGE);
+    expect(setUiLocale).toHaveBeenLastCalledWith("en");
+  } finally {
+    Object.defineProperty(window, "reelterminal", { configurable: true, value: original });
+    vi.restoreAllMocks();
+    await changeAppLanguage(SYSTEM_LANGUAGE);
+  }
 });

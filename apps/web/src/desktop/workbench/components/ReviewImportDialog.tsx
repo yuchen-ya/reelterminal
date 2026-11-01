@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
@@ -125,7 +126,7 @@ export function ReviewImportDialog({ target, expectedNodeRevision, isOpen, onOpe
           </label>
         )}
         {!phase && (!name.trim() || (mode === "files" ? !plan : !text.trim())) && <p className="text-xs text-fg-3">{t(!name.trim() ? "review.enterBatchName" : mode === "files" ? "review.chooseOrDropFiles" : "review.enterTextBody")}</p>}
-        {error && <p role="alert" className="text-xs text-status-error">{error}</p>}
+        {error && <p role="alert" className="text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>}
         {phase && <p role="status" className="text-xs text-fg-2">{t(phase === "parsing" ? "review.readingFiles" : "review.importing")}</p>}
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
           <button type="button" disabled={!!phase} onClick={() => onOpenChange(false)} className={wbButton.secondary}>

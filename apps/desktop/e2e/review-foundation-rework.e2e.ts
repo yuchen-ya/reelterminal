@@ -46,15 +46,15 @@ test("four independent content types complete human review, partial rework, hist
     const select = async (title: string) => page.getByTestId("workbench-tree-panel").getByText(title, { exact: true }).click();
     for (const title of ["Rework image", "Rework video", "Rework text", "Rework data"]) {
       await select(title);
-      await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "返工", exact: true }).click();
+      await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "Rework", exact: true }).click();
       const dialog = page.getByRole("dialog");
-      await dialog.getByLabel(/共同修改要求/).fill("请保留已有内容并提交修订结果");
-      await dialog.getByRole("button", { name: "确认返工", exact: true }).click();
+      await dialog.getByLabel(/Shared revision instructions/).fill("请保留已有内容并提交修订结果");
+      await dialog.getByRole("button", { name: "Confirm: Rework", exact: true }).click();
     }
     await vi.waitFor(async () => expect((await readItem(data)).status).toBe("rework"));
-    await page.getByTitle("预览本轮已处理结果，确认后发布给 Agent 读取", { exact: true }).click();
-    await page.getByRole("button", { name: /发布交接结果|更新交接结果/ }).click();
-    await page.getByText(/等待 Agent 读取/).first().waitFor();
+    await page.getByTitle("Preview the processed results, then confirm publication for the Agent to read.", { exact: true }).click();
+    await page.getByRole("button", { name: /Publish handoff results|Update handoff results/ }).click();
+    await page.getByText(/waiting for the Agent to read/i).first().waitFor();
     await page.keyboard.press("Escape");
     const changes = value(await agent.callCommand<{ entries: Array<{ handoffIds?: string[] }> }>("review.changes", { target, afterSequence: 0 }));
     const handoffId = changes.entries.flatMap(entry => entry.handoffIds ?? []).at(-1)!;
@@ -88,7 +88,7 @@ test("four independent content types complete human review, partial rework, hist
     expect((await apply([{ op: "workbench.rework", handoffId, results: [{ sourceItemId: text, previousVersion: 1, content: { type: "text", entryId: beforeText.content.entryId, title: "Text", speakerOrContext: "", text: "Stale result" } }] }])).error?.code).toBe("CONFLICT");
     await select("Rework text");
     await vi.waitFor(async () => expect(await page.getByTestId("text-body").textContent()).toContain("Reworked 👀"));
-    await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "保留", exact: true }).click();
+    await page.getByTestId("workbench-bottom-dock").getByRole("button", { name: "Keep", exact: true }).click();
     await vi.waitFor(async () => expect((await readItem(text)).status).toBe("kept"));
     await vi.waitFor(async () => expect(await page.getByTestId("review-node-editor").locator("[inert]").count()).toBe(0));
     await page.getByTestId("workbench-page").focus();

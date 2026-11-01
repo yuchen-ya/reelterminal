@@ -183,7 +183,7 @@ test("private mixed-media board appends in one scene, exports one frozen contain
     await page.getByTestId("human-board-undo").click();
     await saved(page);
     evidence.record("modalHistory", { nativeMenuUndoRevertedOnlySecondStroke: true, sourceObjectRemainedLive: true, boardUndoAfterSave: true });
-    await page.getByRole("button", { name: "旋转 90°", exact: true }).click();
+    await page.getByRole("button", { name: "Rotate 90°", exact: true }).click();
     await vi.waitFor(async () => expect((await boards(page))[0].elements.find(element => element.id === image.id)!.angle).toBeCloseTo(Math.PI / 2), { timeout: 20_000 });
     await page.getByTestId("human-board-export-review").click();
     let exportedId = "";
@@ -198,7 +198,7 @@ test("private mixed-media board appends in one scene, exports one frozen contain
     if (!snapshotResource.ok) throw new Error(snapshotResource.error.message);
     const snapshotPixels = decodeRgbaPng(snapshotResource.value.path);
     expect(snapshotPixels).toMatchObject({ width: fixture.height, height: fixture.width });
-    await page.getByRole("button", { name: "旋转 90°", exact: true }).click();
+    await page.getByRole("button", { name: "Rotate 90°", exact: true }).click();
     expect(value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target: exportTarget, itemId: snapshot.id })).item).toEqual(snapshot);
     const exports: Array<{ kind: string; nodeId: string; item: WorkbenchItem }> = [];
     for (const kind of ["text", "video", "model3d"]) {
@@ -314,7 +314,7 @@ test("plain-text paste creates one board and path-backed drop uses the actual sc
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus(); await page.keyboard.press("a");
     await page.mouse.move(stage.x + 300, stage.y + 180); await page.mouse.down(); await page.mouse.move(stage.x + 390, stage.y + 230, { steps: 8 }); await page.mouse.up();
     await vi.waitFor(async () => expect((await activeBoard()).elements.some(element => element.type === "arrow" && !element.isDeleted)).toBe(true), { timeout: 20_000 });
-    await page.getByRole("button", { name: /置于底层/ }).click();
+    await page.getByRole("button", { name: /Send to back/ }).click();
     evidence.record("input", { sameBoard: true, initialPlainTextPaste: true, appendPlainTextPaste: true, dropPoint, expected, actual: { x: image.x, y: image.y }, pointerMove: true, pointerResize: true, arrowAnnotation: true, layerControl: true });
   } finally {
     evidence.record("rendererConsole", launched.output.rendererConsole);
@@ -349,7 +349,7 @@ test("video/model interactions retain board geometry and freeze source views wit
     const original = (await boards(page))[0];
     const videoElement = original.elements.find(element => element.customData?.kind === "video")!;
     await activateMedia(page, videoElement);
-    await page.getByLabel("视频定位秒").fill("0.8");
+    await page.getByLabel("Video position in seconds").fill("0.8");
     await vi.waitFor(async () => expect(await video.evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(0.8, 2));
     const modelElement = original.elements.find(element => element.customData?.kind === "model3d")!;
     await activateMedia(page, modelElement);
@@ -413,7 +413,7 @@ test("video/model interactions retain board geometry and freeze source views wit
     expect(at(modelElement.x + modelElement.width / 2, modelElement.y + modelElement.height / 2)).not.toEqual([255, 255, 255, 255]);
     expect(await video.evaluate((video: HTMLVideoElement) => video.currentTime)).toBe(frozenTime);
     evidence.record("mediaFreeze", { area, png: { width: decoded.width, height: decoded.height }, frozenTime, oldObservation, newObservation: await observation(), componentControlsExcluded: true, boardGeometryUnchanged: true });
-    await page.getByRole("button", { name: "关闭输出", exact: true }).click();
+    await page.getByRole("button", { name: "Close output", exact: true }).click();
     const beforeCaptureCount = (await boards(page))[0].elements.filter(element => !element.isDeleted).length;
     await activateMedia(page, videoElement);
     await page.getByTestId("human-board-video-capture").click();
@@ -447,7 +447,7 @@ test.skipIf(process.env.REELTERMINAL_HUMAN_BOARD_NATIVE_DRAG !== "1")("native bo
     await page.getByTestId("human-board-import-files").setInputFiles(fixture.damagedPath);
     await page.getByTestId("human-board-single-file").waitFor({ timeout: 30_000 });
     await page.getByTestId("human-board-single-file").click();
-    await vi.waitFor(async () => expect(await page.getByTestId("human-board-output-drag").textContent()).toBe("拖出文件"), { timeout: 30_000 });
+    await vi.waitFor(async () => expect(await page.getByTestId("human-board-output-drag").textContent()).toBe("Drag out files"), { timeout: 30_000 });
     const expected = Buffer.from(await page.getByTestId("human-board-output-image").evaluate(async image => [...new Uint8Array(await (await fetch((image as HTMLImageElement).src)).arrayBuffer())]));
     await launched.app.evaluate(({ BrowserWindow }) => {
       const calls: Array<{ files: string[]; returned: boolean }> = [];
@@ -571,7 +571,7 @@ test("region PNG preserves source resolution, image crop/rotation/alpha and text
     }
     expect(redTextPixels).toBeGreaterThan(50);
     await page.getByTestId("human-board-output-copy").click();
-    await vi.waitFor(async () => expect(await page.getByTestId("human-board-output").textContent()).toContain("已复制到剪贴板"));
+    await vi.waitFor(async () => expect(await page.getByTestId("human-board-output").textContent()).toContain("Copied to clipboard"));
     const clipboardPng = await launched.app.evaluate(async ({ clipboard }) => {
       const item = (await clipboard.read()).find(item => item.types.includes("image/png"));
       if (!item) throw new Error("System clipboard has no PNG image");
@@ -586,7 +586,7 @@ test("region PNG preserves source resolution, image crop/rotation/alpha and text
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
     }, saveDirectory);
     await page.getByTestId("human-board-output-save").click();
-    await vi.waitFor(async () => expect(await page.getByTestId("human-board-output").textContent()).toContain("已保存到"));
+    await vi.waitFor(async () => expect(await page.getByTestId("human-board-output").textContent()).toContain("Saved to"));
     const savedPng = (await readdir(saveDirectory, { recursive: true })).find(file => file.endsWith(".png"));
     expect(savedPng).toBeDefined();
     expect((await readFile(path.join(saveDirectory, savedPng!))).equals(png)).toBe(true);

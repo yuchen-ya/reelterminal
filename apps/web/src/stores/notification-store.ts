@@ -7,6 +7,8 @@ export interface Notification {
   type: NotificationType;
   title: string;
   message?: string;
+  /** Built-in UI diagnostic copy; arbitrary notification content remains untouched. */
+  localizeMessage?: boolean;
   duration?: number;
   dismissible?: boolean;
   /** Fires when the card body is activated (click or Enter/Space). */
@@ -62,20 +64,20 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 }));
 
 export const toast = {
-  success: (title: string, message?: string) =>
+  success: (title: string, message?: string, options?: Pick<Notification, "localizeMessage">) =>
     useNotificationStore
       .getState()
-      .addNotification({ type: "success", title, message }),
-  error: (title: string, message?: string) =>
+      .addNotification({ type: "success", title, message, localizeMessage: true, ...options }),
+  error: (title: string, message?: string, options?: Pick<Notification, "localizeMessage">) =>
     useNotificationStore
       .getState()
-      .addNotification({ type: "error", title, message, duration: 6000 }),
-  warning: (title: string, message?: string) =>
+      .addNotification({ type: "error", title, message, duration: 6000, localizeMessage: true, ...options }),
+  warning: (title: string, message?: string, options?: Pick<Notification, "localizeMessage">) =>
     useNotificationStore
       .getState()
-      .addNotification({ type: "warning", title, message }),
-  info: (title: string, message?: string) =>
+      .addNotification({ type: "warning", title, message, localizeMessage: true, ...options }),
+  info: (title: string, message?: string, options?: Pick<Notification, "localizeMessage">) =>
     useNotificationStore
       .getState()
-      .addNotification({ type: "info", title, message }),
+      .addNotification({ type: "info", title, message, localizeMessage: true, ...options }),
 };

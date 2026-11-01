@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 /**
  * VisualMindMapModal — on-demand 2D (left→right) lineage mind map.
  *
@@ -67,13 +69,13 @@ type NodRequest =
   | { readonly mode: "group"; readonly items: readonly WorkbenchItemView[] };
 
 const UNGROUPED_BRANCH_ID = "__ungrouped__";
-const UNGROUPED_LABEL = "未分组(无谱系)";
+const UNGROUPED_LABEL = "Ungrouped (no provenance)";
 
 const DECISION_LABELS: Record<WorkbenchDecision, string> = {
-  kept: "保留",
-  modified: "修改后保留",
-  rework: "返工",
-  discarded: "丢弃",
+  get kept() { return translate("Keep"); },
+  get modified() { return translate("Keep after revision"); },
+  get rework() { return translate("Rework"); },
+  get discarded() { return translate("Discard"); },
 };
 
 function buildMindMapBranches(
@@ -81,7 +83,7 @@ function buildMindMapBranches(
 ): MindMapBranch[] {
   const branches = buildWorkbenchLineageGroups(items, {
     ungroupedId: UNGROUPED_BRANCH_ID,
-    ungroupedLabel: UNGROUPED_LABEL,
+    ungroupedLabel: translate(UNGROUPED_LABEL),
   }).map((group): MindMapBranch => ({ ...group, nodablePendingItems: [] }));
   const branchById = new Map(branches.map((branch) => [branch.id, branch]));
   for (const item of items) {
@@ -104,6 +106,7 @@ export function VisualMindMapModal({
   onNodSingleItem,
   onNodEntireGroup,
 }: VisualMindMapModalProps) {
+  const { t } = useTranslation();
   const [nodRequest, setNodRequest] = useState<NodRequest | null>(null);
   const [nodBusy, setNodBusy] = useState(false);
   const [nodError, setNodError] = useState<string | null>(null);
@@ -115,7 +118,7 @@ export function VisualMindMapModal({
     return items;
   }, [items, filterMode]);
 
-  const branches = useMemo(() => buildMindMapBranches(displayedItems), [displayedItems]);
+  const branches = useMemo(() => buildMindMapBranches(displayedItems), [displayedItems, t]);
   const hasAnyLineage = items.some((item) => item.lineage);
 
   const requestClose = (): void => {
@@ -215,7 +218,7 @@ export function VisualMindMapModal({
               }`}
             >
               v{step.version}
-              {step.outcome === "rejected" ? "✕" : "改"}
+              {step.outcome === "rejected" ? "✕" : t("Modified")}
             </div>
             <div className="h-px w-2.5 shrink-0 bg-border-strong" />
           </Fragment>
@@ -251,15 +254,12 @@ export function VisualMindMapModal({
                 className="flex items-center gap-1 rounded-[4px] border border-accent/30 bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 <ThumbsUp className="h-2.5 w-2.5" />
-                点头
-              </button>
+                {t("Accept suggestion")}</button>
             ) : (
               <span
-                title="该条目没有 Agent 建议"
+                title={t("This item has no Agent suggestion")}
                 className="cursor-not-allowed rounded-[4px] border border-border bg-bg-2 px-1.5 py-0.5 text-[10px] text-fg-3"
-              >
-                无建议
-              </span>
+              >{t("No suggestion")}</span>
             )
           ) : (
             <span className={`font-mono tabular-nums text-[10px] ${statusView.className}`}>
@@ -293,8 +293,8 @@ export function VisualMindMapModal({
     >
       <div className="flex max-h-[84vh] flex-col text-xs" data-workbench-modal="true" data-workbench-scope="true">
         <ToolcraftDialogHeader
-          title="横向血缘思维导图"
-          subtitle="左→右空间层级即上下游衍生关系 · 节点前置版本链即返工次数"
+          title={t("Horizontal provenance map")}
+          subtitle={t("Left-to-right levels show derivation · preceding version chains show rework rounds")}
           startContent={<Network className="h-4 w-4 text-accent" />}
           onOpenChange={(open) => {
             if (!open) requestClose();
@@ -304,10 +304,8 @@ export function VisualMindMapModal({
         {/* Top Control Bar: clean h-10 bar with wbButton controls and compact filter pills */}
         <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-4">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-fg-3">分支统计:</span>
-            <span className="rounded-[4px] border border-border bg-bg-2 px-2 py-0.5 font-mono tabular-nums text-[11px] text-fg-2">
-              {branches.length} 个分支 · {displayedItems.length} 个条目
-            </span>
+            <span className="text-xs text-fg-3">{t("Branch counts:")}</span>
+            <span className="rounded-[4px] border border-border bg-bg-2 px-2 py-0.5 font-mono tabular-nums text-[11px] text-fg-2">{t("Branches: {{v0}} · Items: {{v1}}", { v0: branches.length, v1: displayedItems.length })}</span>
           </div>
           <div className="flex items-center gap-2">
             <div className={wbButton.segmentedContainer}>
@@ -318,7 +316,7 @@ export function VisualMindMapModal({
                   onClick={() => setFilterMode(filter)}
                   className={wbButton.segmentedItem(filterMode === filter)}
                 >
-                  {filter === "all" ? "全部" : filter === "pending" ? "仅待审" : "有建议"}
+                  {filter === "all" ? t("projectMediaFilters.all") : filter === "pending" ? t("Pending only") : t("With suggestions")}
                 </button>
               ))}
             </div>
@@ -330,10 +328,8 @@ export function VisualMindMapModal({
                   requestClose();
                 }}
                 className={wbButton.secondary}
-                title="定位到当前选中条目"
-              >
-                定位当前项
-              </button>
+                title={t("Locate the selected item")}
+              >{t("Locate current item")}</button>
             )}
           </div>
         </div>
@@ -343,22 +339,14 @@ export function VisualMindMapModal({
           {items.length === 0 ? (
             <div className="flex min-h-[240px] flex-col items-center justify-center gap-2 text-center">
               <Network className="h-6 w-6 text-fg-3" />
-              <p className="text-sm font-semibold text-fg-2">
-                当前批次没有条目
-              </p>
-              <p className="text-xs text-fg-3">
-                批次暂无内容,等待导入或 Agent 挂载衍生节点
-              </p>
+              <p className="text-sm font-semibold text-fg-2">{t("No items in the current batch")}</p>
+              <p className="text-xs text-fg-3">{t("This batch is empty. Import content or wait for an Agent to attach derived items.")}</p>
             </div>
           ) : !hasAnyLineage ? (
             <div className="flex min-h-[240px] flex-col items-center justify-center gap-2 text-center">
               <Network className="h-6 w-6 text-fg-3" />
-              <p className="text-sm font-semibold text-fg-2">暂无谱系记录</p>
-              <p className="max-w-md text-xs leading-5 text-fg-3">
-                当前批次的 {items.length}{" "}
-                条条目都没有上游谱系信息;只有由 Agent
-                挂载的衍生节点才会形成血缘分支,这里不虚构谱系。
-              </p>
+              <p className="text-sm font-semibold text-fg-2">{t("No provenance records")}</p>
+              <p className="max-w-md text-xs leading-5 text-fg-3">{t("Items in this batch ({{v0}}{{v1}}) have no upstream provenance. Only recorded derived items form provenance branches; relationships are not invented.", { v0: items.length, v1: " " })}</p>
             </div>
           ) : (
             <div className="flex min-w-max items-center">
@@ -366,7 +354,7 @@ export function VisualMindMapModal({
               <div className="flex shrink-0 items-center gap-2 rounded-[6px] border border-accent bg-bg-2 px-3.5 py-2 text-fg shadow-sm">
                 <FolderGit2 className="h-4 w-4 text-accent" />
                 <span className="whitespace-nowrap text-xs font-bold">
-                  {batch?.name ?? "当前批次"}
+                  {batch?.name ?? t("Current batch")}
                 </span>
               </div>
 
@@ -403,7 +391,7 @@ export function VisualMindMapModal({
                       <div
                         title={
                           branch.isUngrouped
-                            ? "没有谱系信息的条目"
+                            ? t("Items without provenance")
                             : undefined
                         }
                         className={`flex shrink-0 items-center gap-2 rounded-[6px] border px-2.5 py-1.5 text-xs font-semibold ${
@@ -431,7 +419,7 @@ export function VisualMindMapModal({
                                 })
                               }
                               className="ml-1 flex items-center gap-1 rounded-[4px] border border-accent/30 bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
-                              title="整支一键点头"
+                              title={t("Accept suggestions for this branch")}
                             >
                               <ThumbsUp className="h-2.5 w-2.5" />
                               {branch.nodablePendingItems.length}
@@ -466,12 +454,10 @@ export function VisualMindMapModal({
               <ThumbsUp className="h-3.5 w-3.5 shrink-0 text-accent" />
               <span className="text-xs font-semibold text-fg">
                 {nodRequest.mode === "single"
-                  ? "确认单项点头"
-                  : `确认整枝点头(${nodRequest.items.length} 项)`}
+                  ? t("Confirm accepting this suggestion")
+                  : t("Confirm accepting branch suggestions ({{v0}} items)", { v0: nodRequest.items.length })}
               </span>
-              <span className="text-[11px] text-fg-3">
-                点头按每条的建议决定执行;「修改后保留」需要真实内容修改,由控制器落地。
-              </span>
+              <span className="text-[11px] text-fg-3">{t("Each item follows its suggested decision. Keep after revision requires an actual content revision applied by the controller.")}</span>
             </div>
 
             <div className="mb-3 max-h-40 space-y-1.5 overflow-y-auto">
@@ -494,16 +480,10 @@ export function VisualMindMapModal({
                         <span className="shrink-0 rounded-[4px] border border-border bg-bg px-1 font-mono tabular-nums text-[10px] text-fg-3">
                           v{item.version}
                         </span>
-                        <span className="shrink-0 text-[11px] text-accent">
-                          建议决定: {DECISION_LABELS[guidance.nodDecision]}
-                        </span>
+                        <span className="shrink-0 text-[11px] text-accent">{t("Suggested decision: {{v0}}", { v0: DECISION_LABELS[guidance.nodDecision] })}</span>
                       </div>
-                      <div className="mt-0.5 text-[11px] leading-4 text-fg-2">
-                        将执行: {guidance.whatToDoNext}
-                      </div>
-                      <div className="text-[11px] leading-4 text-fg-3">
-                        背景: {guidance.whatHappened}
-                      </div>
+                      <div className="mt-0.5 text-[11px] leading-4 text-fg-2">{t("Action: {{v0}}", { v0: guidance.whatToDoNext })}</div>
+                      <div className="text-[11px] leading-4 text-fg-3">{t("Context: {{v0}}", { v0: guidance.whatHappened })}</div>
                     </div>
                   </div>
                 );
@@ -511,9 +491,7 @@ export function VisualMindMapModal({
             </div>
 
             {nodError && (
-              <div className="mb-2 text-[11px] text-status-error">
-                执行失败: {nodError}
-              </div>
+              <div className="mb-2 text-[11px] text-status-error">{t("Execution failed: {{v0}}", { v0: nodError })}</div>
             )}
 
             <div className="flex items-center justify-end gap-2 pt-1 border-t border-border">
@@ -522,9 +500,7 @@ export function VisualMindMapModal({
                 onClick={() => setNodRequest(null)}
                 disabled={nodBusy}
                 className={wbButton.secondary}
-              >
-                取消
-              </button>
+              >{t("review.cancel")}</button>
               <button
                 type="button"
                 onClick={() => void confirmNod()}
@@ -532,10 +508,10 @@ export function VisualMindMapModal({
                 className={wbButton.primary}
               >
                 {nodBusy
-                  ? "执行中…"
+                  ? t("Executing…")
                   : nodRequest.mode === "single"
-                    ? "确认点头"
-                    : `确认点头(${nodRequest.items.length} 项)`}
+                    ? t("Confirm acceptance")
+                    : t("Confirm acceptance ({{v0}} items)", { v0: nodRequest.items.length })}
               </button>
             </div>
           </div>

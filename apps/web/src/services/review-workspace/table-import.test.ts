@@ -13,12 +13,12 @@ describe("review table inputs", () => {
   it("keeps JSON null distinct from empty text and rejects unsafe numbers and nested cells", () => {
     const data = parseReviewJson('[{"text":"","value":null},{"text":"001","value":12.5}]');
     expect(data.rows.map(row => data.columns.map(column => row.cells[column.columnId]))).toEqual([["", null], ["001", "12.5"]]);
-    expect(() => parseReviewJson('[{"value":9007199254740993}]')).toThrow("大整数");
-    expect(() => parseReviewJson('[{"value":{"hidden":true}}]')).toThrow("单元格");
+    expect(() => parseReviewJson('[{"value":9007199254740993}]')).toThrow("large integers");
+    expect(() => parseReviewJson('[{"value":{"hidden":true}}]')).toThrow("JSON cells support only");
   });
 
   it("decodes BOM text explicitly and rejects malformed UTF-8", () => {
     expect(decodeReviewText(new Uint8Array([255, 254, 65, 0, 13, 0, 10, 0]).buffer)).toBe("A\r\n");
-    expect(() => decodeReviewText(new Uint8Array([255, 128, 128]).buffer)).toThrow("编码");
+    expect(() => decodeReviewText(new Uint8Array([255, 128, 128]).buffer)).toThrow("UTF-8 or UTF-16");
   });
 });

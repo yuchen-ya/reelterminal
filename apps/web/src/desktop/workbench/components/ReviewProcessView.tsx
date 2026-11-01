@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ReviewContext, ReviewStep, ReviewStepReference } from "@reelterminal/core/review/types";
@@ -135,7 +136,7 @@ export function ReviewProcessView({ target, onReviewItem }: { target: ReviewCont
       )}
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3 text-xs text-fg-3">
         <p className="truncate">{t("review.process.description")}</p>
-        {error && <p role="alert" className="text-status-error ml-2 shrink-0">{error}</p>}
+        {error && <p role="alert" className="text-status-error ml-2 shrink-0"><LocalizedMessage>{error}</LocalizedMessage></p>}
       </div>
 
       {loading ? (
@@ -210,7 +211,7 @@ export function ReviewProcessView({ target, onReviewItem }: { target: ReviewCont
                     <li key={`${side}:${index}`} className="flex flex-wrap items-center gap-2 rounded border border-border bg-bg-2/30 p-2 text-xs">
                       <span className="font-medium text-fg">{t(side === "input" ? "review.process.input" : "review.process.output")}:</span>
                       <span className="min-w-0 flex-1 break-words text-fg-2" title={`${reference.role} · ${"resourceId" in reference ? reference.resourceId : reference.itemId}`}>
-                        {"resourceId" in reference ? `文件 ${index + 1}` : `${itemTitles[reference.itemId] ?? "审阅条目"} · v${reference.version}`}
+                        {"resourceId" in reference ? t("File {{v0}}", { v0: index + 1 }) : `${itemTitles[reference.itemId] ?? t("Review item")} · v${reference.version}`}
                         {reference.region ? ` · ${reference.region.x},${reference.region.y} ${reference.region.width}×${reference.region.height}` : ""}
                         {reference.range ? ` · ${reference.range.startSec}–${reference.range.endSec} s` : ""}
                       </span>

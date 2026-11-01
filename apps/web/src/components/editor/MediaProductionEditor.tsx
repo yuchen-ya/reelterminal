@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MediaItem } from "@reelterminal/core";
@@ -267,7 +268,7 @@ export function MediaProductionEditor({
         </button>
         {error && (
           <p role="alert" className="mt-3 text-red-400">
-            {error}
+            <LocalizedMessage>{error}</LocalizedMessage>
           </p>
         )}
         <div className="mt-4 flex justify-end gap-3">

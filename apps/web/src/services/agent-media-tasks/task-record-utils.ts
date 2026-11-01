@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 import type { AgentMediaTaskOverrides } from "./types";
 
 /** Output folder recorded with a task so an artifact can later be imported. */
@@ -48,6 +49,6 @@ export function pickTaskArtifactFromScan(scanned: {
     : {
         ok: false,
         code: "NO_ARTIFACT_FILE",
-        message: "任务预铸产物目录中没有可导入的音频文件",
+        message: canonicalMessage("No importable audio files were found in the task’s reserved output directory"),
       };
 }

@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../../i18n/LocalizedMessage";
 import React from "react";
 import { Zap, Captions, Loader2, Upload } from "@/icons/lucide-compat";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
@@ -167,7 +168,7 @@ export const AiTab: React.FC<AiTabProps> = ({
                       className="animate-spin text-primary"
                     />
                     <Text type="supporting" color="primary" className="text-[10px]">
-                      {transcriptionProgress.message}
+                      <LocalizedMessage>{transcriptionProgress.message}</LocalizedMessage>
                     </Text>
                   </div>
                   {transcriptionProgress.phase === "error" &&

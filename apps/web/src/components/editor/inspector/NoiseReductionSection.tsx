@@ -1,3 +1,4 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
 import React, { useCallback, useEffect, useState } from "react";
 import { ChevronDown, Volume2, Wand2, AlertCircle, Check } from "@/icons/lucide-compat";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
@@ -855,7 +856,7 @@ export const NoiseReductionSection: React.FC<NoiseReductionSectionProps> = ({
                 type="supporting"
                 className="block mt-2 rounded-md border border-green-500/20 bg-green-500/10 px-2 py-1 text-[9px] text-green-400"
               >
-                {appliedMessage}
+                <LocalizedMessage>{appliedMessage}</LocalizedMessage>
               </Text>
             )}
           </Card>
@@ -985,7 +986,7 @@ export const NoiseReductionSection: React.FC<NoiseReductionSectionProps> = ({
           {analysisProgress && (learningState === "learning" || learningState === "applying") && (
             <Card variant="green" padding={2} className="border border-primary/20">
               <Text type="supporting" color="secondary" className="block text-[9px]">
-                {analysisProgress.message}
+                <LocalizedMessage>{analysisProgress.message}</LocalizedMessage>
               </Text>
               <ProgressBar
                 label={t("Noise analysis progress")}
@@ -1003,7 +1004,7 @@ export const NoiseReductionSection: React.FC<NoiseReductionSectionProps> = ({
               type="supporting"
               className="block text-[9px] text-red-500 text-center"
             >
-              {errorMessage}
+              <LocalizedMessage>{errorMessage}</LocalizedMessage>
             </Text>
           )}
 

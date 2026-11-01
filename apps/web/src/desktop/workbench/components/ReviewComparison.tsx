@@ -1,3 +1,5 @@
+import { LocalizedMessage } from "../../../i18n/LocalizedMessage";
+import { getAppLocale } from "../../../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ReviewContext, ReviewStep, ReviewStepReference } from "@reelterminal/core/review/types";
@@ -159,7 +161,7 @@ export function ReviewComparison({ target, left, right }: { target: ReviewContex
                   {t(index === 0 ? "review.process.left" : "review.process.right")} · {selection?.step?.label} · {selection?.reference.role}
                 </h4>
                 {error ? (
-                  <p role="alert" className="text-xs text-status-error">{error}</p>
+                  <p role="alert" className="text-xs text-status-error"><LocalizedMessage>{error}</LocalizedMessage></p>
                 ) : !content ? (
                   <p className="text-xs text-fg-3">{t(selection ? "review.process.loading" : "review.process.unselected")}</p>
                 ) : content.kind === "model3d" ? (
@@ -192,7 +194,7 @@ export function ReviewComparison({ target, left, right }: { target: ReviewContex
                     <p className="mt-1 text-fg-3">{t("review.process.tablePreview")}</p>
                   </div>
                 ) : (
-                  <p className="break-all text-xs text-fg-3">{content.name} · {content.mime} · {content.size.toLocaleString()} B</p>
+                  <p className="break-all text-xs text-fg-3">{content.name} · {content.mime} · {content.size.toLocaleString(getAppLocale())} B</p>
                 )}
               </section>
             );

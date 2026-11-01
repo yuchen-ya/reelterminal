@@ -1,3 +1,4 @@
+import { t as translate } from "../../../../i18n";
 /**
  * Shared helper types and pure math functions for video review workspace.
  */
@@ -20,11 +21,11 @@ export const DEFAULT_BOX_W = 0.18;
 export const DEFAULT_BOX_H = 0.18;
 
 export const STATUS_LABEL: Record<WorkbenchDecisionStatus, string> = {
-  pending: "待决定",
-  kept: "已保留",
-  modified: "已修改",
-  rework: "返工中",
-  discarded: "已丢弃",
+  get pending() { return translate("Awaiting decision"); },
+  get kept() { return translate("Kept"); },
+  get modified() { return translate("Modified"); },
+  get rework() { return translate("Rework in progress"); },
+  get discarded() { return translate("Discarded"); },
 };
 
 export interface VideoMarkerFeedback {

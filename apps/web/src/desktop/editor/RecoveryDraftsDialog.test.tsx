@@ -1,3 +1,7 @@
+import { act } from "@testing-library/react";
+import { changeAppLanguage, SYSTEM_LANGUAGE } from "../../i18n";
+import { afterEach } from "vitest";
+afterEach(() => changeAppLanguage(SYSTEM_LANGUAGE));
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useNotificationStore } from "../../stores/notification-store";
@@ -18,7 +22,8 @@ import { RecoveryDraftsDialog } from "./RecoveryDraftsDialog";
 
 const target = { projectId: "project-a", workspaceId: "workspace-a" };
 
-beforeEach(() => {
+beforeEach(async () => {
+  await changeAppLanguage("en");
   vi.clearAllMocks();
   useNotificationStore.getState().clearAll();
   fixture.recoverDraft.mockResolvedValue({ revision: 5, replayed: false });
@@ -35,8 +40,13 @@ describe("RecoveryDraftsDialog", () => {
     const dialog = await screen.findByTestId("recovery-drafts-dialog");
     expect(dialog).toBeInTheDocument();
     const row = await screen.findByTestId("recovery-draft-row");
-    expect(row).toHaveTextContent(new Date(1_700_000_000_000).toLocaleString());
+    expect(row).toHaveTextContent(new Date(1_700_000_000_000).toLocaleString("en"));
     expect(row).toHaveTextContent("Edits before returning to a save point");
+    await act(() => changeAppLanguage("zh-CN"));
+    expect(row).toHaveTextContent(new Date(1_700_000_000_000).toLocaleString("zh-CN"));
+    expect(fixture.listRecoveryDrafts).toHaveBeenCalledTimes(1);
+    expect(fixture.recoverDraft).not.toHaveBeenCalled();
+    await act(() => changeAppLanguage("en"));
 
     fireEvent.click(row);
     await waitFor(() => expect(fixture.recoverDraft).toHaveBeenCalledWith(target, "draft-1"));

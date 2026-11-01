@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { BoardImport } from "./media";
 
@@ -87,7 +88,7 @@ export function captureBoardDocument(element: HTMLElement, width: number, height
 /** Capture the existing Markdown preview in an untransformed, white DOM viewport. */
 async function captureDocumentViewport(element: HTMLElement, width: number, height: number): Promise<Blob> {
   const bridge = window.reelterminal?.humanBoardDocuments;
-  if (!bridge) throw new Error("文档截图需要桌面版");
+  if (!bridge) throw new Error(canonicalMessage("Document capture requires the desktop app"));
   const viewport = document.createElement("div");
   viewport.className = "human-board-document-capture";
   // A 32-bit black/white paint receipt sits above the document and is excluded
