@@ -7,6 +7,7 @@ import { Check, ChevronRight, Circle } from "lucide-react"
 
 import { NO_DRAG } from "@reelterminal/ui/lib/app-region"
 import { cn } from "@reelterminal/ui/lib/utils"
+import { preservePopupFocus } from "../lib/popup-focus"
 
 const ContextMenu = ContextMenuPrimitive.Root
 
@@ -60,11 +61,15 @@ ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName
 const ContextMenuContent = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>
->(({ className, style, ...props }, ref) => (
+>(({ className, style, onCloseAutoFocus, ...props }, ref) => (
   <ContextMenuPrimitive.Portal>
     <ContextMenuPrimitive.Content
       ref={ref}
       style={{ ...NO_DRAG, ...style }}
+      onCloseAutoFocus={(event) => {
+        onCloseAutoFocus?.(event)
+        preservePopupFocus(event)
+      }}
       className={cn(
         "z-50 max-h-[--radix-context-menu-content-available-height] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
         className

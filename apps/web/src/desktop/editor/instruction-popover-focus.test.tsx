@@ -39,7 +39,7 @@ vi.mock("@reelterminal/ui/components/popover", async () => {
   return { Popover, PopoverTrigger, PopoverContent };
 });
 
-function InstructionHandoff() {
+function InstructionHandoff({ next = "dialog" }: { next?: "dialog" | "menu" }) {
   const [picker, setPicker] = useState(true);
   const [editor, setEditor] = useState(false);
   return <>
@@ -47,10 +47,10 @@ function InstructionHandoff() {
       content={<button onClick={() => { setPicker(false); setEditor(true); }}>Edit selected instruction</button>}>
       <button>Add instruction</button>
     </ToolcraftPopover>
-    <ToolcraftPopover label="Instruction editor" isOpen={editor} onOpenChange={setEditor}
+    {next === "menu" ? editor && <div role="menu" data-state="open"><button autoFocus>Instruction menu item</button></div> : <ToolcraftPopover label="Instruction editor" isOpen={editor} onOpenChange={setEditor}
       content={<input aria-label="Instruction title" />}>
       <button>Edit instruction</button>
-    </ToolcraftPopover>
+    </ToolcraftPopover>}
   </>;
 }
 
@@ -62,6 +62,13 @@ it("retains the new instruction editor when the previous picker restores focus l
   const title = screen.getByRole("textbox", { name: "Instruction title" });
   expect(document.activeElement).toBe(title);
   expect(screen.getByRole("dialog", { name: "Instruction editor" })).toBeInTheDocument();
+});
+
+it("retains focus owned by a newly opened instruction menu", async () => {
+  render(<InstructionHandoff next="menu" />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit selected instruction" }));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Instruction menu item" }));
 });
 
 it("returns focus to the instruction trigger when no other dialog owns it", async () => {
