@@ -12,18 +12,16 @@ A collaborative video editor for people and AI assistants. Generate anywhere; fi
 
 </div>
 
-ReelTerminal connects a timeline, canvas and external AI assistant to the same project. You make creative decisions, preview and refine; your assistant handles batch or structured edits. Both share project state, editing history and version comparison.
+ReelTerminal connects a timeline, preview canvas and external AI assistant to the same video project. You make creative decisions, preview and refine; your assistant handles batch or structured edits. Both share the video project's state, editing history and version comparison.
 
 ![ReelTerminal desktop: media library, preview, timeline and version history](docs/assets/desktop-screenshot.png)
 
-## What you can do
+## Video editing
 
 | Workflow | Capabilities |
 | --- | --- |
 | Edit and deliver video | Arrange media, adjust clips and audio, preview and export. Constant-speed retiming preserves pitch by default; inspect individual frames and compare saved versions. |
 | Collaborate with an external assistant | Give the app's startup prompt to an assistant with local command execution. The CLI discovers tools on demand and uses explicit targets, revision checks and undoable edits. |
-| Multimodal review (experimental) | Curate image, text, table, video and GLB batches, record issues, repair content, and hand decisions or rework back to your assistant. |
-| Private free boards (experimental) | Organize images, text, video, GLB, Markdown, HTML and web pages in reorderable tabs. Capture rectangles, polygons or freehand selections with optional transparency. Board content stays outside Agent context. |
 | Captions and audio cleanup | Generate local captions with Qwen or SenseVoice. Analyze loudness, speech activity, silence and beats, then explicitly apply the desired timeline edits. |
 
 Projects, media caches, editing and rendering run locally. See [external dependencies](docs/EXTERNAL-DEPENDENCIES.md) for model downloads, external pages and optional network services. You choose and configure the AI assistant separately.
@@ -31,11 +29,9 @@ Projects, media caches, editing and rendering run locally. See [external depende
 ## Get started
 
 1. Download the Windows x64 installer or portable ZIP from [Releases](https://github.com/yuchen-ya/reelterminal/releases). Extract the entire ZIP before running `ReelTerminal.exe`. Available packages for other platforms are listed on the release page.
-2. Create or open a video project. For standalone asset curation, enter Review Workspace without creating a video project.
+2. Create or open a video project.
 3. To collaborate with an assistant, copy the app's startup prompt into an assistant with local command execution. Connections start read-only; enable editing for the intended target when needed.
 4. Preview and refine in the app, retain the versions you need, and export the result.
-
-Dragging an object on a free board moves it within the layout. To drag out a system file, select the content, choose 「单个文件：拖出 / 保存」, then drag the output panel's 「拖出文件」 button to the destination.
 
 ### Installation and compatibility
 
@@ -43,6 +39,10 @@ Dragging an object on a free board moves it within the layout. To drag out a sys
 - Before upgrading, read the [Windows upgrade and backup guide](docs/WINDOWS-UPGRADE.md). Keep existing projects and data; a portable ZIP may still read the existing data directory.
 - Features requiring FFmpeg/ffprobe use separately installed tools. Caption models and optional Python/OpenCV environments need configuration; the app does not silently run `pip` in the background.
 - Project templates contain structural snapshots rather than all source media. Retain a version node before major experiments. See the [user guide](docs/USER-GUIDE.md) for feature limits.
+
+## Review Workspace: independent module
+
+See the [separate README](README_review_en.md) for Review Workspace and Free Boards. Integration with video editing remains limited.
 
 ## Run from source
 
@@ -63,7 +63,6 @@ For browser development, use `corepack pnpm dev`. Desktop collaboration and nati
 ## Documentation and feedback
 
 - [Desktop user guide](docs/USER-GUIDE.md): interface, workflows and limits. Help in the app includes English and Chinese offline manuals.
-- [Review Workspace and private free boards](README_review_en.md): batch curation, repair, rework handoff and file output.
 - [Agent guide](docs/AGENT-GUIDE.md) and [Command API](docs/COMMAND-API.md): connections, permissions and selective tool discovery.
 - [Agent workspace guide](docs/AGENT-WORKSPACE.md): media-production file conventions. Repository development follows [AGENTS.md](AGENTS.md), with isolated test profiles.
 - [External dependencies](docs/EXTERNAL-DEPENDENCIES.md) and [color management](docs/COLOR.md): environment setup and media-processing conventions.
