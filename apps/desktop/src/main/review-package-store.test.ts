@@ -14,7 +14,7 @@ import { ReviewPackageStore } from "./review-package-store";
 const directories: string[] = [];
 afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
 
-it("exports and inspects a real portable node, restores new managed bytes, and rejects altered paths/files", async () => {
+async function createPortableNode() {
   const directory = await mkdtemp(path.join(tmpdir(), "reel-review-package-")); directories.push(directory);
   const source = path.join(directory, "source.txt"); await writeFile(source, "Exact 👀\r\noriginal");
   const files = new ReviewFileStore(path.join(directory, "review"));
@@ -32,8 +32,25 @@ it("exports and inspects a real portable node, restores new managed bytes, and r
   await exporter.prepare({ exportId, nodeId, nodeRevision: 1, name: "Package", mode: "node-package", scope: "node", archive: JSON.stringify(archive), entries: [{ resourceId: original.id, fileName: "source.txt" }] });
   expect((await exporter.wait(exportId)).state).toBe("ready");
   const destination = path.join(directory, "backup"); await mkdir(destination);
+  return { directory, source, files, archive, exporter, exportId, destination, reader: new ReviewPackageStore(files), original };
+}
+
+it("exports and inspects a portable node and restores independent managed bytes", async () => {
+  const { source, files, original, exporter, exportId, destination, reader } = await createPortableNode();
   const copied = await exporter.copy(exportId, destination);
-  const reader = new ReviewPackageStore(files);
+  const preview = await reader.inspect(copied.directory);
+  expect(preview).toMatchObject({ itemCount: 1, versionCount: 1, resourceCount: 1 });
+  const prepared = await reader.prepare(preview.packageId, randomUUID(), preview.digest);
+  expect(prepared.resources[0].id).not.toBe(original.id);
+  expect(prepared.resources[0].storage.kind).toBe("managed");
+  expect((await readFile((await files.resolve(prepared.resources[0].id, true)).path)).equals(await readFile(source))).toBe(true);
+  await expect(reader.prepare(preview.packageId, randomUUID(), "0".repeat(64))).rejects.toMatchObject({ reason: "CONFLICT" });
+  expect(await readFile(source, "utf8")).toBe("Exact 👀\r\noriginal");
+});
+
+it("backs up populated and empty nodes with groups and rejects stale node revisions", async () => {
+  const { source, files, archive, exporter, exportId, destination, reader } = await createPortableNode();
+  const existingCopy = await exporter.copy(exportId, destination);
   const emptyNode = { ...archive.node, id: randomUUID(), archivedAt: 1, trashedAt: 2 };
   const emptyExportId = randomUUID();
   await exporter.prepare({ exportId: emptyExportId, nodeId: emptyNode.id, nodeRevision: emptyNode.revision, name: emptyNode.name,
@@ -48,13 +65,12 @@ it("exports and inspects a real portable node, restores new managed bytes, and r
   expect(await reader.inspect(path.join(backup.directory, ...index.nodes[0].relativePath.split("/")))).toMatchObject({ itemCount: 1, resourceCount: 1 });
   expect(await reader.inspect(path.join(backup.directory, ...index.nodes[1].relativePath.split("/")))).toMatchObject({ itemCount: 0, resourceCount: 0 });
   await expect(exporter.backup({ workspaceId: archive.node.workspaceId, revision: 4, groups: [], nodes: [{ exportId, node: { ...archive.node, revision: 99 } }] }, destination)).rejects.toMatchObject({ reason: "CONFLICT" });
-  const preview = await reader.inspect(copied.directory);
-  expect(preview).toMatchObject({ itemCount: 1, versionCount: 1, resourceCount: 1 });
-  const prepared = await reader.prepare(preview.packageId, randomUUID(), preview.digest);
-  expect(prepared.resources[0].id).not.toBe(original.id);
-  expect(prepared.resources[0].storage.kind).toBe("managed");
-  expect((await readFile((await files.resolve(prepared.resources[0].id, true)).path)).equals(await readFile(source))).toBe(true);
-  await expect(reader.prepare(preview.packageId, randomUUID(), "0".repeat(64))).rejects.toMatchObject({ reason: "CONFLICT" });
+  expect((await readFile(path.join(existingCopy.directory, "source.txt"))).equals(await readFile(source))).toBe(true);
+});
+
+it("rejects traversal and tampered package files without changing the source", async () => {
+  const { source, exporter, exportId, destination, reader } = await createPortableNode();
+  const copied = await exporter.copy(exportId, destination);
   const manifestPath = path.join(copied.directory, "manifest.json");
   const manifestText = await readFile(manifestPath, "utf8");
   const manifest = JSON.parse(manifestText);
