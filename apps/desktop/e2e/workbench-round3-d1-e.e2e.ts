@@ -160,7 +160,7 @@ async function markTwoCellsRework(page: LaunchedApp["page"], firstValue: string,
 async function publishFromDialog(page: LaunchedApp["page"], expectedCount: number): Promise<void> {
   await page.getByRole("button", { name: /Publish review results/ }).click();
   const publish = page.getByRole("button", {
-    name: new RegExp(`(?:发布|更新)交接结果.*${expectedCount} 项`),
+    name: new RegExp(`^(?:Publish|Update) handoff results \\(${expectedCount} items\\)$`),
   });
   await publish.waitFor({ timeout: 10_000 });
   await publish.click();

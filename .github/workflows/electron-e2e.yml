@@ -124,8 +124,10 @@ jobs:
           pnpm --filter @reelterminal/desktop exec vitest run --config e2e/vitest.config.ts \
           e2e/audio-pitch.e2e.ts e2e/free-board-documents.e2e.ts \
           e2e/human-board-acceptance.e2e.ts e2e/review-update-continuity.e2e.ts \
-          e2e/review-interaction.e2e.ts \
-          -t 'packaged pitch-preserving playback|HTTP and local HTML|Display-P3 Markdown snapshots|video/model interactions|CLI image revisions retain|reveals the opened item'
+          e2e/review-interaction.e2e.ts e2e/review-batch-updates.e2e.ts \
+          e2e/review-video-a7.e2e.ts e2e/workbench-round2-media.e2e.ts \
+          e2e/workbench-round2-visual.e2e.ts e2e/workbench-round3-d1-e.e2e.ts \
+          -t 'packaged pitch-preserving playback|HTTP and local HTML|Display-P3 Markdown snapshots|mixed-media board appends|video/model interactions|CLI image revisions retain|reveals the opened item|compact batch picker updates|A7 actual VFR|workbench round 2: real media|workbench round 2: prototype|workbench round 3 D1'
       - name: Run Electron E2E (flows A+B, cross-cutting, endpoint safety)
         env:
           REELTERMINAL_E2E_SMALL_WINDOW: "1"

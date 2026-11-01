@@ -158,7 +158,16 @@ test("private mixed-media board appends in one scene, exports one frozen contain
     await vi.waitFor(async () => expect((await boards(page))[0].elements.find(element => element.id === image.id)?.isDeleted).toBe(false), { timeout: 20_000 });
     await saved(page);
     await page.mouse.click((await elementPoint(page, image)).x, (await elementPoint(page, image)).y);
-    await page.getByTestId("human-board-image-repair").click();
+    const repairButton = page.getByTestId("human-board-image-repair");
+    await repairButton.scrollIntoViewIfNeeded();
+    const repairHit = await repairButton.evaluate(button => {
+      const rect = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      return { clickable: Boolean(hit && button.contains(hit)), width: rect.width, height: rect.height };
+    });
+    evidence.record("narrowEnglishToolbarRepairHit", repairHit);
+    expect(repairHit.clickable).toBe(true);
+    await repairButton.click();
     const repairCanvas = page.getByTestId("human-board-repair-canvas");
     await vi.waitFor(async () => expect(await repairCanvas.evaluate((canvas: HTMLCanvasElement) => canvas.width)).toBe(fixture.width));
     const repairBounds = (await repairCanvas.boundingBox())!;

@@ -183,7 +183,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     });
     try {
       await page.getByTestId("workbench-copy-ingest").click();
-      await page.getByText("Connection instructions copied").waitFor({ state: "visible" });
+      await page.getByRole("status").filter({ hasText: /^Connection instructions copied\./ }).waitFor({ state: "visible" });
       const calls = await clipboardHandle.evaluate(state => state.calls);
       expect(calls).toHaveLength(1);
       expectVideoStartupPrompt(calls[0], identity);
@@ -194,7 +194,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
       });
       await page.getByTestId("workbench-copy-ingest").click();
       await page.getByText("Copy failed. Check that the project workspace is ready and try again.", { exact: true }).waitFor({ state: "visible" });
-      expect(await page.getByText("Connection instructions copied").count()).toBe(0);
+      expect(await page.getByRole("status").filter({ hasText: /^Connection instructions copied\./ }).count()).toBe(0);
       evidence.record("clipboardInternal", { payloadMatchesDisplayedInstructions: true, rejectionShown: true, adapterStub: true });
     } finally {
       await clipboardHandle.evaluate(state => { navigator.clipboard.writeText = state.original; });
@@ -217,7 +217,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     }
     const page = launched.page;
     await page.getByTestId("workbench-copy-ingest").click();
-    await page.getByText("Connection instructions copied").waitFor({ state: "visible", timeout: 10_000 });
+    await page.getByRole("status").filter({ hasText: /^Connection instructions copied\./ }).waitFor({ state: "visible", timeout: 10_000 });
     let clipboardText = "";
     await vi.waitFor(async () => {
       clipboardText = await launched.app.evaluate(({ clipboard }) => clipboard.readText());
@@ -485,7 +485,7 @@ describe("workbench round 2: prototype hierarchy with real media", () => {
     await page.getByText(/Frame index unavailable/).first().waitFor({ state: "visible" });
 
     // Seek to ~50% through the real 2 s fixture, then mark the frame.
-    const scrubber = page.locator("[title='点击/拖动跳转播放位置']");
+    const scrubber = page.locator("[title='Click or drag to seek']");
     const scrubBox = await scrubber.boundingBox();
     expect(scrubBox).not.toBeNull();
     await page.mouse.click(

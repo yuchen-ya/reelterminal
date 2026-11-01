@@ -227,7 +227,7 @@ describe("workbench round 2: real media repair and marker persistence", () => {
       undefined,
       { timeout: 30_000 },
     );
-    const scrubber = page.locator("[title='点击/拖动跳转播放位置']");
+    const scrubber = page.locator("[title='Click or drag to seek']");
     const scrubBox = await scrubber.boundingBox();
     expect(scrubBox).not.toBeNull();
     await page.mouse.click(
@@ -457,7 +457,7 @@ describe("workbench round 2: real media repair and marker persistence", () => {
     const first = await agent.callCommand<Snapshot>("workbench.handoff.get", { handoffId: firstId });
     expect(first.value!.handoff.items.find((item) => item.itemId === VIDEO_ID)?.videoMarkers).toHaveLength(1);
     await selectTreeItem(page, "待标记视频");
-    const scrub = await page.locator("[title='点击/拖动跳转播放位置']").boundingBox();
+    const scrub = await page.locator("[title='Click or drag to seek']").boundingBox();
     expect(scrub).not.toBeNull();
     await page.mouse.click(scrub!.x + scrub!.width * 0.7, scrub!.y + scrub!.height / 2);
     await page.getByRole("button", { name: /Mark issue frame/ }).click();

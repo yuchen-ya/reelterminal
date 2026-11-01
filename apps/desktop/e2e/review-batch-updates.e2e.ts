@@ -49,7 +49,7 @@ describe("compact batch picker updates", () => {
     await picker.click();
     const menu = page.getByTestId("workbench-batch-menu");
     expect(await menu.getByRole("menuitemradio").first().innerText()).toContain(names[1]);
-    expect(await menu.getByRole("menuitemradio").first().innerText()).toContain("NEW");
+    expect(await menu.getByRole("menuitemradio").first().innerText()).toContain("新增");
     await menu.getByRole("menuitemradio").filter({ hasText: names[1] }).click();
     await vi.waitFor(async () => expect(await page.getByTestId("workbench-batch-new").count()).toBe(0));
     await page.reload({ waitUntil: "domcontentloaded" });

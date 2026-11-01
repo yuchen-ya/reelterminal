@@ -78,7 +78,7 @@ test("A7 actual VFR, rotation and nonzero container start: GUI anchors, versions
     };
     const seek = async (seconds: number) => {
       const duration = await player().evaluate((el: HTMLVideoElement) => el.duration);
-      const box = (await page.locator("[title='点击/拖动跳转播放位置']").boundingBox())!;
+      const box = (await page.locator("[title='Click or drag to seek']").boundingBox())!;
       await page.mouse.click(box.x + box.width * seconds / duration, box.y + box.height / 2);
       await vi.waitFor(async () => {
         expect(await player().evaluate((el: HTMLVideoElement) => el.seeking)).toBe(false);

@@ -291,7 +291,7 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
   return <div ref={host} className="flex h-full min-h-0 flex-col" data-testid="human-board-canvas" data-board-id={initialBoard.id} data-selected-element-id={selected.length === 1 ? selected[0].id : undefined} data-save-state={saveState} data-exported-node-id={exportedNodeId}
     onKeyDown={event => event.stopPropagation()}>
     {/* Single fixed-height (h-10) unified board toolbar keeps scene origin 100% stable across selection changes. */}
-    <div className="flex h-10 shrink-0 items-center gap-1.5 overflow-x-auto scrollbar-none border-b border-border bg-bg-1 px-3 text-xs">
+    <div data-testid="human-board-toolbar" className="flex h-10 shrink-0 items-center gap-1.5 overflow-x-auto scrollbar-none border-b border-border bg-bg-1 px-3 text-xs">
       <input aria-label={t("Board name")} data-testid="human-board-name" className="h-6 w-36 shrink-0 rounded-[5px] border border-border bg-bg-2 px-2 text-xs text-fg focus:outline-none focus:ring-1 focus:ring-accent" value={name} maxLength={200} onChange={event => { setName(event.target.value); board.current = { ...board.current, name: event.target.value.trim() || translate("Untitled board") }; scheduleSave(); }} />
       {saveState !== "saved" && (
         <span role="status" className="shrink-0 text-[11px] text-fg-3">
@@ -330,7 +330,8 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
         <Crop className="h-3.5 w-3.5" />
         <span>{t("Region capture")}</span>
       </button>
-      <div className="flex min-w-0 flex-1 items-center gap-1.5 pl-1" data-testid="human-board-selection-tools">
+      {/* Keep the full action width in the scroll area so trailing controls cannot cover image actions. */}
+      <div className="flex min-w-max flex-1 items-center gap-1.5 pl-1" data-testid="human-board-selection-tools">
         {selected.length > 0 && <>
           <div className="mx-0.5 h-3.5 w-px shrink-0 bg-border" />
           <span className="shrink-0 font-medium text-accent">{t("Selected: {{v0}}", { v0: selected.length })}</span>
