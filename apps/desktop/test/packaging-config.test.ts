@@ -1,18 +1,19 @@
 /**
- * Packaging config guard: the ONNX runtime is ~64 MB per platform/arch tree.
- * A regression that removes the platform/arch pruning silently adds dozens of
- * megabytes to every installer (and ships binaries that are never loaded).
+ * Exercise the builder's merged payload filters as well as native runtime
+ * pruning. A platform include must not undo shared development-file exclusions.
  *
  * electron-builder is a devDependency and owns js-yaml; resolve it through the
  * real (non-symlinked) package location so this test needs no extra dependency.
  */
-import { readFileSync, realpathSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, type Stats } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const builderRequire = createRequire(realpathSync(path.join(desktopDir, "node_modules", "electron-builder", "package.json")));
 
 interface ElectronBuilderConfig {
   readonly asarUnpack?: readonly string[];
@@ -25,10 +26,46 @@ interface ElectronBuilderConfig {
 }
 
 function loadConfig(): ElectronBuilderConfig {
-  const builderPackage = realpathSync(path.join(desktopDir, "node_modules", "electron-builder", "package.json"));
-  const yaml = createRequire(builderPackage)("js-yaml") as { load(source: string): unknown };
+  const yaml = builderRequire("js-yaml") as { load(source: string): unknown };
   return yaml.load(readFileSync(path.join(desktopDir, "electron-builder.yml"), "utf8")) as ElectronBuilderConfig;
 }
+
+describe("effective app payload filters", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  it.each(["mac", "win", "linux"] as const)("keeps shared exclusions after merging %s options", (platform) => {
+    const config = loadConfig();
+    const root = mkdtempSync(path.join(tmpdir(), "reelterminal-packaging-filter-"));
+    roots.push(root);
+    const { getMainFileMatchers } = builderRequire("app-builder-lib/out/fileMatcher") as {
+      getMainFileMatchers(...args: unknown[]): Array<{ createFilter(): (file: string, stat: Stats) => boolean }>;
+    };
+    const [matcher] = getMainFileMatchers(root, path.join(root, "app"), (value: string) => value,
+      config[platform] ?? {}, { info: { projectDir: root, buildResourcesDir: "build", config, debugLogger: { isEnabled: false } } },
+      path.join(root, "release"), false);
+    const include = matcher.createFilter();
+    const matches = (relative: string) => {
+      const file = path.join(root, relative);
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, "packaging fixture");
+      return include(file, statSync(file));
+    };
+
+    for (const file of ["package.json", "dist/main/index.js", "dist/preload/index.js", "dist/reelctl/index.js", "dist/aurora-host/index.js", "dist/python/align.py"]) {
+      expect(matches(file), `${platform} runtime ${file}`).toBe(true);
+    }
+    for (const file of [
+      "src/main/index.ts",
+      "dist/main/index.js.map", "dist/preload/index.js.map", "dist/reelctl/index.js.map", "dist/aurora-host/index.js.map",
+      "dist/.artifacts/evidence.json", "dist/tests/fixture.txt", "dist/main/example.test.js", "dist/.env.local",
+    ]) {
+      expect(matches(file), `${platform} development file ${file}`).toBe(false);
+    }
+  });
+});
 
 describe("electron-builder ONNX runtime packaging", () => {
   const config = loadConfig();
