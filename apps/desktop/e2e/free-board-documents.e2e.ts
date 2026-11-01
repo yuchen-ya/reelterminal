@@ -330,6 +330,13 @@ test("HTTP and local HTML use an isolated native browser, navigate real links, a
       guest.sendInputEvent({ type: "mouseUp", x: rect.x, y: rect.y, button: "left", clickCount: 1 });
     }, server.url);
     await vi.waitFor(() => expect(server.requests).toContain("/next"), { timeout: 15_000 });
+    // Receiving the HTTP request is earlier than committing/loading the linked
+    // document. Capture deliberately rejects an in-flight main-frame load.
+    await vi.waitFor(async () => expect(await launched.app.evaluate(({ webContents }, origin) => {
+      const guest = webContents.getAllWebContents().find(contents => contents.getURL() === `${origin}next`);
+      return Boolean(guest && !guest.isLoadingMainFrame());
+    }, server.url)).toBe(true), { timeout: 15_000 });
+    evidence.record("linkedPageLoaded", true);
     await evidence.screenshot("http-linked-browser");
     await page.getByTestId("human-board-browser-capture").click(); await page.getByTestId("human-board-browser").waitFor({ state: "hidden" }); await saved(page);
     webpage = (await boards(page))[0].elements.find(element => element.id === webpage.id)!;

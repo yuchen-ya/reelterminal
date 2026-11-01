@@ -13,6 +13,7 @@
  */
 import { existsSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright-core";
 import {
@@ -104,8 +105,15 @@ async function launch(
     catch { return "unavailable"; }
   };
 
+  // Playwright's default Electron loader appends --force-color-profile=srgb
+  // after parsing our arguments. A colour-profile scenario must launch the same
+  // Electron executable directly (as packaged-app runs do), without that loader.
+  // The app still runs its normal entry point and all isolation paths below.
+  const executablePath = process.env.REELTERMINAL_E2E_APP_EXECUTABLE
+    ?? (chromiumArgs.some(arg => arg.startsWith("--force-color-profile="))
+      ? createRequire(import.meta.url)("electron") as string : undefined);
   const app = await electron.launch({
-    ...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? { executablePath: process.env.REELTERMINAL_E2E_APP_EXECUTABLE } : {}),
+    ...(executablePath ? { executablePath } : {}),
     args: [...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? [] : ["."]), ...(process.env.REELTERMINAL_E2E_SOFTWARE_GL === "1" ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : []), ...chromiumArgs, "--lang=en-US", `--user-data-dir=${paths.userDataDir}`],
     cwd: DESKTOP_DIR,
     env: {

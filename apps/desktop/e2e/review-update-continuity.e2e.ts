@@ -257,10 +257,10 @@ test("CLI image revisions retain decoded pixels, view state and explicit failure
     expect(new Set(applyEvents.map(event => event.callId)).size).toBe(6);
     evidence.record("actualActionEvents", observedEvents);
     const uiStates = await page.evaluate(() => (window as unknown as { reviewObservedUiStates: string[] }).reviewObservedUiStates);
-    expect(uiStates.some(text => text.includes("review.repair.apply|运行中"))).toBe(true);
-    expect(uiStates.some(text => text.includes("review.repair.apply|成功"))).toBe(true);
-    expect(uiStates.some(text => text.includes("review.repair.apply|失败"))).toBe(true);
     evidence.record("actualUiCommandStates", uiStates);
+    expect(uiStates.some(text => text.includes("review.repair.apply|Running"))).toBe(true);
+    expect(uiStates.some(text => text.includes("review.repair.apply|Succeeded"))).toBe(true);
+    expect(uiStates.some(text => text.includes("review.repair.apply|Failed"))).toBe(true);
     const frames = await page.evaluate(() => {
       const state = window as unknown as { continuitySampling: boolean; continuityFrames: unknown[] };
       state.continuitySampling = false;
