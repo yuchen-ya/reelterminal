@@ -14,6 +14,8 @@ export interface Notification {
   /** Fires when the card body is activated (click or Enter/Space). */
   onClick?: () => void;
   onClickLabel?: string;
+  /** Only app-owned action labels opt into localization; arbitrary labels stay verbatim. */
+  localizeOnClickLabel?: boolean;
   /** Fires only when the user dismisses via X, never on programmatic removal. */
   onDismiss?: () => void;
 }

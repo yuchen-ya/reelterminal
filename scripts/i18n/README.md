@@ -16,7 +16,11 @@ trusted editor IPC bridge.
 `LocalizedMessage` and `localizeUiMessage` translate known app messages when
 rendered, including retained messages after switching languages. Never apply
 these helpers to saved names, document text, Agent output, or user-authored
-notification bodies. Toast bodies containing only a user name/path explicitly
+notification bodies. Task failures carry explicit application/external provenance;
+legacy records without provenance stay verbatim. App-generated wrappers use a
+`detail` parameter so external diagnostics are not recursively translated. AST
+checks cannot prove message provenance; component and storage round-trip tests
+are required. Toast bodies containing only a user name/path explicitly
 set `{ localizeMessage: false }`.
 
 Persisted identity is independent of presentation. In particular, legacy cleanup

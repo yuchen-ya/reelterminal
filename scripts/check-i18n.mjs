@@ -86,6 +86,15 @@ export function inspectSource(text, file, { allowed = new Map(), keyAvailable = 
       }
       if (ts.isTemplateExpression(node)) { for (const span of node.templateSpans) visit(span.expression); return; }
     }
+    if (/services\/agent-media-tasks\/(?:agent-media-task-service|task-machine|task-import|task-insert)\.ts$/.test(file)) {
+      let diagnostic;
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+        const index = node.expression.text === "fail" ? 1 : ["failure", "insertFailure"].includes(node.expression.text) ? 2 : -1;
+        if (index >= 0) diagnostic = node.arguments[index];
+      }
+      if (file.endsWith("/task-machine.ts") && ts.isPropertyAssignment(node) && node.name.getText(source) === "message") diagnostic = node.initializer;
+      if (diagnostic && (stringLike(diagnostic) || ts.isTemplateExpression(diagnostic))) report(diagnostic, "unlocalized-app-diagnostic", "Use canonical uiMessage copy and preserve external diagnostic details as parameters.");
+    }
     const type = translationCall(node);
     if (type) {
       const first = node.arguments[0];

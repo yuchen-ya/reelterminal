@@ -47,14 +47,16 @@ export type AgentTaskInsertOutcome =
       readonly taskId: string;
       readonly code: string;
       readonly message: string;
+      readonly messageSource?: "application" | "external";
     };
 
 function insertFailure(
   taskId: string,
   code: string,
   message: string,
+  messageSource?: "application" | "external",
 ): AgentTaskInsertOutcome {
-  return { ok: false, taskId, code, message };
+  return { ok: false, taskId, code, message, ...(messageSource ? { messageSource } : {}) };
 }
 
 /**
@@ -111,6 +113,7 @@ export async function insertDoneTaskTimeline(
       taskId,
       result.error?.code ?? "INSERT_FAILED",
       result.error?.message ?? canonicalMessage("Timeline insertion failed"),
+      result.error?.message ? "external" : "application",
     );
   }
   const createdClipId = collectClipIds().find((clipId) => !before.has(clipId));

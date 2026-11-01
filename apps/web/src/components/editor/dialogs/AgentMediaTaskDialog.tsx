@@ -197,7 +197,7 @@ function TaskRow({
   readonly record: AgentMediaTaskRecord;
   readonly busy: boolean;
   readonly currentProjectId: string | null;
-  readonly rowError: { readonly code: string; readonly message: string } | null;
+  readonly rowError: { readonly code: string; readonly message: string; readonly messageSource?: "application" | "external" } | null;
   readonly onCancel: (record: AgentMediaTaskRecord) => void;
   readonly onImport: (record: AgentMediaTaskRecord) => void;
   readonly onInsert: (record: AgentMediaTaskRecord) => void;
@@ -249,7 +249,7 @@ function TaskRow({
           data-testid="amt-auto-confirm-notice"
           className="mt-1.5 rounded-md border border-status-warning/30 bg-status-warning/8 px-2 py-1.5 text-[10px] leading-relaxed text-status-warning"
         >
-          {t("agentMediaTasks.autoConfirmBadge")}：<LocalizedMessage>{record.autoConfirmNotice}</LocalizedMessage>
+          {t("agentMediaTasks.autoConfirmBadge")}：{record.autoConfirmNoticeSource === "application" ? <LocalizedMessage>{record.autoConfirmNotice}</LocalizedMessage> : record.autoConfirmNotice}
         </p>
       ) : null}
       {record.status === "error" || record.failureReason ? (
@@ -257,8 +257,8 @@ function TaskRow({
           role="alert"
           className="mt-1.5 rounded-md border border-status-error/30 bg-status-error/8 px-2 py-1.5 text-[10px] leading-relaxed text-status-error"
         >
-          <LocalizedMessage>{record.error ? `${record.error.code}：` : ""}</LocalizedMessage>
-          <LocalizedMessage>{record.failureReason}</LocalizedMessage>
+          {record.error ? `${record.error.code}：` : ""}
+          {record.error?.messageSource === "application" ? <LocalizedMessage>{record.failureReason}</LocalizedMessage> : record.failureReason}
         </p>
       ) : null}
       {rowError ? (
@@ -267,7 +267,7 @@ function TaskRow({
           data-testid="amt-row-error"
           className="mt-1.5 rounded-md border border-status-error/30 bg-status-error/8 px-2 py-1.5 text-[10px] leading-relaxed text-status-error"
         >
-          <LocalizedMessage>{rowError.message}</LocalizedMessage>
+          {rowError.messageSource === "external" ? rowError.message : <LocalizedMessage>{rowError.message}</LocalizedMessage>}
         </p>
       ) : null}
       {record.status === "awaiting_import" ? (
@@ -369,7 +369,7 @@ export const AgentMediaTaskDialog: React.FC = () => {
   const { tasks, unreadable, listError, reload } = useAgentMediaTaskList();
 
   const [busy, setBusy] = useState(false);
-  const [rowError, setRowError] = useState<{ id: string; code: string; message: string } | null>(
+  const [rowError, setRowError] = useState<{ id: string; code: string; message: string; messageSource?: "application" | "external" } | null>(
     null,
   );
   const actionDeps = useAgentMediaTaskActionDeps();
@@ -387,7 +387,7 @@ export const AgentMediaTaskDialog: React.FC = () => {
   const runRowAction = useCallback(
     async (
       record: AgentMediaTaskRecord,
-      action: () => Promise<{ ok: boolean; code?: string; message?: string }>,
+      action: () => Promise<{ ok: boolean; code?: string; message?: string; messageSource?: "application" | "external" }>,
     ): Promise<void> => {
       setRowError(null);
       setBusy(true);
@@ -398,6 +398,7 @@ export const AgentMediaTaskDialog: React.FC = () => {
             id: record.id,
             code: outcome.code ?? "INTERNAL",
             message: outcome.message ?? String(outcome.code ?? "INTERNAL"),
+            messageSource: outcome.messageSource,
           });
         }
       } catch (error) {
@@ -405,6 +406,7 @@ export const AgentMediaTaskDialog: React.FC = () => {
           id: record.id,
           code: "INTERNAL",
           message: error instanceof Error ? error.message : String(error),
+          messageSource: "external",
         });
       } finally {
         setBusy(false);

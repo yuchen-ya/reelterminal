@@ -255,7 +255,7 @@ describe("status flow", () => {
     if (!failed.ok) return;
     expect(failed.value.status).toBe("error");
     expect(failed.value.resultPath).toBeUndefined();
-    expect(failed.value.error).toEqual({ code: "IMPORT_FAILED", message: "文件已消失" });
+    expect(failed.value.error).toEqual({ code: "IMPORT_FAILED", message: "文件已消失", messageSource: "external" });
     expect(failed.value.failureReason).toBe("文件已消失");
   });
 

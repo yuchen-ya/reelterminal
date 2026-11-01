@@ -587,3 +587,25 @@ it("requires the remounted image to decode when returning through an item that n
   await act(async () => finishDecode());
   expect(screen.getByTestId("image-stage-image")).toBe(returning);
 });
+
+it("keeps English comparison controls mounted when the first repair arrives", async () => {
+  await act(() => changeAppLanguage("en"));
+  const { update } = renderUpdatingImage(imageItem());
+  loadImage(screen.getByTestId("image-stage-pending-image") as HTMLImageElement);
+  const image = await screen.findByTestId("image-stage-image");
+  const toolbar = screen.getByTestId("image-toolbar");
+  const original = screen.getByTestId("image-display-original");
+  const repaired = screen.getByTestId("image-display-repaired");
+  const hold = screen.getByRole("button", { name: "Hold to view original" });
+  const count = toolbar.querySelectorAll("button").length;
+  expect(repaired).toBeDisabled();
+  expect(hold).toBeDisabled();
+  update(repairedItem(2));
+  expect(screen.getByTestId("image-display-original")).toBe(original);
+  expect(screen.getByTestId("image-display-repaired")).toBe(repaired);
+  expect(screen.getByRole("button", { name: "Hold to view original" })).toBe(hold);
+  expect(toolbar.querySelectorAll("button")).toHaveLength(count);
+  expect(repaired).not.toBeDisabled();
+  expect(hold).not.toBeDisabled();
+  expect(screen.getByTestId("image-stage-image")).toBe(image);
+});

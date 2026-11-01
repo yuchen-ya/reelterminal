@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 /** Compatibility helpers for the stored task auto-confirm field. */
 
 export interface AgentTaskCapabilityBits {
@@ -9,7 +10,7 @@ export type AgentTaskAutoConfirmDecision =
   | { readonly mode: "manual-only"; readonly reason: string };
 
 export const MANUAL_CONFIRM_NOTICE =
-  "Automatic confirmation was unavailable when this task was created. Inspect its output, then confirm it manually or mark it failed.";
+  canonicalMessage("Automatic confirmation was unavailable when this task was created. Inspect its output, then confirm it manually or mark it failed.");
 
 /** Preserve the historical capability decision when reading or creating records in tests. */
 export function decideTaskAutoConfirmation(

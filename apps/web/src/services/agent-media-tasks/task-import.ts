@@ -55,6 +55,7 @@ export type AgentTaskActionOutcome =
       readonly code: string;
       readonly message: string;
       readonly record?: AgentMediaTaskRecord;
+      readonly messageSource?: "application" | "external";
     };
 
 /** One import attempt per task at a time; duplicate triggers collapse. */
@@ -65,8 +66,9 @@ function failure(
   code: string,
   message: string,
   record?: AgentMediaTaskRecord,
+  messageSource?: "application" | "external",
 ): AgentTaskActionOutcome {
-  return { ok: false, taskId, code, message, ...(record ? { record } : {}) };
+  return { ok: false, taskId, code, message, ...(record ? { record } : {}), ...(messageSource ? { messageSource } : {}) };
 }
 
 interface ResolvedTaskActionDeps {
@@ -111,7 +113,7 @@ export async function importAwaitingTask(
     return { ok: true, taskId, record, skipped: true, mediaId: record.resultMediaId };
   }
   if (record.status !== "awaiting_import") {
-    return failure(taskId, "INVALID_STATUS", `task is ${record.status}`, record);
+    return failure(taskId, "INVALID_STATUS", canonicalMessage("task is {{v0}}", { v0: record.status }), record);
   }
   const currentProjectId = getCurrentProjectId();
   if (!currentProjectId || currentProjectId !== record.targetProjectId) {
@@ -143,7 +145,7 @@ export async function importAwaitingTask(
   }
   const filePresent = await artifactExists(record.resultPath);
   if (filePresent === false) {
-    const marked = await service.markError(taskId, {
+    const marked = await service.markApplicationError(taskId, {
       code: "ARTIFACT_MISSING",
       message: canonicalMessage("The output file no longer exists and cannot be imported; retry generation"),
     });
@@ -191,7 +193,7 @@ export async function importAwaitingTask(
       message: reply.message,
     });
     return marked.ok
-      ? failure(taskId, reply.code, reply.message, marked.value)
+      ? failure(taskId, reply.code, reply.message, marked.value, "external")
       : failure(taskId, marked.code, marked.message);
   } finally {
     importsInFlight.delete(taskId);
@@ -213,7 +215,7 @@ export async function confirmTaskArtifactManually(
   if (!loaded.ok) return failure(taskId, loaded.code, loaded.message);
   const record = loaded.value;
   if (isTerminalTaskStatus(record.status)) {
-    return failure(taskId, "INVALID_STATUS", `task is ${record.status}`, record);
+    return failure(taskId, "INVALID_STATUS", canonicalMessage("task is {{v0}}", { v0: record.status }), record);
   }
   if (record.status === "awaiting_import") {
     return importAwaitingTask(taskId, deps);
@@ -245,7 +247,8 @@ export async function markTaskFailedManually(
   reason?: string,
 ): Promise<AgentTaskActionOutcome> {
   const { service } = deps;
-  const marked = await service.markError(taskId, {
+  const mark = reason?.trim() ? service.markError.bind(service) : service.markApplicationError.bind(service);
+  const marked = await mark(taskId, {
     code: "MANUAL_MARKED_FAILED",
     message:
       reason?.trim() ||

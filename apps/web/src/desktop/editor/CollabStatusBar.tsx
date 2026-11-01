@@ -1,3 +1,4 @@
+import { t as translate } from "../../i18n";
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { LayoutTemplate, LockKeyhole, Pencil } from "@/icons/lucide-compat";
@@ -66,20 +67,22 @@ export function CollabStatusBar({ onConnectRequested }: {
               useCollabStore.setState({ startupHintShown: true });
               const notificationId = useNotificationStore.getState().addNotification({
                 type: "info",
-                title: t("desktop.collaboration.startupTitle"),
-                message: t("desktop.collaboration.startupDescription"),
+                title: "desktop.collaboration.startupTitle",
+                message: "desktop.collaboration.startupDescription",
+                localizeMessage: true,
                 duration: 0,
-                onClickLabel: t("desktop.collaboration.copyStartupPrompt"),
+                onClickLabel: "desktop.collaboration.copyStartupPrompt",
+                localizeOnClickLabel: true,
                 onClick: async () => {
                   try {
                     const { project, workspaceId } = useProjectStore.getState();
                     if (!workspaceId) throw new Error("The project workspace is not ready");
                     const info = await window.reelterminal!.collabControl!.getStartupInfo({ kind: "video", projectId: project.id, workspaceId });
-                    await navigator.clipboard.writeText(t("desktop.collaboration.startupPrompt", info));
+                    await navigator.clipboard.writeText(translate("desktop.collaboration.startupPrompt", info));
                     useNotificationStore.getState().removeNotification(notificationId);
-                    toast.success(t("desktop.collaboration.startupCopied"));
+                    toast.success(translate("desktop.collaboration.startupCopied"));
                   } catch (error) {
-                    toast.error(t("desktop.collaboration.startupCopyFailed"), error instanceof Error ? error.message : String(error));
+                    toast.error(translate("desktop.collaboration.startupCopyFailed"), error instanceof Error ? error.message : String(error));
                   }
                 },
               });

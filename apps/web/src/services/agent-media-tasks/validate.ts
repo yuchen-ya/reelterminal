@@ -94,6 +94,8 @@ export function validateAgentTaskRecord(raw: unknown): AgentTaskValidationResult
     return invalid("error must be { code, message } when present");
   }
 
+  const errorMessageSource = isRecord(error) ? error.messageSource : undefined;
+  const noticeMessageSource = raw.autoConfirmNoticeSource;
   const validated: AgentMediaTaskRecord = {
     id: raw.id,
     recordVersion,
@@ -110,7 +112,9 @@ export function validateAgentTaskRecord(raw: unknown): AgentTaskValidationResult
     ...(raw.resultMediaId !== undefined ? { resultMediaId: asOptionalString(raw.resultMediaId) } : {}),
     ...(raw.failureReason !== undefined ? { failureReason: asOptionalString(raw.failureReason) } : {}),
     ...(error !== undefined
-      ? { error: { code: (error as { code: string }).code, message: (error as { message: string }).message } }
+      ? { error: { code: (error as { code: string }).code, message: (error as { message: string }).message,
+          ...((errorMessageSource === "application" || errorMessageSource === "external")
+            ? { messageSource: errorMessageSource } : {}) } }
       : {}),
     targetProjectId: raw.targetProjectId,
     ...(raw.targetProjectName !== undefined
@@ -122,6 +126,8 @@ export function validateAgentTaskRecord(raw: unknown): AgentTaskValidationResult
     ...(raw.autoConfirmNotice !== undefined
       ? { autoConfirmNotice: asOptionalString(raw.autoConfirmNotice) }
       : {}),
+    ...((noticeMessageSource === "application" || noticeMessageSource === "external")
+      ? { autoConfirmNoticeSource: noticeMessageSource } : {}),
     attempt: raw.attempt,
     revision: raw.revision,
     ...(raw.sessionIdHint !== undefined ? { sessionIdHint: asOptionalString(raw.sessionIdHint) } : {}),

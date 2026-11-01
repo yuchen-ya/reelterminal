@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { changeAppLanguage, SYSTEM_LANGUAGE } from "../../../i18n";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   AgentMediaTaskService,
@@ -25,8 +26,9 @@ class MemoryAgentTaskStorage implements AgentTaskStorage {
 /** Storage whose ledger read fails until the test flips the flag back. */
 class FlakyLoadAgentTaskStorage extends MemoryAgentTaskStorage {
   failLoadAll = false;
+  loadFailure = "ledger unavailable";
   async loadAll(): Promise<unknown[]> {
-    if (this.failLoadAll) throw new Error("ledger unavailable");
+    if (this.failLoadAll) throw new Error(this.loadFailure);
     return super.loadAll();
   }
 }
@@ -57,13 +59,17 @@ function openDialog(): void {
   useUIStore.setState({ activeModal: AGENT_MEDIA_TASK_MODAL_ID });
 }
 
+afterEach(async () => { setAgentMediaTaskServiceForTests(null); useUIStore.setState({ activeModal: null }); await changeAppLanguage(SYSTEM_LANGUAGE); });
+
 describe("AgentMediaTaskDialog state", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await changeAppLanguage("en");
     useProjectStore.setState({ project: createEmptyProject("Dialog Demo") });
     useUIStore.setState({ activeModal: null });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await changeAppLanguage(SYSTEM_LANGUAGE);
     setAgentMediaTaskServiceForTests(null);
     delete (window as unknown as { reelterminal?: unknown }).reelterminal;
     useUIStore.setState({ activeModal: null });
@@ -141,4 +147,55 @@ describe("AgentMediaTaskDialog state", () => {
     expect(await screen.findByTestId(`amt-row-${saved.id}`)).toBeInTheDocument();
     expect(screen.queryByTestId("amt-list-failed")).not.toBeInTheDocument();
   });
+});
+
+it("preserves external and legacy diagnostic text across locale changes and ledger reload", async () => {
+  await changeAppLanguage("en");
+  const storage = new MemoryAgentTaskStorage(), service = new AgentMediaTaskService(storage);
+  for (const [id, message] of [["amt_external-key", "Keep"], ["amt_external-en", "Operation failed"], ["amt_external-zh", "操作失败"], ["amt_legacy", "Keep"]]) {
+    await seedTask(service, id);
+    await service.markError(id, { code: "PROVIDER", message });
+  }
+  const legacy = storage.rows.get("amt_legacy")!;
+  storage.rows.set(legacy.id, { ...legacy, error: { code: "PROVIDER", message: "Keep" } });
+  await seedTask(service, "amt_application");
+  await service.markApplicationError("amt_application", { code: "APP", message: "Operation failed" });
+  await seedTask(service, "amt_external-notice");
+  await service.markSubmitted("amt_external-notice", { autoConfirm: { mode: "manual-only", reason: "Keep" } });
+  const appNotice = await service.createTask({ id: "amt_application-notice", kind: "tts", promptText: "Stored words", targetProjectId: "proj-1", insertIntent: "timeline", capabilityBits: { formalReply: "unsupported" } });
+  expect(appNotice.ok).toBe(true);
+  const before = structuredClone([...storage.rows.values()]);
+  const reloaded = new AgentMediaTaskService(storage);
+  setAgentMediaTaskServiceForTests(reloaded);
+  openDialog(); render(<AgentMediaTaskDialog />);
+  const external = await screen.findByTestId("amt-row-amt_external-key");
+  const alert = (id: string) => within(screen.getByTestId(`amt-row-${id}`)).getByRole("alert");
+  expect(within(external).getByRole("alert")).toHaveTextContent("PROVIDER：Keep");
+  await act(() => changeAppLanguage("zh-CN"));
+  expect(alert("amt_external-key").textContent).toBe("PROVIDER：Keep");
+  expect(alert("amt_external-en").textContent).toBe("PROVIDER：Operation failed");
+  expect(alert("amt_external-zh").textContent).toBe("PROVIDER：操作失败");
+  expect(alert("amt_legacy").textContent).toBe("PROVIDER：Keep");
+  expect(alert("amt_application").textContent).toBe("APP：操作失败");
+  expect(within(screen.getByTestId("amt-row-amt_external-notice")).getByTestId("amt-auto-confirm-notice")).toHaveTextContent("Keep");
+  expect(within(screen.getByTestId("amt-row-amt_application-notice")).getByTestId("amt-auto-confirm-notice")).toHaveTextContent("该任务创建时无法自动确认结果，请在查看产物后手动确认或标记失败。");
+  await act(() => changeAppLanguage("en"));
+  expect(alert("amt_external-zh").textContent).toBe("PROVIDER：操作失败");
+  expect(alert("amt_application").textContent).toBe("APP：Operation failed");
+  expect([...storage.rows.values()]).toEqual(before);
+});
+
+it("localizes an application list failure while preserving a colliding external diagnostic detail", async () => {
+  await changeAppLanguage("en");
+  const storage = new FlakyLoadAgentTaskStorage();
+  storage.failLoadAll = true; storage.loadFailure = "Keep";
+  setAgentMediaTaskServiceForTests(new AgentMediaTaskService(storage));
+  openDialog(); render(<AgentMediaTaskDialog />);
+  const failed = await screen.findByTestId("amt-list-failed");
+  expect(failed).toHaveTextContent("agent task list failed: Error: Keep");
+  await act(() => changeAppLanguage("zh-CN"));
+  expect(failed).toHaveTextContent("读取 Agent 任务列表失败：Error: Keep");
+  expect(failed).not.toHaveTextContent("Error: 保留");
+  await act(() => changeAppLanguage("en"));
+  expect(failed).toHaveTextContent("agent task list failed: Error: Keep");
 });

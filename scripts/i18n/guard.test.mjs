@@ -44,3 +44,11 @@ test("checks static alternatives inside conditional translation calls", () => {
   assert.deepEqual(result.keys.map(item => item.key), ["Known", "Missing"]);
   assert.equal(result.findings[0].detail, "Missing");
 });
+
+test("guards application-owned task service diagnostics beyond JSX", () => {
+  const file = "apps/web/src/services/agent-media-tasks/agent-media-task-service.ts";
+  const raw = inspectSource('function list() { return fail("UNAVAILABLE", `task list failed: ${detail}`); }', file);
+  assert.equal(raw.findings[0].kind, "unlocalized-app-diagnostic");
+  const wrapped = inspectSource('import { uiMessage } from "../../i18n/messages"; function list() { return fail("UNAVAILABLE", uiMessage("Task list failed: {{detail}}", { detail })); }', file);
+  assert.equal(wrapped.findings.length, 0);
+});

@@ -1,3 +1,4 @@
+import { uiMessage as canonicalMessage } from "../../i18n/messages";
 /**
  * Pure status machine for agent media tasks.
  *
@@ -60,7 +61,7 @@ export interface TaskTransitionPatch {
   readonly resultPath?: string;
   readonly resultMediaId?: string;
   readonly insertedClipId?: string;
-  readonly error?: { readonly code: string; readonly message: string };
+  readonly error?: AgentMediaTaskRecord["error"];
   readonly failureReason?: string;
 }
 
@@ -87,14 +88,14 @@ export function applyTaskStatusTransition(
     return {
       ok: false,
       code: "INVALID_TRANSITION",
-      message: `task ${record.id} is already ${to}`,
+      message: canonicalMessage("task {{v0}} is already {{v1}}", { v0: record.id, v1: to }),
     };
   }
   if (!canTransitionTaskStatus(record.status, to)) {
     return {
       ok: false,
       code: "INVALID_TRANSITION",
-      message: `task ${record.id} cannot move from ${record.status} to ${to}`,
+      message: canonicalMessage("task {{v0}} cannot move from {{v1}} to {{v2}}", { v0: record.id, v1: record.status, v2: to }),
     };
   }
 
@@ -143,7 +144,7 @@ export function applyTaskRetry(
     return {
       ok: false,
       code: "INVALID_TRANSITION",
-      message: `task ${record.id} in status ${record.status} cannot be retried`,
+      message: canonicalMessage("task {{v0}} in status {{v1}} cannot be retried", { v0: record.id, v1: record.status }),
     };
   }
   return {

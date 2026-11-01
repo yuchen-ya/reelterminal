@@ -354,7 +354,9 @@ export function ImageViewerToolbar({
       <div className="ml-auto flex items-center gap-1">
         {viewMode === "zoom" && (
           <>
-            {repair && (
+            {/* Keep comparison controls mounted before the first repair arrives.
+                Adding a row here would resize/re-fit the still-visible old image
+                while its replacement is decoding, especially with wider labels. */}
               <div className={wbButton.segmentedContainer}>
                 <button
                   type="button"
@@ -367,28 +369,26 @@ export function ImageViewerToolbar({
                 <button
                   type="button"
                   onClick={() => setDisplayMode("repaired")}
-                  disabled={!repairReady}
+                  disabled={!repair || !repairReady}
                   className={wbButton.segmentedItem(displayMode === "repaired")}
                   data-testid="image-display-repaired"
                 >
                   {t("Repair")}<span className="sr-only">{t("View repair")}</span>
                 </button>
               </div>
-            )}
-            {repair && (
               <button
                 type="button"
-                onPointerDown={() => setHoldOriginal(true)}
+                disabled={!repair}
+                onPointerDown={() => { if (repair) setHoldOriginal(true); }}
                 onPointerUp={() => setHoldOriginal(false)}
                 onPointerLeave={() => setHoldOriginal(false)}
                 onPointerCancel={() => setHoldOriginal(false)}
-                className={holdOriginal ? wbButton.primary : wbButton.ghost}
+                className={`${holdOriginal ? wbButton.primary : wbButton.ghost} disabled:opacity-40`}
                 title={t("Hold to view the original without strokes or repairs")}
               >
                 <Eye className="h-3.5 w-3.5" />
                 <span className="sr-only">{t("Hold to view original")}</span>
               </button>
-            )}
             {onToggleLoupe && (
               <button
                 type="button"

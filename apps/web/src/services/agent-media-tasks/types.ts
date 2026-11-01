@@ -41,6 +41,9 @@ export interface AgentMediaTaskOverrides {
  */
 export type AgentMediaTaskAutoConfirmMode = "receipt" | "manual-only";
 
+/** Missing provenance in legacy records is treated as external, never inferred from text. */
+export type AgentTaskMessageSource = "application" | "external";
+
 export interface AgentMediaTaskRecord {
   /** `amt_<uuid>`; the operation identity. Names are for search only. */
   readonly id: string;
@@ -64,7 +67,7 @@ export interface AgentMediaTaskRecord {
   readonly resultMediaId?: string;
   /** One-line human-readable failure reason (mirrors `error.message`). */
   readonly failureReason?: string;
-  readonly error?: { readonly code: string; readonly message: string };
+  readonly error?: { readonly code: string; readonly message: string; readonly messageSource?: AgentTaskMessageSource };
   /** Snapshot taken at first submission; never retargeted. */
   readonly targetProjectId: string;
   /** Display hint only; the project may be renamed or deleted afterwards. */
@@ -75,6 +78,7 @@ export interface AgentMediaTaskRecord {
   readonly autoConfirm: AgentMediaTaskAutoConfirmMode;
   /** Present when auto-confirm is impossible; shown to the user verbatim. */
   readonly autoConfirmNotice?: string;
+  readonly autoConfirmNoticeSource?: AgentTaskMessageSource;
   /** Retry counter; a retry keeps the record and mints a fresh requestId. */
   readonly attempt: number;
   /** Monotonic CAS guard incremented on every persisted change. */

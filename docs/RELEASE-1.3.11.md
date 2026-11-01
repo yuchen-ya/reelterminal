@@ -2,6 +2,7 @@
 
 - 修正文档画布截图的颜色保真问题：等待画面呈现后通过页面截图保留色彩配置，并继续校验截图标记，避免接收过期画面。
 - 增加 Display-P3 文档截图及前后台窗口焦点回归。
+- 补齐审阅工作台、清理页及相关提示的中英文切换；自由画板工具和应用录屏菜单跟随语言设置。
 - 修订中英文 README 与帮助说明，使用“自由画板”；审阅工作台的操作说明集中在[独立 README](../README_review.md)。目前它与视频编辑的联动尚未完善。
 
 Windows x64 安装版、便携 ZIP 与校验文件见 [Releases](https://github.com/yuchen-ya/reelterminal/releases)。发布包从同一干净提交构建，核验版本、源提交、物理资源与 SHA-256。Windows 包未签名；安装向导未进行人工验收，升级前请阅读 [Windows 升级与备份](WINDOWS-UPGRADE.md)。

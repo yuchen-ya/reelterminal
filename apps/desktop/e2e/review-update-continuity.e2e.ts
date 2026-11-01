@@ -97,6 +97,8 @@ test("CLI image revisions retain decoded pixels, view state and explicit failure
     const transform = await page.getByTestId("image-stage").getAttribute("style");
     const imageBox = (await image().boundingBox())!;
     const clip = { x: Math.ceil(imageBox.x + imageBox.width * 0.3), y: Math.ceil(imageBox.y + imageBox.height * 0.3), width: Math.floor(imageBox.width * 0.4), height: Math.floor(imageBox.height * 0.4) };
+    const viewLayout = async () => ({ image: await image().boundingBox(), toolbar: await page.getByTestId("image-toolbar").boundingBox(), stageStyle: await page.getByTestId("image-stage").getAttribute("style") });
+    evidence.record("viewBeforeUpdate", await viewLayout());
     const beforeFile = evidence.writePng("before-image-region", await page.screenshot({ clip }));
     const beforePixels = decodeRgbaPng(beforeFile).pixels;
     await installDecodeGate(page);
@@ -139,6 +141,7 @@ test("CLI image revisions retain decoded pixels, view state and explicit failure
     await vi.waitFor(async () => expect(await page.getByTestId("image-stage-pending-image").count()).toBe(1));
     await vi.waitFor(async () => expect(await page.evaluate(() => (window as unknown as { reviewDecodeGate: { waiting: unknown[] } }).reviewDecodeGate.waiting.length)).toBe(1));
     for (let index = 0; index < 4; index++) {
+      evidence.record(`viewPending${index}`, await viewLayout());
       const file = evidence.writePng(`pending-frame-${index}`, await page.screenshot({ clip }));
       expect(decodeRgbaPng(file).pixels.equals(beforePixels), `pending frame ${index} must retain exact old image pixels`).toBe(true);
       expect(await image().getAttribute("src")).toBe(oldUrl);

@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { changeAppLanguage, SYSTEM_LANGUAGE } from "../../i18n";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CollabStatusBar } from "./CollabStatusBar";
 import { useUIStore } from "../../stores/ui-store";
@@ -172,4 +173,36 @@ describe("CollabStatusBar requirements access", () => {
     expect(useUIStore.getState().desktopInspectorTab).toBe("board");
     expect(useUIStore.getState().activeModal).toBeNull();
   });
+});
+
+it("keeps the persistent startup notice and its action in the current UI language", async () => {
+  await changeAppLanguage("en");
+  useNotificationStore.getState().clearAll();
+  useCollabStore.setState({ sequence: 0, enabled: false, access: "write", currentAction: null, startupHintShown: false });
+  useProjectStore.setState({ workspaceId: "workspace-a" });
+  const { setAccess, getStartupInfo } = installBridge({ access: "read-only" });
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  try {
+    await renderBar(); render(<ToastContainer />);
+    fireEvent.click(screen.getByTestId("agent-access-toggle"));
+    const card = (await screen.findByText("Copy Agent startup prompt")).closest('[data-testid="notification-toast"]')! as HTMLElement;
+    expect(card).toHaveAttribute("title", "Copy startup prompt");
+    await act(() => changeAppLanguage("zh-CN"));
+    expect(within(card).getByText("复制 Agent 启动提示词")).toBeInTheDocument();
+    expect(within(card).getByText("已允许编辑。点击此提示，复制连接命令和工作目录，然后发给你的 Agent。")).toBeInTheDocument();
+    expect(card).toHaveAttribute("title", "复制启动提示词");
+    await act(() => changeAppLanguage("en"));
+    expect(within(card).getByText("Editing is enabled. Click this notification to copy connection commands and the working folder for your agent.")).toBeInTheDocument();
+    await act(() => changeAppLanguage("zh-CN"));
+    expect(useNotificationStore.getState().notifications).toHaveLength(1);
+    expect(setAccess).toHaveBeenCalledTimes(1);
+    fireEvent.click(card);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("立即执行：& 'C:/ReelTerminal/reelctl.cmd' start --target rt1.fixed-project-workspace"));
+    expect(getStartupInfo).toHaveBeenCalledTimes(1);
+  } finally {
+    useNotificationStore.getState().clearAll();
+    delete openreelWindow.reelterminal;
+    await changeAppLanguage(SYSTEM_LANGUAGE);
+  }
 });

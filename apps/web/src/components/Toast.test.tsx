@@ -1,5 +1,5 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { changeAppLanguage, SYSTEM_LANGUAGE } from "../i18n";
 import { toast, useNotificationStore } from "../stores/notification-store";
 import { ToastContainer } from "./Toast";
@@ -21,4 +21,14 @@ it("updates retained app diagnostics without translating custom notification bod
   expect(useNotificationStore.getState().notifications).toHaveLength(2);
   await act(() => changeAppLanguage("en"));
   expect(within(app).getByText("Document capture cancelled")).toBeInTheDocument();
+});
+
+it("keeps an unmarked custom action tooltip verbatim even when it matches a UI key", async () => {
+  await changeAppLanguage("en");
+  useNotificationStore.getState().addNotification({ type: "info", title: "User action", onClickLabel: "Keep", onClick: vi.fn(), duration: -1 });
+  render(<ToastContainer />);
+  const card = screen.getByTestId("notification-toast");
+  expect(card).toHaveAttribute("title", "Keep");
+  await act(() => changeAppLanguage("zh-CN"));
+  expect(card).toHaveAttribute("title", "Keep");
 });

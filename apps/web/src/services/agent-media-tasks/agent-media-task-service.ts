@@ -264,7 +264,7 @@ export class AgentMediaTaskService {
     ) {
       return fail(
         "CONFLICT",
-        `task "${current.id}" was modified concurrently: expected revision ${expectedRevision}, current is ${current.revision} — re-read and retry`,
+        canonicalMessage("task \"{{v0}}\" was modified concurrently: expected revision {{v1}}, current is {{v2}} — re-read and retry", { v0: current.id, v1: expectedRevision, v2: current.revision }),
         { id: current.id, currentRevision: current.revision, expectedRevision },
       );
     }
@@ -312,7 +312,7 @@ export class AgentMediaTaskService {
         value: { tasks: this.snapshot, unreadable: this.unreadableEntries },
       };
     } catch (error) {
-      return fail(this.mapStorageError(error), `agent task list failed: ${String(error)}`);
+      return fail(this.mapStorageError(error), canonicalMessage("agent task list failed: {{detail}}", { detail: String(error) }));
     }
   }
 
@@ -321,10 +321,10 @@ export class AgentMediaTaskService {
       await this.chain;
       await this.ensureLoaded();
       const record = this.records.get(id);
-      if (!record) return fail("NOT_FOUND", `task "${id}" was not found`, { id });
+      if (!record) return fail("NOT_FOUND", canonicalMessage("task \"{{v0}}\" was not found", { v0: id }), { id });
       return { ok: true, value: record };
     } catch (error) {
-      return fail(this.mapStorageError(error), `task read failed: ${String(error)}`);
+      return fail(this.mapStorageError(error), canonicalMessage("task read failed: {{detail}}", { detail: String(error) }));
     }
   }
 
@@ -336,11 +336,11 @@ export class AgentMediaTaskService {
       await this.ensureLoaded();
       const record = this.requestIdIndex.get(requestId);
       if (!record) {
-        return fail("NOT_FOUND", `no task for requestId "${requestId}"`, { requestId });
+        return fail("NOT_FOUND", canonicalMessage("no task for requestId \"{{v0}}\"", { v0: requestId }), { requestId });
       }
       return { ok: true, value: record };
     } catch (error) {
-      return fail(this.mapStorageError(error), `task read failed: ${String(error)}`);
+      return fail(this.mapStorageError(error), canonicalMessage("task read failed: {{detail}}", { detail: String(error) }));
     }
   }
 
@@ -368,7 +368,7 @@ export class AgentMediaTaskService {
           return { ok: true, value: { record: replayed, replayed: true } };
         }
         if (!(AGENT_MEDIA_TASK_KINDS as readonly string[]).includes(input.kind)) {
-          return fail("INVALID_PARAMS", `unknown task kind: ${String(input.kind)}`, {
+          return fail("INVALID_PARAMS", canonicalMessage("unknown task kind: {{v0}}", { v0: String(input.kind) }), {
             field: "kind",
           });
         }
@@ -390,13 +390,13 @@ export class AgentMediaTaskService {
         if (!(AGENT_MEDIA_TASK_INSERT_INTENTS as readonly string[]).includes(input.insertIntent)) {
           return fail(
             "INVALID_PARAMS",
-            `unknown insert intent: ${String(input.insertIntent)}`,
+            canonicalMessage("unknown insert intent: {{v0}}", { v0: String(input.insertIntent) }),
             { field: "insertIntent" },
           );
         }
         const id = input.id ?? `amt_${uuid()}`;
         if (this.records.has(id)) {
-          return fail("CONFLICT", `task "${id}" already exists`, { id });
+          return fail("CONFLICT", canonicalMessage("task \"{{v0}}\" already exists", { v0: id }), { id });
         }
         const decision = decideTaskAutoConfirmation(input.capabilityBits);
         const now = isoNow(input.now);
@@ -418,7 +418,7 @@ export class AgentMediaTaskService {
             : {}),
           insertIntent: input.insertIntent,
           autoConfirm: decision.mode,
-          ...(decision.mode === "manual-only" ? { autoConfirmNotice: decision.reason } : {}),
+          ...(decision.mode === "manual-only" ? { autoConfirmNotice: decision.reason, autoConfirmNoticeSource: "application" as const } : {}),
           attempt: 0,
           revision: 1,
           ...(input.sessionIdHint !== undefined ? { sessionIdHint: input.sessionIdHint } : {}),
@@ -435,7 +435,7 @@ export class AgentMediaTaskService {
         notifyAgentMediaTasksChanged();
         return { ok: true, value: { record, replayed: false } };
       } catch (error) {
-        return fail(this.mapStorageError(error), `task create failed: ${String(error)}`);
+        return fail(this.mapStorageError(error), canonicalMessage("task create failed: {{detail}}", { detail: String(error) }));
       }
     });
   }
@@ -455,7 +455,7 @@ export class AgentMediaTaskService {
       try {
         await this.ensureLoaded();
         const current = this.records.get(id);
-        if (!current) return fail("NOT_FOUND", `task "${id}" was not found`, { id });
+        if (!current) return fail("NOT_FOUND", canonicalMessage("task \"{{v0}}\" was not found", { v0: id }), { id });
         const casError = this.checkCas(current, input.expectedRevision);
         if (casError) return casError;
         const applied = applyTaskStatusTransition(current, "submitted", {}, isoNow(input.now));
@@ -468,12 +468,12 @@ export class AgentMediaTaskService {
         }
         // The submission-time decision is authoritative: flipping to
         // "receipt" must also drop a stale manual-only notice.
-        const { autoConfirmNotice: _stale, ...carried } = applied.record;
+        const { autoConfirmNotice: _stale, autoConfirmNoticeSource: _staleSource, ...carried } = applied.record;
         const withDecision: AgentMediaTaskRecord = {
           ...carried,
           autoConfirm: input.autoConfirm.mode,
           ...(input.autoConfirm.mode === "manual-only"
-            ? { autoConfirmNotice: input.autoConfirm.reason || MANUAL_CONFIRM_NOTICE }
+            ? { autoConfirmNotice: input.autoConfirm.reason || MANUAL_CONFIRM_NOTICE, autoConfirmNoticeSource: input.autoConfirm.reason ? "external" as const : "application" as const }
             : {}),
         };
         const next: AgentMediaTaskRecord = { ...withDecision, revision: current.revision + 1 };
@@ -484,7 +484,7 @@ export class AgentMediaTaskService {
         notifyAgentMediaTasksChanged();
         return { ok: true, value: next };
       } catch (error) {
-        return fail(this.mapStorageError(error), `task submit failed: ${String(error)}`);
+        return fail(this.mapStorageError(error), canonicalMessage("task submit failed: {{detail}}", { detail: String(error) }));
       }
     });
   }
@@ -504,7 +504,7 @@ export class AgentMediaTaskService {
       try {
         await this.ensureLoaded();
         const current = this.records.get(id);
-        if (!current) return fail("NOT_FOUND", `task "${id}" was not found`, { id });
+        if (!current) return fail("NOT_FOUND", canonicalMessage("task \"{{v0}}\" was not found", { v0: id }), { id });
         const resultPath = requireNonEmpty(input.resultPath ?? "");
         if (!resultPath) {
           return fail("INVALID_PARAMS", canonicalMessage("resultPath must not be empty"), { field: "resultPath" });
@@ -517,7 +517,7 @@ export class AgentMediaTaskService {
           isoNow(input.now),
         );
       } catch (error) {
-        return fail(this.mapStorageError(error), `task update failed: ${String(error)}`);
+        return fail(this.mapStorageError(error), canonicalMessage("task update failed: {{detail}}", { detail: String(error) }));
       }
     });
   }
@@ -544,12 +544,28 @@ export class AgentMediaTaskService {
     id: string,
     input: AgentMediaTaskErrorInput,
   ): Promise<AgentTaskServiceOutcome<AgentMediaTaskRecord>> {
+    return this.markErrorFrom(id, input, "external");
+  }
+
+  /** Local application copy only; provider/user diagnostics must use markError. */
+  async markApplicationError(
+    id: string,
+    input: AgentMediaTaskErrorInput,
+  ): Promise<AgentTaskServiceOutcome<AgentMediaTaskRecord>> {
+    return this.markErrorFrom(id, input, "application");
+  }
+
+  private markErrorFrom(
+    id: string,
+    input: AgentMediaTaskErrorInput,
+    messageSource: "application" | "external",
+  ): Promise<AgentTaskServiceOutcome<AgentMediaTaskRecord>> {
     return this.enqueue(() =>
       this.transitionRecord(
         id,
         "error",
         {
-          error: { code: input.code, message: input.message },
+          error: { code: input.code, message: input.message, messageSource },
           failureReason: input.message,
         },
         input,
@@ -583,7 +599,7 @@ export class AgentMediaTaskService {
       try {
         await this.ensureLoaded();
         const current = this.records.get(id);
-        if (!current) return fail("NOT_FOUND", `task "${id}" was not found`, { id });
+        if (!current) return fail("NOT_FOUND", canonicalMessage("task \"{{v0}}\" was not found", { v0: id }), { id });
         const casError = this.checkCas(current, input.expectedRevision);
         if (casError) return casError;
         const applied = applyTaskRetry(current, `req_${uuid()}`, isoNow(input.now));
@@ -601,7 +617,7 @@ export class AgentMediaTaskService {
         notifyAgentMediaTasksChanged();
         return { ok: true, value: next };
       } catch (error) {
-        return fail(this.mapStorageError(error), `task retry failed: ${String(error)}`);
+        return fail(this.mapStorageError(error), canonicalMessage("task retry failed: {{detail}}", { detail: String(error) }));
       }
     });
   }
@@ -616,7 +632,7 @@ export class AgentMediaTaskService {
       try {
         await this.ensureLoaded();
         const current = this.records.get(id);
-        if (!current) return fail("NOT_FOUND", `task "${id}" was not found`, { id });
+        if (!current) return fail("NOT_FOUND", canonicalMessage("task \"{{v0}}\" was not found", { v0: id }), { id });
         const casError = this.checkCas(current, input.expectedRevision);
         if (casError) return casError;
         const next: AgentMediaTaskRecord = {
@@ -632,7 +648,7 @@ export class AgentMediaTaskService {
         notifyAgentMediaTasksChanged();
         return { ok: true, value: next };
       } catch (error) {
-        return fail(this.mapStorageError(error), `task update failed: ${String(error)}`);
+        return fail(this.mapStorageError(error), canonicalMessage("task update failed: {{detail}}", { detail: String(error) }));
       }
     });
   }
@@ -652,11 +668,11 @@ export class AgentMediaTaskService {
       try {
         await this.ensureLoaded();
         const current = this.records.get(id);
-        if (!current) return fail("NOT_FOUND", `task "${id}" was not found`, { id });
+        if (!current) return fail("NOT_FOUND", canonicalMessage("task \"{{v0}}\" was not found", { v0: id }), { id });
         if (current.status !== "awaiting_import") {
           return fail(
             "INVALID_TRANSITION",
-            `task "${id}" is ${current.status}; the target project check applies to awaiting_import tasks`,
+            canonicalMessage("task \"{{v0}}\" is {{v1}}; the target project check applies to awaiting_import tasks", { v0: id, v1: current.status }),
             { id, status: current.status },
           );
         }
@@ -670,7 +686,7 @@ export class AgentMediaTaskService {
           current,
           "error",
           {
-            error: { code: check.code, message: check.message },
+            error: { code: check.code, message: check.message, messageSource: "application" },
             failureReason: check.message,
           },
           isoNow(input.now),
@@ -686,7 +702,7 @@ export class AgentMediaTaskService {
         notifyAgentMediaTasksChanged();
         return { ok: true, value: { projectId: current.targetProjectId, failedAsMissing: true } };
       } catch (error) {
-        return fail(this.mapStorageError(error), `task verification failed: ${String(error)}`);
+        return fail(this.mapStorageError(error), canonicalMessage("task verification failed: {{detail}}", { detail: String(error) }));
       }
     });
   }
@@ -706,7 +722,7 @@ export class AgentMediaTaskService {
       try {
         await this.ensureLoaded();
         const current = this.records.get(id);
-        if (!current) return fail("NOT_FOUND", `task "${id}" was not found`, { id });
+        if (!current) return fail("NOT_FOUND", canonicalMessage("task \"{{v0}}\" was not found", { v0: id }), { id });
         const trimmed = requireNonEmpty(clipId ?? "");
         if (!trimmed) {
           return fail("INVALID_PARAMS", canonicalMessage("clipId must not be empty"), { field: "clipId" });
@@ -717,7 +733,7 @@ export class AgentMediaTaskService {
         if (current.status !== "done" || !current.resultMediaId) {
           return fail(
             "INVALID_TRANSITION",
-            `task "${id}" is ${current.status}; a timeline insertion can only be recorded on an imported (done) task`,
+            canonicalMessage("task \"{{v0}}\" is {{v1}}; a timeline insertion can only be recorded on an imported (done) task", { v0: id, v1: current.status }),
             { id, status: current.status },
           );
         }
@@ -736,7 +752,7 @@ export class AgentMediaTaskService {
         notifyAgentMediaTasksChanged();
         return { ok: true, value: next };
       } catch (error) {
-        return fail(this.mapStorageError(error), `task update failed: ${String(error)}`);
+        return fail(this.mapStorageError(error), canonicalMessage("task update failed: {{detail}}", { detail: String(error) }));
       }
     });
   }
@@ -758,7 +774,7 @@ export class AgentMediaTaskService {
         notifyAgentMediaTasksChanged();
         return { ok: true, value: { id, alreadyGone: false } };
       } catch (error) {
-        return fail(this.mapStorageError(error), `task remove failed: ${String(error)}`);
+        return fail(this.mapStorageError(error), canonicalMessage("task remove failed: {{detail}}", { detail: String(error) }));
       }
     });
   }
@@ -774,7 +790,7 @@ export class AgentMediaTaskService {
     try {
       return await this.transitionRecordInternal(id, to, patch, input);
     } catch (error) {
-      return fail(this.mapStorageError(error), `task update failed: ${String(error)}`);
+      return fail(this.mapStorageError(error), canonicalMessage("task update failed: {{detail}}", { detail: String(error) }));
     }
   }
 
@@ -786,7 +802,7 @@ export class AgentMediaTaskService {
   ): Promise<AgentTaskServiceOutcome<AgentMediaTaskRecord>> {
     await this.ensureLoaded();
     const current = this.records.get(id);
-    if (!current) return fail("NOT_FOUND", `task "${id}" was not found`, { id });
+    if (!current) return fail("NOT_FOUND", canonicalMessage("task \"{{v0}}\" was not found", { v0: id }), { id });
     return this.transitionTask(current, to, patch, input.expectedRevision, isoNow(input.now));
   }
 }
