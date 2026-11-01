@@ -43,15 +43,20 @@ describe("effective app payload filters", () => {
     const { getMainFileMatchers } = builderRequire("app-builder-lib/out/fileMatcher") as {
       getMainFileMatchers(...args: unknown[]): Array<{ createFilter(): (file: string, stat: Stats) => boolean }>;
     };
-    const [matcher] = getMainFileMatchers(root, path.join(root, "app"), (value: string) => value,
-      config[platform] ?? {}, { info: { projectDir: root, buildResourcesDir: "build", config, debugLogger: { isEnabled: false } } },
-      path.join(root, "release"), false);
-    const include = matcher.createFilter();
+    const { doMergeConfigs } = builderRequire("app-builder-lib/out/util/config/config") as {
+      doMergeConfigs(configs: unknown[]): Record<string, unknown>;
+    };
+    // Production normalizes common patterns into FileSets before creating
+    // matchers. Raw YAML strings alone miss platform-only fallback includes.
+    const normalized = doMergeConfigs([structuredClone(config)]);
+    const filters = getMainFileMatchers(root, path.join(root, "app"), (value: string) => value,
+      normalized[platform] ?? {}, { info: { projectDir: root, buildResourcesDir: "build", config: normalized, debugLogger: { isEnabled: false } } },
+      path.join(root, "release"), false).map(matcher => matcher.createFilter());
     const matches = (relative: string) => {
       const file = path.join(root, relative);
       mkdirSync(path.dirname(file), { recursive: true });
       writeFileSync(file, "packaging fixture");
-      return include(file, statSync(file));
+      return filters.some(include => include(file, statSync(file)));
     };
 
     for (const file of ["package.json", "dist/main/index.js", "dist/preload/index.js", "dist/reelctl/index.js", "dist/aurora-host/index.js", "dist/python/align.py"]) {
@@ -74,21 +79,7 @@ describe("electron-builder ONNX runtime packaging", () => {
     expect(config.files?.some((pattern) => pattern.includes("napi-v6"))).toBe(false);
   });
 
-  it("keeps only the target platform/arch per platform", () => {
-    expect(config.win?.files).toEqual(expect.arrayContaining([
-      expect.stringContaining("darwin"),
-      expect.stringContaining("linux"),
-      expect.stringContaining("win32/arm64"),
-    ]));
-    expect(config.mac?.files).toEqual(expect.arrayContaining([
-      expect.stringContaining("win32"),
-      expect.stringContaining("linux"),
-    ]));
-    expect(config.linux?.files).toEqual(expect.arrayContaining([
-      expect.stringContaining("win32"),
-      expect.stringContaining("darwin"),
-      expect.stringContaining("linux/arm64"),
-    ]));
+  it("builds only the supported Windows architecture", () => {
     expect(new Set(config.win?.target?.flatMap((target) => target.arch ?? []))).toEqual(new Set(["x64"]));
   });
 

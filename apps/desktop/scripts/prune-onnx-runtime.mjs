@@ -1,9 +1,8 @@
 /**
  * electron-builder afterPack: keep only the target platform/arch ONNX runtime
- * binaries in the packaged app. The config-level `files` patterns already drop
- * other OS trees for each target; this hook additionally handles per-arch
- * pruning for targets that build multiple arches in one command (mac arm64+x64
- * otherwise ships both ~60 MB trees in every installer).
+ * binaries in the packaged app. Shared payload filters apply to every platform;
+ * this hook removes both foreign OS and architecture trees, including mac
+ * targets that build arm64 and x64 in one command.
  */
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";

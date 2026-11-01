@@ -15,8 +15,9 @@ asarUnpack:
   # unpacked entry points can resolve it from the same real directory.
   - node_modules/onnxruntime-node/**
   - node_modules/onnxruntime-common/**
-# Keep only the target platform/arch binaries (mac builds arm64+x64 together,
-# so config-level pruning alone would ship both trees in every installer).
+# Keep native ONNX binaries only for the target platform/arch after packing.
+# Platform files lists create separate matchers after normalization and can
+# bypass the shared allowlist/exclusions below; keep all payload rules here.
 afterPack: scripts/prune-onnx-runtime.mjs
 directories:
   output: release
@@ -76,14 +77,6 @@ extraFiles:
   - from: resources/bin/reelctl.cmd
     to: reelctl.cmd
 mac:
-  files:
-    # Keep only the darwin bindings. The mac targets ship arm64 and x64, so
-    # both darwin trees stay; other OS binaries would never be loaded.
-    # These patterns append to the common files list. Its positive allowlist
-    # already scopes the app payload; another positive glob here would undo
-    # shared exclusions such as source maps, tests and local evidence.
-    - "!node_modules/onnxruntime-node/bin/napi-v6/win32{,/**}"
-    - "!node_modules/onnxruntime-node/bin/napi-v6/linux{,/**}"
   extraResources:
     - from: resources/aurora
       to: aurora
@@ -103,13 +96,6 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
   notarize: true
 win:
-  files:
-    # Windows x64 only: drop the other OS trees and the unused win32/arm64
-    # binding (~69 MB unpacked) from every installer. Inherit the common
-    # allowlist and exclusions without re-including dist development files.
-    - "!node_modules/onnxruntime-node/bin/napi-v6/darwin{,/**}"
-    - "!node_modules/onnxruntime-node/bin/napi-v6/linux{,/**}"
-    - "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64{,/**}"
   extraResources:
     - from: resources/aurora
       to: aurora
@@ -131,12 +117,6 @@ nsis:
   # Legacy uninstallers are blocked pending a supported migration.
   include: build/installer.nsh
 linux:
-  files:
-    # Linux x64 only: keep the x64 binding, drop the other OS trees and the
-    # unused linux/arm64 binding. Keep the common allowlist and exclusions.
-    - "!node_modules/onnxruntime-node/bin/napi-v6/win32{,/**}"
-    - "!node_modules/onnxruntime-node/bin/napi-v6/darwin{,/**}"
-    - "!node_modules/onnxruntime-node/bin/napi-v6/linux/arm64{,/**}"
   extraResources:
     - from: resources/aurora
       to: aurora

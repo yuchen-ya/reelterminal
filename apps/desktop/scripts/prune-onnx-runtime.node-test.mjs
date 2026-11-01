@@ -1,6 +1,6 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -26,6 +26,25 @@ afterEach(() => {
 });
 
 describe("pruneOnnxRuntime", () => {
+  for (const [platform, arch, archIndex] of [["darwin", "arm64", 3], ["linux", "x64", 1]]) {
+    it(`afterPack removes foreign platform and architecture trees for ${platform}/${arch}`, async () => {
+      const outDir = mkdtempSync(path.join(os.tmpdir(), "rt-onnx-platform-pack-"));
+      roots.push(outDir);
+      const resources = path.join(outDir, "resources");
+      const binaries = path.join(resources, "app.asar.unpacked", "node_modules", "onnxruntime-node", "bin", "napi-v6");
+      for (const osName of ["darwin", "linux", "win32"]) for (const cpu of ["x64", "arm64"]) {
+        const dir = path.join(binaries, osName, cpu);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path.join(dir, "onnxruntime_binding.node"), "fixture");
+      }
+      await afterPack({ arch: archIndex, electronPlatformName: platform, appOutDir: outDir,
+        packager: { getResourcesDir: () => resources } });
+      assert.deepEqual(readdirSync(binaries), [platform]);
+      assert.deepEqual(readdirSync(path.join(binaries, platform)), [arch]);
+      assert.ok(existsSync(path.join(binaries, platform, arch, "onnxruntime_binding.node")));
+    });
+  }
+
   it("keeps only the target platform and arch", () => {
     const root = fixture({
       darwin: ["arm64", "x64"],
