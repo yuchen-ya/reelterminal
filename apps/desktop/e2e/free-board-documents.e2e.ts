@@ -588,6 +588,16 @@ test("Display-P3 Markdown snapshots retain sRGB asset colours in the composite",
       evidence.record("displayColourSpace", display);
       expect(display).toContain("primaries:P3");
     }, { timeout: 15_000, interval: 250 });
+    // This is a real foreground region-capture gesture. Unlike a DOM click,
+    // a human click also activates its native window before requesting paint.
+    await launched.app.evaluate(({ app, BrowserWindow }) => {
+      app.focus({ steal: true });
+      BrowserWindow.getAllWindows()[0].focus();
+    });
+    await vi.waitFor(async () => expect(await launched.app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      return { visible: window.isVisible(), focused: window.isFocused() };
+    })).toEqual({ visible: true, focused: true }));
     await openBoard(page);
     const files: string[] = [];
     for (const [name, colour] of [["red", [255, 0, 0, 255]], ["green", [0, 220, 0, 255]]] as const) {

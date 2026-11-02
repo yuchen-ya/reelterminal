@@ -124,7 +124,10 @@ test("visible isolated desktop: title close waits, rename is shared, local fonts
       expect(await help.innerText()).toContain("right inspector");
       await launched.page.screenshot({ path: path.join(evidence, "packaged-help.png") });
       await help.getByRole("button", { name: "Close", exact: true }).press("Enter");
-      const packageDirectory = path.dirname(process.env.REELTERMINAL_E2E_APP_EXECUTABLE);
+      const executableDirectory = path.dirname(process.env.REELTERMINAL_E2E_APP_EXECUTABLE);
+      // electron-builder extraFiles are relative to Contents on macOS, and
+      // to the executable's directory on Windows/Linux.
+      const packageDirectory = process.platform === "darwin" ? path.dirname(executableDirectory) : executableDirectory;
       expect(readFileSync(path.join(packageDirectory, "help", "USER-GUIDE.zh.html"), "utf8")).toContain("存档记录");
       expect(readFileSync(path.join(packageDirectory, "help", "USER-GUIDE.en.html"), "utf8")).toContain("Save Points");
       observations.packagedManual = { version: capabilities.manual.contentVersion, guiOpened: true, bilingualOfflineFiles: true };

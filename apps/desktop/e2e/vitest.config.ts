@@ -17,7 +17,7 @@ export default defineConfig({
   test: {
     name: "desktop-e2e",
     include: ["e2e/**/*.e2e.ts", "e2e/harness/**/*.test.ts"],
-    exclude: ["e2e/scratch/**"],
+    exclude: ["e2e/scratch/**", "e2e/.artifacts/**"],
     // One spec file at a time, sequential tests inside a file: each file owns
     // one Electron app instance and they must never share the single-writer
     // live stack or a port.

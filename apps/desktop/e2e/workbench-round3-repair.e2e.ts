@@ -43,6 +43,14 @@ function repairRevisions(item: { revisions?: RepairRevision[] }): RepairRevision
   return (item.revisions ?? []).filter((revision) => revision.kind === "image-repair");
 }
 
+async function waitForCurrentImage(page: LaunchedApp["page"]): Promise<void> {
+  // The retained image stays visible while a new repair base decodes. The
+  // viewport deliberately rejects writes until the requested image is ready.
+  await page.getByTestId("image-stage-pending-image").waitFor({ state: "detached" });
+  await page.getByTestId("image-stage-image").waitFor({ state: "visible" });
+  await page.getByTestId("image-update-status").waitFor({ state: "detached" });
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+}
 
 async function selectImage(page: LaunchedApp["page"]): Promise<void> {
   await page
@@ -69,6 +77,7 @@ async function selectImage(page: LaunchedApp["page"]): Promise<void> {
     undefined,
     { timeout: 20_000 },
   );
+  await waitForCurrentImage(page);
 }
 
 async function waitForItemVersion(
@@ -88,6 +97,7 @@ async function waitForItemVersion(
 }
 
 async function drawRepairStroke(page: LaunchedApp["page"]): Promise<void> {
+  await waitForCurrentImage(page);
   const stage = page.getByTestId("image-stage");
   const box = await stage.boundingBox();
   expect(box).not.toBeNull();
@@ -231,6 +241,7 @@ describe("workbench round 3 batch F: repaired image and reopen", () => {
     const page = launched.page;
     // A4: a real drag at a known normalized point records that point.
     await page.getByTestId("image-mode-annotate").click();
+    await waitForCurrentImage(page);
     const stage = page.getByTestId("image-stage");
     const box = await stage.boundingBox();
     expect(box).not.toBeNull();

@@ -170,12 +170,16 @@ test("private mixed-media board appends in one scene, exports one frozen contain
     await repairButton.click();
     const repairCanvas = page.getByTestId("human-board-repair-canvas");
     await vi.waitFor(async () => expect(await repairCanvas.evaluate((canvas: HTMLCanvasElement) => canvas.width)).toBe(fixture.width));
+    // The canvas receives its intrinsic dimensions before React publishes the
+    // ready state and the modal finishes layout. Start real input after paint.
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const repairBounds = (await repairCanvas.boundingBox())!;
-    for (const sourceX of [20, 50]) {
-      await page.mouse.move(repairBounds.x + sourceX, repairBounds.y + 20); await page.mouse.down();
-      await page.mouse.move(repairBounds.x + sourceX + 2, repairBounds.y + 20, { steps: 2 }); await page.mouse.up();
-    }
     const repairPixel = (x: number) => repairCanvas.evaluate((canvas: HTMLCanvasElement, x) => [...canvas.getContext("2d")!.getImageData(x, 20, 1, 1).data], x);
+    for (const sourceX of [20, 50]) {
+      await page.mouse.move(repairBounds.x + sourceX * repairBounds.width / fixture.width, repairBounds.y + 20 * repairBounds.height / fixture.height); await page.mouse.down();
+      await page.mouse.move(repairBounds.x + (sourceX + 2) * repairBounds.width / fixture.width, repairBounds.y + 20 * repairBounds.height / fixture.height, { steps: 2 }); await page.mouse.up();
+      await vi.waitFor(async () => expect(await repairPixel(sourceX)).toEqual([255, 45, 85, 255]));
+    }
     expect((await repairPixel(50))[0]).toBe(255);
     // Exercise the native menu callback, which crosses preload and the desktop history router.
     await launched.app.evaluate(({ Menu, BrowserWindow }) => {

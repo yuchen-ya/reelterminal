@@ -77,7 +77,9 @@ describe("review collection scopes", () => {
     const statuses = async () => { const result = await read(); return ids.map(id => result.items.find(item => item.id === id)!.status); };
     await board.getByTestId(`board-card-${ids[0]}`).click();
     await vi.waitFor(async () => expect(await board.evaluate(element => element.closest("[inert]") === null)).toBe(true));
+    await vi.waitFor(async () => expect(await board.getByText("已选 1 项", { exact: true }).isVisible()).toBe(true));
     await board.getByTestId(`board-card-${ids[0]}`).focus();
+    await vi.waitFor(async () => expect(await board.getByTestId(`board-card-${ids[0]}`).evaluate(element => element === document.activeElement)).toBe(true));
     await page.keyboard.press("1");
     await vi.waitFor(async () => expect(await statuses()).toEqual(["kept", "pending", "pending", "pending"]));
     await board.getByTestId("board-keep-all").click();
