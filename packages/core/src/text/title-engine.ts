@@ -44,7 +44,11 @@ export interface UpdateTextClipOptions {
 }
 
 export class TitleEngine {
+  private static readonly TEXT_CACHE_MAX_BYTES = 32 * 1024 * 1024;
   private textClips: Map<string, TextClip> = new Map();
+  private textCache = new Map<string, TextRenderResult>();
+  private textCacheBytes = 0;
+  private fontSnapshot: Array<{ face: FontFace; properties: string }> = [];
   private canvas: HTMLCanvasElement | OffscreenCanvas | null = null;
   private ctx:
     | CanvasRenderingContext2D
@@ -217,6 +221,40 @@ export class TitleEngine {
     time: number = 0,
     layoutSize: { width: number; height: number } = { width, height },
   ): TextRenderResult {
+    // A loaded FontFace can be added or removed without a loading event. Compare
+    // the actual set (and mutable descriptors) before reusing any glyphs.
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    const cacheable = fonts && fonts.status === "loaded" &&
+      (!clip.animation || clip.animation.preset === "none") &&
+      !clip.keyframes?.length &&
+      (!clip.emphasisAnimation || clip.emphasisAnimation.type === "none") &&
+      !clip.style.shader && width * height * 4 <= TitleEngine.TEXT_CACHE_MAX_BYTES;
+    let cacheKey: string | undefined;
+    if (cacheable) {
+      const snapshot: Array<{ face: FontFace; properties: string }> = [];
+      fonts.forEach((face) => {
+        const descriptors = face as FontFace & { variant?: string; variationSettings?: string };
+        snapshot.push({
+          face,
+          properties: JSON.stringify([face.status, face.family, face.style, face.weight,
+            face.stretch, face.unicodeRange, descriptors.variant, face.featureSettings,
+            descriptors.variationSettings]),
+        });
+      });
+      if (snapshot.length !== this.fontSnapshot.length || snapshot.some((entry, index) =>
+        entry.face !== this.fontSnapshot[index].face ||
+        entry.properties !== this.fontSnapshot[index].properties)) {
+        this.clearTextCache();
+        this.fontSnapshot = snapshot;
+      }
+      cacheKey = JSON.stringify([clip.text, clip.style, clip.transform, width, height, layoutSize]);
+      const cached = this.textCache.get(cacheKey);
+      if (cached) {
+        this.textCache.delete(cacheKey);
+        this.textCache.set(cacheKey, cached);
+        return this.copyTextResult(cached);
+      }
+    }
     let canvas: HTMLCanvasElement | OffscreenCanvas;
     let ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -379,12 +417,57 @@ export class TitleEngine {
 
     this.applyTextShader(canvas, ctx, style.shader, time, width, height);
 
-    return {
+    const result = {
       canvas,
       width,
       height,
       textMetrics: metrics,
     };
+    if (cacheKey) {
+      const bytes = width * height * 4;
+      while (this.textCacheBytes + bytes > TitleEngine.TEXT_CACHE_MAX_BYTES) {
+        const oldestKey = this.textCache.keys().next().value!;
+        const oldest = this.textCache.get(oldestKey)!;
+        this.textCache.delete(oldestKey);
+        this.textCacheBytes -= oldest.width * oldest.height * 4;
+        oldest.canvas.width = 0;
+        oldest.canvas.height = 0;
+      }
+      this.textCache.set(cacheKey, this.copyTextResult(result));
+      this.textCacheBytes += bytes;
+    }
+    return result;
+  }
+
+  private copyTextResult(result: TextRenderResult): TextRenderResult {
+    let canvas: HTMLCanvasElement | OffscreenCanvas;
+    if (typeof OffscreenCanvas !== "undefined") {
+      canvas = new OffscreenCanvas(result.width, result.height);
+    } else {
+      canvas = document.createElement("canvas");
+      canvas.width = result.width;
+      canvas.height = result.height;
+    }
+    const ctx = canvas.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+    ctx.drawImage(result.canvas, 0, 0);
+    return {
+      canvas,
+      width: result.width,
+      height: result.height,
+      textMetrics: {
+        ...result.textMetrics,
+        lines: result.textMetrics.lines.map((line) => ({ ...line })),
+      },
+    };
+  }
+
+  private clearTextCache(): void {
+    for (const result of this.textCache.values()) {
+      result.canvas.width = 0;
+      result.canvas.height = 0;
+    }
+    this.textCache.clear();
+    this.textCacheBytes = 0;
   }
 
   measureText(text: string, style: TextStyle, maxWidth?: number): TextMetrics {
@@ -580,12 +663,15 @@ export class TitleEngine {
 
   clear(): void {
     this.textClips.clear();
+    this.clearTextCache();
+    this.fontSnapshot = [];
     this.shaderRenderer?.dispose();
     this.shaderRenderer = null;
   }
 
   loadTextClips(clips: TextClip[]): void {
     this.textClips.clear();
+    this.clearTextCache();
     for (const clip of clips) {
       this.textClips.set(clip.id, clip);
     }

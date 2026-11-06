@@ -264,3 +264,33 @@ describe("VideoEngine motion asset resolver", () => {
     }
   });
 });
+
+
+describe("VideoEngine image cache lifecycle", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("releases cached images on clear and decodes new media with the same ID", async () => {
+    const { VideoEngine } = await import("./video-engine");
+    const engine = new VideoEngine();
+    const oldImage = { close: vi.fn() } as unknown as ImageBitmap;
+    const newImage = { close: vi.fn() } as unknown as ImageBitmap;
+    const decode = vi.fn().mockResolvedValueOnce(oldImage).mockResolvedValueOnce(newImage);
+    vi.stubGlobal("createImageBitmap", decode);
+    const renderImage = (engine as unknown as {
+      decodeClipBitmap(clip: unknown, media: unknown, time: number, width: number, height: number): Promise<ImageBitmap | null>;
+    }).decodeClipBitmap.bind(engine);
+    const clip = { startTime: 0 };
+    const oldBlob = new Blob(["old"], { type: "image/png" });
+    const newBlob = new Blob(["new"], { type: "image/png" });
+    const media = { id: "shared-id", type: "image", blob: oldBlob };
+    expect(await renderImage(clip, media, 0, 10, 10)).toBe(oldImage);
+    expect(await renderImage(clip, media, 1, 10, 10)).toBe(oldImage);
+    expect(decode).toHaveBeenCalledTimes(1);
+    engine.clearCache();
+    expect(oldImage.close).toHaveBeenCalledTimes(1);
+    expect(await renderImage(clip, { ...media, blob: newBlob }, 0, 10, 10)).toBe(newImage);
+    expect(decode).toHaveBeenLastCalledWith(newBlob);
+    engine.dispose();
+    expect(newImage.close).toHaveBeenCalledTimes(1);
+  });
+});

@@ -3330,7 +3330,7 @@ export class VideoEngine {
   }
 
   /**
-   * Clears the GIF frame cache, freeing memory.
+   * Clears cached image frames, freeing memory.
    */
   clearCache(): void {
     for (const gifCache of this.gifFrameCache.values()) {
@@ -3339,6 +3339,10 @@ export class VideoEngine {
       }
     }
     this.gifFrameCache.clear();
+    for (const bitmap of this.staticImageCache.values()) {
+      bitmap.close();
+    }
+    this.staticImageCache.clear();
   }
 
   /**
@@ -3352,10 +3356,6 @@ export class VideoEngine {
     this.parallelDecoderPreparation = null;
     this.clearCache();
     this.clearVideoElementCache();
-    for (const bitmap of this.staticImageCache.values()) {
-      try { bitmap.close(); } catch {}
-    }
-    this.staticImageCache.clear();
     for (const engine of this.compoundEngines.values()) engine.dispose();
     this.compoundEngines.clear();
     this.renderingCompounds.clear();

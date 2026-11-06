@@ -145,4 +145,64 @@ describe("MaskEngine state operations", () => {
     expect(operations).toContain("destination-out");
     expect(operations.at(-1)).toBe("source-over");
   });
+
+  it("reuses the scratch canvas while resetting feather and opacity state across frames", async () => {
+    const canvases: Canvas[] = [];
+    const scratchDraws: Array<{ alpha: number; filter: string; composite: string; width: number; height: number }> = [];
+    class Canvas {
+      width: number;
+      height: number;
+      context = {
+        globalAlpha: 1,
+        filter: "none",
+        globalCompositeOperation: "source-over",
+        fillStyle: "",
+        clearRect: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        bezierCurveTo: vi.fn(),
+        closePath: vi.fn(),
+        fill: vi.fn(),
+        drawImage: vi.fn(() => {
+          if (canvases[2] === this) {
+            scratchDraws.push({
+              alpha: this.context.globalAlpha,
+              filter: this.context.filter,
+              composite: this.context.globalCompositeOperation,
+              width: this.width,
+              height: this.height,
+            });
+          }
+        }),
+      };
+      constructor(width: number, height: number) {
+        this.width = width;
+        this.height = height;
+        canvases.push(this);
+      }
+      getContext() { return this.context; }
+    }
+    vi.stubGlobal("OffscreenCanvas", Canvas);
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => ({})));
+    const engine = new MaskEngine({ width: 100, height: 100 });
+    const mask = engine.createDrawnMask("clip", {
+      closed: true,
+      points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }],
+    });
+    mask.feathering = 4;
+    mask.opacity = 0.5;
+    await engine.applyMask({ width: 100, height: 100 } as ImageBitmap, mask);
+    mask.feathering = 8;
+    mask.opacity = 0.25;
+    await engine.applyMask({ width: 200, height: 120 } as ImageBitmap, mask);
+
+    expect(canvases).toHaveLength(3);
+    expect(scratchDraws).toEqual([
+      { alpha: 1, filter: "blur(4px)", composite: "source-over", width: 100, height: 100 },
+      { alpha: 0.5, filter: "none", composite: "source-over", width: 100, height: 100 },
+      { alpha: 1, filter: "blur(8px)", composite: "source-over", width: 200, height: 120 },
+      { alpha: 0.25, filter: "none", composite: "source-over", width: 200, height: 120 },
+    ]);
+    expect(canvases[2].context.clearRect).toHaveBeenCalledTimes(4);
+  });
 });

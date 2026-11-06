@@ -56,7 +56,13 @@ interface AnimatedGraphicState {
 export class GraphicsEngine {
   private animationEngine: AnimationEngine;
   private svgCache: Map<string, SVGElement> = new Map();
-  private imageCache: Map<string, HTMLImageElement> = new Map();
+  private imageCache = new Map<string, { image: Promise<HTMLImageElement>; bytes: number }>();
+  private imageCacheBytes = 0;
+  private svgImageCache = new Map<
+    string,
+    { image: Promise<HTMLImageElement>; bytes: number }
+  >();
+  private svgImageCacheBytes = 0;
   private shapeClips: Map<string, ShapeClip> = new Map();
   private svgClips: Map<string, SVGClip> = new Map();
   private stickerClips: Map<string, StickerClip> = new Map();
@@ -452,8 +458,7 @@ export class GraphicsEngine {
     }
 
     const ctx = canvas.getContext("2d") as
-      | CanvasRenderingContext2D
-      | OffscreenCanvasRenderingContext2D;
+      CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
     if (!ctx) {
       throw new Error("Failed to get canvas context");
@@ -630,8 +635,6 @@ export class GraphicsEngine {
    * Algorithm: Compare aspect ratios to determine orientation (portrait/landscape mismatch).
    * Scale to fit canvas while maintaining aspect ratio, then center.
    *
-   * Note: SVG must be converted to image blob first due to canvas limitations with direct SVG rendering.
-   * URL.createObjectURL is revoked in finally to prevent memory leaks.
    */
   private getAnimatedSVGSourceInset(
     animatedState: AnimatedGraphicState,
@@ -681,80 +684,55 @@ export class GraphicsEngine {
       renderWidth = Math.ceil(renderHeight * svgAspect);
     }
 
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(svg.svgContent, "image/svg+xml");
-    const svgElement = doc.querySelector("svg");
-    if (svgElement) {
-      svgElement.setAttribute("width", String(renderWidth));
-      svgElement.setAttribute("height", String(renderHeight));
+    const img = await this.loadSVGImage(
+      svg.svgContent,
+      renderWidth,
+      renderHeight,
+    );
+
+    if (animatedState.blur > 0) {
+      ctx.filter = `blur(${animatedState.blur}px)`;
     }
-    const serializer = new XMLSerializer();
-    const scaledSvgContent = svgElement
-      ? serializer.serializeToString(svgElement)
-      : svg.svgContent;
 
-    const blob = new Blob([scaledSvgContent], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
+    const drawWidth = renderWidth / rasterScale;
+    const drawHeight = renderHeight / rasterScale;
+    const sourceInset = this.getAnimatedSVGSourceInset(
+      animatedState,
+      renderWidth,
+      renderHeight,
+    );
+    const sourceWidth = Math.max(1, renderWidth - sourceInset * 2);
+    const sourceHeight = Math.max(1, renderHeight - sourceInset * 2);
+    const drawX = -drawWidth / 2 + sourceInset / rasterScale;
+    const drawY = -drawHeight / 2 + sourceInset / rasterScale;
+    const sourceDrawWidth = sourceWidth / rasterScale;
+    const sourceDrawHeight = sourceHeight / rasterScale;
 
-    try {
-      const img = await this.loadImage(url);
-
-      if (animatedState.blur > 0) {
-        ctx.filter = `blur(${animatedState.blur}px)`;
-      }
-
-      const drawWidth = renderWidth / rasterScale;
-      const drawHeight = renderHeight / rasterScale;
-      const sourceInset = this.getAnimatedSVGSourceInset(
-        animatedState,
-        renderWidth,
-        renderHeight,
-      );
-      const sourceWidth = Math.max(1, renderWidth - sourceInset * 2);
-      const sourceHeight = Math.max(1, renderHeight - sourceInset * 2);
-      const drawX = -drawWidth / 2 + sourceInset / rasterScale;
-      const drawY = -drawHeight / 2 + sourceInset / rasterScale;
-      const sourceDrawWidth = sourceWidth / rasterScale;
-      const sourceDrawHeight = sourceHeight / rasterScale;
-
-      if (
-        svg.colorStyle &&
-        svg.colorStyle.colorMode !== "none" &&
-        (svg.colorStyle.colorMode === "tint" ||
-          svg.colorStyle.colorMode === "replace")
-      ) {
-        const tempCanvas = new OffscreenCanvas(renderWidth, renderHeight);
-        const tempCtx = tempCanvas.getContext("2d");
-        if (tempCtx) {
-          tempCtx.drawImage(img, 0, 0, renderWidth, renderHeight);
-          tempCtx.globalCompositeOperation = "source-in";
-          tempCtx.fillStyle = svg.colorStyle.tintColor || "#ffffff";
-          tempCtx.globalAlpha = svg.colorStyle.tintOpacity ?? 1;
-          tempCtx.fillRect(0, 0, renderWidth, renderHeight);
-          ctx.drawImage(
-            tempCanvas,
-            sourceInset,
-            sourceInset,
-            sourceWidth,
-            sourceHeight,
-            drawX,
-            drawY,
-            sourceDrawWidth,
-            sourceDrawHeight,
-          );
-        } else {
-          ctx.drawImage(
-            img,
-            sourceInset,
-            sourceInset,
-            sourceWidth,
-            sourceHeight,
-            drawX,
-            drawY,
-            sourceDrawWidth,
-            sourceDrawHeight,
-          );
-        }
+    if (
+      svg.colorStyle &&
+      svg.colorStyle.colorMode !== "none" &&
+      (svg.colorStyle.colorMode === "tint" ||
+        svg.colorStyle.colorMode === "replace")
+    ) {
+      const tempCanvas = new OffscreenCanvas(renderWidth, renderHeight);
+      const tempCtx = tempCanvas.getContext("2d");
+      if (tempCtx) {
+        tempCtx.drawImage(img, 0, 0, renderWidth, renderHeight);
+        tempCtx.globalCompositeOperation = "source-in";
+        tempCtx.fillStyle = svg.colorStyle.tintColor || "#ffffff";
+        tempCtx.globalAlpha = svg.colorStyle.tintOpacity ?? 1;
+        tempCtx.fillRect(0, 0, renderWidth, renderHeight);
+        ctx.drawImage(
+          tempCanvas,
+          sourceInset,
+          sourceInset,
+          sourceWidth,
+          sourceHeight,
+          drawX,
+          drawY,
+          sourceDrawWidth,
+          sourceDrawHeight,
+        );
       } else {
         ctx.drawImage(
           img,
@@ -768,11 +746,75 @@ export class GraphicsEngine {
           sourceDrawHeight,
         );
       }
-
-      ctx.filter = "none";
-    } finally {
-      URL.revokeObjectURL(url);
+    } else {
+      ctx.drawImage(
+        img,
+        sourceInset,
+        sourceInset,
+        sourceWidth,
+        sourceHeight,
+        drawX,
+        drawY,
+        sourceDrawWidth,
+        sourceDrawHeight,
+      );
     }
+
+    ctx.filter = "none";
+  }
+
+  private loadSVGImage(
+    content: string,
+    width: number,
+    height: number,
+  ): Promise<HTMLImageElement> {
+    const key = JSON.stringify([content, width, height]);
+    const cached = this.svgImageCache.get(key);
+    if (cached) {
+      this.svgImageCache.delete(key);
+      this.svgImageCache.set(key, cached);
+      return cached.image;
+    }
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, "image/svg+xml");
+    const svgElement = doc.querySelector("svg");
+    if (svgElement) {
+      svgElement.setAttribute("width", String(width));
+      svgElement.setAttribute("height", String(height));
+    }
+    const scaledContent = svgElement
+      ? new XMLSerializer().serializeToString(svgElement)
+      : content;
+    const url = URL.createObjectURL(
+      new Blob([scaledContent], { type: "image/svg+xml" }),
+    );
+    const image = this.loadImage(url, false).finally(() =>
+      URL.revokeObjectURL(url),
+    );
+    const bytes = width * height * 4;
+    const maxBytes = 128 * 1024 * 1024;
+    if (bytes <= maxBytes) {
+      while (
+        this.svgImageCache.size >= 128 ||
+        this.svgImageCacheBytes + bytes > maxBytes
+      ) {
+        const oldestKey = this.svgImageCache.keys().next().value!;
+        const oldest = this.svgImageCache.get(oldestKey)!;
+        this.svgImageCache.delete(oldestKey);
+        this.svgImageCacheBytes -= oldest.bytes;
+      }
+      const entry = { image, bytes };
+      this.svgImageCache.set(key, entry);
+      this.svgImageCacheBytes += bytes;
+      void image.catch(() => {
+        if (this.svgImageCache.get(key) === entry) {
+          this.svgImageCache.delete(key);
+          this.svgImageCacheBytes -= bytes;
+        }
+      });
+    }
+    return image;
   }
 
   private async renderSticker(
@@ -1748,22 +1790,52 @@ export class GraphicsEngine {
     };
   }
 
-  private loadImage(url: string): Promise<HTMLImageElement> {
-    const cached = this.imageCache.get(url);
+  private loadImage(url: string, cache = true): Promise<HTMLImageElement> {
+    const cached = cache ? this.imageCache.get(url) : undefined;
     if (cached) {
-      return Promise.resolve(cached);
+      this.imageCache.delete(url);
+      this.imageCache.set(url, cached);
+      return cached.image;
     }
 
-    return new Promise((resolve, reject) => {
+    const image = new Promise<HTMLImageElement>((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.onload = () => {
-        this.imageCache.set(url, img);
-        resolve(img);
-      };
+      img.onload = () => resolve(img);
       img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
       img.src = url;
     });
+    if (!cache) return image;
+
+    const maxBytes = 128 * 1024 * 1024;
+    while (this.imageCache.size >= 128) {
+      const oldestKey = this.imageCache.keys().next().value!;
+      this.imageCacheBytes -= this.imageCache.get(oldestKey)!.bytes;
+      this.imageCache.delete(oldestKey);
+    }
+    const entry = { image, bytes: 0 };
+    this.imageCache.set(url, entry);
+    void image.then((img) => {
+      if (this.imageCache.get(url) !== entry) return;
+      const bytes = img.naturalWidth * img.naturalHeight * 4;
+      if (bytes > maxBytes) {
+        this.imageCache.delete(url);
+        return;
+      }
+      while (this.imageCacheBytes + bytes > maxBytes) {
+        const oldestKey = this.imageCache.keys().next().value!;
+        const oldest = this.imageCache.get(oldestKey)!;
+        this.imageCache.delete(oldestKey);
+        this.imageCacheBytes -= oldest.bytes;
+      }
+      if (this.imageCache.get(url) === entry) {
+        entry.bytes = bytes;
+        this.imageCacheBytes += bytes;
+      }
+    }, () => {
+      if (this.imageCache.get(url) === entry) this.imageCache.delete(url);
+    });
+    return image;
   }
 
   private generateId(): string {
@@ -2044,6 +2116,9 @@ export class GraphicsEngine {
   clearCache(): void {
     this.svgCache.clear();
     this.imageCache.clear();
+    this.imageCacheBytes = 0;
+    this.svgImageCache.clear();
+    this.svgImageCacheBytes = 0;
     this.shapeClips.clear();
     this.svgClips.clear();
     this.stickerClips.clear();

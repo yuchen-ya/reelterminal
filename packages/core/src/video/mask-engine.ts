@@ -389,6 +389,8 @@ export class MaskEngine {
   private ctx: OffscreenCanvasRenderingContext2D;
   private maskCanvas: OffscreenCanvas;
   private maskCtx: OffscreenCanvasRenderingContext2D;
+  private scratchCanvas: OffscreenCanvas | null = null;
+  private scratchCtx: OffscreenCanvasRenderingContext2D | null = null;
   private width: number;
   private height: number;
   private masks: Map<string, Mask> = new Map();
@@ -417,6 +419,30 @@ export class MaskEngine {
     this.canvas.height = height;
     this.maskCanvas.width = width;
     this.maskCanvas.height = height;
+  }
+
+  private prepareScratch(): OffscreenCanvasRenderingContext2D {
+    if (!this.scratchCanvas) {
+      this.scratchCanvas = new OffscreenCanvas(this.width, this.height);
+      this.scratchCtx = this.scratchCanvas.getContext("2d")!;
+    } else if (this.scratchCanvas.width !== this.width || this.scratchCanvas.height !== this.height) {
+      this.scratchCanvas.width = this.width;
+      this.scratchCanvas.height = this.height;
+    }
+    const ctx = this.scratchCtx!;
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.filter = "none";
+    ctx.clearRect(0, 0, this.width, this.height);
+    return ctx;
+  }
+
+  private applyOpacity(opacity: number): void {
+    const ctx = this.prepareScratch();
+    ctx.globalAlpha = opacity;
+    ctx.drawImage(this.canvas, 0, 0);
+    this.ctx.clearRect(0, 0, this.width, this.height);
+    this.ctx.drawImage(this.scratchCanvas!, 0, 0);
   }
 
   createShapeMask(clipId: string, shape: MaskShape): Mask {
@@ -715,12 +741,7 @@ export class MaskEngine {
     this.ctx.drawImage(this.maskCanvas, 0, 0);
     this.ctx.globalCompositeOperation = "source-over";
     if (mask.opacity < 1) {
-      const tempCanvas = new OffscreenCanvas(this.width, this.height);
-      const tempCtx = tempCanvas.getContext("2d")!;
-      tempCtx.globalAlpha = mask.opacity;
-      tempCtx.drawImage(this.canvas, 0, 0);
-      this.ctx.clearRect(0, 0, this.width, this.height);
-      this.ctx.drawImage(tempCanvas, 0, 0);
+      this.applyOpacity(mask.opacity);
     }
 
     const result = await createImageBitmap(this.canvas);
@@ -754,12 +775,7 @@ export class MaskEngine {
     this.ctx.drawImage(this.maskCanvas, 0, 0);
     this.ctx.globalCompositeOperation = "source-over";
     if (mask.opacity < 1) {
-      const tempCanvas = new OffscreenCanvas(this.width, this.height);
-      const tempCtx = tempCanvas.getContext("2d")!;
-      tempCtx.globalAlpha = mask.opacity;
-      tempCtx.drawImage(this.canvas, 0, 0);
-      this.ctx.clearRect(0, 0, this.width, this.height);
-      this.ctx.drawImage(tempCanvas, 0, 0);
+      this.applyOpacity(mask.opacity);
     }
 
     const result = await createImageBitmap(this.canvas);
@@ -960,14 +976,13 @@ export class MaskEngine {
   }
 
   private applyFeathering(feather: number): void {
-    const tempCanvas = new OffscreenCanvas(this.width, this.height);
-    const tempCtx = tempCanvas.getContext("2d")!;
+    const tempCtx = this.prepareScratch();
 
     tempCtx.filter = `blur(${feather}px)`;
     tempCtx.drawImage(this.maskCanvas, 0, 0);
 
     this.maskCtx.clearRect(0, 0, this.width, this.height);
-    this.maskCtx.drawImage(tempCanvas, 0, 0);
+    this.maskCtx.drawImage(this.scratchCanvas!, 0, 0);
   }
 
   private applyExpansion(expansion: number): void {

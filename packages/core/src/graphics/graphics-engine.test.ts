@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { GraphicsEngine } from "./graphics-engine";
-import type { EmphasisAnimation } from "./types";
+import type { EmphasisAnimation, SVGClip } from "./types";
 import type { EasingType } from "../types/timeline";
 
 class MockCanvasContext {
@@ -306,7 +306,10 @@ describe("GraphicsEngine", () => {
         emphasisAnimation: animation,
       });
 
-      expect(updated?.emphasisAnimation?.focusPoint).toEqual({ x: 0.3, y: 0.7 });
+      expect(updated?.emphasisAnimation?.focusPoint).toEqual({
+        x: 0.3,
+        y: 0.7,
+      });
       expect(updated?.emphasisAnimation?.zoomScale).toBe(2.0);
       expect(updated?.emphasisAnimation?.holdDuration).toBe(0.5);
     });
@@ -481,7 +484,12 @@ describe("GraphicsEngine", () => {
       const times = [0, 0.25, 0.5, 0.75, 1, 2, 5, 9.99];
 
       for (const time of times) {
-        const result = await engine.renderGraphic(updatedClip, time, 1920, 1080);
+        const result = await engine.renderGraphic(
+          updatedClip,
+          time,
+          1920,
+          1080,
+        );
         expect(result.canvas).toBeDefined();
       }
     });
@@ -500,6 +508,214 @@ describe("GraphicsEngine", () => {
         expect(result.width).toBe(width);
         expect(result.height).toBe(height);
       }
+    });
+  });
+
+  describe("SVG image reuse", () => {
+    const createUrl = vi.fn();
+    const revokeUrl = vi.fn();
+
+    beforeEach(() => {
+      createUrl.mockImplementation(
+        () => `blob:test-${createUrl.mock.calls.length}`,
+      );
+      vi.stubGlobal("URL", {
+        createObjectURL: createUrl,
+        revokeObjectURL: revokeUrl,
+      });
+      vi.stubGlobal(
+        "DOMParser",
+        class {
+          parseFromString() {
+            return { querySelector: () => ({ setAttribute: vi.fn() }) };
+          }
+        },
+      );
+      vi.stubGlobal(
+        "XMLSerializer",
+        class {
+          serializeToString() {
+            return "<svg/>";
+          }
+        },
+      );
+      vi.stubGlobal(
+        "Image",
+        class {
+          crossOrigin = "";
+          onload: (() => void) | null = null;
+          set src(_url: string) {
+            queueMicrotask(() => this.onload?.());
+          }
+        },
+      );
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.stubGlobal("OffscreenCanvas", MockCanvas);
+      vi.stubGlobal("HTMLCanvasElement", class {});
+    });
+
+    function makeClip(): SVGClip {
+      const shape = engine.createRectangle("track", 0, 5, 100, 100);
+      return {
+        ...shape,
+        type: "svg",
+        svgContent: '<svg viewBox="0 0 100 100"/>',
+        viewBox: { minX: 0, minY: 0, width: 100, height: 100 },
+        preserveAspectRatio: "xMidYMid",
+      };
+    }
+
+    it("reuses images across frames while applying each frame's transform and opacity", async () => {
+      const clip = makeClip();
+      const first = await engine.renderGraphic(clip, 0, 100, 100);
+      const moved = {
+        ...clip,
+        transform: {
+          ...clip.transform,
+          position: { x: 0.2, y: 0.3 },
+          opacity: 0.5,
+        },
+      };
+      const second = await engine.renderGraphic(moved, 1, 100, 100);
+      for (let i = 0; i < 100; i++)
+        await engine.renderGraphic(clip, i / 30, 100, 100);
+
+      const firstContext = first.canvas.getContext(
+        "2d",
+      ) as unknown as MockCanvasContext;
+      const secondContext = second.canvas.getContext(
+        "2d",
+      ) as unknown as MockCanvasContext;
+      expect(createUrl).toHaveBeenCalledTimes(1);
+      expect(revokeUrl).toHaveBeenCalledTimes(1);
+      expect(firstContext.drawImage.mock.calls[0][0]).toBe(
+        secondContext.drawImage.mock.calls[0][0],
+      );
+      expect(secondContext.translate).not.toHaveBeenCalledWith(
+        ...firstContext.translate.mock.calls[0],
+      );
+      expect(secondContext.globalAlpha).toBe(0.5);
+    });
+
+    it("reloads changed content and raster dimensions and releases the cache on clear", async () => {
+      const clip = makeClip();
+      await engine.renderGraphic(clip, 0, 100, 100);
+      await engine.renderGraphic(
+        { ...clip, svgContent: "<svg>changed</svg>" } as SVGClip,
+        0,
+        100,
+        100,
+      );
+      await engine.renderGraphic(clip, 0, 200, 200);
+      expect(createUrl).toHaveBeenCalledTimes(3);
+      engine.clearCache();
+      await engine.renderGraphic(clip, 0, 100, 100);
+      expect(createUrl).toHaveBeenCalledTimes(4);
+      expect(revokeUrl).toHaveBeenCalledTimes(4);
+    });
+
+    it("evicts older images when the cache reaches its limit", async () => {
+      const clip = makeClip();
+      for (let i = 0; i < 129; i++) {
+        await engine.renderGraphic(
+          { ...clip, svgContent: `<svg>${i}</svg>` } as SVGClip,
+          0,
+          10,
+          10,
+        );
+      }
+      await engine.renderGraphic(clip, 0, 10, 10);
+      await engine.renderGraphic(
+        { ...clip, svgContent: "<svg>0</svg>" } as SVGClip,
+        0,
+        10,
+        10,
+      );
+      expect(createUrl).toHaveBeenCalledTimes(131);
+    });
+  });
+
+  describe("sticker image caching", () => {
+    let images: Array<{ onload: (() => void) | null; onerror: (() => void) | null }>;
+
+    beforeEach(() => {
+      images = [];
+      vi.stubGlobal("Image", class {
+        crossOrigin = "";
+        width = 10;
+        height = 10;
+        naturalWidth = 10;
+        naturalHeight = 10;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        constructor() { images.push(this); }
+        set src(_url: string) {}
+      });
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.stubGlobal("OffscreenCanvas", MockCanvas);
+      vi.stubGlobal("HTMLCanvasElement", class {});
+    });
+
+    function sticker(url: string) {
+      return { ...engine.createRectangle("track", 0, 5, 10, 10), type: "sticker" as const, imageUrl: url };
+    }
+
+    it("shares concurrent loads, retries failures, and does not restore entries cleared while loading", async () => {
+      const clip = sticker("image-a");
+      const first = engine.renderGraphic(clip, 0, 100, 100);
+      const second = engine.renderGraphic(clip, 1, 100, 100);
+      expect(images).toHaveLength(1);
+      images[0]!.onload!();
+      const [a, b] = await Promise.all([first, second]);
+      const contextA = a.canvas.getContext("2d") as unknown as MockCanvasContext;
+      const contextB = b.canvas.getContext("2d") as unknown as MockCanvasContext;
+      expect(contextA.drawImage.mock.calls[0][0]).toBe(contextB.drawImage.mock.calls[0][0]);
+
+      const pending = engine.renderGraphic(sticker("image-b"), 0, 100, 100);
+      engine.clearCache();
+      images[1]!.onload!();
+      await pending;
+      const retry = engine.renderGraphic(sticker("image-b"), 0, 100, 100);
+      expect(images).toHaveLength(3);
+      images[2]!.onerror!();
+      await expect(retry).rejects.toThrow("Failed to load image");
+      const afterFailure = engine.renderGraphic(sticker("image-b"), 0, 100, 100);
+      expect(images).toHaveLength(4);
+      images[3]!.onload!();
+      await afterFailure;
+    });
+
+    it("evicts decoded images when their estimated memory exceeds the limit", async () => {
+      const first = engine.renderGraphic(sticker("large-a"), 0, 100, 100);
+      Object.assign(images[0]!, { naturalWidth: 4096, naturalHeight: 4096 });
+      images[0]!.onload!();
+      await first;
+      const second = engine.renderGraphic(sticker("large-b"), 0, 100, 100);
+      Object.assign(images[1]!, { naturalWidth: 5000, naturalHeight: 5000 });
+      images[1]!.onload!();
+      await second;
+      const reload = engine.renderGraphic(sticker("large-a"), 0, 100, 100);
+      expect(images).toHaveLength(3);
+      images[2]!.onload!();
+      await reload;
+    });
+
+    it("evicts least recently used images at the entry limit", async () => {
+      for (let i = 0; i < 129; i++) {
+        const rendering = engine.renderGraphic(sticker(`image-${i}`), 0, 100, 100);
+        images[i]!.onload!();
+        await rendering;
+      }
+      const rendering = engine.renderGraphic(sticker("image-0"), 0, 100, 100);
+      expect(images).toHaveLength(130);
+      images[129]!.onload!();
+      await rendering;
     });
   });
 
@@ -614,7 +830,12 @@ describe("GraphicsEngine", () => {
     });
 
     it("should support different easing types", () => {
-      const easings: EasingType[] = ["linear", "ease-in", "ease-out", "ease-in-out"];
+      const easings: EasingType[] = [
+        "linear",
+        "ease-in",
+        "ease-out",
+        "ease-in-out",
+      ];
 
       for (const easing of easings) {
         const clip = engine.createRectangle("track-1", 0, 5, 100, 50);

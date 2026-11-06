@@ -229,9 +229,41 @@ describe("visual scaling E2E: video/text geometry at non-project raster sizes", 
     }
   });
 
+
+  it("renders SVG opacity animation across consecutive frames in Chromium", async () => {
+    providers ??= createChromiumProviders();
+    facade = createAgentFacade({ mediaRoots: [mediaRoot], artifactRoot, renderProvider: providers.renderProvider });
+    const created = await facade["project.create"]({ name: "svg-animation", settings: { width: 320, height: 180, frameRate: 30, sampleRate: 48000, channels: 2 } });
+    expect(created.ok).toBe(true);
+    const edited = await facade["edit.apply"]({ ops: [
+      { op: "track.add", trackType: "graphics", trackId: "g" },
+      { op: "svg.create", trackId: "g", svgContent: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><rect width="320" height="180" fill="#ff0000"/></svg>', startTime: 0, duration: 5 },
+    ] });
+    expect(edited.ok).toBe(true);
+    const state = await facade["project.get_state"]();
+    expect(state.ok).toBe(true);
+    if (!state.ok) throw new Error("Could not read project");
+    const project = state.value.project;
+    const clip = project.svgClips![0]!;
+    const animatedProject = { ...project, svgClips: [{ ...clip, keyframes: [
+      { id: "start", time: 0, property: "opacity", value: 0.25, easing: "linear" as const },
+      { id: "end", time: 1, property: "opacity", value: 1, easing: "linear" as const },
+    ] }] };
+
+    // One hydration renders both samples on the same page and GraphicsEngine.
+    const sheet = decodePng(await providers.pool.runtime.renderContactSheetPng(animatedProject, {}, [
+      { timeSec: 0, label: "start" }, { timeSec: 1, label: "end" },
+    ], 320, 180));
+    const redAt = (x: number) => sheet.rgba[((36 + 90) * sheet.width + x) * 4]!;
+    const firstRed = redAt(8 + 160);
+    const secondRed = redAt(8 + 328 + 160);
+    expect(firstRed).toBeGreaterThan(30);
+    expect(secondRed).toBeGreaterThan(firstRed + 100);
+  }, 120_000);
+
   it("keeps video full-frame and text scaled at half size; contact sheet cells match single frames", async () => {
     const inputPath = writeTinyVp9Mp4(mediaRoot);
-    providers = createChromiumProviders();
+    providers ??= createChromiumProviders();
     const probe = await providers.probe();
     expect(probe.launchError).toBeUndefined();
     expect(probe.summary.renderAvailable).toBe(true);
