@@ -38,7 +38,8 @@ describe("GUI manual version binding", () => {
     // 1.3.0 adds desktop quick start and updates current GUI entry paths.
     // 1.4.0 adds the version-track and save-vs-retain screens and extends
     // project-switcher with the switch notification and copy-Agent-prompt.
-    expect(GUI_MANUAL_CONTENT_VERSION).toBe("1.8.0");
+    // 1.9.1 separates task creation and display names from opening disk folders.
+    expect(GUI_MANUAL_CONTENT_VERSION).toBe("1.9.1");
   });
 
   it("binds to the desktop application version, not the facade version", () => {

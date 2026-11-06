@@ -1,29 +1,50 @@
 # Desktop distribution
 
-## Current version: 1.3.11
+## Current candidate: 1.4.0
 
-The current application version is 1.3.11. This release targets a Windows x64
-installer and portable ZIP; available downloads are listed on
-[Releases](https://github.com/yuchen-ya/reelterminal/releases). See the
-[1.3.11 build scope](../../docs/RELEASE-1.3.11.md).
+The source version is 1.4.0. This candidate targets a Windows x64 installer and
+portable ZIP, with the built-in Agent work timeline, scoped review criteria,
+feedback completion/search, real-folder review/classified export, and local
+MobileSAM image/frame regions. See the [current draft notes](../../docs/RELEASE-NOTES-DRAFT.md).
+The final local candidate is
+`release/windows-1.4.0-20261106-054304-41a11bb9/`. Its selected packaged text/media
+combination, exact-response completion replay, model/worker/runtime/license
+inspection and ZIP integrity checks passed. The earlier candidate is retained as
+failed/superseded after an automatic draft-save/button-disabled race; the new
+package fixes that race and passes the unchanged group decision assertion.
+This is not a release announcement, installer acceptance or a general model
+quality guarantee. See the draft notes and the final output directory's
+provenance/checksums for the precise limits.
+Available downloads are listed on
+[Releases](https://github.com/yuchen-ya/reelterminal/releases). The
+[1.3.11 build scope](../../docs/RELEASE-1.3.11.md) remains a historical record.
 Confirm the source, signing status, checksums and packaged validation for the actual
 release artifacts before publication. See the [upgrade guide](../../docs/WINDOWS-UPGRADE.md)
 before replacing an existing installation. Legacy unsafe uninstallers are blocked;
 a successful one-off attended migration is not general automatic-upgrade support.
 
-A release build must use a clean, frozen source commit and an independent output
-directory; do not rename an older package to a new version. For example:
+A local candidate includes the current working-tree contents, including dirty
+and untracked source files; it is not built from HEAD alone. Freeze source writes
+for the build and use a new output directory without overwriting earlier packages.
+Do not commit or discard other people's edits merely to make Git clean, and do
+not rename an older package to a new version. For example:
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm build:wasm
-pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.3.11-<short-sha>
+node apps/desktop/scripts/prepare-segmentation-resources.mjs --check
+pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.4.0-<date-and-unique-suffix>
 ```
 
-Verify the packaged app version and `dist/performance-build.json` source SHA,
-run the relevant packaged smoke tests, and compute SHA-256 checksums before
-uploading. The installer wizard must be identified as untested unless actually
-exercised; running the unpacked application does not verify installation.
+The build generates `dist/performance-build.json` with the source HEAD, dirty
+flag, tracked/untracked source digest and asset identity. Record the actual build
+start/completion times, command and output directory alongside it in release
+provenance; preparation time is not build time. Verify the packaged app version,
+run the relevant isolated packaged smoke tests, and compute SHA-256 checksums.
+This workflow uses `--publish never` and does not upload assets. The installer
+wizard must be identified as untested unless actually exercised; running the
+unpacked application does not verify installation. Explorer/WeChat receiving a
+native drag is a separate user acceptance check.
 
 ## Build
 
