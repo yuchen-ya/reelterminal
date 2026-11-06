@@ -1,0 +1,71 @@
+{
+  "syntheticOnly": true,
+  "preparedInput": {
+    "goal": "这是虚构科幻剧的台词审阅。受众为普通成人。已确认的角色背景：维修员林岚从未离开过月港，第一次见到地球海洋是在当前场景；本场不使用隐喻、梦境、说谎或不可靠叙述。请指出与明确设定相冲突的表达，给出可定位证据与核对理由，不擅自改变角色设定。",
+    "criteria": [],
+    "source": "林岚：我小时候每个夏天都在地球这片海里游泳，对岸的灯塔我闭着眼都能找到。",
+    "evidence": [
+      {
+        "inputSourceVersionIds": [
+          "927a25e8-5bdd-4fdb-a852-c18a2a11727f",
+          "97252590-5c27-469d-b638-10016c0f029d"
+        ],
+        "id": "a2e02f71-e0ad-43be-9b22-4f62934ab4d7",
+        "unitId": "af9d28ee-b787-49f4-acb6-7aebbdca0c08",
+        "sourceVersionId": "97252590-5c27-469d-b638-10016c0f029d",
+        "policyRevision": 1,
+        "severity": "high",
+        "title": "童年在地球海游泳与“从未离开月港、首次见海”设定冲突",
+        "evidence": "我小时候每个夏天都在地球这片海里游泳",
+        "hypothesis": "林岚声称小时候每年夏天都在地球这片海游泳并熟悉对岸灯塔，直接违背已确认的“从未离开月港、当前场景首次见到地球海洋”角色背景，且因本场不使用说谎或不可靠叙述，无法以虚构回忆调和。",
+        "options": [
+          {
+            "label": "标记整句为与设定冲突，交由编剧修订",
+            "reason": "童年地球海域经历与首次见海设定直接矛盾，无需改动角色设定即可定位。"
+          },
+          {
+            "label": "仅标记‘地球这片海游泳’子句，保留灯塔意象待议",
+            "reason": "灯塔熟悉度可由阅读/听闻获得，需进一步确认后再决定是否冲突。"
+          }
+        ],
+        "sourceRefs": [
+          {
+            "unitId": "af9d28ee-b787-49f4-acb6-7aebbdca0c08",
+            "sourceVersionId": "97252590-5c27-469d-b638-10016c0f029d",
+            "start": 3,
+            "end": 21,
+            "text": "我小时候每个夏天都在地球这片海里游泳"
+          },
+          {
+            "unitId": "82b0a6d6-accb-48d7-a89f-86e0fa1a51ae",
+            "sourceVersionId": "927a25e8-5bdd-4fdb-a852-c18a2a11727f",
+            "start": 3,
+            "end": 14,
+            "text": "这是我第一次亲眼看见海"
+          }
+        ],
+        "criteriaBasis": [
+          {
+            "unitId": "af9d28ee-b787-49f4-acb6-7aebbdca0c08",
+            "sourceVersionId": "97252590-5c27-469d-b638-10016c0f029d",
+            "taskId": "b7fd2657-f077-4382-bcd5-c570e89fbbbc",
+            "purpose": "review",
+            "policyRevision": 1,
+            "criteriaVersionIds": []
+          },
+          {
+            "unitId": "82b0a6d6-accb-48d7-a89f-86e0fa1a51ae",
+            "sourceVersionId": "927a25e8-5bdd-4fdb-a852-c18a2a11727f",
+            "taskId": "b7fd2657-f077-4382-bcd5-c570e89fbbbc",
+            "purpose": "review",
+            "policyRevision": 1,
+            "criteriaVersionIds": []
+          }
+        ],
+        "purpose": "review"
+      }
+    ],
+    "reviewFeedbackDraft": "这段童年经历与已知背景冲突，建议"
+  },
+  "response": "“这段童年经历与已知背景冲突，建议将‘我小时候每个夏天都在地球这片海里游泳’改为不涉及亲身到访地球海域的表述，以符合林岚从未离开月港、本场首次见海的设定。”"
+}

@@ -1,0 +1,235 @@
+{
+  "syntheticOnly": true,
+  "preparedInput": {
+    "taskId": "b7bedd03-bfd5-49b7-b2b1-f96dfa5d8e94",
+    "goal": "这是虚构科幻剧的台词审阅。受众为普通成人。已确认的角色背景：维修员林岚从未离开过月港，第一次见到地球海洋是在当前场景；本场不使用隐喻、梦境、说谎或不可靠叙述。请指出与明确设定相冲突的表达，给出可定位证据与核对理由，不擅自改变角色设定。",
+    "purpose": "review",
+    "criteria": [],
+    "units": [
+      {
+        "unitId": "27a5ccf0-9fbc-4c21-a28b-2242d8aa26a2",
+        "sourceVersionId": "cc4dae34-9659-4809-8d8c-392d5e3939d2",
+        "ordinal": 1,
+        "role": "target",
+        "text": "林岚：这是我第一次亲眼看见海，原来它比全息屏上的更宽。",
+        "criteriaVersionIds": []
+      },
+      {
+        "unitId": "4fd57d70-7d7c-435a-a264-9ddb3ffada4c",
+        "sourceVersionId": "8d12356b-b313-4a0d-b843-643932503fd4",
+        "ordinal": 1,
+        "role": "target",
+        "text": "林岚：我小时候每个夏天都在地球这片海里游泳，对岸的灯塔我闭着眼都能找到。",
+        "criteriaVersionIds": []
+      }
+    ],
+    "taskContext": null,
+    "adoptedContext": null,
+    "unavailableContext": null,
+    "coverage": {
+      "targets": [
+        {
+          "unitId": "27a5ccf0-9fbc-4c21-a28b-2242d8aa26a2",
+          "sourceVersionId": "cc4dae34-9659-4809-8d8c-392d5e3939d2"
+        },
+        {
+          "unitId": "4fd57d70-7d7c-435a-a264-9ddb3ffada4c",
+          "sourceVersionId": "8d12356b-b313-4a0d-b843-643932503fd4"
+        }
+      ],
+      "contextOnly": []
+    }
+  },
+  "response": {
+    "understanding": {
+      "groundedClaims": [
+        {
+          "content": "目标单元1中林岚明确说这是她第一次亲眼看见海，与已确认背景（第一次见到地球海洋在当前场景）一致。",
+          "sourceRefs": [
+            {
+              "sourceVersionId": "cc4dae34-9659-4809-8d8c-392d5e3939d2",
+              "unitId": "27a5ccf0-9fbc-4c21-a28b-2242d8aa26a2",
+              "start": 3,
+              "end": 22,
+              "text": "这是我第一次亲眼看见海"
+            }
+          ]
+        },
+        {
+          "content": "目标单元2中林岚声称小时候每个夏天都在地球这片海里游泳，并熟悉对岸灯塔，暗示她童年常在地球海洋活动。",
+          "sourceRefs": [
+            {
+              "sourceVersionId": "8d12356b-b313-4a0d-b843-643932503fd4",
+              "unitId": "4fd57d70-7d7c-435a-a264-9ddb3ffada4c",
+              "start": 3,
+              "end": 41,
+              "text": "我小时候每个夏天都在地球这片海里游泳，对岸的灯塔我闭着眼都能找到"
+            }
+          ]
+        }
+      ],
+      "hypotheses": [
+        {
+          "content": "单元2的童年游泳经历与已确认设定（林岚从未离开月港、第一次见到地球海洋在当前场景）直接矛盾，可能是台词与角色设定未同步或其他稿本残留。",
+          "targets": [
+            "4fd57d70-7d7c-435a-a264-9ddb3ffada4c"
+          ],
+          "sourceRefs": [
+            {
+              "sourceVersionId": "8d12356b-b313-4a0d-b843-643932503fd4",
+              "unitId": "4fd57d70-7d7c-435a-a264-9ddb3ffada4c",
+              "start": 3,
+              "end": 41,
+              "text": "我小时候每个夏天都在地球这片海里游泳，对岸的灯塔我闭着眼都能找到"
+            }
+          ]
+        },
+        {
+          "content": "两个目标单元互相矛盾：单元1说第一次见海，单元2说童年常在此海游泳。",
+          "targets": [
+            "27a5ccf0-9fbc-4c21-a28b-2242d8aa26a2",
+            "4fd57d70-7d7c-435a-a264-9ddb3ffada4c"
+          ],
+          "sourceRefs": [
+            {
+              "sourceVersionId": "cc4dae34-9659-4809-8d8c-392d5e3939d2",
+              "unitId": "27a5ccf0-9fbc-4c21-a28b-2242d8aa26a2",
+              "start": 3,
+              "end": 22,
+              "text": "这是我第一次亲眼看见海"
+            },
+            {
+              "sourceVersionId": "8d12356b-b313-4a0d-b843-643932503fd4",
+              "unitId": "4fd57d70-7d7c-435a-a264-9ddb3ffada4c",
+              "start": 3,
+              "end": 41,
+              "text": "我小时候每个夏天都在地球这片海里游泳，对岸的灯塔我闭着眼都能找到"
+            }
+          ]
+        }
+      ],
+      "openQuestions": [
+        {
+          "question": "两个目标单元是否为同一场景中的连续台词？若为同一场景，单元2需按设定改写或标注为设定冲突待处理。",
+          "targets": [
+            "27a5ccf0-9fbc-4c21-a28b-2242d8aa26a2",
+            "4fd57d70-7d7c-435a-a264-9ddb3ffada4c"
+          ]
+        }
+      ]
+    },
+    "coverage": [
+      {
+        "unitId": "27a5ccf0-9fbc-4c21-a28b-2242d8aa26a2",
+        "sourceVersionId": "cc4dae34-9659-4809-8d8c-392d5e3939d2",
+        "status": "analyzed",
+        "reason": "文本完整，可与已确认角色背景及另一目标单元对照核对。"
+      },
+      {
+        "unitId": "4fd57d70-7d7c-435a-a264-9ddb3ffada4c",
+        "sourceVersionId": "8d12356b-b313-4a0d-b843-643932503fd4",
+        "status": "analyzed",
+        "reason": "文本完整，包含与已确认设定冲突的童年地球海洋经历表述。"
+      }
+    ],
+    "issues": [
+      {
+        "id": "candidate-1",
+        "targets": [
+          "4fd57d70-7d7c-435a-a264-9ddb3ffada4c"
+        ],
+        "severity": "high",
+        "title": "台词与林岚第一次见到地球海洋的设定冲突",
+        "hypothesis": "单元2声称林岚小时候每个夏天都在地球这片海里游泳，隐含其童年多次到访地球海洋，与已确认的「从未离开过月港、第一次见到地球海洋是在当前场景」直接矛盾。",
+        "sourceRefs": [
+          {
+            "sourceVersionId": "8d12356b-b313-4a0d-b843-643932503fd4",
+            "unitId": "4fd57d70-7d7c-435a-a264-9ddb3ffada4c",
+            "start": 3,
+            "end": 41,
+            "text": "我小时候每个夏天都在地球这片海里游泳，对岸的灯塔我闭着眼都能找到"
+          }
+        ],
+        "criteriaRefs": [],
+        "options": [
+          {
+            "label": "标记为设定冲突待修订",
+            "reason": "在不改动角色设定的前提下，指出该句与已确认背景不符，交由编剧决定处理方式。"
+          },
+          {
+            "label": "核对是否为不同稿本或平行台词",
+            "reason": "剧情已确认不使用梦境、说谎或不可靠叙述，故该矛盾可能是稿本残留，应核实来源而非以叙事手法解释。"
+          }
+        ]
+      },
+      {
+        "id": "candidate-2",
+        "targets": [
+          "27a5ccf0-9fbc-4c21-a28b-2242d8aa26a2",
+          "4fd57d70-7d7c-435a-a264-9ddb3ffada4c"
+        ],
+        "severity": "high",
+        "title": "两个目标单元之间关于首次见海的互相矛盾",
+        "hypothesis": "单元1说这是第一次亲眼看见海，单元2说童年常在这片海游泳，二者若同处一线则直接冲突。",
+        "sourceRefs": [
+          {
+            "sourceVersionId": "cc4dae34-9659-4809-8d8c-392d5e3939d2",
+            "unitId": "27a5ccf0-9fbc-4c21-a28b-2242d8aa26a2",
+            "start": 3,
+            "end": 22,
+            "text": "这是我第一次亲眼看见海"
+          },
+          {
+            "sourceVersionId": "8d12356b-b313-4a0d-b843-643932503fd4",
+            "unitId": "4fd57d70-7d7c-435a-a264-9ddb3ffada4c",
+            "start": 3,
+            "end": 41,
+            "text": "我小时候每个夏天都在地球这片海里游泳，对岸的灯塔我闭着眼都能找到"
+          }
+        ],
+        "criteriaRefs": [],
+        "options": [
+          {
+            "label": "确认两单元的场景归属",
+            "reason": "若同属当前场景则必须修订其一；若分属不同稿本则分别标注来源。"
+          }
+        ]
+      }
+    ],
+    "scenes": [
+      {
+        "id": "scene-1",
+        "kind": "compare",
+        "targets": [
+          "27a5ccf0-9fbc-4c21-a28b-2242d8aa26a2",
+          "4fd57d70-7d7c-435a-a264-9ddb3ffada4c"
+        ],
+        "purpose": "review",
+        "decisionMode": "per-unit",
+        "checkIntent": "并排核对两句关于林岚与海的关系表述，确认哪句符合「第一次见到地球海洋」的设定。",
+        "reason": "两单元均涉及林岚与地球海洋的接触史且互相矛盾，适合对照审阅。",
+        "issueIds": [
+          "candidate-1",
+          "candidate-2"
+        ],
+        "criteriaRefs": [],
+        "sourceRefs": [
+          {
+            "sourceVersionId": "cc4dae34-9659-4809-8d8c-392d5e3939d2",
+            "unitId": "27a5ccf0-9fbc-4c21-a28b-2242d8aa26a2",
+            "start": 3,
+            "end": 22,
+            "text": "这是我第一次亲眼看见海"
+          },
+          {
+            "sourceVersionId": "8d12356b-b313-4a0d-b843-643932503fd4",
+            "unitId": "4fd57d70-7d7c-435a-a264-9ddb3ffada4c",
+            "start": 3,
+            "end": 41,
+            "text": "我小时候每个夏天都在地球这片海里游泳，对岸的灯塔我闭着眼都能找到"
+          }
+        ]
+      }
+    ]
+  }
+}

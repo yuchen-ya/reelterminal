@@ -441,6 +441,13 @@ interface ReelTerminalDesktopBridge {
           error?: string;
         }>;
       };
+      folderReview?: import("../../../desktop/src/shared/folder-review-bridge").FolderReviewBridge;
+      taskReview?: import("../../../desktop/src/shared/task-review-bridge").TaskReviewBridge;
+      taskReviewContext?: import("../../../desktop/src/shared/task-review-bridge").TaskReviewContextBridge;
+      taskReviewExport?: import("../../../desktop/src/shared/task-review-export").TaskReviewExportBridge;
+      /** Human local media editing (import/open/capture/segment/accept). No Agent authority. */
+      taskReviewMedia?: import("../../../desktop/src/shared/task-review-media").TaskReviewMediaBridge;
+      taskAgent?: import("../../../desktop/src/shared/task-review-runtime-types").TaskAgentBridge;
       reviewPackage?: {
         inspect(input: { directory: string; source: "user" | "agent" }): Promise<ReviewNativeReply<import("@reelterminal/core/review/archive").ReviewPackagePreview>>;
         prepare(input: { packageId: string; restoreId: string; digest: string; source: "user" | "agent" }): Promise<ReviewNativeReply<{ archive: import("@reelterminal/core/review/archive").ReviewNodeArchive; resources: readonly import("@reelterminal/core/review/types").FileResource[] }>>;

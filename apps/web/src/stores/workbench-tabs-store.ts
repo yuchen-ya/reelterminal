@@ -2,9 +2,10 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export interface WorkbenchTab {
-  kind: "review" | "board";
+  kind: "review" | "board" | "folder";
   id: string;
   name: string;
+  root?: string;
 }
 
 export const workbenchTabKey = (tab: Pick<WorkbenchTab, "kind" | "id">) => `${tab.kind}:${tab.id}`;
@@ -12,6 +13,7 @@ export const workbenchTabKey = (tab: Pick<WorkbenchTab, "kind" | "id">) => `${ta
 interface WorkbenchTabsState {
   tabs: WorkbenchTab[];
   activeKey: string | null;
+  recentFolders: WorkbenchTab[];
   open: (tab: WorkbenchTab) => void;
   activate: (key: string) => void;
   close: (key: string) => void;
@@ -23,11 +25,15 @@ interface WorkbenchTabsState {
 export const useWorkbenchTabsStore = create<WorkbenchTabsState>()(persist((set) => ({
   tabs: [],
   activeKey: null,
+  recentFolders: [],
   open: (tab) => set(state => {
     const key = workbenchTabKey(tab);
     return { tabs: state.tabs.some(row => workbenchTabKey(row) === key)
       ? state.tabs.map(row => workbenchTabKey(row) === key ? tab : row)
-      : [...state.tabs, tab], activeKey: key };
+      : [...state.tabs, tab], activeKey: key,
+      recentFolders: tab.kind === "folder"
+        ? [tab, ...state.recentFolders.filter(row => row.id !== tab.id)].slice(0, 20)
+        : state.recentFolders };
   }),
   activate: (key) => set(state => state.tabs.some(tab => workbenchTabKey(tab) === key) ? { activeKey: key } : state),
   close: (key) => set(state => {
@@ -43,5 +49,23 @@ export const useWorkbenchTabsStore = create<WorkbenchTabsState>()(persist((set) 
     tabs.splice(to, 0, tabs.splice(from, 1)[0]);
     return { tabs };
   }),
-  rename: (key, name) => set(state => ({ tabs: state.tabs.map(tab => workbenchTabKey(tab) === key ? { ...tab, name } : tab) })),
-}), { name: "reelterminal.workbench.tabs", partialize: ({ tabs, activeKey }) => ({ tabs, activeKey }) }));
+  rename: (key, name) => set(state => {
+    const needsRename = (tab: WorkbenchTab) => workbenchTabKey(tab) === key && tab.name !== name;
+    if (!state.tabs.some(needsRename) && !state.recentFolders.some(needsRename)) return state;
+    return {
+      tabs: state.tabs.map(tab => needsRename(tab) ? { ...tab, name } : tab),
+      recentFolders: state.recentFolders.map(tab => needsRename(tab) ? { ...tab, name } : tab),
+    };
+  }),
+}), {
+  name: "reelterminal.workbench.tabs",
+  partialize: ({ tabs, activeKey, recentFolders }) => ({ tabs, activeKey, recentFolders }),
+  merge: (persisted, current) => {
+    const saved = persisted as Partial<WorkbenchTabsState> | undefined;
+    const tabs = (saved?.tabs ?? []).filter(tab => tab.kind !== "review");
+    const activeKey = tabs.some(tab => workbenchTabKey(tab) === saved?.activeKey)
+      ? saved!.activeKey! : null;
+    const recentFolders = saved?.recentFolders ?? tabs.filter(tab => tab.kind === "folder");
+    return { ...current, tabs, activeKey, recentFolders };
+  },
+}));

@@ -44,6 +44,7 @@ import "../workbench/workbench.css";
 import type { WorkbenchItemView } from "../workbench/types";
 
 const HumanBoardView = lazy(() => import("../workbench/human-board/HumanBoardView"));
+const TaskReviewWorkspace = lazy(() => import("../workbench/task-review/TaskReviewWorkspace").then(module => ({ default: module.TaskReviewWorkspace })));
 
 const input = "min-w-0 rounded-md border border-border bg-bg-2 px-2.5 py-1.5 text-xs text-fg";
 const report = (error: unknown) => toast.error(error instanceof Error ? error.message : String(error));
@@ -54,10 +55,11 @@ const textEntry = (element: Element | null) =>
 
 export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
   const { t } = useTranslation();
-  const { tabs, activeKey } = useWorkbenchTabsStore();
+  const { tabs, activeKey, recentFolders } = useWorkbenchTabsStore();
   const activeTab = tabs.find(tab => workbenchTabKey(tab) === activeKey) ?? null;
   const selectedId = activeTab?.kind === "review" ? activeTab.id : null;
-  const [managerOpen, setManagerOpen] = useState(false);
+  const [managerOpen, setManagerOpen] = useState(!activeKey);
+  const [newFolderTask, setNewFolderTask] = useState<{ tasksRoot: string; name: string; folderName: string } | null>(null);
   const [boards, setBoards] = useState<HumanBoard[]>([]);
   const [boardsReady, setBoardsReady] = useState(false);
   const [boardIncoming, setBoardIncoming] = useState<BoardTransferInput | null>(null);
@@ -215,7 +217,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     transition.current = true;
     setSwitching(true);
     try {
-      if (activeTab?.kind === "board" && !legacy && !managerOpen) await flush.current();
+      if ((activeTab?.kind === "board" || activeTab?.kind === "folder") && !legacy && !managerOpen) await flush.current();
       await action();
     } finally {
       transition.current = false;
@@ -232,6 +234,25 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     setManagerOpen(false);
   };
   const chooseNode = (id: string) => { void navigate(() => openReview(id)).catch(report); };
+  const openFolder = (root?: string) => navigate(async () => {
+    const task = await window.reelterminal!.folderReview!.open(root);
+    if (!task) return;
+    useWorkbenchTabsStore.getState().open({ kind: "folder", id: task.root, root: task.root, name: task.name });
+    setLegacy(false);
+    setManagerOpen(false);
+  });
+  const showNewFolderTask = async () => {
+    const { tasksRoot } = await window.reelterminal!.folderReview!.defaults();
+    setNewFolderTask({ tasksRoot, name: "", folderName: `task-${crypto.randomUUID().slice(0, 8)}` });
+  };
+  const createFolderTask = () => navigate(async () => {
+    if (!newFolderTask) return;
+    const task = await window.reelterminal!.folderReview!.create({ name: newFolderTask.name, folderName: newFolderTask.folderName });
+    useWorkbenchTabsStore.getState().open({ kind: "folder", id: task.root, root: task.root, name: task.name });
+    setNewFolderTask(null);
+    setLegacy(false);
+    setManagerOpen(false);
+  });
   const openNewBoard = async (content?: BoardTransferInput) => {
     const name = content?.files?.[0]?.name.replace(/\.[^.]+$/, "") || content?.text?.trim().split("\n")[0].slice(0, 40) || translate("Untitled board");
     const created = await humanBoardStorage.create(name);
@@ -432,7 +453,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
         className="sr-only"
         data-testid="workbench-private-board"
       >{t("Free Board · Export files or review snapshots")}</span>
-      {adminMenu}
+      {browserDemo && adminMenu}
     </div>
   );
 
@@ -495,6 +516,22 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
         }}
         onClose={key => { void navigate(() => useWorkbenchTabsStore.getState().close(key)).catch(report); }}
       />
+      {newFolderTask && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" role="presentation">
+          <form role="dialog" aria-modal="true" aria-label="新建任务" className="flex w-96 flex-col gap-3 rounded-lg border border-border bg-bg-1 p-4 shadow-lg" onSubmit={event => { event.preventDefault(); void createFolderTask().catch(report); }}>
+            <label className="flex flex-col gap-1">任务名称<input autoFocus className={input} value={newFolderTask.name} onChange={event => setNewFolderTask({ ...newFolderTask, name: event.target.value })} /></label>
+            <label className="flex flex-col gap-1">文件夹名称<input className={input} value={newFolderTask.folderName} onChange={event => setNewFolderTask({ ...newFolderTask, folderName: event.target.value })} /></label>
+            <p className="break-all text-xs text-fg-3">保存位置：{newFolderTask.tasksRoot}{newFolderTask.tasksRoot.includes("\\") ? "\\" : "/"}{newFolderTask.folderName}</p>
+            <div className="flex justify-end gap-2"><button type="button" className={wbButton.ghost} onClick={() => setNewFolderTask(null)}>取消</button><button className={wbButton.primary} disabled={switching || !newFolderTask.name.trim() || !newFolderTask.folderName}>创建</button></div>
+          </form>
+        </div>
+      )}
+      {!browserDemo && window.reelterminal?.folderReview && (
+        <div className="flex h-9 shrink-0 items-center gap-3 border-b border-border bg-bg-1 px-3 text-xs">
+          <button type="button" className={wbButton.primary} disabled={switching || layoutLocked} data-testid="folder-review-open" onClick={() => void openFolder().catch(report)}>打开任务文件夹</button>
+          {!activeTab && <span className="text-fg-3">直接管理真实任务文件夹中的文件；移动或复制只是文件操作，不代表台词审阅结论。台词审阅在任务工作台逐条进行。可在选择窗口中新建文件夹。</span>}
+        </div>
+      )}
       {managerOpen ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-1 px-3 text-xs" data-testid="workbench-address-bar">
@@ -515,7 +552,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                   onClick={() => setManagerOpen(false)}
                 >{t("Return to the current tab")}</button>
               )}
-              {adminMenu}
+              {browserDemo && adminMenu}
             </div>
           </div>
           <div
@@ -524,7 +561,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
             data-workbench-modal="true"
           >
             <section className="flex min-w-0 flex-1 flex-col border-r border-border">
-              <ReviewTaskDirectory
+              {browserDemo ? <ReviewTaskDirectory
                 nodes={nodes}
                 selectedId={selectedId}
                 onSelectNode={chooseNode}
@@ -586,7 +623,29 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                 cursor={cursor}
                 onLoadMore={() => void loadMore().catch(report)}
                 busy={busy || switching || !context}
-              />
+              /> : (
+                <div className="flex min-h-0 flex-1 flex-col gap-2 p-3" data-testid="folder-task-directory">
+                  <div className="flex h-7 items-center justify-between gap-2 px-1 text-xs">
+                    <strong className="font-semibold">任务文件夹</strong>
+                    <div className="flex gap-1.5">
+                      <button type="button" className={wbButton.secondary} disabled={switching} onClick={() => void openFolder().catch(report)}>打开文件夹</button>
+                      <button type="button" className={wbButton.primary} disabled={switching} data-testid="folder-task-new" onClick={() => void showNewFolderTask().catch(report)}>＋ 新建任务</button>
+                    </div>
+                  </div>
+                  <p className="px-1 text-xs text-fg-3">在选择窗口中选择已有文件夹，或新建文件夹作为任务。</p>
+                  <div className="min-h-0 flex-1 overflow-y-auto border-t border-border pt-1.5">
+                    {recentFolders.map(folder => (
+                      <button key={folder.id} type="button" disabled={switching} data-testid="folder-task-recent" title={folder.root}
+                        className="block w-full rounded px-2 py-2 text-left text-xs hover:bg-bg-2"
+                        onClick={() => void openFolder(folder.root).catch(report)}>
+                        <span className="block truncate text-fg">{folder.name}</span>
+                        <span className="block truncate text-fg-3">{folder.root}</span>
+                      </button>
+                    ))}
+                    {!recentFolders.length && <p className="px-2 py-6 text-center text-xs text-fg-3">打开或新建任务文件夹后，它会显示在这里。</p>}
+                  </div>
+                </div>
+              )}
             </section>
             <section className="flex min-w-0 flex-1 flex-col gap-2 p-3">
               <div className="flex h-7 items-center justify-between px-1 text-xs">
@@ -681,6 +740,16 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
             </EditorBootstrapGate>
           </div>
         </>
+      ) : activeTab?.kind === "folder" && activeTab.root ? (
+        <Suspense fallback={<div className="p-6 text-sm">正在打开任务文件夹…</div>}>
+          <TaskReviewWorkspace
+            key={activeTab.id}
+            root={activeTab.root}
+            name={activeTab.name}
+            onFlush={registerFlush}
+            onClose={() => { void navigate(() => useWorkbenchTabsStore.getState().close(activeKey!)).catch(report); }}
+          />
+        </Suspense>
       ) : activeTab?.kind === "board" ? board ? (
         <Suspense fallback={<div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-bg-1 px-3 text-xs"><span className="text-fg-3">{t("Loading free boards…")}</span>{boardToolbarRight}</div>}>
           <div className="min-h-0 flex-1">
@@ -772,8 +841,9 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                 <div ref={emptyHost} className="grid flex-1 place-items-center p-8 text-center outline-none" data-testid="workbench-empty" tabIndex={0}>
                   <div>
                     <h1 className="text-lg font-semibold">{t("review.title")}</h1>
-                    <p className="mt-2 max-w-md text-sm leading-relaxed text-fg-2">{t("Open an existing review task or free board, or create a board by dropping files or pasting images, text and links.")}</p>
-                    <button className={`${wbButton.primary} mt-4`} onClick={() => setManagerOpen(true)} data-testid="review-empty-create">{t("Open / New")}</button>
+                    <p className="mt-2 max-w-md text-sm leading-relaxed text-fg-2">{browserDemo ? t("Open an existing review task or free board, or create a board by dropping files or pasting images, text and links.") : "打开真实文件夹，直接查看和整理素材文件。台词审阅在任务工作台逐条进行，导出只包含人工判定通过的条目；对文件的移动或复制只是文件操作。审阅记录随任务文件夹保存。"}</p>
+                    {!browserDemo && window.reelterminal?.folderReview && <button className={`${wbButton.primary} mt-4`} onClick={() => void openFolder().catch(report)}>打开任务文件夹</button>}
+                    <button className={`${wbButton.secondary} ml-2 mt-4`} onClick={() => setManagerOpen(true)} data-testid="review-empty-create">{t("Open / New")}</button>
                     <button className={`${wbButton.secondary} ml-2 mt-4`} onClick={() => newBoardFiles.current?.click()}>{t("Import files and create a board")}</button>
                   </div>
                 </div>

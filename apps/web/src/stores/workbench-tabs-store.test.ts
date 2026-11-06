@@ -2,7 +2,7 @@ import { beforeEach, expect, it } from "vitest";
 import { useWorkbenchTabsStore } from "./workbench-tabs-store";
 
 beforeEach(() => {
-  useWorkbenchTabsStore.setState({ tabs: [], activeKey: null });
+  useWorkbenchTabsStore.setState({ tabs: [], activeKey: null, recentFolders: [] });
   localStorage.clear();
 });
 
@@ -21,17 +21,34 @@ it("opens each object once, focuses repeated opens, and closes views independent
   expect(useWorkbenchTabsStore.getState().activeKey).toBe("review:a");
 });
 
-it("restores the mixed tab order and active object from the saved session", async () => {
+it("restores folders and boards while leaving old review tabs behind", async () => {
   const store = useWorkbenchTabsStore.getState();
   store.open({ kind: "review", id: "a", name: "Task" });
   store.open({ kind: "board", id: "b", name: "Board" });
-  store.open({ kind: "review", id: "c", name: "Other task" });
-  store.move("review:c", "review:a");
+  store.open({ kind: "folder", id: "C:/task", root: "C:/task", name: "Folder" });
+  store.rename("folder:C:/task", "Renamed folder task");
+  expect(useWorkbenchTabsStore.getState().recentFolders[0].name).toBe("Renamed folder task");
+  store.move("folder:C:/task", "review:a");
   store.activate("board:b");
   const saved = localStorage.getItem("reelterminal.workbench.tabs")!;
-  useWorkbenchTabsStore.setState({ tabs: [], activeKey: null });
+  useWorkbenchTabsStore.setState({ tabs: [], activeKey: null, recentFolders: [] });
   localStorage.setItem("reelterminal.workbench.tabs", saved);
   await useWorkbenchTabsStore.persist.rehydrate();
-  expect(useWorkbenchTabsStore.getState().tabs.map(tab => `${tab.kind}:${tab.id}`)).toEqual(["review:c", "review:a", "board:b"]);
+  expect(useWorkbenchTabsStore.getState().tabs.map(tab => `${tab.kind}:${tab.id}`)).toEqual(["folder:C:/task", "board:b"]);
+  expect(useWorkbenchTabsStore.getState().recentFolders.map(tab => tab.root)).toEqual(["C:/task"]);
   expect(useWorkbenchTabsStore.getState().activeKey).toBe("board:b");
+});
+
+ it("keeps a closed folder in recent tasks and does not restore an old active review", async () => {
+  const store = useWorkbenchTabsStore.getState();
+  store.open({ kind: "folder", id: "C:/task", root: "C:/task", name: "Task" });
+  store.close("folder:C:/task");
+  store.open({ kind: "review", id: "old", name: "Old task" });
+  const saved = localStorage.getItem("reelterminal.workbench.tabs")!;
+  useWorkbenchTabsStore.setState({ tabs: [], activeKey: null, recentFolders: [] });
+  localStorage.setItem("reelterminal.workbench.tabs", saved);
+  await useWorkbenchTabsStore.persist.rehydrate();
+  expect(useWorkbenchTabsStore.getState().activeKey).toBeNull();
+  expect(useWorkbenchTabsStore.getState().tabs).toEqual([]);
+  expect(useWorkbenchTabsStore.getState().recentFolders.map(tab => tab.root)).toEqual(["C:/task"]);
 });

@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useRef } from "react";
-import { Plus, X } from "lucide-react";
+import { Folder, Plus, X } from "lucide-react";
 import { useWorkbenchTabsStore, workbenchTabKey } from "../../../stores/workbench-tabs-store";
 import { FreeBoardIcon, ReviewTaskIcon, WorkspaceDirectoryIcon } from "./WorkbenchIcons";
 
@@ -75,7 +75,7 @@ export function WorkbenchTabs({
                 role="tab"
                 aria-selected={active}
                 disabled={locked}
-                data-testid={`${tab.kind === "review" ? "review" : "board"}-tab-${tab.id}`}
+                data-testid={`${tab.kind}-tab-${tab.id}`}
                 className={`flex h-full min-w-0 flex-1 items-center gap-2 pl-3 pr-1 text-left text-xs disabled:opacity-50 ${
                   active ? "font-medium text-fg" : "text-fg-2 group-hover:text-fg"
                 }`}
@@ -92,7 +92,7 @@ export function WorkbenchTabs({
                   }`}
                   aria-hidden
                 >
-                  {tab.kind === "review" ? (
+                  {tab.kind === "folder" ? <Folder className="h-3.5 w-3.5" /> : tab.kind === "review" ? (
                     <ReviewTaskIcon className="h-3.5 w-3.5" />
                   ) : (
                     <FreeBoardIcon className="h-3.5 w-3.5" />

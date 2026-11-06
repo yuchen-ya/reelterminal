@@ -1,0 +1,192 @@
+/** Real local CPU/ffmpeg media flow; no model adapter, credentials or LLM calls. */
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import type { Page } from "playwright-core";
+import { expect, test, vi } from "vitest";
+import { selectTaskDecision } from "../src/shared/task-review-selectors";
+import type { TaskReviewSnapshot } from "../src/shared/task-review";
+import { createEvidence } from "./harness/evidence";
+import { launchApp, type LaunchedApp } from "./harness/launch";
+import { DESKTOP_DIR } from "./harness/paths";
+import { decodeRgbaPng } from "./harness/repair-acceptance-fixtures";
+
+const snapshotAt = async (root: string): Promise<TaskReviewSnapshot> => ({ root, ...JSON.parse(await readFile(path.join(root, ".reelterminal", "task-review.json"), "utf8")) });
+const changeScene = (page: Page, name: string) => page.getByTestId("task-review-scene-switch").getByRole("button", { name, exact: true }).click();
+const point = async (page: Page, x: number, y: number) => {
+  const picture = page.getByTestId("task-review-media-picture");
+  await picture.scrollIntoViewIfNeeded();
+  const bounds = await picture.boundingBox();
+  if (!bounds) throw new Error("Actual media picture is not visible");
+  await page.mouse.click(bounds.x + bounds.width * x, bounds.y + bounds.height * y);
+};
+const waitCandidate = async (page: Page) => {
+  await vi.waitFor(async () => {
+    expect(await page.getByTestId("task-review-media-error").count()).toBe(0);
+    expect(await page.getByTestId("task-review-media-accept").count()).toBe(1);
+    expect(await page.getByTestId("task-review-media-mask").isVisible()).toBe(true);
+  }, { timeout: 120000, interval: 500 });
+  await page.getByTestId("task-review-media-mask").evaluate(async node => {
+    const mask = getComputedStyle(node).maskImage.match(/url\(["']?(.*?)["']?\)/)?.[1];
+    if (!mask) throw new Error("Candidate mask URL was not rendered");
+    const image = new Image(); image.src = mask; await image.decode();
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
+  const tintAlpha = await page.getByTestId("task-review-media-mask").evaluate(node => {
+    const canvas = document.createElement("canvas"); canvas.width = canvas.height = 1;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = getComputedStyle(node).backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+    return context.getImageData(0, 0, 1, 1).data[3] * Number(getComputedStyle(node).opacity);
+  });
+  expect(tintAlpha, "A loaded candidate mask needs a visible tint, not only a transparent DOM overlay").toBeGreaterThan(0);
+};
+
+test("real CPU task media saves explicit regions, exports transparent results and freezes actual VFR PTS", async () => {
+  const publicFixture = path.join(DESKTOP_DIR, ".cache", "mobilesam-validation-2026-11-07", "native-fixtures", "dogs.rgba");
+  expect(existsSync(publicFixture), "Existing public MobileSAM validation fixture must be present; no download/fake fallback").toBe(true);
+  const runDir = await mkdtemp(path.join(os.tmpdir(), "task-review-media-"));
+  const evidence = createEvidence("task-review-media");
+  let launched: LaunchedApp | undefined;
+  let root: string | undefined;
+  try {
+    launched = await launchApp({ runDir });
+    const page = launched.page;
+    evidence.bindPage(page);
+    await page.evaluate(() => localStorage.setItem("openreel-locale", "zh-CN"));
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByRole("tab", { name: /审阅工作台/ }).click();
+    await page.getByTestId("review-workspace-open").click();
+    await page.getByTestId("folder-task-new").click();
+    const create = page.getByRole("dialog", { name: "新建任务" });
+    await create.getByLabel("任务名称").fill("真实CPU媒体隔离验收");
+    await create.getByLabel("文件夹名称").fill("cpu-media-acceptance");
+    await create.getByRole("button", { name: "创建", exact: true }).click();
+    await page.getByTestId("task-review-workspace").waitFor();
+    root = path.join(launched.userDataDir, "review", "tasks", "cpu-media-acceptance");
+    const imagePath = path.join(root, "public-dogs.png");
+    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "1072x603", "-i", publicFixture, "-frames:v", "1", imagePath], { windowsHide: true });
+    const videoPath = path.join(root, "synthetic-vfr.mp4");
+    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=10:duration=0.5", "-vf", "settb=1/1000,setpts='if(eq(N,0),0,if(eq(N,1),120,if(eq(N,2),430,if(eq(N,3),470,900))))'", "-frames:v", "5", "-fps_mode", "passthrough", "-enc_time_base", "1:1000", "-c:v", "libx264", "-bf", "0", "-pix_fmt", "yuv420p", "-video_track_timescale", "1000", "-movflags", "+faststart", videoPath], { windowsHide: true });
+    const frameProbe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", videoPath], { windowsHide: true }).toString()) as { frames: { best_effort_timestamp_time: string }[] };
+    const pts = frameProbe.frames.map(frame => Number(frame.best_effort_timestamp_time));
+    expect(new Set(pts.slice(1).map((value, i) => Math.round((value - pts[i]) * 1000))).size).toBeGreaterThan(1);
+    await changeScene(page, "目录");
+    const row = (name: string) => page.getByTestId("folder-review-row").filter({ has: page.locator(`span[title="${name}"]`) });
+    await row("public-dogs.png").waitFor();
+    await row("public-dogs.png").dblclick();
+    await page.locator('[data-testid="task-review-media-scene"][data-unit-kind="image"]').waitFor();
+    await page.getByTestId("task-review-media-picture").waitFor();
+    const photo = (await snapshotAt(root)).units.find(unit => unit.kind === "image")!;
+    await point(page, 675 / 1072, 395 / 603);
+    await waitCandidate(page);
+    await page.getByRole("button", { name: "排除点", exact: true }).click();
+    await point(page, 525 / 1072, 400 / 603);
+    await waitCandidate(page);
+    expect(await page.getByTestId("task-review-media-point").count()).toBe(2);
+    expect(await page.getByTestId("task-review-decide-kept").isEnabled()).toBe(false);
+    await page.getByLabel("区域标签", { exact: true }).fill("公开犬只：仅保存");
+    await evidence.screenshot("real-positive-negative-candidate");
+    await page.getByTestId("task-review-media-accept").click();
+    await page.getByTestId("task-review-region-cutout").waitFor();
+    let task = await snapshotAt(root);
+    const initial = task.units.find(unit => unit.kind === "region")!;
+    expect(initial.kind).toBe("region");
+    expect(task.decisions).toEqual([]);
+    await evidence.screenshot("region-saved-without-decision");
+    await page.getByTestId("task-review-region-view-toggle").click();
+    await page.getByRole("button", { name: "目标点", exact: true }).click();
+    await point(page, 620 / 1072, 280 / 603);
+    await waitCandidate(page);
+    await page.getByLabel("区域标签", { exact: true }).fill("公开犬只：明确保留新区域");
+    await page.getByTestId("task-review-media-accept-keep").click();
+    await vi.waitFor(async () => {
+      const saved = await snapshotAt(root!);
+      expect(saved.units.filter(unit => unit.kind === "region")).toHaveLength(2);
+      expect(saved.decisions).toHaveLength(1);
+    }, { timeout: 20000 });
+    task = await snapshotAt(root);
+    const accepted = task.units.find(unit => unit.kind === "region" && unit.supersedesUnitId === initial.id)!;
+    expect(accepted.kind).toBe("region");
+    if (accepted.kind !== "region") throw new Error("Expected production region unit");
+    expect(accepted.modelVersion).toContain("mobilesam");
+    expect(selectTaskDecision(task, { unitId: accepted.id, sourceVersionId: accepted.sourceVersionId, purpose: "review" })?.status).toBe("kept");
+    expect(task.decisions.some(decision => decision.unitId === photo.id || decision.unitId === initial.id)).toBe(false);
+    await page.getByTestId("task-review-region-cutout").waitFor();
+    await evidence.screenshot("explicit-new-region-kept-transparent-preview");
+    await changeScene(page, "全局");
+    await page.getByTestId("task-result-export-toggle").click();
+    const derived = page.locator(`[data-testid="task-result-export-derived-row"][data-unit-id="${accepted.id}"]`);
+    await derived.locator('[data-output-kind="cutout"]').check();
+    await derived.locator('[data-output-kind="mask"]').check();
+    const destination = path.join(runDir, "region-delivery");
+    await mkdir(destination);
+    await launched.app.evaluate(({ dialog }, directory) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] }); }, destination);
+    await page.getByTestId("task-result-export-choose-destination").click();
+    await page.getByTestId("task-result-export-preview-button").click();
+    await page.getByTestId("task-result-export-execute-button").waitFor();
+    await page.getByTestId("task-result-export-execute-button").click();
+    await vi.waitFor(async () => expect((await snapshotAt(root!)).originalExports?.at(-1)?.status).toBe("complete"), { timeout: 20000 });
+    const receipt = (await snapshotAt(root)).originalExports!.at(-1)!;
+    expect(receipt.sourceEntryIds).toEqual([]);
+    expect(receipt.items.map(item => item.outputKind).sort()).toEqual(["cutout", "mask"]);
+    const cutout = decodeRgbaPng(path.join(receipt.outputDirectory, receipt.items.find(item => item.outputKind === "cutout")!.relativeOutputPath));
+    let transparent = 0, opaque = 0;
+    for (let i = 3; i < cutout.pixels.length; i += 4) { if (cutout.pixels[i] === 0) transparent++; if (cutout.pixels[i] === 255) opaque++; }
+    expect(transparent).toBeGreaterThan(0); expect(opaque).toBeGreaterThan(0);
+    const mask = decodeRgbaPng(path.join(receipt.outputDirectory, receipt.items.find(item => item.outputKind === "mask")!.relativeOutputPath));
+    expect(mask.width).toBe(cutout.width); expect(mask.height).toBe(cutout.height);
+    expect(JSON.parse(await readFile(receipt.manifestPath, "utf8")).items.every((item: { status: string }) => item.status === "copied")).toBe(true);
+    evidence.record("regionExport", { modelVersion: accepted.modelVersion, acceptedUnitId: accepted.id, pendingOriginalRegionId: initial.id, receipt, alpha: { transparent, opaque, width: cutout.width, height: cutout.height } });
+    await evidence.screenshot("real-cutout-mask-export-receipt");
+
+    await changeScene(page, "目录");
+    await row("synthetic-vfr.mp4").dblclick();
+    const video = page.getByTestId("task-review-media-video");
+    await video.waitFor();
+    await video.evaluate(async node => { const video = node as HTMLVideoElement; await video.play(); });
+    await vi.waitFor(async () => expect(await video.evaluate(node => (node as HTMLVideoElement).currentTime)).toBeGreaterThan(0));
+    await video.evaluate(async node => {
+      const video = node as HTMLVideoElement; video.pause();
+      const sought = new Promise<void>(resolve => video.addEventListener("seeked", () => resolve(), { once: true }));
+      video.currentTime = 0.45; await sought;
+    });
+    const requestedTime = await video.evaluate(node => (node as HTMLVideoElement).currentTime);
+    await evidence.screenshot("vfr-player-before-freeze");
+    await page.getByTestId("task-review-freeze-frame").click();
+    await page.locator('[data-testid="task-review-media-scene"][data-unit-kind="video-frame"]').waitFor({ timeout: 30000 });
+    task = await snapshotAt(root);
+    const frame = task.units.find(unit => unit.kind === "video-frame")!;
+    if (frame.kind !== "video-frame") throw new Error("Expected production decoded frame unit");
+    const expectedPts = pts.filter(pts => pts <= requestedTime + 1e-7).at(-1)!;
+    expect(frame.ptsTimeSec).toBeCloseTo(expectedPts, 6);
+    expect(frame.timeBase).toBeTruthy();
+    await page.getByTestId("task-review-media-picture").waitFor();
+    await vi.waitFor(async () => expect(await page.getByTestId("task-review-media-picture").locator("img").evaluate(node => (node as HTMLImageElement).complete && (node as HTMLImageElement).naturalWidth > 0)).toBe(true));
+    await evidence.screenshot("actual-vfr-frame-pts");
+    await point(page, 0.5, 0.5);
+    await page.getByTestId("task-review-media-cancel").waitFor({ timeout: 10000 });
+    await changeScene(page, "全局");
+    await page.getByTestId("task-review-global-scene").waitFor();
+    await changeScene(page, "目录");
+    await row("synthetic-vfr.mp4").dblclick();
+    await video.waitFor();
+    await video.evaluate(async node => {
+      const video = node as HTMLVideoElement;
+      (window as unknown as { acceptanceOldMedia: HTMLVideoElement }).acceptanceOldMedia = video;
+      await video.play();
+    });
+    await changeScene(page, "全局");
+    expect(await page.evaluate(() => (window as unknown as { acceptanceOldMedia: HTMLVideoElement }).acceptanceOldMedia.paused)).toBe(true);
+    expect(await page.getByTestId("task-review-media-mask").count()).toBe(0);
+    expect((await snapshotAt(root)).units.filter(unit => unit.kind === "region")).toHaveLength(2);
+    evidence.record("video", { pts, requestedTime, frame, cancellationObservedWhileRunning: true, originalVideoPausedOnLeave: true });
+    evidence.flush({ passed: true, evidenceLimits: ["Healthy real MobileSAM CPU path only; worker-crash recovery not GUI tested", "Public dogs fixture and synthetic VFR; no general segmentation accuracy claim", "No LLM config, credential or network request"] });
+  } catch (error) {
+    if (launched) { if (root) evidence.record("failureSnapshot", await snapshotAt(root)); await evidence.screenshot("failure"); }
+    evidence.flush({ passed: false, failure: error instanceof Error ? error.message : String(error) });
+    throw error;
+  } finally { await launched?.close(); }
+});
