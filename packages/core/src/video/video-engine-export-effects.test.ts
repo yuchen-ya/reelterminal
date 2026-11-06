@@ -248,6 +248,32 @@ describe("VideoEngine export frame effects", () => {
     vi.unstubAllGlobals();
   });
 
+  it("composites text and graphics in track order above video", async () => {
+    const { VideoEngine } = await import("./video-engine");
+    const engine = new VideoEngine();
+    const internal = engine as any;
+    internal.initialized = true;
+    internal.mediabunny = {};
+    const project = makeProject(makeClip([], {} as ClipColorGrading));
+    const base = { ...project.timeline.tracks[0]!, clips: [] };
+    const graphics = { ...base, id: "graphics", type: "graphics" as const };
+    const text = { ...base, id: "text", type: "text" as const };
+    vi.spyOn(internal, "getActiveTextClips").mockReturnValue([{ trackId: "text" }]);
+    vi.spyOn(internal, "getActiveSVGClips").mockReturnValue([{ trackId: "graphics" }]);
+    vi.spyOn(internal, "getActiveShapeClips").mockReturnValue([]);
+    vi.spyOn(internal, "getActiveStickerClips").mockReturnValue([]);
+    const order: string[] = [];
+    vi.spyOn(internal, "renderSVGClipToCanvasCtx").mockImplementation(async () => { order.push("svg"); });
+    vi.spyOn(internal, "renderTextClipWithSubjectMask").mockImplementation(async () => { order.push("text"); });
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => makeBitmap("composite")));
+
+    await engine.renderFrame({ ...project, timeline: { ...project.timeline, tracks: [base, graphics, text] } }, 1);
+    expect(order).toEqual(["text", "svg"]);
+    order.length = 0;
+    await engine.renderFrame({ ...project, timeline: { ...project.timeline, tracks: [base, text, graphics] } }, 1);
+    expect(order).toEqual(["svg", "text"]);
+  });
+
   it("exports active clip effects and every color-grading stage", async () => {
     const sourceBitmap = makeBitmap("source");
     const effectsBitmap = makeBitmap("effects");

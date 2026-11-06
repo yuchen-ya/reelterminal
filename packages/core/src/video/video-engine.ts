@@ -1118,38 +1118,27 @@ export class VideoEngine {
       }
     }
 
-    // Overlays composite on top of all clip tracks, matching the preview's layering.
-    for (const shapeClip of activeShapeClips) {
-      await this.renderShapeClipToCanvasCtx(ctx, shapeClip, time, width, height);
-    }
-    for (const svgClip of activeSVGClips) {
-      await this.renderSVGClipToCanvasCtx(ctx, svgClip, time, width, height);
-    }
-    for (const stickerClip of activeStickerClips) {
-      await this.renderStickerClipToCanvasCtx(ctx, stickerClip, time, width, height);
-    }
-    await this.renderMotionInstancesToCanvasCtx(
-      ctx,
-      project,
-      time,
-      width,
-      height,
-      scaleX,
-      scaleY,
-    );
-    for (const textClip of activeTextClips) {
-      await this.renderTextClipWithSubjectMask(
-        ctx,
-        textClip,
-        time,
-        width,
-        height,
-        subjectFrame,
-        options.realtime ?? false,
-        subjectStreamId,
-        settings.width,
-        settings.height,
-      );
+    // Overlays sit above video; among them the lower track index is on top.
+    for (const { track } of allRenderableTracks) {
+      if (track.type === "graphics") {
+        for (const clip of activeShapeClips.filter((clip) => clip.trackId === track.id)) {
+          await this.renderShapeClipToCanvasCtx(ctx, clip, time, width, height);
+        }
+        for (const clip of activeSVGClips.filter((clip) => clip.trackId === track.id)) {
+          await this.renderSVGClipToCanvasCtx(ctx, clip, time, width, height);
+        }
+        for (const clip of activeStickerClips.filter((clip) => clip.trackId === track.id)) {
+          await this.renderStickerClipToCanvasCtx(ctx, clip, time, width, height);
+        }
+        await this.renderMotionInstancesToCanvasCtx(ctx, project, time, width, height, scaleX, scaleY, track.id);
+      } else if (track.type === "text") {
+        for (const textClip of activeTextClips.filter((clip) => clip.trackId === track.id)) {
+          await this.renderTextClipWithSubjectMask(
+            ctx, textClip, time, width, height, subjectFrame,
+            options.realtime ?? false, subjectStreamId, settings.width, settings.height,
+          );
+        }
+      }
     }
     subjectFrame?.close();
 
@@ -1274,6 +1263,7 @@ export class VideoEngine {
     height: number,
     scaleX: number,
     scaleY: number,
+    trackId: string,
   ): Promise<void> {
     const compositions = project.motionCompositions ?? [];
     const instances = (project.motionInstances ?? [])
@@ -1287,7 +1277,7 @@ export class VideoEngine {
         return { instance, track, trackIndex };
       })
       .filter(({ instance, track }) => {
-        if (track?.hidden) return false;
+        if (track?.hidden || instance.trackId !== trackId) return false;
         return (
           time >= instance.startTime &&
           time < instance.startTime + instance.duration

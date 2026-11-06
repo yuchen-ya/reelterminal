@@ -229,6 +229,29 @@ describe("visual scaling E2E: video/text geometry at non-project raster sizes", 
     }
   });
 
+  it("respects text and SVG track order in actual preview pixels", async () => {
+    providers ??= createChromiumProviders();
+    for (const textOnTop of [false, true]) {
+      facade = createAgentFacade({ mediaRoots: [mediaRoot], artifactRoot, renderProvider: providers.renderProvider });
+      const created = await facade["project.create"]({ name: "overlay-order", settings: { width: 320, height: 180, frameRate: 30, sampleRate: 48000, channels: 2 } });
+      expect(created.ok).toBe(true);
+      const edited = await facade["edit.apply"]({ ops: [
+        ...(textOnTop
+          ? [{ op: "track.add" as const, trackType: "text" as const, trackId: "t" }, { op: "track.add" as const, trackType: "graphics" as const, trackId: "g" }]
+          : [{ op: "track.add" as const, trackType: "graphics" as const, trackId: "g" }, { op: "track.add" as const, trackType: "text" as const, trackId: "t" }]),
+        { op: "svg.create", trackId: "g", svgContent: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><rect width="320" height="180" fill="#0000ff"/></svg>', startTime: 0, duration: 5 },
+        { op: "text.create", trackId: "t", text: "VISIBLE", startTime: 0, duration: 5, style: { fontSize: 50, color: "#FFFFFF", textAlign: "center" }, position: { x: 0.5, y: 0.5 }, anchor: { x: 0.5, y: 0.5 } },
+      ] });
+      expect(edited.ok).toBe(true);
+      const rendered = await facade["preview.render_frame"]({ timeSec: 1 });
+      expect(rendered.ok).toBe(true);
+      if (!rendered.ok) return;
+      const image = decodePng(await readFile(rendered.value.artifact.path));
+      const white = bboxOf(image, (r, g, b) => r > 200 && g > 200 && b > 200);
+      if (textOnTop) expect(white.count).toBeGreaterThan(20);
+      else expect(white.count).toBe(0);
+    }
+  }, 120_000);
 
   it("renders SVG opacity animation across consecutive frames in Chromium", async () => {
     providers ??= createChromiumProviders();
