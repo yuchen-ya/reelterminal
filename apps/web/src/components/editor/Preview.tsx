@@ -135,7 +135,6 @@ import {
   PREVIEW_MAX_DIMENSION,
   previewQualityScale,
   PREVIEW_QUALITY_OPTIONS,
-  resolveRenderBase,
 } from "./preview/index";
 import {
   calculateClipTransform,
@@ -2074,38 +2073,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       let hasRenderedFrame = false;
       let shouldClearCanvas = true;
       const lastGoodFrame = getLastGoodPreviewFrame();
-      const hadBackground = Boolean(lastGoodFrame);
-      // A keyed (or otherwise transparent) full-frame video replaces the
-      // picture rather than compositing over it. Baking it over the previous
-      // frame let stale pixels shine through every transparent region and be
-      // re-baked, so effect changes only ever showed on the first draw. When a
-      // full-frame active video clip owns the frame, redraw from the clean
-      // background — the same replace semantics playback and export use. The
-      // previous frame stays reserved for the decode-failure fallback below.
-      const renderBase = resolveRenderBase({
-        time,
-        hasLastGoodFrame: hadBackground,
-        clips: videoTracks.flatMap((track) =>
-          track.clips.map((clip) => ({
-            mediaType: getMediaItem(clip.mediaId)?.type,
-            trackHidden: track.hidden,
-            startTime: clip.startTime,
-            duration: clip.duration,
-            transform: clip.transform as ClipTransform | undefined,
-          })),
-        ),
-      });
-      if (renderBase === "lastFrame" && lastGoodFrame) {
-        ctx.drawImage(
-          lastGoodFrame,
-          0,
-          0,
-          canvas.width,
-          canvas.height,
-        );
-        shouldClearCanvas = false;
-      }
-
+      // A cached frame already contains its overlays. Always compose a new
+      // frame on the project background; reserve the cache for decode failure.
       const activeShapeClips = getActiveShapeClips(allShapeClips, time);
       const activeTextClips = getActiveTextClips(allTextClips, time);
       const hasActiveClipMasks = videoTracks.some((track) =>
@@ -2586,6 +2555,13 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         hasRenderedFrame = hasRenderedFrame || adjusted;
       }
 
+      if (!hasCompleteVideoContent() && lastGoodFrame && !isHistoryFramePending()) {
+        if (token && frameSchedulerRef.current && !frameSchedulerRef.current.isCurrent(token)) return false;
+        mainCtx.clearRect(0, 0, canvas.width, canvas.height);
+        mainCtx.drawImage(lastGoodFrame, 0, 0, canvas.width, canvas.height);
+        return true;
+      }
+
       if (hasRenderedFrame && offscreenCanvasRef.current) {
         const completeVideoContent = hasCompleteVideoContent();
         if (!canCommitHistoryFrame({
@@ -2619,49 +2595,6 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           clearPlaybackCanvasBuffers();
         }
         return commitResult === "committed";
-      }
-
-      const hasActiveContent =
-        videoTracks.some((track) =>
-          track.clips.some(
-            (clip) =>
-              time >= clip.startTime && time < clip.startTime + clip.duration,
-          ),
-        ) ||
-        hasActiveMotionInstances(time) ||
-        activeShapeClips.length > 0 ||
-        activeTextClips.length > 0;
-
-      if (hadBackground && hasActiveContent && offscreenCanvasRef.current) {
-        // Partial result (decode failed or superseded): keep the previously
-        // confirmed picture on screen — never clear the canvas to a solid
-        // placeholder while a frame is still expected.
-        if (token && frameSchedulerRef.current) {
-          if (!frameSchedulerRef.current.isCurrent(token)) return false;
-        }
-        mainCtx.clearRect(0, 0, canvas.width, canvas.height);
-        if (
-          renderBase === "lastFrame" ||
-          !lastGoodFrame ||
-          activeSubtitles.length > 0
-        ) {
-          // The offscreen canvas still holds the previous frame as its base
-          // (plus anything rendered this round, e.g. subtitles) — keep it.
-          mainCtx.drawImage(offscreenCanvasRef.current, 0, 0);
-        } else {
-          // The base was skipped this round (a full-frame video owns the
-          // frame) and nothing rendered (the decode failed or was superseded
-          // by a newer seek): fall back to the last good frame instead of
-          // flashing the bare background fill.
-          mainCtx.drawImage(
-            lastGoodFrame,
-            0,
-            0,
-            canvas.width,
-            canvas.height,
-          );
-        }
-        return true;
       }
 
       return hasRenderedFrame;
@@ -2738,28 +2671,11 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       const historyFramePhase = previewSession.getSnapshot().loading?.phase;
       const historyFramePending =
         historyFramePhase === "awaiting-first-valid-frame" || historyFramePhase === "restoring-context";
-      const hasActivePlaceholder = timelineTracks.some((track) =>
-        (track.type === "video" || track.type === "image") && !track.hidden &&
-        track.clips.some((clip) =>
-          time >= clip.startTime && time < clip.startTime + clip.duration &&
-          (clip as ClipWithPlaceholder).isPlaceholder,
-        ),
-      );
-
-      // Never clear a confirmed picture to a solid placeholder while a frame
-      // is still expected: the last successfully committed frame stays on
-      // screen and only real overlays are redrawn over it.
+      // A missing media frame may temporarily retain the last complete image,
+      // but never paint new overlays onto that already-composited image.
       const lastGood = getLastGoodPreviewFrame();
-      const retainLastGoodFrame = Boolean(
-        lastGood && !(historyFramePending && hasActivePlaceholder),
-      );
-      if (lastGood && retainLastGoodFrame) {
-        ctx.drawImage(lastGood, 0, 0, fallbackCanvas.width, fallbackCanvas.height);
-      } else {
-        // Nothing confirmed yet, or the target contains an intentional media
-        // placeholder. Paint its own background instead of mixing old pixels.
-        fillPreviewBackground(ctx, time, fallbackCanvas.width, fallbackCanvas.height);
-      }
+      if (lastGood && hasActiveVideoContent && !historyFramePending) return;
+      fillPreviewBackground(ctx, time, fallbackCanvas.width, fallbackCanvas.height);
 
       const allRenderableTracks = timelineTracks
         .map((track, idx) => ({ track, originalIndex: idx }))
@@ -2775,9 +2691,6 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
       for (const { track } of allRenderableTracks) {
         if (track.type === "video" || track.type === "image") {
-          // The name plate is only honest when no picture exists at all;
-          // over a kept frame it would just obscure the preview.
-          if (retainLastGoodFrame) continue;
           for (const clip of track.clips) {
             const clipStart = clip.startTime;
             const clipEnd = clip.startTime + clip.duration;
@@ -5420,21 +5333,19 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                     (f) => clipToTrackIndex.get(f.clip.id) === originalIndex,
                   );
                   for (const { transform, frame } of trackFrames) {
-                    drawFrameWithTransform(
-                      ctx,
-                      frame,
-                      transform,
-                      canvas.width,
-                      canvas.height,
-                    );
+                    const bitmap = await createImageBitmap(frame);
+                    tempBitmaps.push(bitmap);
+                    gpuLayers.push({ bitmap, transform });
                   }
                 } else if (track.type === "graphics") {
+                  const overlay = new OffscreenCanvas(canvas.width, canvas.height);
+                  const overlayCtx = overlay.getContext("2d") as unknown as CanvasRenderingContext2D;
                   const trackShapeClips = activeShapeClips.filter(
                     (sc) => sc.trackId === track.id,
                   );
                   for (const shapeClip of trackShapeClips) {
                     await renderShapeClipWithEffects(
-                      ctx,
+                      overlayCtx,
                       shapeClip,
                       canvas.width,
                       canvas.height,
@@ -5442,12 +5353,15 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                     );
                   }
                   await renderMotionInstancesForTrack(
-                    ctx,
+                    overlayCtx,
                     track,
                     currentPlayhead,
                     canvas.width,
                     canvas.height,
                   );
+                  const bitmap = await createImageBitmap(overlay);
+                  tempBitmaps.push(bitmap);
+                  gpuLayers.push({ bitmap, transform: DEFAULT_TRANSFORM });
                 } else if (track.type === "text") {
                   const trackTextClips = activeTextClips.filter(
                     (tc) => tc.trackId === track.id,
@@ -5623,21 +5537,6 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
               canvas.width,
               canvas.height,
             );
-
-            const activeSubtitles = getActiveSubtitles(
-              allSubtitlesRef.current,
-              currentPlayhead,
-            );
-            for (const subtitle of activeSubtitles) {
-              renderSubtitleToCanvas(
-                ctx,
-                subtitle,
-                canvas.width,
-                canvas.height,
-                currentPlayhead,
-                projectLayoutSizeRef.current,
-              );
-            }
 
             mainCtx.drawImage(offscreenCanvasRef.current!, 0, 0);
             lastPresentedFrameAtRef.current = performance.now();
