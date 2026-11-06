@@ -9,7 +9,9 @@ asarUnpack:
   # physical files. Ordinary Python cannot read Electron's virtual ASAR tree.
   - dist/python/**
   - dist/aurora-host/**
-  # Native ONNX runtime for the Silero VAD speech-activity analysis. The main
+  # Node workers execute from real files and resolve the unpacked ONNX packages.
+  - dist/main/segmentation/**
+  # Native ONNX runtime for Silero VAD and MobileSAM segmentation. The main
   # bundle keeps the require() external, so the packaged app loads the .node
   # binary from node_modules at runtime; the JS dependency is unpacked too so
   # unpacked entry points can resolve it from the same real directory.
@@ -42,6 +44,14 @@ files:
   # ONNX runtime binaries are pruned per target/arch in the platform sections
   # below: the packaged app only ever loads its own platform+arch binding.
 extraResources:
+  - from: resources/segmentation/mobilesam
+    to: segmentation/mobilesam
+    filter:
+      - "mobilesam-encoder-fp32.onnx"
+      - "mobilesam-decoder-dynamic-fp32.onnx"
+      - "manifest.json"
+      - "LICENSE-MobileSAM.txt"
+      - "NOTICE-MobileSAM.txt"
   - from: build/icon.png
     to: icon.png
   - from: ../web/dist

@@ -5,6 +5,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     "main/index": "src/main/index.ts",
+    "main/segmentation/worker": "src/main/segmentation/worker.ts",
     "preload/index": "src/preload/index.ts",
     "aurora-host/index": "src/aurora-host/index.ts",
     // CLI for the project currently open in the desktop app.

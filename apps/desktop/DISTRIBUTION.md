@@ -65,6 +65,47 @@ retains the source URLs and review notes; missing materials remain visible. See
 [`LICENSES/RELEASE-READINESS.md`](LICENSES/RELEASE-READINESS.md) for the checked
 items and signing evidence.
 
+## MobileSAM segmentation resources
+
+The application bundles one pinned, source-derived MobileSAM FP32 ONNX pair;
+it does not download models on startup or require Python for segmentation.
+Before the first source build, explicitly stage the already validated export
+directory (replace the example with the authorized local directory):
+
+```powershell
+pnpm --filter @reelterminal/desktop prepare:segmentation --source-dir E:\path\to\validated-mobilesam-export
+node apps/desktop/scripts/prepare-segmentation-resources.mjs --check
+```
+
+The source directory must contain `mobilesam-encoder-fp32.onnx` (27,969,731
+bytes) and `mobilesam-decoder-dynamic-fp32.onnx` (16,496,929 bytes). Preparation
+checks both sizes and SHA-256 identities against
+`resources/segmentation/mobilesam-manifest.json`, then copies only these models,
+the manifest and model license/notices to the ignored generated directory
+`apps/desktop/resources/segmentation/mobilesam/`. It performs no network access;
+never copy the validation directory, research photos or original checkpoint
+into a distributable. The `build:main` preflight verifies these prepared assets
+and fails if absent, modified or stale. After changing pinned models/notices,
+stage them again; there is no fallback to a developer cache or arbitrary model.
+
+`tsup` emits `dist/main/segmentation/worker.js`. Electron Builder unpacks that
+worker and `onnxruntime-node`/`onnxruntime-common` under `app.asar.unpacked/`;
+the existing `prune-onnx-runtime.mjs` hook retains only the target native runtime.
+Models and their manifest/notices are extra resources at
+`process.resourcesPath/segmentation/mobilesam/`. Main creates the per-task
+backend factory without loading workers/models; execution checks these exact
+locations and the native binding before starting the backend. Development uses
+the desktop package's `dist/` worker and staged `resources/` models.
+
+The model source revision is
+`f706ad9c4eb7f219c00d9050e46328518ffb65d2`; attribution and conversion details
+are in `LICENSES/NOTICE-MobileSAM.txt`. Source preparation and unit tests do
+not establish packaged execution. Before release, run segmentation in the actual
+packaged application, verify native dependency resolution and resource notices,
+and verify image correction/video-frame selection through the task-media UI.
+FFmpeg/ffprobe remain separately installed tools with the PATH/environment
+configuration above; this model integration does not bundle them.
+
 ## Signing and updates
 
 macOS release builds enable hardened runtime and notarization. Configure an

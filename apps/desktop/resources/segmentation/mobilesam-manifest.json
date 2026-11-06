@@ -1,0 +1,31 @@
+{
+  "modelVersion": "mobilesam-f706ad9c-fp32-split-v1",
+  "upstream": "https://github.com/ChaoningZhang/MobileSAM",
+  "sourceRevision": "f706ad9c4eb7f219c00d9050e46328518ffb65d2",
+  "license": "Apache-2.0",
+  "checkpoint": {
+    "path": "weights/mobile_sam.pt",
+    "bytes": 40728226,
+    "sha256": "6dbb90523a35330fedd7f1d3dfc66f995213d81b29a5ca8108dbcdd4e37d6c2f"
+  },
+  "conversion": {
+    "format": "ONNX",
+    "opset": 17,
+    "precision": "FP32",
+    "encoder": "Unmodified model.image_encoder; caller performs official RGB resize/normalization/bottom-right padding.",
+    "decoder": "Official SamOnnxModel, return_single_mask=False, dynamic prompt count, four masks and low-resolution logits retained.",
+    "runtime": "onnxruntime-node CPU; no Python dependency"
+  },
+  "files": {
+    "encoder": {
+      "name": "mobilesam-encoder-fp32.onnx",
+      "bytes": 27969731,
+      "sha256": "2d1a57adfe20f44ebc8f4ef9d817c654d3e700d5753f527d85b19fdfff881420"
+    },
+    "decoder": {
+      "name": "mobilesam-decoder-dynamic-fp32.onnx",
+      "bytes": 16496929,
+      "sha256": "a82f156706ff8125411480fba2b0236cc06fd40fbf7cf10fdde402955ca1d6dd"
+    }
+  }
+}

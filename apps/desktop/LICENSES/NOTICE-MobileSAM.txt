@@ -1,0 +1,26 @@
+MobileSAM model and source-derived ONNX weights
+
+Upstream: https://github.com/ChaoningZhang/MobileSAM
+Revision: f706ad9c4eb7f219c00d9050e46328518ffb65d2
+License: Apache License, Version 2.0 (see LICENSE-MobileSAM.txt).
+
+MobileSAM is authored by Chaoning Zhang and the MobileSAM contributors.
+The upstream source retains these notices in the model/export implementation:
+
+Copyright (c) Meta Platforms, Inc. and affiliates.
+All rights reserved.
+
+TinyViT Model Architecture
+Copyright (c) 2022 Microsoft
+Adapted from LeViT and Swin Transformer
+  LeViT: https://github.com/facebookresearch/levit
+  Swin: https://github.com/microsoft/swin-transformer
+
+ReelTerminal distribution changes: the original mobile_sam.pt checkpoint was
+converted to a split FP32 ONNX encoder and dynamic-prompt decoder (opset 17).
+The decoder preserves all four author mask candidates and prior low-resolution
+mask-logit inputs. No model retraining or checkpoint weight edits were applied.
+Model provenance, exact file sizes and SHA-256 digests accompany the weights in
+resources/segmentation/mobilesam/manifest.json. Original research photos,
+validation outputs, Python environments and the original checkpoint are not
+included in the application package.

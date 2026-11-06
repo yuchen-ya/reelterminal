@@ -11,6 +11,9 @@ copyright and license notice included as `LICENSE.txt`.
 
 ## Runtime assets
 
+- The pinned MobileSAM FP32 ONNX encoder/decoder pair is distributed under
+  Apache-2.0. See `LICENSE-MobileSAM.txt`, `NOTICE-MobileSAM.txt` and the model
+  provenance manifest at `resources/segmentation/mobilesam/manifest.json`.
 - FFmpeg binaries may be included under `resources/bin/`. Their versions,
   sources, licenses, and source-distribution requirements are in
   [`FFMPEG.md`](FFMPEG.md).
