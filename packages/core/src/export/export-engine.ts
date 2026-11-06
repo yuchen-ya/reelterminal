@@ -1,3 +1,4 @@
+import type { ExportTiming } from "./export-timing";
 import type { Project } from "../types/project";
 import { encodeFloat32Wav } from "../audio/wav-encode";
 import type {
@@ -125,6 +126,7 @@ export class ExportEngine {
     project: Project,
     settings: Partial<VideoExportSettings> = {},
     writableStream?: FileSystemWritableFileStream,
+    timing?: ExportTiming,
   ): AsyncGenerator<ExportProgress, ExportResult> {
     this.ensureInitialized();
 
@@ -187,6 +189,7 @@ export class ExportEngine {
     this.abortController = new AbortController();
     this.currentExport = { startTime: Date.now(), framesRendered: 0 };
 
+    const prepareStarted = timing ? performance.now() : 0;
     await this.initializeGPUForExport(
       fullSettings.width,
       fullSettings.height,
@@ -222,17 +225,20 @@ export class ExportEngine {
     const totalFrames = Math.ceil(timelineDuration * fullSettings.frameRate);
 
     try {
+      if (this.videoEngine) this.videoEngine.exportTiming = timing ?? null;
       yield this.createProgress("preparing", 0, totalFrames, 0, 0);
 
       await backend.start(fullSettings, project, writableStream);
 
       if (backend.audioBeforeVideo) {
+        const audioStarted = timing ? performance.now() : 0;
         try {
           await this.encodeTimelineAudioToBackend(project, backend);
         } finally {
           this.audioEngine?.clearCache();
         }
         await backend.closeAudio();
+        timing?.record("audioBeforeVideo", audioStarted);
       }
 
       const mediaEngine = getMediaEngine();
@@ -259,6 +265,7 @@ export class ExportEngine {
         }
       }
 
+      timing?.record("prepare", prepareStarted);
       let renderMsTotal = 0;
       for (let frame = 0; frame < totalFrames; frame++) {
         if (this.abortController.signal.aborted) {
@@ -278,6 +285,7 @@ export class ExportEngine {
           fullSettings.height,
         );
         renderMsTotal += performance.now() - renderStart;
+        timing?.record("frameRenderIncludingDecode", renderStart);
         const shouldUpscale = this.shouldApplyUpscaling(project, fullSettings);
         let frameImage = rendered.image;
 
@@ -292,12 +300,14 @@ export class ExportEngine {
           frameImage = upscaled;
         }
 
+        const encodeStarted = timing ? performance.now() : 0;
         await backend.addVideoFrame(
           frameImage,
           time,
           1 / fullSettings.frameRate,
         );
 
+        timing?.record("addVideoFrameIncludingBackpressure", encodeStarted);
         this.currentExport!.framesRendered = frame + 1;
 
         if (backend.needsFrameThrottling && (frame + 1) % 5 === 0) {
@@ -323,12 +333,14 @@ export class ExportEngine {
       }
 
       if (!backend.audioBeforeVideo) {
+        const audioStarted = timing ? performance.now() : 0;
         try {
           await this.encodeTimelineAudioToBackend(project, backend);
         } finally {
           this.audioEngine?.clearCache();
         }
         await backend.closeAudio();
+        timing?.record("audioAfterVideo", audioStarted);
       }
 
       mediaEngine.disposeAllExportDecoders();
@@ -347,7 +359,9 @@ export class ExportEngine {
         backend.getBytesWritten(),
       );
 
+      const finalizeStarted = timing ? performance.now() : 0;
       await backend.finalize();
+      timing?.record("backendFinalize", finalizeStarted);
 
       yield this.createProgress(
         "complete",
@@ -377,6 +391,7 @@ export class ExportEngine {
     } finally {
       this.abortController = null;
       this.currentExport = null;
+      if (this.videoEngine) this.videoEngine.exportTiming = null;
       this.audioEngine?.clearCache();
       this.videoEngine?.clearVideoElementCache();
       this.videoEngine?.clearCache();

@@ -1,3 +1,4 @@
+import { ExportTiming } from "@reelterminal/core/export/export-timing";
 /**
  * Browser-side entry for the Chromium render runtime.
  *
@@ -318,6 +319,7 @@ export interface WebcodecsExportOutcome {
   errorMessage?: string;
   framesRendered?: number;
   bytesWritten?: number;
+  timing?: Record<string, { count: number; totalMs: number; maxMs: number }>;
 }
 
 /** Drive the existing ExportEngine over the streaming shim. */
@@ -332,8 +334,11 @@ async function exportToMp4Webcodecs(settings: {
   };
 }): Promise<WebcodecsExportOutcome> {
   if (!currentProject) throw new Error("hydrate() must be called first");
+  const timing = new ExportTiming();
+  const initializeStarted = performance.now();
   const engine = getExportEngine();
   await engine.initialize();
+  timing.record("engineInitialize", initializeStarted);
 
   const writable = makeStreamingWritable();
   const generator = engine.exportVideo(
@@ -361,6 +366,7 @@ async function exportToMp4Webcodecs(settings: {
         : {}),
     },
     writable as unknown as FileSystemWritableFileStream,
+    timing,
   );
 
   let step = await generator.next();
@@ -373,6 +379,7 @@ async function exportToMp4Webcodecs(settings: {
   const result = step.value;
   return {
     success: result.success,
+    timing: timing.stages,
     ...(result.error
       ? { errorCode: result.error.code, errorMessage: result.error.message }
       : {}),

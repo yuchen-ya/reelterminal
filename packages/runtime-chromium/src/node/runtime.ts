@@ -95,6 +95,7 @@ export interface WebcodecsExportOutcome {
   readonly errorMessage?: string;
   readonly framesRendered?: number;
   readonly bytesWritten?: number;
+  readonly timing?: Record<string, { count: number; totalMs: number; maxMs: number }>;
 }
 
 export interface ExportProgressJson {
@@ -119,6 +120,7 @@ export class PartFileWriter {
   // StreamTarget rewrites regions (e.g. header patches after a mid-stream
   // flush), and summing those bytes would overcount the real file size.
   private bytesWritten = 0;
+  readonly writeTiming = { count: 0, totalMs: 0, maxMs: 0 };
 
   private constructor(
     readonly partPath: string,
@@ -141,6 +143,7 @@ export class PartFileWriter {
   }
 
   async writeBase64(base64: string): Promise<void> {
+    const started = performance.now();
     await withExportPerformanceSpan(this.performanceSink, "write", async () => {
       if (!this.fd) throw new Error("PartFileWriter is closed");
       const buffer = Buffer.from(base64, "base64");
@@ -148,6 +151,10 @@ export class PartFileWriter {
       this.position += buffer.length;
       if (this.position > this.bytesWritten) this.bytesWritten = this.position;
     });
+    const elapsed = performance.now() - started;
+    this.writeTiming.count++;
+    this.writeTiming.totalMs += elapsed;
+    this.writeTiming.maxMs = Math.max(this.writeTiming.maxMs, elapsed);
   }
 
   /** Close and atomically rename into place. Only route to real artifacts. */

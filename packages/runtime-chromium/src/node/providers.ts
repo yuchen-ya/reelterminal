@@ -110,6 +110,7 @@ async function sweepExportJobDir(jobDir: string, callbacks?: ExportCallbacks): P
   const trackedIds: Readonly<Record<string, string>> = {
     "output.mp4": "export-output",
     "output.mp4.part": "export-output-part",
+    "export-timing.json": "export-timing",
   };
   await Promise.all(EXPORT_JOB_FILES.map(async (name) => {
     try {
@@ -639,6 +640,7 @@ export class ChromiumExportProvider implements ExportProvider {
     const finalPath = join(request.jobDir, "output.mp4");
     callbacks.onArtifactFile?.({ fileId: "export-output", path: finalPath, kind: "work", purpose: "Encoded video export", rebuildable: true, deliveryStatus: "pending" });
     callbacks.onArtifactFile?.({ fileId: "export-output-part", path: `${finalPath}.part`, kind: "work", purpose: "Partial video export", rebuildable: true, deliveryStatus: "pending" });
+    const routeStarted = performance.now();
     const writer = await withExportPerformanceSpan(slot.performanceSink, "prepare", () => PartFileWriter.open(finalPath, slot.performanceSink));
     if (slot.cancelRequested) {
       // Cancelled (or watchdog-stopped) before any page work began — no
@@ -696,6 +698,19 @@ export class ChromiumExportProvider implements ExportProvider {
       // never published — the job is cancelled, not done.
       await writer.discard().catch(() => undefined);
       return { kind: "cancelled" };
+    }
+    const timingPath = join(request.jobDir, "export-timing.json");
+    try {
+      await writeFile(timingPath, JSON.stringify({
+        schema: "reelterminal.export-timing/v1",
+        route: "chromium-webcodecs",
+        routeElapsedMs: performance.now() - routeStarted,
+        semantics: "Elapsed wall times in milliseconds. Frame rendering includes video decode and SVG compositing. addVideoFrame includes encoder backpressure and may overlap host writes. Prepare includes audioBeforeVideo. Stages overlap and must not be summed as total wall time. Decoder hardware use is unknown.",
+        stages: { ...outcome.timing, hostWrite: writer.writeTiming },
+      }, null, 2));
+      callbacks.onArtifactFile?.({ fileId: "export-timing", path: timingPath, kind: "work", purpose: "Export timing diagnostics", rebuildable: true, deliveryStatus: "pending" });
+    } catch (error) {
+      console.warn("[export] Could not save timing diagnostics:", error);
     }
     const upscalingRequestedButInactive =
       await this.resolveUpscalingInactive(request);

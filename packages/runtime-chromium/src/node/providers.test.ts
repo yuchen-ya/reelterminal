@@ -193,7 +193,7 @@ describe("ChromiumExportProvider job lifecycle", () => {
         return { success: false, errorCode: "ENCODE_FAILED", errorMessage: "failed" };
       }
       await writeSuccessfulOutput(writer);
-      return { success: true, framesRendered: 1 };
+      return { success: true, framesRendered: 1, timing: { frameRenderIncludingDecode: { count: 1, totalMs: 3, maxMs: 3 } } };
     });
     const failedDir = await createJobDir("failed");
     const successDir = await createJobDir("success");
@@ -211,6 +211,14 @@ describe("ChromiumExportProvider job lifecycle", () => {
     expect(succeeded.running).toBe(1);
     expect(await readdir(failedDir)).toEqual([]);
     expect(await readFile(join(successDir, "output.mp4"), "utf8")).toBe("test-mp4");
+    const timing = JSON.parse(await readFile(join(successDir, "export-timing.json"), "utf8"));
+    expect(timing).toMatchObject({
+      schema: "reelterminal.export-timing/v1",
+      stages: {
+        frameRenderIncludingDecode: { count: 1, totalMs: 3, maxMs: 3 },
+        hostWrite: { count: 1, totalMs: expect.any(Number), maxMs: expect.any(Number) },
+      },
+    });
 
     await provider.cancel("failed");
     await provider.cancel("success");

@@ -1,3 +1,4 @@
+import type { ExportTiming } from "../export/export-timing";
 import type {
   Timeline,
   Track,
@@ -202,6 +203,7 @@ export class VideoEngine {
   private lastExportTime: number = -1;
   private exportFrameRate: number = 30;
   exportMode: boolean = false;
+  exportTiming: ExportTiming | null = null;
 
   /**
    * Creates a new VideoEngine instance.
@@ -384,6 +386,8 @@ export class VideoEngine {
     mediaId?: string,
     exportStreamId?: string,
   ): Promise<ImageBitmap | null> {
+    const timing = this.exportTiming;
+    const decodeStarted = timing ? performance.now() : 0;
     try {
       const mediaEngine = getMediaEngine();
       if (!mediaEngine.isAvailable()) {
@@ -408,6 +412,8 @@ export class VideoEngine {
     } catch (error) {
       console.warn("[VideoEngine] MediaBunny frame decode failed:", error);
       return null;
+    } finally {
+      timing?.record("videoDecodeMediaBunny", decodeStarted);
     }
   }
 
@@ -971,6 +977,7 @@ export class VideoEngine {
                 ? clipInfo.sourceTime - clip.inPoint
                 : clipInfo.sourceTime;
 
+              const fallbackStarted = this.exportTiming ? performance.now() : 0;
               bitmap = await this.decodeFrameWithVideoElement(
                 useStabilizedBlob ? `stabilized:${clip.id}` : mediaItem.id,
                 decodeBlob,
@@ -978,6 +985,7 @@ export class VideoEngine {
                 settings.width,
                 settings.height,
               );
+              this.exportTiming?.record("videoElementFallback", fallbackStarted);
             }
           }
 
@@ -1125,7 +1133,9 @@ export class VideoEngine {
           await this.renderShapeClipToCanvasCtx(ctx, clip, time, width, height);
         }
         for (const clip of activeSVGClips.filter((clip) => clip.trackId === track.id)) {
+          const svgStarted = this.exportTiming ? performance.now() : 0;
           await this.renderSVGClipToCanvasCtx(ctx, clip, time, width, height);
+          this.exportTiming?.record("svgComposite", svgStarted);
         }
         for (const clip of activeStickerClips.filter((clip) => clip.trackId === track.id)) {
           await this.renderStickerClipToCanvasCtx(ctx, clip, time, width, height);

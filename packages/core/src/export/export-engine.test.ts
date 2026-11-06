@@ -160,6 +160,7 @@ vi.mock("mediabunny", () => {
 });
 
 import { ExportEngine, getExportEngine } from "./export-engine";
+import { ExportTiming } from "./export-timing";
 import {
   DEFAULT_VIDEO_SETTINGS,
   DEFAULT_AUDIO_SETTINGS,
@@ -455,6 +456,23 @@ describe("ExportEngine", () => {
       expect(step.value.success).toBe(true);
       expect(mockMediaEngine.initialize).toHaveBeenCalledOnce();
       expect(decoderReady).toBe(true);
+    });
+
+    it("aggregates frame and encoder timings over an export", async () => {
+      const project = createMockProject({
+        timeline: createMockTimeline({ tracks: [createMockTrack({
+          clips: [createMockClip({ duration: 2, outPoint: 2 })],
+        })], duration: 2 }),
+      });
+      const timing = new ExportTiming();
+      await exportEngine.initialize();
+      const generator = exportEngine.exportVideo(project, { frameRate: 1, width: 640, height: 360 }, writableStream, timing);
+      let step = await generator.next();
+      while (!step.done) step = await generator.next();
+      expect(step.value.success).toBe(true);
+      expect(timing.stages.frameRenderIncludingDecode.count).toBe(2);
+      expect(timing.stages.addVideoFrameIncludingBackpressure.count).toBe(2);
+      expect(timing.stages.backendFinalize.count).toBe(1);
     });
 
     async function drainVideoExport(
