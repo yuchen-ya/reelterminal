@@ -13,9 +13,111 @@ import type {
   LiveEvent,
 } from "../shared/live";
 import { installPerformanceBridge } from "./performance-bridge";
+import type { FolderReviewBridge } from "../shared/folder-review-bridge";
+import type { TaskReviewBridge, TaskReviewContextBridge } from "../shared/task-review-bridge";
+import type { TaskReviewExportBridge } from "../shared/task-review-export";
+import type { TaskReviewMediaBridge } from "../shared/task-review-media";
+import type { TaskAgentBridge, TaskCompletionEvent } from "../shared/task-review-runtime-types";
+
+const taskReview: TaskReviewBridge = {
+  open: root => ipcRenderer.invoke(CHANNELS.taskReview, { method: "open", input: { root } }),
+  refreshSources: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "refreshSources", input }),
+  setGoal: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "setGoal", input }),
+  importText: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "importText", input }),
+  importFile: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "importFile", input }),
+  decide: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "decide", input }),
+  undoDecision: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "undoDecision", input }),
+  redoDecision: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "redoDecision", input }),
+  saveDraft: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "saveDraft", input }),
+  visit: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "visit", input }),
+  publishAnalysis: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "publishAnalysis", input }),
+  exportSource: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "exportSource", input }),
+};
+
+const taskReviewContext: TaskReviewContextBridge = {
+  proposeContext: input => ipcRenderer.invoke(CHANNELS.taskReviewContext, { method: "proposeContext", input }),
+  adoptContext: input => ipcRenderer.invoke(CHANNELS.taskReviewContext, { method: "adoptContext", input }),
+  adoptCriteria: input => ipcRenderer.invoke(CHANNELS.taskReviewContext, { method: "adoptCriteria", input }),
+  setCriterionActive: input => ipcRenderer.invoke(CHANNELS.taskReviewContext, { method: "setCriterionActive", input }),
+};
+
+const taskReviewExport: TaskReviewExportBridge = {
+  preview: input => ipcRenderer.invoke(CHANNELS.taskReviewExport, { method: "preview", input }),
+  execute: input => ipcRenderer.invoke(CHANNELS.taskReviewExport, { method: "execute", input }),
+};
+
+// Human local media editing only (import/open/capture/segment/accept). The
+// main-process handler revalidates every payload against the shared schemas;
+// this bridge forwards inputs verbatim and propagates errors, never faking
+// success for the renderer.
+const taskReviewMedia: TaskReviewMediaBridge = {
+  importFile: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "importFile", input }),
+  open: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "open", input }),
+  captureFrame: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "captureFrame", input }),
+  segment: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "segment", input }),
+  cancel: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "cancel", input }),
+  acceptRegion: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "acceptRegion", input }),
+};
+
+const taskAgent: TaskAgentBridge = {
+  getModelConfig: () => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "getModelConfig" }),
+  configureModel: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "configureModel", input }),
+  authorize: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "authorize", input }),
+  revoke: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "revoke", input }),
+  getState: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "getState", input }),
+  startPreflight: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "startPreflight", input }),
+  continueAnalysis: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "continueAnalysis", input }),
+  cancelJob: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "cancelJob", input }),
+  retryJob: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "retryJob", input }),
+  search: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "search", input }),
+  cancelSearch: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "cancelSearch", input }),
+  complete: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "complete", input }),
+  cancelCompletion: input => ipcRenderer.invoke(CHANNELS.taskAgent, { method: "cancelCompletion", input }),
+  onCompletion: listener => {
+    const receive = (_event: IpcRendererEvent, event: TaskCompletionEvent) => listener(event);
+    ipcRenderer.on(CHANNELS.taskAgentCompletion, receive);
+    return () => ipcRenderer.removeListener(CHANNELS.taskAgentCompletion, receive);
+  },
+};
+
+const folderReview: FolderReviewBridge = {
+  defaults: () => ipcRenderer.invoke(CHANNELS.folderReview, { action: "defaults" }),
+  create: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "create" }),
+  renameTask: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "renameTask" }),
+  open: root => ipcRenderer.invoke(CHANNELS.folderReview, { action: "open", root }),
+  refresh: root => ipcRenderer.invoke(CHANNELS.folderReview, { action: "refresh", root }),
+  review: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "review" }),
+  mkdir: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "mkdir" }),
+  rename: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "rename" }),
+  transfer: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "transfer" }),
+  importFiles: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "import" }),
+  copyOut: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "copyOut" }),
+  preview: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "preview" }),
+  showInFolder: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "showInFolder" }),
+  openFile: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "openFile" }),
+  prepareDrag: input => ipcRenderer.invoke(CHANNELS.folderReviewDragPrepare, input),
+  cancelDrag: token => ipcRenderer.send(CHANNELS.folderReviewDragCancel, token),
+  startDrag: token => new Promise<void>((resolve, reject) => {
+    const requestId = crypto.randomUUID();
+    const receive = (_event: IpcRendererEvent, reply: { requestId: string; error?: string }) => {
+      if (reply.requestId !== requestId) return;
+      ipcRenderer.removeListener(CHANNELS.folderReviewDragResult, receive);
+      if (reply.error) reject(new Error(reply.error));
+      else resolve();
+    };
+    ipcRenderer.on(CHANNELS.folderReviewDragResult, receive);
+    ipcRenderer.send(CHANNELS.folderReviewDrag, { token, requestId });
+  }),
+};
 
 // The desktop bridge is exposed as window.reelterminal.
 const api = {
+  folderReview,
+  taskReview,
+  taskReviewContext,
+  taskReviewExport,
+  taskReviewMedia,
+  taskAgent,
   platform: "desktop",
   setUiLocale: (locale: "en" | "zh-CN") => ipcRenderer.invoke(CHANNELS.uiLocale, { locale }),
   inputHistory: (direction: "undo" | "redo") => ipcRenderer.invoke(CHANNELS.inputHistory, { direction }),

@@ -23,6 +23,10 @@ const electron = vi.hoisted(() => {
 vi.mock("electron", () => electron);
 
 import { CHANNELS } from "../shared/channels";
+import type { TaskReviewBridge, TaskReviewContextBridge } from "../shared/task-review-bridge";
+import type { TaskReviewExportBridge } from "../shared/task-review-export";
+import type { TaskReviewMediaBridge } from "../shared/task-review-media";
+import type { TaskAgentBridge, TaskCompletionEvent } from "../shared/task-review-runtime-types";
 // Importing the preload module performs the exposeInMainWorld calls.
 import "./index";
 
@@ -64,6 +68,63 @@ describe("preload bridge naming", () => {
     // bypassing string literals (those are what drifted during the rename).
     expect(CHANNELS.menuAction).toBe("reelterminal:menu:action");
     expect(CHANNELS.exportPortHandoff).toBe("reelterminal:export-port");
+  });
+
+  it("routes task calls and removes the exact completion listener on unsubscribe", async () => {
+    const api = exposedApi("reelterminal") as AnyApi & { taskReview: TaskReviewBridge; taskReviewContext: TaskReviewContextBridge; taskReviewExport: TaskReviewExportBridge; taskReviewMedia: TaskReviewMediaBridge; taskAgent: TaskAgentBridge };
+    await api.taskReview.open("C:/task");
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReview, { method: "open", input: { root: "C:/task" } });
+    const refresh = { root: "C:/task", taskId: "task", expectedRevision: 3 };
+    await api.taskReview.refreshSources(refresh);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReview, { method: "refreshSources", input: refresh });
+    const decisionHistory = { ...refresh, unitId: "unit", sourceVersionId: "version", purpose: "review", policyRevision: 0, decisionId: "decision" };
+    await api.taskReview.undoDecision(decisionHistory);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReview, { method: "undoDecision", input: decisionHistory });
+    await api.taskReview.redoDecision(decisionHistory);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReview, { method: "redoDecision", input: decisionHistory });
+    const criteria = { ...refresh, content: "Only this unit", scope: { kind: "units" as const, targets: [{ unitId: "unit", sourceVersionId: "version" }] }, purpose: "review", origin: { kind: "feedback" as const, decisionId: "decision" } };
+    await api.taskReviewContext.adoptCriteria(criteria);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReviewContext, { method: "adoptCriteria", input: criteria });
+    const exportInput = { ...refresh, exportId: "export" };
+    await api.taskReviewExport.execute(exportInput);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReviewExport, { method: "execute", input: exportInput });
+    // Media editing forwards each method verbatim on its own channel.
+    const mediaTarget = { root: "C:/task", taskId: "task", sourceVersionId: "source", unitId: "unit" };
+    const mediaImport = { root: mediaTarget.root, taskId: mediaTarget.taskId, expectedRevision: 3, entryId: "entry" };
+    await api.taskReviewMedia.importFile(mediaImport);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReviewMedia, { method: "importFile", input: mediaImport });
+    await api.taskReviewMedia.open(mediaTarget);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReviewMedia, { method: "open", input: mediaTarget });
+    const capture = { ...mediaTarget, expectedRevision: 3, generationId: "generation", selection: { frameIndex: 2 } };
+    await api.taskReviewMedia.captureFrame(capture);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReviewMedia, { method: "captureFrame", input: capture });
+    const segment = { ...mediaTarget, generationId: "generation", refinementId: "refinement", prompts: { points: [{ x: 0.5, y: 0.5, foreground: true }] } };
+    await api.taskReviewMedia.segment(segment);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReviewMedia, { method: "segment", input: segment });
+    const mediaCancel = { root: mediaTarget.root, taskId: mediaTarget.taskId, generationId: "generation" };
+    await api.taskReviewMedia.cancel(mediaCancel);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReviewMedia, { method: "cancel", input: mediaCancel });
+    const accept = { ...mediaTarget, expectedRevision: 3, generationId: "generation", label: "Subject" };
+    await api.taskReviewMedia.acceptRegion(accept);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskReviewMedia, { method: "acceptRegion", input: accept });
+    await api.taskAgent.getModelConfig();
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskAgent, { method: "getModelConfig" });
+    const target = { root: refresh.root, taskId: refresh.taskId };
+    const search = { ...target, query: "Find evidence", scope: { kind: "units" as const, targets: [{ unitId: "unit", sourceVersionId: "version" }] } };
+    await api.taskAgent.search(search);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskAgent, { method: "search", input: search });
+    await api.taskAgent.cancelSearch(target);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskAgent, { method: "cancelSearch", input: target });
+    await api.taskAgent.continueAnalysis(target);
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(CHANNELS.taskAgent, { method: "continueAnalysis", input: target });
+    const listener = vi.fn();
+    const unsubscribe = api.taskAgent.onCompletion(listener);
+    const call = electron.ipcRenderer.on.mock.calls.at(-1)! as unknown as [string, (event: unknown, value: TaskCompletionEvent) => void];
+    const value = { taskId: "task", unitId: "unit", generationId: "generation", delta: "next", done: false };
+    call[1]({}, value);
+    expect(listener).toHaveBeenCalledWith(value);
+    unsubscribe();
+    expect(electron.ipcRenderer.removeListener).toHaveBeenLastCalledWith(CHANNELS.taskAgentCompletion, call[1]);
   });
 
   it("sends only the renderer error category over the crash IPC channel", () => {

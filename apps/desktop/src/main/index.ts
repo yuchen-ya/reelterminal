@@ -7,7 +7,7 @@ import { setUiLocale } from "./ui-locale";
 // place before esbuild ever reads the environment.
 import "./esbuild-binary-path";
 import { runtimeIconPath } from "./runtime-resources";
-import { app, BrowserWindow, ipcMain, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, ipcMain, safeStorage, shell, type IpcMainEvent } from "electron";
 import path from "node:path";
 import { z } from "zod";
 import { getPerfSink } from "@reelterminal/core";
@@ -52,6 +52,20 @@ import { registerCaptionIpc } from "./ipc/captions";
 import { registerControlledMediaIpc } from "./ipc/controlled-media";
 import { getReviewFileStore, registerReviewFilesIpc } from "./ipc/review-files";
 import { registerReviewExportIpc } from "./ipc/review-export";
+import { registerFolderReviewIpc, resolveFolderReviewMedia } from "./ipc/folder-review";
+import { registerTaskReviewIpc } from "./ipc/task-review";
+import { registerTaskReviewExportIpc } from "./ipc/task-review-export";
+import { registerTaskReviewMediaIpc } from "./ipc/task-review-media";
+import { registerTaskAgentIpc } from "./ipc/task-review-agent";
+import {
+  createTaskReviewSegmentationBackendFactory,
+  SEGMENTATION_PROMPT_TOKEN_LIMIT,
+} from "./segmentation-resources";
+import { TaskReviewStore } from "./task-review-store";
+import { TaskReviewExportService } from "./task-review-export";
+import { TaskReviewMediaService } from "./task-review-media";
+import { TaskReviewRuntime } from "./task-review-runtime";
+import { TaskReviewModelConfigStore } from "./task-review-model-config";
 import { registerHumanBoardDocumentsIpc } from "./ipc/human-board-documents";
 import { registerReviewPackageIpc } from "./ipc/review-package";
 import {
@@ -266,10 +280,6 @@ app.whenReady().then(async () => {
   if (process.platform === "darwin" && !app.isPackaged) {
     app.dock?.setIcon(applicationIconPath());
   }
-  handleAppScheme(rendererRoot(), async id => {
-    const resolved = await getReviewFileStore().resolve(id);
-    return { path: resolved.path, mime: resolved.resource.mime };
-  });
   handle(CHANNELS.probeHardware, z.undefined(), () => collectHardwareInfo());
   handle(CHANNELS.fsShowSaveDialog, saveDialogArgsSchema, showSaveDialog);
   handle(CHANNELS.fsShowOpenDialog, openDialogArgsSchema, showOpenDialog);
@@ -311,6 +321,44 @@ app.whenReady().then(async () => {
   handle(CHANNELS.mediaFetchUrl, fetchUrlArgsSchema, fetchUrl);
   registerControlledMediaIpc();
   registerReviewFilesIpc(liveMediaRoots);
+  registerFolderReviewIpc();
+  const taskReviewStore = new TaskReviewStore();
+  const taskReviewModels = new TaskReviewModelConfigStore(path.join(app.getPath("userData"), "task-review-model.json"), safeStorage);
+  const taskReviewRuntime = new TaskReviewRuntime(taskReviewStore, taskReviewModels);
+  registerTaskReviewIpc(taskReviewStore, target => taskReviewRuntime.onTaskChanged(target));
+  registerTaskReviewExportIpc(new TaskReviewExportService(taskReviewStore), target => taskReviewRuntime.onTaskChanged(target));
+  // Human local media editing. Creating the segmentation backend factory is
+  // inert: MobileSAM model/worker resources are verified (and the worker
+  // started) lazily on first segmentation execution, so media review keeps
+  // working when those resources are unavailable.
+  const taskReviewMedia = new TaskReviewMediaService(
+    taskReviewStore,
+    createTaskReviewSegmentationBackendFactory({
+      isPackaged: app.isPackaged,
+      appPath: app.getAppPath(),
+      resourcesPath: process.resourcesPath,
+    }),
+    { promptTokenLimit: SEGMENTATION_PROMPT_TOKEN_LIMIT },
+  );
+  registerTaskReviewMediaIpc(taskReviewMedia, target => taskReviewRuntime.onTaskChanged(target));
+  // The app scheme must be registered before createWindow() loads APP_INDEX.
+  // It sits after the task media service so task-media assets authorize
+  // through the service — there is no raw-filesystem fallback for them.
+  handleAppScheme(
+    rendererRoot(),
+    async id => {
+      const resolved = await getReviewFileStore().resolve(id);
+      return { path: resolved.path, mime: resolved.resource.mime };
+    },
+    resolveFolderReviewMedia,
+    (taskId, assetId) => taskReviewMedia.resolveAsset(taskId, assetId),
+  );
+  const disposeTaskAgentIpc = registerTaskAgentIpc(taskReviewRuntime);
+  app.once("will-quit", () => {
+    disposeTaskAgentIpc();
+    taskReviewRuntime.dispose();
+    void taskReviewMedia.dispose();
+  });
   registerHumanBoardDocumentsIpc();
   registerReviewExportIpc(liveMediaRoots);
   registerReviewPackageIpc(liveMediaRoots);
