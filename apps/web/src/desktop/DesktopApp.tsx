@@ -71,11 +71,36 @@ export function DesktopApp(): JSX.Element {
     return () => document.body.classList.remove("reelterminal-desktop");
   }, []);
 
+  const openDesktopSurface = useCallback((open: () => void) => {
+    if (!document.fullscreenElement) {
+      open();
+      return;
+    }
+    // Other pages and body-level dialogs sit outside the element's fullscreen
+    // layer. Leave it before hiding the editor or opening one of those dialogs.
+    void document.exitFullscreen().then(open, (error: unknown) => {
+      toast.error(t("desktop.start.actionFailed"), error instanceof Error ? error.message : String(error));
+    });
+  }, [t]);
+
   const handleNewProject = useCallback(() => {
-    stopTour();
-    useUIStore.getState().setDesktopPage("edit");
-    setChoosingProject(true);
-  }, []);
+    openDesktopSurface(() => {
+      stopTour();
+      useUIStore.getState().setDesktopPage("edit");
+      setChoosingProject(true);
+    });
+  }, [openDesktopSurface]);
+
+  const handleHelp = useCallback(() => {
+    openDesktopSurface(() => {
+      stopTour();
+      setHelpOpen(true);
+    });
+  }, [openDesktopSurface]);
+
+  const handleSettings = useCallback(() => {
+    openDesktopSurface(() => useSettingsStore.getState().openSettings());
+  }, [openDesktopSurface]);
 
   const handleOpenProject = useCallback(async () => {
     if (openingProject.current) return;
@@ -99,8 +124,7 @@ export function DesktopApp(): JSX.Element {
     return bridge.onMenuAction((id) => {
       switch (id) {
         case "help":
-          stopTour();
-          setHelpOpen(true);
+          handleHelp();
           break;
         case "undo":
           dispatchDesktopHistory("undo");
@@ -115,14 +139,14 @@ export function DesktopApp(): JSX.Element {
           void handleOpenProject();
           break;
         case "export":
-          window.dispatchEvent(new CustomEvent(`reelterminal:menu:${id}`));
+          openDesktopSurface(() => window.dispatchEvent(new CustomEvent(`reelterminal:menu:${id}`)));
           break;
         case "settings":
-          useSettingsStore.getState().openSettings();
+          handleSettings();
           break;
       }
     });
-  }, [handleNewProject, handleOpenProject]);
+  }, [handleHelp, handleNewProject, handleOpenProject, handleSettings, openDesktopSurface]);
 
   // DOM-level undo/redo (G-01 fix): the native menu accelerator above only
   // fires for real OS key events; this handler makes the SAME store
@@ -329,7 +353,7 @@ export function DesktopApp(): JSX.Element {
           variant="secondary"
           size="sm"
           icon={<CircleHelp size={15} aria-hidden />}
-          onClick={() => setHelpOpen(true)}
+          onClick={handleHelp}
           className="mr-2"
         />
         <Button
@@ -337,7 +361,7 @@ export function DesktopApp(): JSX.Element {
           variant="secondary"
           size="sm"
           icon={<Settings size={15} aria-hidden />}
-          onClick={() => useSettingsStore.getState().openSettings()}
+          onClick={handleSettings}
           className="mr-2"
         />
       </DesktopTitleBar>

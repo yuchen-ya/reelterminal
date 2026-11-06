@@ -416,6 +416,7 @@ export function AdaptiveBoardWorkspace({
                       <video
                         src={vidSrc}
                         controls
+                        controlsList="nofullscreen"
                         preload="metadata"
                         className="max-h-[260px] w-full object-contain"
                       />
