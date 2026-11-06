@@ -16,6 +16,44 @@ export interface BoardRegion {
 export interface FrozenBoardScene { elements: readonly ExcalidrawElement[]; appState: Partial<AppState>; files: BinaryFiles }
 export type MediaCapture = () => Promise<Blob>;
 
+// Chromium does not load SVG @font-face resources when the SVG is decoded as
+// an image, including data URLs. Paint text with the board's loaded fonts before
+// decoding the rest of the SVG, retaining each text node's parent transform,
+// clipping, opacity and position in the drawing order.
+async function rasterizeSvgText(svg: SVGSVGElement, scale: number): Promise<void> {
+  await document.fonts.ready;
+  for (const text of svg.querySelectorAll("text")) {
+    if (!text.textContent) continue;
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d")!;
+    const font = `${text.getAttribute("font-size")} ${text.getAttribute("font-family")}`;
+    context.font = font;
+    context.direction = text.getAttribute("direction") === "rtl" ? "rtl" : "ltr";
+    const anchor = text.getAttribute("text-anchor");
+    context.textAlign = anchor === "middle" ? "center" : anchor === "end" ? "right" : "left";
+    const metrics = context.measureText(text.textContent);
+    const padding = 2;
+    const left = -metrics.actualBoundingBoxLeft - padding;
+    const top = -metrics.actualBoundingBoxAscent - padding;
+    const width = metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight + padding * 2;
+    const height = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent + padding * 2;
+    canvas.width = Math.ceil(width * scale); canvas.height = Math.ceil(height * scale);
+    context.scale(scale, scale);
+    context.font = font;
+    context.direction = text.getAttribute("direction") === "rtl" ? "rtl" : "ltr";
+    context.textAlign = anchor === "middle" ? "center" : anchor === "end" ? "right" : "left";
+    context.fillStyle = text.getAttribute("fill")!;
+    context.fillText(text.textContent, -left, -top);
+    const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
+    image.setAttribute("x", String(Number(text.getAttribute("x")) + left));
+    image.setAttribute("y", String(Number(text.getAttribute("y")) + top));
+    image.setAttribute("width", String(canvas.width / scale));
+    image.setAttribute("height", String(canvas.height / scale));
+    image.setAttribute("href", canvas.toDataURL("image/png"));
+    text.replaceWith(image);
+  }
+}
+
 /** Freeze playback and render media from source pixels/3D scene, never screen pixels. */
 export async function freezeBoardScene(elements: readonly ExcalidrawElement[], files: BinaryFiles, captures: ReadonlyMap<string, MediaCapture>): Promise<FrozenBoardScene> {
   const snapshot = structuredClone(elements.filter(element => !element.isDeleted));
@@ -55,7 +93,9 @@ export async function renderBoardRegion(scene: FrozenBoardScene, region?: BoardR
     appState: { ...scene.appState, exportBackground },
     files: scene.files,
     exportPadding: 0,
+    skipInliningFonts: true,
   });
+  await rasterizeSvgText(svg, scale);
   svg.setAttribute("viewBox", `${area.x - left} ${area.y - top} ${area.width} ${area.height}`);
   svg.setAttribute("width", String(width)); svg.setAttribute("height", String(height));
   const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml" }));
