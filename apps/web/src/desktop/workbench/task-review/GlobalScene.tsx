@@ -22,7 +22,7 @@ import {
   findUnit,
   REVIEW_PURPOSE,
 } from "./queries";
-import { statusLabels } from "./UnitReviewScene";
+import { statusLabels } from "./display";
 import type { TaskAgentRuntime } from "./useTaskAgentState";
 import { AgentPanel } from "./AgentPanel";
 import { TaskContextPanel, TaskContextBrief } from "./TaskContextPanel";

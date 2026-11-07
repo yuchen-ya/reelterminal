@@ -5,9 +5,8 @@ import { isTaskCriteriaBasisCurrent, resolveUnitCriteriaBasis } from "../../../.
 import type { TaskMediaOpenResult, TaskMediaPrompts, TaskMediaUnit, TaskRegionCandidate } from "../../../../../desktop/src/shared/task-review-media";
 import { wbButton, segmentedItem } from "../wb-button";
 import { FeedbackEditor } from "./FeedbackEditor";
-import { sourceTitle, unitTitle, sourcePath } from "./display";
+import { sourceTitle, unitTitle, sourcePath, statusLabels } from "./display";
 import { unitDecisionState } from "./queries";
-import { statusLabels } from "./UnitReviewScene";
 import type { DraftEntry } from "./useTaskDrafts";
 import type { TaskReviewController } from "./useTaskReviewController";
 import { normalizedMediaPoint, promptTokens, readMediaView } from "./media-view";

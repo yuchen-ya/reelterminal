@@ -85,7 +85,7 @@ export function WorkbenchTabs({
                 <span
                   className={`shrink-0 ${
                     active
-                      ? tab.kind === "review"
+                      ? tab.kind === "review" || tab.kind === "folder"
                         ? "text-accent"
                         : "text-sky-400"
                       : "text-fg-3 group-hover:text-fg-2"

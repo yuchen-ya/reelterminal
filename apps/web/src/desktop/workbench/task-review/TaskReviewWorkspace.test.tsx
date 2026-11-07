@@ -53,12 +53,22 @@ function installBridges() {
   return { taskReview, taskAgent, folderReview: folderReviewMocks };
 }
 
+/** 打开聚光灯卡的九宫格面，再点某个启动盘入口。 */
+const openLauncher = () => {
+  fireEvent.click(screen.getByTestId("spotlight-flip-btn"));
+};
+const launchOverview = async () => {
+  openLauncher();
+  fireEvent.click(screen.getByTestId("task-review-launcher-overview"));
+  await screen.findByTestId("task-review-global-scene");
+};
+
 const importThreeUnits = async (
   taskReview: ReturnType<typeof createFakeTaskReviewBridge>,
 ) => {
   // Wait until the task snapshot has loaded before navigating scenes.
   await screen.findByTestId("task-review-progress");
-  fireEvent.click(screen.getByRole("button", { name: "全局" }));
+  await launchOverview();
   fireEvent.click(screen.getByTestId("task-review-show-import"));
   fireEvent.change(await screen.findByLabelText("原文名称"), {
     target: { value: "第一集台词" },
@@ -71,6 +81,12 @@ const importThreeUnits = async (
     expect(taskReview.snapshotState().units).toHaveLength(3),
   );
   await screen.findAllByTestId("task-review-unit-row");
+};
+
+/** 单元批注在工具卡的「批注」短标签后面。 */
+const openNoteTab = () => {
+  fireEvent.click(screen.getByRole("button", { name: "批注" }));
+  return screen.findByTestId("task-review-unit-note") as Promise<HTMLTextAreaElement>;
 };
 
 const openUnit = async (ordinal: number) => {
@@ -113,7 +129,7 @@ describe("task review workspace", () => {
     fireEvent.click(screen.getByTestId("task-review-continue"));
     expect(screen.getAllByTestId("task-review-scene-focus")[1]).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getAllByTestId("task-review-scene-focus")[0]!);
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
+    await launchOverview();
     fireEvent.click(screen.getByTestId("task-review-back"));
     expect(screen.getAllByTestId("task-review-scene-focus")[0]).toHaveAttribute("aria-pressed", "true");
     expect(taskReview.snapshotState().decisions).toHaveLength(0);
@@ -130,7 +146,7 @@ describe("task review workspace", () => {
     render(<TaskReviewWorkspace root="task-root" />);
     fireEvent.doubleClick(await screen.findByText("fish.png"));
     await waitFor(() => expect(importFile).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
+    await launchOverview();
     taskReview.mutateState((state) => {
       state.revision++;
       state.sources.push({ id: "image-source", entryId: "picture", relativePath: "fish.png", hash: "h", createdAt: 1, kind: "image", mime: "image/png", width: 400, height: 200, durationSec: 0 });
@@ -146,7 +162,7 @@ describe("task review workspace", () => {
     installSceneTask("compare");
     render(<TaskReviewWorkspace root="task-root" />);
     await screen.findByTestId("task-review-progress");
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
+    await launchOverview();
     expect(screen.getByTestId("task-review-context-brief")).toBeVisible();
     expect(screen.getByTestId("task-review-goal-editor")).not.toBeVisible();
     expect(screen.getByTestId("task-review-import-editor")).not.toBeVisible();
@@ -158,22 +174,20 @@ describe("task review workspace", () => {
     expect(screen.getByTestId("task-review-model-settings")).toBeVisible();
   });
 
-  it("reports the end of a round without erasing pending items and opens their explicit list", async () => {
+  it("reports the end of a round by opening the pending list without erasing items", async () => {
     const { taskReview } = installSceneTask("compare");
     render(<TaskReviewWorkspace root="task-root" />);
     await screen.findByTestId("task-review-progress");
+    // Pure browse advance: four scenes, then the end of the plan round.
     fireEvent.click(screen.getByTestId("task-review-continue"));
     fireEvent.click(screen.getByTestId("task-review-continue"));
     fireEvent.click(screen.getByTestId("task-review-continue"));
-    const end = screen.getByTestId("task-review-round-end");
-    expect(end.textContent).toContain("本轮已到末尾，仍有 4 条待审");
-    expect(screen.getByTestId("task-review-progress").textContent).toContain("后续 0 场景");
-    fireEvent.click(within(end).getByRole("button", { name: "查看这些待审项" }));
+    fireEvent.click(screen.getByTestId("task-review-continue"));
     await screen.findByTestId("task-review-global-scene");
     expect(screen.getAllByTestId("task-review-unit-row")).toHaveLength(4);
     expect(taskReview.snapshotState().decisions).toHaveLength(0);
   });
-  it("mounts original-file export and routes destination, preview and execution through the controller", async () => {
+  it("mounts original-file export from the launcher and routes destination, preview and execution through the controller", async () => {
     const { taskReview, taskId } = installSceneTask("compare");
     const choose = vi.fn().mockResolvedValue("external-destination");
     let planned!: TaskOriginalExportRecord;
@@ -192,8 +206,9 @@ describe("task review workspace", () => {
     Object.defineProperty(window, "reelterminal", { configurable: true, value: { ...window.reelterminal, fs: { showOpenDialog: choose }, taskReviewExport: { preview, execute } } });
     render(<TaskReviewWorkspace root="task-root" />);
     await screen.findByTestId("task-review-progress");
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
-    fireEvent.click(screen.getByTestId("task-result-export-toggle"));
+    openLauncher();
+    fireEvent.click(screen.getByTestId("task-review-launcher-export"));
+    await screen.findByTestId("task-review-export-scene");
     fireEvent.click(screen.getByTestId("task-result-export-status-pending"));
     fireEvent.click(screen.getByLabelText("选择原文件 source.txt"));
     fireEvent.click(screen.getByTestId("task-result-export-choose-destination"));
@@ -217,7 +232,7 @@ describe("task review workspace", () => {
     fireEvent.click(screen.getByTestId("task-review-continue"));
     fireEvent.click(screen.getAllByTestId("task-review-scene-focus")[1]!);
     taskReview.mutateState((state) => state.planRevisions.push({ id: "new-future", policyRevision: 0, createdAt: 2, reason: "后续调整", steps: [], scenes: [scenes[2]!] }));
-    fireEvent.change(screen.getByTestId("task-review-unit-note"), { target: { value: "当前阅读不跳" } });
+    fireEvent.change(await screen.findByTestId("task-review-unit-note"), { target: { value: "当前阅读不跳" } });
     await waitFor(() => expect(taskReview.snapshotState().drafts.at(-1)?.text).toBe("当前阅读不跳"), { timeout: 2000 });
     expect(screen.getByTestId("task-review-agent-scene")).toHaveAttribute("data-scene-id", "working-scene");
     expect(screen.getAllByTestId("task-review-scene-focus")[1]).toHaveAttribute("aria-pressed", "true");
@@ -236,7 +251,7 @@ describe("task review workspace", () => {
     render(<TaskReviewWorkspace root="task-root" />);
     await screen.findByTestId("task-review-progress");
     fireEvent.click(screen.getByTestId("task-review-continue"));
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
+    await launchOverview();
     fireEvent.change(screen.getByLabelText("搜索条目文本"), { target: { value: "关联说法" } });
     fireEvent.change(screen.getByLabelText("语义搜索范围"), { target: { value: "scene" } });
     fireEvent.click(screen.getByTestId("task-review-semantic-search"));
@@ -261,13 +276,13 @@ describe("task review workspace", () => {
     fireEvent.click(screen.getByTestId("task-review-continue"));
     const scene = await screen.findByTestId("task-review-agent-scene");
     expect(scene).toHaveAttribute("data-scene-kind", "compare");
-    expect(screen.getAllByTestId("task-review-scene-original").map((node) => node.textContent)).toEqual(["A的原文", "B的原文"]);
+    expect(screen.getAllByTestId("task-review-unit-text").map((node) => node.textContent)).toEqual(["A的原文", "B的原文"]);
     fireEvent.click(screen.getAllByTestId("task-review-scene-focus")[1]!);
     const note = screen.getByTestId("task-review-unit-note") as HTMLTextAreaElement;
     fireEvent.change(note, { target: { value: "B的反馈现场", selectionStart: 1, selectionEnd: 4 } });
     scene.scrollTop = 80;
     fireEvent.scroll(scene);
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
+    await launchOverview();
     fireEvent.click(screen.getByTestId("task-review-back"));
     const restored = screen.getByTestId("task-review-unit-note") as HTMLTextAreaElement;
     expect(restored.value).toBe("B的反馈现场");
@@ -279,7 +294,7 @@ describe("task review workspace", () => {
     render(<TaskReviewWorkspace root="task-root" />);
     const recovered = await screen.findByTestId("task-review-unit-note") as HTMLTextAreaElement;
     await waitFor(() => expect(recovered.value).toBe("B的反馈现场"));
-    expect([recovered.selectionStart, recovered.selectionEnd]).toEqual([1, 4]);
+    expect([recovered.selectionStart, restored.selectionEnd]).toEqual([1, 4]);
     fireEvent.click(screen.getByTestId("task-review-continue"));
     await waitFor(() => expect(screen.getByTestId("task-review-unit-text").textContent).toBe("C的原文"));
     expect(taskReview.snapshotState().decisions).toHaveLength(0);
@@ -289,11 +304,11 @@ describe("task review workspace", () => {
     const { taskReview, units } = installSceneTask("lowRiskGroup");
     render(<TaskReviewWorkspace root="task-root" />);
     await screen.findByTestId("task-review-progress");
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
+    await launchOverview();
     fireEvent.click(screen.getAllByTestId("task-review-unit-row").find((node) => node.textContent?.includes("C的原文"))!);
     fireEvent.click(screen.getByTestId("task-review-decide-kept"));
     await waitFor(() => expect(taskReview.snapshotState().decisions).toHaveLength(1));
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
+    await launchOverview();
     fireEvent.click(screen.getAllByTestId("task-review-plan-scene")[0]!);
     const confirm = screen.getByTestId("task-review-group-keep-continue");
     expect(confirm).toBeDisabled();
@@ -394,7 +409,9 @@ describe("task review workspace", () => {
     const units = taskReview.snapshotState().units;
     taskReview.mutateState((state) => state.planRevisions.push({ id: "abc-plan", policyRevision: state.policyRevision,
       createdAt: 1, reason: "顺序审阅", steps: units.map((unit) => ({ unitId: unit.id, sourceVersionId: unit.sourceVersionId, purpose: "review", reason: "顺序审阅" })) }));
+    await launchOverview();
     await openUnit(1);
+    fireEvent.click(screen.getByRole("button", { name: "批注" }));
     expect(screen.getByTestId("task-review-feedback-editor")).toBeTruthy();
     expect(screen.getByTestId("task-review-complete-request")).toBeTruthy();
     expect(screen.queryByTestId("task-review-replacement-field")).toBeNull();
@@ -403,10 +420,13 @@ describe("task review workspace", () => {
     fireEvent.click(screen.getByTestId("task-review-open-edit"));
     const editor = screen.getByTestId("task-review-edit-input") as HTMLTextAreaElement;
     fireEvent.change(editor, { target: { value: "B仍待审的反馈", selectionStart: 1, selectionEnd: 4 } });
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
-    fireEvent.click(screen.getByRole("button", { name: "目录" }));
+    openLauncher();
+    fireEvent.click(screen.getByTestId("task-review-launcher-files"));
+    expect(screen.getByTestId("task-review-directory-host").className).not.toContain("hidden");
+    await launchOverview();
+    expect(screen.getByTestId("task-review-directory-host").className).toContain("hidden");
     fireEvent.click(screen.getByTestId("task-review-back"));
-    expect(screen.getByTestId("task-review-global-scene")).toBeTruthy();
+    expect(screen.getByTestId("task-review-directory-host").className).not.toContain("hidden");
     fireEvent.click(screen.getByTestId("task-review-back"));
     const recovered = await screen.findByTestId("task-review-edit-input") as HTMLTextAreaElement;
     expect(recovered.value).toBe("B仍待审的反馈");
@@ -418,7 +438,7 @@ describe("task review workspace", () => {
     await waitFor(() => expect(restarted.value).toBe("B仍待审的反馈"));
     expect([restarted.selectionStart, restarted.selectionEnd]).toEqual([1, 4]);
     fireEvent.click(screen.getByTestId("task-review-back"));
-    expect(screen.getByTestId("task-review-unit-status").textContent).toBe("待审");
+    expect(screen.getByTestId("task-review-card-status").textContent).toContain("待审");
     fireEvent.click(screen.getByTestId("task-review-continue"));
     await waitFor(() => expect(screen.getByTestId("task-review-unit-title").textContent).toContain("#3"));
     expect(taskReview.snapshotState().decisions.map((decision) => decision.unitId)).toEqual([units[0]!.id]);
@@ -441,8 +461,7 @@ describe("task review workspace", () => {
     await screen.findByTestId("folder-review-workspace");
     await screen.findByTestId("task-review-progress");
 
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
-    await screen.findByTestId("task-review-global-scene");
+    await launchOverview();
     fireEvent.click(screen.getByTestId("task-review-show-import"));
     fireEvent.change(await screen.findByLabelText("原文名称"), {
       target: { value: "第一集台词" },
@@ -456,7 +475,7 @@ describe("task review workspace", () => {
     );
 
     await openUnit(1);
-    fireEvent.change(screen.getByTestId("task-review-unit-note"), {
+    fireEvent.change(await openNoteTab(), {
       target: { value: "口径符合，保留" },
     });
     fireEvent.click(screen.getByTestId("task-review-decide-kept"));
@@ -474,10 +493,10 @@ describe("task review workspace", () => {
       status: "kept",
     });
     await waitFor(() =>
-      expect(screen.getByTestId("task-review-unit-status").textContent).toBe("保留"),
+      expect(screen.getByTestId("task-review-decide-kept")).toHaveAttribute("aria-pressed", "true"),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
+    await launchOverview();
     const source = await screen.findByTestId("task-review-source");
     fireEvent.click(
       within(source).getByRole("button", { name: "导出通过条目" }),
@@ -499,19 +518,18 @@ describe("task review workspace", () => {
     await importThreeUnits(taskReview);
 
     await openUnit(1);
-    fireEvent.change(screen.getByTestId("task-review-unit-note"), {
+    fireEvent.change(await openNoteTab(), {
       target: { value: "B场景的反馈草稿" },
     });
     // A: unit 1, then insert the temporary global scene G.
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
-    await screen.findByTestId("task-review-global-scene");
-    fireEvent.click(screen.getByRole("button", { name: "返回" }));
+    await launchOverview();
+    fireEvent.click(screen.getByTestId("task-review-back"));
     await screen.findByTestId("task-review-unit-scene");
     expect(
       (screen.getByTestId("task-review-unit-note") as HTMLTextAreaElement).value,
     ).toBe("B场景的反馈草稿");
     // Navigation never records a decision.
-    expect(screen.getByTestId("task-review-unit-status").textContent).toBe("待审");
+    expect(screen.getByTestId("task-review-card-status").textContent).toContain("待审");
     expect(taskReview.snapshotState().decisions).toHaveLength(0);
 
     // The background analysis publishes a plan; the debounced draft save
@@ -533,24 +551,18 @@ describe("task review workspace", () => {
     taskAgent.setJobs([
       fakeJob("job-1", "completed", units.map((unit) => unit.id)),
     ]);
-    await waitFor(
-      () =>
-        expect(screen.getByTestId("task-review-progress").textContent).toContain(
-          "后续 1 场景",
-        ),
-      { timeout: 4000 },
-    );
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
-    await screen.findByTestId("task-review-global-scene");
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    await launchOverview();
+    fireEvent.click(screen.getByTestId("task-review-continue"));
     await waitFor(() =>
       expect(screen.getByTestId("task-review-unit-title").textContent).toContain("#2"),
     );
     expect(taskReview.snapshotState().decisions).toHaveLength(0);
-    fireEvent.click(screen.getByRole("button", { name: "返回" }));
+    fireEvent.click(screen.getByTestId("task-review-back"));
     await waitFor(() =>
       expect(screen.getByTestId("task-review-unit-title").textContent).toContain("#1"),
     );
+    // The unit switch reset the sub-tool; reopening 批注 shows the restored draft.
+    fireEvent.click(screen.getByRole("button", { name: "批注" }));
     expect(
       (screen.getByTestId("task-review-unit-note") as HTMLTextAreaElement).value,
     ).toBe("B场景的反馈草稿");
@@ -574,6 +586,7 @@ describe("task review workspace", () => {
       });
     });
 
+    await launchOverview();
     await openUnit(1);
     expect(screen.getByTestId("task-review-decide-scope").textContent).toContain(
       "决定仅作用于当前条目 #1",
@@ -600,7 +613,7 @@ describe("task review workspace", () => {
     await importThreeUnits(taskReview);
 
     await openUnit(1);
-    const note = screen.getByTestId("task-review-unit-note") as HTMLTextAreaElement;
+    const note = await openNoteTab();
     fireEvent.change(note, { target: { value: "必须保留的反馈" } });
     await waitFor(
       () => expect(screen.getByTestId("task-review-draft-retry")).toBeTruthy(),
@@ -646,6 +659,7 @@ describe("task review workspace", () => {
     await importThreeUnits(taskReview);
     const units = taskReview.snapshotState().units;
 
+    await launchOverview();
     await openUnit(1);
     // The background analysis completes and publishes a new plan revision.
     taskReview.mutateState((state) => {
@@ -671,7 +685,7 @@ describe("task review workspace", () => {
     // The open scene is still unit 1 even though the plan now points at #3.
     expect(screen.getByTestId("task-review-unit-scene")).toBeTruthy();
     expect(screen.getByTestId("task-review-unit-title").textContent).toContain("#1");
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
+    await launchOverview();
     await screen.findByTestId("task-review-plan-list");
     expect(screen.getByTestId("task-review-plan-list").textContent).toContain("第三句台词");
   });
@@ -680,7 +694,6 @@ describe("task review workspace", () => {
     const { taskReview } = installBridges();
     render(<TaskReviewWorkspace root="task-root" name="任务A" />);
     await importThreeUnits(taskReview);
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
     const source = await screen.findByTestId("task-review-source");
     fireEvent.click(
       within(source).getByRole("button", { name: "导出通过条目" }),
@@ -752,7 +765,9 @@ describe("task review workspace", () => {
         .length,
     ).toBeGreaterThanOrEqual(1);
     // Covering the directory scene hides it and stops its own polling.
-    fireEvent.click(screen.getByRole("button", { name: "全局" }));
+    // (Fake timers: query synchronously instead of waitFor-based finders.)
+    openLauncher();
+    fireEvent.click(screen.getByTestId("task-review-launcher-overview"));
     expect(screen.getByTestId("task-review-global-scene")).toBeTruthy();
     expect(screen.getByTestId("task-review-directory-host").className).toContain("hidden");
     const folderRefreshBefore = folderReview.refresh.mock.calls.length;
@@ -767,5 +782,47 @@ describe("task review workspace", () => {
     // …while the covered legacy directory scene stays idle.
     expect(folderReview.refresh.mock.calls.length).toBe(folderRefreshBefore);
   });
-});
 
+  it("copy centre writes real snapshot content to the clipboard and confirms with a toast", async () => {
+    const { taskReview } = installBridges();
+    render(<TaskReviewWorkspace root="task-root" name="任务A" />);
+    await importThreeUnits(taskReview);
+    await launchOverview();
+    await openUnit(2);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    fireEvent.click(screen.getByTestId("task-review-copy-center"));
+    const modal = screen.getByTestId("copy-center-modal");
+    fireEvent.click(within(modal).getByRole("button", { name: "当前条目 (#2)" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("第二句台词"));
+    await screen.findByTestId("task-review-toast");
+    fireEvent.click(screen.getByTestId("task-review-copy-center"));
+    fireEvent.click(within(screen.getByTestId("copy-center-modal")).getByRole("button", { name: "任务路径 (task-root)" }));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("task-root"));
+  });
+
+  it("the tool card flips to a completion delivery hub when every unit is decided", async () => {
+    const { taskReview } = installBridges();
+    render(<TaskReviewWorkspace root="task-root" name="任务A" />);
+    await importThreeUnits(taskReview);
+    await launchOverview();
+    await openUnit(1);
+    expect(screen.queryByTestId("spotlight-completion-hub")).toBeNull();
+    // The header shortcut previews the delivery hub while work remains.
+    fireEvent.click(screen.getByTestId("spotlight-completion-toggle"));
+    expect(screen.getByTestId("spotlight-completion-hub")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("spotlight-completion-toggle"));
+    expect(screen.queryByTestId("spotlight-completion-hub")).toBeNull();
+    // Decide all three units; the hub becomes permanent.
+    for (let round = 0; round < 3; round += 1) {
+      fireEvent.click(screen.getByTestId("task-review-keep-continue"));
+      await waitFor(() =>
+        expect(taskReview.calls.filter((call) => call.method === "decide")).toHaveLength(round + 1),
+      );
+    }
+    await waitFor(() => expect(screen.getByTestId("spotlight-completion-hub")).toBeTruthy());
+    expect(screen.getByTestId("task-review-progress").textContent).toContain("3/3");
+    // The green CTA steps aside in the completed state.
+    expect(screen.queryByTestId("task-review-keep-continue")).toBeNull();
+  });
+});

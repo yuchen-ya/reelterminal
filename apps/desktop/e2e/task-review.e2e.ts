@@ -13,6 +13,7 @@ import { selectTaskDecision } from "../src/shared/task-review-selectors";
 import { selectTaskContextForPlanning } from "../src/shared/task-review-context";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { createEvidence } from "./harness/evidence";
+import { openLauncher, openNoteTab } from "./harness/task-review-shell";
 import {
   startTaskReviewModelFixture,
   TASK_REVIEW_COMPLETION,
@@ -33,7 +34,8 @@ const snapshotAt = async (root: string): Promise<TaskReviewSnapshot> => ({
   ...JSON.parse(await readFile(path.join(root, ".reelterminal", "task-review.json"), "utf8")),
 });
 const globalScene = async (page: Page) => {
-  await page.getByTestId("task-review-scene-switch").getByRole("button", { name: "全局", exact: true }).click();
+  // The scene switch was removed; the launcher tile is the equivalent path.
+  await openLauncher(page, "overview");
   await page.getByTestId("task-review-global-scene").waitFor();
 };
 const openUnit = async (page: Page, prefix: string) => {
@@ -132,6 +134,8 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     expect(model.requests.every(request => request.instructionBoundaryPresent)).toBe(true);
 
     await openUnit(page, "A:");
+    // The note editor lives behind the card's 批注 tab in the rewritten shell.
+    await openNoteTab(page);
     await evidence.screenshot("default-node-a");
     evidence.record("defaultNodeCollaboration", {
       sourceVisible: await page.getByTestId("task-review-unit-text").isVisible(),
@@ -146,6 +150,8 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     await page.getByTestId("task-review-keep-continue").click();
     await vi.waitFor(async () => expect(await page.getByTestId("task-review-unit-text").textContent()).toContain("B:"));
     expect(await page.getByTestId("task-review-plan-reason").textContent()).toContain("风险未知");
+    // Advancing opened a new unit: the card tab resets to 改词.
+    await openNoteTab(page);
     const beforeInlineCompletion = model.requests.filter(request => request.kind === "completion").length;
     const inlineFeedback = page.getByTestId("task-review-unit-note");
     await inlineFeedback.fill(NOTE);
@@ -158,6 +164,8 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     await inlineFeedback.press("Home");
     await inlineFeedback.press("Shift+ArrowRight");
     expect(await page.getByTestId("task-review-adopt-all").isEnabled()).toBe(false);
+    // 精细编辑 entry lives on the 改词 tab of the card tool body.
+    await page.getByTestId("task-review-card-tab-rewrite").click();
     await page.getByTestId("task-review-open-edit").click();
     const editor = page.getByTestId("task-review-edit-input");
     await editor.fill(NOTE);
@@ -178,7 +186,9 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     expect(await editor.inputValue()).toBe(NOTE);
     expect(await selection(page)).toEqual(savedSelection);
     await page.getByTestId("task-review-back").click();
-    expect(await page.getByTestId("task-review-unit-status").textContent()).toContain("待审");
+    // unit-status is now the three-pill decide container; "pending" reads as
+    // no pill being pressed.
+    expect(await page.getByTestId("task-review-decide-kept").getAttribute("aria-pressed")).toBe("false");
     await page.getByTestId("task-review-continue").click();
     await vi.waitFor(async () => expect(await page.getByTestId("task-review-unit-text").textContent()).toContain("C:"));
     expect((await snapshotAt(root)).decisions.some(decision => decision.unitId === unitB.id)).toBe(false);
@@ -260,7 +270,7 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     const reviewCallsBeforeUndo = model.requests.filter(request => request.kind === "review").length;
     await page.getByTestId("task-review-undo-decision").click();
     await vi.waitFor(async () => expect(selectTaskDecision(await snapshotAt(root), decisionTarget)).toBeUndefined());
-    expect(await page.getByTestId("task-review-unit-status").textContent()).toContain("待审");
+    expect(await page.getByTestId("task-review-decide-kept").getAttribute("aria-pressed")).toBe("false");
     expect(await page.getByTestId("task-review-unit-text").textContent()).toContain("B:");
     await page.getByTestId("task-review-redo-decision").click();
     await vi.waitFor(async () => expect(selectTaskDecision(await snapshotAt(root), decisionTarget)?.status).toBe("kept"));
@@ -303,7 +313,7 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     await page.getByTestId("task-review-grant").waitFor();
     await page.getByRole("button", { name: "返回总览", exact: true }).click();
     await openUnit(page, "B:");
-    expect(await page.getByTestId("task-review-unit-status").textContent()).toContain("保留");
+    expect(await page.getByTestId("task-review-decide-kept").getAttribute("aria-pressed")).toBe("true");
     await page.getByTestId("task-review-open-edit").click();
     expect(await page.getByTestId("task-review-edit-input").inputValue()).toBe(adopted);
     expect(await selection(page)).toEqual(recoveredSelection);
@@ -328,8 +338,9 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     expect(rule).toMatchObject({ content: criterionContent, scope: { kind: "units", targets: [{ unitId: unitB.id, sourceVersionId: unitB.sourceVersionId }] }, origin: { kind: "feedback", noteSnapshot: adopted } });
     expect(selectTaskDecision(task, decisionTarget)).toBeUndefined();
     expect(selectTaskDecision(task, { unitId: unitA.id, sourceVersionId: unitA.sourceVersionId, purpose: "review" })?.status).toBe("kept");
-    expect(await page.getByTestId("task-review-unit-status").textContent()).toContain("需重新确认");
+    expect(await page.getByTestId("task-review-needs-recheck").textContent()).toContain("需重新确认");
     expect(await page.getByTestId("task-review-unit-text").textContent()).toBe(unitB.text);
+    await openNoteTab(page);
     expect(await page.getByTestId("task-review-unit-note").inputValue()).toBe(adopted);
     await evidence.screenshot("local-rule-rechecks-only-b");
 
@@ -399,7 +410,8 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     expect(await page.getByTestId("task-review-unit-note").evaluate(node => ({ start: (node as HTMLTextAreaElement).selectionStart, end: (node as HTMLTextAreaElement).selectionEnd }))).toEqual(compareSelection);
     await evidence.screenshot("compare-restored-focused-feedback");
     await page.getByTestId("task-review-scene-target").filter({ hasText: "X:" }).getByTestId("task-review-scene-focus").click();
-    await page.getByTestId("task-review-decide-kept").click();
+    // 对照场景的每张舞台卡都带原地定夺 pill（新设计），按卡内定位避免 strict 冲突。
+    await page.getByTestId("task-review-scene-target").filter({ hasText: "X:" }).getByTestId("task-review-decide-kept").click();
     await vi.waitFor(async () => expect(selectTaskDecision(await snapshotAt(root), targetFor("X"))?.status).toBe("kept"));
     expect(selectTaskDecision(await snapshotAt(root), targetFor("Y"))).toBeUndefined();
 

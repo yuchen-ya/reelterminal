@@ -2,6 +2,7 @@ import { LocalizedMessage } from "../../i18n/LocalizedMessage";
 import { t as translate } from "../../i18n";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Folder, MoreHorizontal } from "lucide-react";
 import { ToolcraftDialog, ToolcraftDialogHeader } from "@reelterminal/ui";
 import type { ReviewContext, ReviewGroup, ReviewNode } from "@reelterminal/core/review/types";
 import type { DirectoryCommand } from "../../services/review-workspace/directory";
@@ -32,7 +33,7 @@ import { ReviewNodeHeader } from "../workbench/components/ReviewNodeHeader";
 import { ReviewTaskDirectory, type DirectoryView } from "../workbench/components/ReviewTaskDirectory";
 import { WorkbenchTabs } from "../workbench/components/WorkbenchTabs";
 import { FreeBoardIcon, WorkspaceDirectoryIcon } from "../workbench/components/WorkbenchIcons";
-import { useWorkbenchTabsStore, workbenchTabKey } from "../../stores/workbench-tabs-store";
+import { useWorkbenchTabsStore, workbenchTabKey, type WorkbenchTab } from "../../stores/workbench-tabs-store";
 import { humanBoardStorage, type HumanBoard } from "../../services/human-board/storage";
 import { boardTransferInput, type BoardTransferInput } from "../../services/human-board/documents";
 import { resourceImage } from "../../services/human-board/media";
@@ -47,6 +48,7 @@ const HumanBoardView = lazy(() => import("../workbench/human-board/HumanBoardVie
 const TaskReviewWorkspace = lazy(() => import("../workbench/task-review/TaskReviewWorkspace").then(module => ({ default: module.TaskReviewWorkspace })));
 
 const input = "min-w-0 rounded-md border border-border bg-bg-2 px-2.5 py-1.5 text-xs text-fg";
+const compactIconButton = "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded p-1 text-fg-2 hover:bg-bg-2 hover:text-fg disabled:opacity-40";
 const report = (error: unknown) => toast.error(error instanceof Error ? error.message : String(error));
 const textEntry = (element: Element | null) =>
   element instanceof HTMLInputElement ||
@@ -245,6 +247,24 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     const { tasksRoot } = await window.reelterminal!.folderReview!.defaults();
     setNewFolderTask({ tasksRoot, name: "", folderName: `task-${crypto.randomUUID().slice(0, 8)}` });
   };
+  const [folderMenu, setFolderMenu] = useState<string | null>(null);
+  const [folderRename, setFolderRename] = useState<{ id: string; root: string; name: string; revision: number } | null>(null);
+  // open(root) with an explicit root scans and registers the folder without a
+  // picker dialog, giving the current revision renameTask needs.
+  const beginFolderRename = async (folder: WorkbenchTab) => {
+    if (!folder.root) return;
+    const snapshot = await window.reelterminal!.folderReview!.open(folder.root);
+    if (!snapshot) return;
+    setFolderMenu(null);
+    setFolderRename({ id: folder.id, root: snapshot.root, name: snapshot.name, revision: snapshot.revision });
+  };
+  const saveFolderRename = () => navigate(async () => {
+    const row = folderRename;
+    if (!row || !row.name.trim()) return;
+    const { snapshot } = await window.reelterminal!.folderReview!.renameTask({ root: row.root, expectedRevision: row.revision, name: row.name });
+    setFolderRename(null);
+    useWorkbenchTabsStore.getState().rename(workbenchTabKey({ kind: "folder", id: row.id }), snapshot.name);
+  });
   const createFolderTask = () => navigate(async () => {
     if (!newFolderTask) return;
     const task = await window.reelterminal!.folderReview!.create({ name: newFolderTask.name, folderName: newFolderTask.folderName });
@@ -516,22 +536,6 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
         }}
         onClose={key => { void navigate(() => useWorkbenchTabsStore.getState().close(key)).catch(report); }}
       />
-      {newFolderTask && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" role="presentation">
-          <form role="dialog" aria-modal="true" aria-label="新建任务" className="flex w-96 flex-col gap-3 rounded-lg border border-border bg-bg-1 p-4 shadow-lg" onSubmit={event => { event.preventDefault(); void createFolderTask().catch(report); }}>
-            <label className="flex flex-col gap-1">任务名称<input autoFocus className={input} value={newFolderTask.name} onChange={event => setNewFolderTask({ ...newFolderTask, name: event.target.value })} /></label>
-            <label className="flex flex-col gap-1">文件夹名称<input className={input} value={newFolderTask.folderName} onChange={event => setNewFolderTask({ ...newFolderTask, folderName: event.target.value })} /></label>
-            <p className="break-all text-xs text-fg-3">保存位置：{newFolderTask.tasksRoot}{newFolderTask.tasksRoot.includes("\\") ? "\\" : "/"}{newFolderTask.folderName}</p>
-            <div className="flex justify-end gap-2"><button type="button" className={wbButton.ghost} onClick={() => setNewFolderTask(null)}>取消</button><button className={wbButton.primary} disabled={switching || !newFolderTask.name.trim() || !newFolderTask.folderName}>创建</button></div>
-          </form>
-        </div>
-      )}
-      {!browserDemo && window.reelterminal?.folderReview && (
-        <div className="flex h-9 shrink-0 items-center gap-3 border-b border-border bg-bg-1 px-3 text-xs">
-          <button type="button" className={wbButton.primary} disabled={switching || layoutLocked} data-testid="folder-review-open" onClick={() => void openFolder().catch(report)}>打开任务文件夹</button>
-          {!activeTab && <span className="text-fg-3">直接管理真实任务文件夹中的文件；移动或复制只是文件操作，不代表台词审阅结论。台词审阅在任务工作台逐条进行。可在选择窗口中新建文件夹。</span>}
-        </div>
-      )}
       {managerOpen ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-1 px-3 text-xs" data-testid="workbench-address-bar">
@@ -556,11 +560,11 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
             </div>
           </div>
           <div
-            className="flex min-h-0 flex-1 bg-bg"
+            className="grid min-h-0 flex-1 bg-bg lg:grid-cols-12"
             data-testid="workbench-open-dialog"
             data-workbench-modal="true"
           >
-            <section className="flex min-w-0 flex-1 flex-col border-r border-border">
+            <section className="flex min-h-0 min-w-0 flex-col border-b border-border lg:col-span-8 lg:border-b-0 lg:border-r">
               {browserDemo ? <ReviewTaskDirectory
                 nodes={nodes}
                 selectedId={selectedId}
@@ -629,25 +633,69 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                     <strong className="font-semibold">任务文件夹</strong>
                     <div className="flex gap-1.5">
                       <button type="button" className={wbButton.secondary} disabled={switching} onClick={() => void openFolder().catch(report)}>打开文件夹</button>
-                      <button type="button" className={wbButton.primary} disabled={switching} data-testid="folder-task-new" onClick={() => void showNewFolderTask().catch(report)}>＋ 新建任务</button>
+                      <button type="button" className={wbButton.primary} disabled={switching} aria-expanded={!!newFolderTask} data-testid="folder-task-new" onClick={() => { if (newFolderTask) setNewFolderTask(null); else void showNewFolderTask().catch(report); }}>＋ 新建任务</button>
                     </div>
                   </div>
-                  <p className="px-1 text-xs text-fg-3">在选择窗口中选择已有文件夹，或新建文件夹作为任务。</p>
-                  <div className="min-h-0 flex-1 overflow-y-auto border-t border-border pt-1.5">
-                    {recentFolders.map(folder => (
-                      <button key={folder.id} type="button" disabled={switching} data-testid="folder-task-recent" title={folder.root}
-                        className="block w-full rounded px-2 py-2 text-left text-xs hover:bg-bg-2"
-                        onClick={() => void openFolder(folder.root).catch(report)}>
-                        <span className="block truncate text-fg">{folder.name}</span>
-                        <span className="block truncate text-fg-3">{folder.root}</span>
-                      </button>
-                    ))}
+                  {newFolderTask ? (
+                    <form role="dialog" aria-label="新建任务" className="mx-1 flex flex-col gap-2 rounded-md border border-accent/60 bg-bg-1 p-2.5" onSubmit={event => { event.preventDefault(); void createFolderTask().catch(report); }}>
+                      <label className="flex flex-col gap-1">任务名称<input autoFocus className={input} value={newFolderTask.name} onChange={event => setNewFolderTask({ ...newFolderTask, name: event.target.value })} /></label>
+                      <label className="flex flex-col gap-1">文件夹名称<input className={input} value={newFolderTask.folderName} onChange={event => setNewFolderTask({ ...newFolderTask, folderName: event.target.value })} /></label>
+                      <p className="break-all font-mono text-xs text-fg-3">保存位置：{newFolderTask.tasksRoot}{newFolderTask.tasksRoot.includes("\\") ? "\\" : "/"}{newFolderTask.folderName}</p>
+                      <div className="flex justify-end gap-2"><button type="button" className={wbButton.ghost} onClick={() => setNewFolderTask(null)}>取消</button><button className={wbButton.primary} disabled={switching || !newFolderTask.name.trim() || !newFolderTask.folderName}>创建</button></div>
+                    </form>
+                  ) : (
+                    <p className="px-1 text-xs text-fg-3">在选择窗口中选择已有文件夹，或新建文件夹作为任务。</p>
+                  )}
+                  <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto border-t border-border px-1 pt-1.5" onClick={() => { if (folderMenu) setFolderMenu(null); }}>
+                    {recentFolders.map(folder => {
+                      const active = activeKey === workbenchTabKey(folder);
+                      const renaming = folderRename?.id === folder.id ? folderRename : null;
+                      return (
+                        <div key={folder.id}
+                          className={`group relative rounded-md border px-2.5 py-2 text-xs transition-colors ${active || folderMenu === folder.id || renaming ? "border-accent/60 bg-bg-2" : "border-border hover:border-accent/60 hover:bg-bg-2"}`}>
+                          {renaming ? (
+                            <form className="flex items-center gap-1.5" onClick={event => event.stopPropagation()} onSubmit={event => { event.preventDefault(); void saveFolderRename().catch(report); }}>
+                              <input autoFocus className={`${input} min-w-0 flex-1`} aria-label="重命名任务" maxLength={200} value={renaming.name} disabled={switching}
+                                onChange={event => setFolderRename({ ...renaming, name: event.target.value })}
+                                onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); setFolderRename(null); } }} />
+                              <button type="submit" className={wbButton.secondary} disabled={switching || !renaming.name.trim()}>保存</button>
+                              <button type="button" className={wbButton.ghost} onClick={() => setFolderRename(null)}>取消</button>
+                            </form>
+                          ) : (
+                            <>
+                              <button type="button" disabled={switching} data-testid="folder-task-recent" title={folder.root}
+                                className="block w-full pr-7 text-left"
+                                onClick={() => void openFolder(folder.root).catch(report)}>
+                                <span className="block truncate font-semibold text-fg">{folder.name}</span>
+                                <span className="mt-0.5 flex min-w-0 items-center gap-1 text-fg-3">
+                                  <Folder className="h-3.5 w-3.5 shrink-0 text-accent" />
+                                  <span className="truncate font-mono">{folder.root}</span>
+                                </span>
+                              </button>
+                              <button type="button" className={`${compactIconButton} absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
+                                aria-label={`任务 ${folder.name} 的操作`} aria-haspopup="menu" aria-expanded={folderMenu === folder.id}
+                                disabled={switching}
+                                onClick={event => { event.stopPropagation(); setFolderMenu(folderMenu === folder.id ? null : folder.id); }}>
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </button>
+                              {folderMenu === folder.id && (
+                                <div role="menu" className="absolute right-1.5 top-8 z-20 w-28 rounded-md border border-border bg-bg-1 py-1 shadow-lg" onClick={event => event.stopPropagation()}>
+                                  <button type="button" role="menuitem" disabled={switching}
+                                    className="block w-full px-3 py-1.5 text-left text-fg-2 hover:bg-bg-2 hover:text-fg"
+                                    onClick={() => { setFolderMenu(null); void beginFolderRename(folder).catch(report); }}>重命名</button>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                     {!recentFolders.length && <p className="px-2 py-6 text-center text-xs text-fg-3">打开或新建任务文件夹后，它会显示在这里。</p>}
                   </div>
                 </div>
               )}
             </section>
-            <section className="flex min-w-0 flex-1 flex-col gap-2 p-3">
+            <section className="flex min-h-0 min-w-0 flex-col gap-2 bg-bg-1/40 p-3 lg:col-span-4">
               <div className="flex h-7 items-center justify-between px-1 text-xs">
                 <strong className="inline-flex items-center gap-1.5 font-semibold text-fg">
                   <FreeBoardIcon className="h-3.5 w-3.5 text-sky-400" />

@@ -9,6 +9,7 @@ import type { TaskAgentBridge } from "../src/shared/task-review-runtime-types";
 import { createEvidence } from "./harness/evidence";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { configureTaskReviewDeepSeekProfile, TASK_REVIEW_DEEPSEEK } from "./harness/task-review-deepseek";
+import { openGlobalScene, openNoteTab } from "./harness/task-review-shell";
 
 const SOURCE = "讲解员：现在是2026年，我们刚刚抵达展馆。";
 const GOAL = "公开原创合成测试。已知设定：当前年份固定为2025年；讲解员说的是本场现在，没有说谎、梦境、回忆或跨年情节。请核对台词与明确年份设定的一致性；矛盾请给出精确原话证据和待人工确认的假设，不替人工做决定。";
@@ -93,15 +94,20 @@ test.runIf(process.env.REELTERMINAL_TASK_REVIEW_DEEPSEEK_ACCEPTANCE === "1")("De
     await create.getByRole("button", { name: "创建", exact: true }).click();
     await page.getByTestId("task-review-workspace").waitFor();
     const root = path.join(launched.userDataDir, "review", "tasks", "deepseek-single-case");
-    await page.getByTestId("task-review-scene-switch").getByRole("button", { name: "全局", exact: true }).click();
+    await openGlobalScene(page);
+    // Panels are collapsed by default in the rewritten overview; expand each
+    // section through its own toggle before filling it.
+    await page.getByTestId("task-review-show-goal").click();
     await page.getByLabel("任务目标口径", { exact: true }).fill(GOAL);
     await page.getByRole("button", { name: "保存目标口径", exact: true }).click();
+    await page.getByTestId("task-review-show-import").click();
     await page.getByLabel("原文名称", { exact: true }).fill("公开合成年份矛盾");
     await page.getByLabel("原文格式", { exact: true }).selectOption("txt");
     await page.getByLabel("粘贴文本内容", { exact: true }).fill(SOURCE);
     await page.getByTestId("task-review-import-text").click();
     await vi.waitFor(async () => expect((await snapshot(root)).units).toHaveLength(1));
     expect((await observeNetwork(launched.app)).requests).toEqual([]);
+    await page.getByTestId("task-review-show-model").click();
     await page.getByTestId("task-review-authorize").click();
     await page.getByTestId("task-review-grant").waitFor();
     await vi.waitFor(async () => {
@@ -121,6 +127,8 @@ test.runIf(process.env.REELTERMINAL_TASK_REVIEW_DEEPSEEK_ACCEPTANCE === "1")("De
     await page.getByTestId("task-review-unit-row").filter({ hasText: SOURCE }).click();
     await page.getByTestId("task-review-issue").first().waitFor();
     await evidence.screenshot("real-issue-default-node");
+    // The note editor lives behind the card's 批注 tab in the rewritten shell.
+    await openNoteTab(page);
     const beforeCompletion = (await observeNetwork(launched.app)).requests.length;
     const feedback = page.getByTestId("task-review-unit-note");
     await feedback.fill(FEEDBACK);

@@ -1,3 +1,12 @@
+import type { TaskDecisionStatus } from "../../../../../desktop/src/shared/task-review";
+
+/** Shared short verdict labels for decisions (moved out of UnitReviewScene). */
+export const statusLabels: Record<TaskDecisionStatus, string> = {
+  kept: "保留",
+  rework: "返工",
+  discarded: "丢弃",
+};
+
 /** Display legacy generated originals naturally without renaming their files. */
 export function sourceTitle(relativePath: string): string {
   const name = relativePath.replace(/\\/g, "/").split("/").at(-1) ?? relativePath;

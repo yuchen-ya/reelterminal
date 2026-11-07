@@ -7,6 +7,7 @@ import { isTextTaskUnit, type TaskReviewSnapshot } from "../src/shared/task-revi
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { createEvidence } from "./harness/evidence";
 import { startTaskReviewModelFixture, TASK_REVIEW_FIXTURE_KEY } from "./harness/task-review-model-fixture";
+import { openGlobalScene, openNoteTab } from "./harness/task-review-shell";
 
 const snapshotAt = async (root: string): Promise<TaskReviewSnapshot> => ({ root, ...JSON.parse(await readFile(path.join(root, ".reelterminal", "task-review.json"), "utf8")) });
 
@@ -54,7 +55,7 @@ test.runIf(Boolean(process.env.REELTERMINAL_E2E_APP_EXECUTABLE))("packaged GUI r
     await creation.getByRole("button", { name: "创建", exact: true }).click();
     await page.getByTestId("task-review-workspace").waitFor();
     const root = path.join(launched.userDataDir, "review", "tasks", "completion-replay");
-    await page.getByTestId("task-review-scene-switch").getByRole("button", { name: "全局", exact: true }).click();
+    await openGlobalScene(page);
     await page.getByTestId("task-review-show-goal").click();
     await page.getByLabel("任务目标口径", { exact: true }).fill(captured.preparedInput.goal);
     await page.getByRole("button", { name: "保存目标口径", exact: true }).click();
@@ -76,6 +77,8 @@ test.runIf(Boolean(process.env.REELTERMINAL_E2E_APP_EXECUTABLE))("packaged GUI r
     await vi.waitFor(async () => expect((await snapshotAt(root)).contextHistory?.proposals.length).toBeGreaterThan(0));
     await page.getByRole("button", { name: "返回总览", exact: true }).click();
     await page.getByTestId("task-review-unit-row").filter({ hasText: unit.text }).click();
+    // The note editor lives behind the card's 批注 tab in the rewritten shell.
+    await openNoteTab(page);
     const feedback = page.getByTestId("task-review-unit-note");
     await feedback.fill(draft);
     const beforeSelection = await feedback.evaluate(node => ({ start: (node as HTMLTextAreaElement).selectionStart, end: (node as HTMLTextAreaElement).selectionEnd }));

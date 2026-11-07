@@ -12,6 +12,7 @@ import { createEvidence } from "./harness/evidence";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { ARTIFACTS_DIR, MAIN_BUNDLE_PATH } from "./harness/paths";
 import { configureTaskReviewDeepSeekProfile, TASK_REVIEW_DEEPSEEK } from "./harness/task-review-deepseek";
+import { openGlobalScene as globalScene, openNoteTab } from "./harness/task-review-shell";
 
 interface Observation {
   purpose: "review" | "completion" | "search" | "expansion";
@@ -75,7 +76,6 @@ async function observe(app: ElectronApplication, diagnostic: boolean) {
 }
 const networkAt = (app: ElectronApplication) => app.evaluate(() => (globalThis as typeof globalThis & { textQualityNetwork: Network }).textQualityNetwork);
 const snapshotAt = async (root: string): Promise<TaskReviewSnapshot> => ({ root, ...JSON.parse(await readFile(path.join(root, ".reelterminal", "task-review.json"), "utf8")) });
-const globalScene = async (page: Page) => { await page.getByTestId("task-review-scene-switch").getByRole("button", { name: "全局", exact: true }).click(); };
 const showGlobalPanel = async (page: Page, panel: "goal" | "import" | "model") => {
   const button = page.getByTestId(`task-review-show-${panel}`);
   if (await button.getAttribute("aria-expanded") !== "true") await button.click();
@@ -212,6 +212,8 @@ test.runIf(process.env.REELTERMINAL_TASK_REVIEW_DEEPSEEK_ACCEPTANCE === "1")("ob
       await evidence.screenshot(`${item.id}-source-and-issues`);
       if (index === 0) {
         const feedbackText = "这段童年经历与已知背景冲突，建议";
+        // The note editor lives behind the card's 批注 tab in the rewritten shell.
+        await openNoteTab(page);
         const feedback = page.getByTestId("task-review-unit-note");
         const beforeCompletion = (await networkAt(launched.app)).requests.length;
         await feedback.fill(feedbackText);

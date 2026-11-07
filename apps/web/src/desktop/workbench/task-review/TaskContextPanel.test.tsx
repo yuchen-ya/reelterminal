@@ -54,7 +54,8 @@ function installBridges(withContext = true): {
 
 const importUnits = async (taskReview: FakeTaskReviewBridge) => {
   await screen.findByTestId("task-review-progress");
-  fireEvent.click(screen.getByRole("button", { name: "全局" }));
+  fireEvent.click(screen.getByTestId("spotlight-flip-btn"));
+  fireEvent.click(screen.getByTestId("task-review-launcher-overview"));
   fireEvent.click(screen.getByTestId("task-review-show-import"));
   fireEvent.change(await screen.findByLabelText("原文名称"), {
     target: { value: "第一集台词" },
@@ -72,9 +73,16 @@ const openUnit = async (ordinal: number) => {
   await screen.findByTestId("task-review-unit-scene");
 };
 
-const openGlobal = async () => {
-  fireEvent.click(screen.getByRole("button", { name: "全局" }));
-  await screen.findByTestId("task-review-global-scene");
+/** 单元批注在工具卡的「批注」短标签后面。 */
+const openNoteTab = () => {
+  fireEvent.click(screen.getByRole("button", { name: "批注" }));
+  return screen.findByTestId("task-review-unit-note") as Promise<HTMLTextAreaElement>;
+};
+
+const openGlobal = () => {
+  fireEvent.click(screen.getByTestId("spotlight-flip-btn"));
+  fireEvent.click(screen.getByTestId("task-review-launcher-overview"));
+  expect(screen.getByTestId("task-review-global-scene")).toBeTruthy();
 };
 
 /** Seeds one agent understanding proposal with an exact quote of unit `index`. */
@@ -129,11 +137,11 @@ describe("task context and criteria adoption", () => {
     const units = taskReview.snapshotState().units.filter(isTextTaskUnit);
 
     await openUnit(1);
-    fireEvent.change(screen.getByTestId("task-review-unit-note"), {
+    fireEvent.change(await openNoteTab(), {
       target: { value: "儿童受众，避免专业术语" },
     });
     fireEvent.click(screen.getByTestId("task-review-decide-kept"));
-    await waitFor(() => expect(screen.getByTestId("task-review-unit-status").textContent).toBe("保留"));
+    await waitFor(() => expect(screen.getByTestId("task-review-decide-kept")).toHaveAttribute("aria-pressed", "true"));
 
     // Typing and deciding adopted nothing: no implicit criteria.
     expect(taskContext!.calls).toHaveLength(0);
@@ -179,9 +187,7 @@ describe("task context and criteria adoption", () => {
     // A units-scoped criterion does not bump the global policy, but the prior
     // decision on the adopted unit no longer matches its basis: needs recheck.
     expect(taskReview.snapshotState().policyRevision).toBe(1);
-    await waitFor(() =>
-      expect(screen.getByTestId("task-review-unit-status").textContent).toBe("口径已更新，需重新确认"),
-    );
+    await waitFor(() => expect(screen.getByTestId("task-review-needs-recheck").textContent).toContain("需重新确认"));
     expect(screen.queryByTestId("task-review-adopt-criteria-toggle")).toBeNull();
   });
 
@@ -323,11 +329,11 @@ describe("task context and criteria adoption", () => {
 
     // The unit scene hides the feedback-adoption entry on the same shells.
     await openUnit(1);
-    fireEvent.change(screen.getByTestId("task-review-unit-note"), {
+    fireEvent.change(await openNoteTab(), {
       target: { value: "有备注的决定" },
     });
     fireEvent.click(screen.getByTestId("task-review-decide-kept"));
-    await waitFor(() => expect(screen.getByTestId("task-review-unit-status").textContent).toBe("保留"));
+    await waitFor(() => expect(screen.getByTestId("task-review-decide-kept")).toHaveAttribute("aria-pressed", "true"));
     expect(screen.queryByTestId("task-review-adopt-criteria-toggle")).toBeNull();
   });
 });

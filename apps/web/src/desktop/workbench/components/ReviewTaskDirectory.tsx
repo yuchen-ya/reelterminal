@@ -107,7 +107,7 @@ export function ReviewTaskDirectory({
   const [newNodeName, setNewNodeName] = useState("");
   const [managingGroups, setManagingGroups] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [draggingNode, setDraggingNode] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);

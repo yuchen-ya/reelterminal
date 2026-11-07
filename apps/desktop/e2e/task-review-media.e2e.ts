@@ -12,9 +12,14 @@ import { createEvidence } from "./harness/evidence";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { DESKTOP_DIR } from "./harness/paths";
 import { decodeRgbaPng } from "./harness/repair-acceptance-fixtures";
+import { openDirectoryScene, openGlobalScene } from "./harness/task-review-shell";
 
 const snapshotAt = async (root: string): Promise<TaskReviewSnapshot> => ({ root, ...JSON.parse(await readFile(path.join(root, ".reelterminal", "task-review.json"), "utf8")) });
-const changeScene = (page: Page, name: string) => page.getByTestId("task-review-scene-switch").getByRole("button", { name, exact: true }).click();
+/** Old scene-switch destinations now go through the tool card's launcher tiles. */
+const changeScene = async (page: Page, name: "目录" | "全局") => {
+  if (name === "全局") await openGlobalScene(page);
+  else await openDirectoryScene(page);
+};
 const point = async (page: Page, x: number, y: number) => {
   const picture = page.getByTestId("task-review-media-picture");
   await picture.scrollIntoViewIfNeeded();
