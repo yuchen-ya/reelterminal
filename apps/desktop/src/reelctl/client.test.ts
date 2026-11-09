@@ -1,6 +1,9 @@
 import { createServer, type RequestListener, type Server } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
-import { LiveCliError, LiveCommandClient, defaultRequestTimeoutMs, type LiveEndpoint } from "./client";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { LiveCliError, LiveCommandClient, defaultRequestTimeoutMs, readLiveEndpoint, type LiveEndpoint } from "./client";
 
 const target = { projectId: "project-1", workspaceId: "workspace-1" };
 const servers: Server[] = [];
@@ -100,6 +103,45 @@ describe("live Command API client", () => {
     } finally {
       if (previous === undefined) delete process.env.REELTERMINAL_REQUEST_TIMEOUT_MS;
       else process.env.REELTERMINAL_REQUEST_TIMEOUT_MS = previous;
+    }
+  });
+
+  it("keeps descriptor paths and contents out of read and discovery errors", () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), "reelctl-endpoint-privacy-"));
+    const descriptor = path.join(home, "private-endpoint.json");
+    const capture = (explicitHome?: string): LiveCliError => {
+      let failure: unknown;
+      try {
+        readLiveEndpoint(explicitHome);
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(LiveCliError);
+      return failure as LiveCliError;
+    };
+    const expectSafe = (failure: LiveCliError) => {
+      expect(failure.message).not.toContain(home);
+      expect(failure.message).not.toContain(descriptor);
+      expect(failure.message).not.toContain("private-descriptor-token");
+    };
+    try {
+      vi.stubEnv("REELTERMINAL_LIVE_ENDPOINT_FILE", descriptor);
+      expectSafe(capture());
+
+      writeFileSync(descriptor, JSON.stringify({ product: "someone-else", token: "private-descriptor-token" }));
+      expectSafe(capture());
+
+      vi.stubEnv("REELTERMINAL_LIVE_ENDPOINT_FILE", "");
+      const canonical = path.join(home, ".reelterminal", "live-endpoint.json");
+      const legacy = path.join(home, ".openreel", "live-endpoint.json");
+      mkdirSync(path.dirname(canonical), { recursive: true });
+      mkdirSync(path.dirname(legacy), { recursive: true });
+      writeFileSync(canonical, "{}");
+      writeFileSync(legacy, JSON.stringify({ product: "someone-else", token: "private-descriptor-token" }));
+      expectSafe(capture(home));
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(home, { recursive: true, force: true });
     }
   });
 

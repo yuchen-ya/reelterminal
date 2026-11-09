@@ -338,6 +338,9 @@ describe("live endpoint descriptor write failure", () => {
       failure = error;
     }
     expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("Unable to write the selected live endpoint descriptor");
+    expect((failure as Error).message).not.toContain(tempDir);
+    expect((failure as Error).message).not.toContain(blockedFile);
 
     // The lifecycle is not wedged: a retry against a writable path settles
     // normally, publishes the descriptor, and closes cleanly.

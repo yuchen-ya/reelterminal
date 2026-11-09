@@ -8,6 +8,9 @@ import { LiveCliError, type CommandCatalog, type CommandCatalogEntry, type LiveC
 import { compactContextResult, formatResult } from "./output";
 import { COMMAND_ALIASES, parseInvocation, requireExplicitSafetyGuards } from "./commands";
 import { encodeAgentTarget } from "../shared/agent-target";
+import { runEnvironment } from "./environment";
+
+vi.mock("./environment", () => ({ runEnvironment: vi.fn() }));
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -44,6 +47,174 @@ function makeClient(commands: CommandCatalogEntry[], result: unknown = { ok: tru
     command: vi.fn().mockResolvedValue(result),
   } as unknown as LiveCommandClient;
 }
+
+describe("reelctl edit.validate process result contracts", () => {
+  const validResult = {
+    ok: true,
+    value: {
+      valid: true,
+      revision: 12,
+      conflicts: [],
+      warnings: [{ code: "TRIM_WARNING", message: "warning is preserved" }],
+      normalizedOps: [{ op: "clip.trim", clipId: "clip-1", outPoint: 4 }],
+    },
+  };
+  const invalidResult = {
+    ok: true,
+    value: {
+      valid: false,
+      revision: 12,
+      conflicts: [{ code: "NOT_FOUND", message: "Clip missing does not exist", opIndex: 0 }],
+      warnings: [{ code: "DELETE_WARNING", message: "warning is preserved" }],
+      normalizedOps: [{ op: "clip.remove", clipId: "missing" }],
+    },
+  };
+  const entries = [
+    ["generic call", ["call", "edit.validate"]],
+    ["compatibility alias", ["edit", "validate"]],
+    ["scoped video call", ["video", "call", "edit.validate"]],
+  ] as const;
+
+  it("returns zero for a valid plan through every normalized entry", async () => {
+    for (const [label, argv] of entries) {
+      const api = makeClient([entry("edit.validate", "edit_validate")], validResult);
+      const stdout: string[] = [];
+      await expect(runReelctl([...argv], { client: api, stdout: line => stdout.push(line) }), label).resolves.toBe(0);
+      expect(JSON.parse(stdout[0]!), label).toEqual(validResult);
+      expect(api.command).toHaveBeenCalledWith("edit.validate", {}, expect.any(Object));
+    }
+  });
+
+  it("returns three for an invalid plan without changing its successful facade JSON", async () => {
+    for (const [label, argv] of entries) {
+      const api = makeClient([entry("edit.validate", "edit_validate")], invalidResult);
+      const stdout: string[] = [];
+      await expect(runReelctl([...argv], { client: api, stdout: line => stdout.push(line) }), label).resolves.toBe(3);
+      expect(JSON.parse(stdout[0]!), label).toEqual(invalidResult);
+      expect(api.command).toHaveBeenCalledTimes(1);
+      expect(api.command).toHaveBeenCalledWith("edit.validate", {}, expect.any(Object));
+    }
+  });
+
+  it("does not treat another command's valid field as a validation failure", async () => {
+    const result = { ok: true, value: { valid: false, state: "done" } };
+    const api = makeClient([entry("media.inspect", "media_inspect")], result);
+    await expect(runReelctl(["call", "media.inspect"], { client: api, stdout: () => {} })).resolves.toBe(0);
+  });
+});
+
+describe("reelctl offline command help", () => {
+  const commandCases = [
+    { argv: ["frames", "extract", "--help"], command: "frames.extract", alias: "frames extract" },
+    { argv: ["frames", "extract", "-h"], command: "frames.extract", alias: "frames extract" },
+    { argv: ["edit", "validate", "--help"], command: "edit.validate", alias: "edit validate" },
+    { argv: ["media", "inspect", "--help"], command: "media.inspect", alias: "media inspect" },
+    { argv: ["call", "frames.extract", "--help"], command: "frames.extract", alias: "frames extract" },
+    { argv: ["video", "call", "media.inspect", "--help"], command: "media.inspect", alias: "media inspect" },
+    { argv: ["review", "frames", "capture", "--help"], command: "review.frames.capture", alias: "review frames capture" },
+    { argv: ["help", "frames", "extract"], command: "frames.extract", alias: "frames extract" },
+  ];
+
+  it("uses local live contracts for every known command form without client calls", async () => {
+    for (const { argv, command, alias } of commandCases) {
+      const api = makeClient([]);
+      const stdout: string[] = [];
+      await expect(runReelctl(argv, { client: api, stdout: line => stdout.push(line) }), argv.join(" ")).resolves.toBe(0);
+      expect(stdout[0], argv.join(" ")).toContain(`${command} (`);
+      expect(stdout[0]).toContain(`Canonical invocation: reelctl call ${command} --file request.json`);
+      expect(stdout[0]).toContain(`Compatibility aliases: ${alias}`);
+      expect(stdout[0]).toContain("Input schema:");
+      expect(api.status).not.toHaveBeenCalled();
+      expect(api.catalog).not.toHaveBeenCalled();
+      expect(api.catalogEntry).not.toHaveBeenCalled();
+      expect(api.command).not.toHaveBeenCalled();
+    }
+  });
+
+  it("handles help before request files, stdin and business flags", async () => {
+    const api = makeClient([]);
+    const stdout: string[] = [];
+    const missing = path.join(tempDir(), "missing-request.json");
+    await expect(runReelctl(["frames", "extract", "--file", missing, "--stdin", "--help"], {
+      client: api, stdout: line => stdout.push(line),
+    })).resolves.toBe(0);
+    expect(stdout[0]).toContain("frames.extract (frames_extract)");
+    expect(api.catalogEntry).not.toHaveBeenCalled();
+    expect(api.command).not.toHaveBeenCalled();
+  });
+
+  it("keeps help-looking field values in the business request", async () => {
+    const api = makeClient([entry("media.inspect", "media_inspect")]);
+    await expect(runReelctl(["call", "media.inspect", "--note=--help", "--other=-h"], {
+      client: api, stdout: () => {},
+    })).resolves.toBe(0);
+    expect(api.command).toHaveBeenCalledWith("media.inspect", { note: "--help", other: "-h" }, expect.any(Object));
+
+    await expect(runReelctl(["call", "media.inspect", "--note", "-h"], {
+      client: api, stdout: () => {},
+    })).resolves.toBe(0);
+    expect(api.command).toHaveBeenLastCalledWith("media.inspect", { note: "-h" }, expect.any(Object));
+  });
+
+  it("rejects unknown nested and canonical help paths offline with discovery guidance", async () => {
+    for (const argv of [
+      ["frames", "unknown", "--help"],
+      ["call", "media.unknown", "--help"],
+      ["help", "frames", "unknown"],
+    ]) {
+      const api = makeClient([]);
+      let failure: unknown;
+      try {
+        await runReelctl(argv, { client: api, stdout: () => {} });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure, argv.join(" ")).toMatchObject({ kind: "args", exitCode: 2 });
+      expect((failure as LiveCliError).message).toMatch(/Unknown command/i);
+      expect((failure as LiveCliError).message).toMatch(/reelctl (?:tools|help)/);
+      expect(api.status).not.toHaveBeenCalled();
+      expect(api.catalog).not.toHaveBeenCalled();
+      expect(api.catalogEntry).not.toHaveBeenCalled();
+      expect(api.command).not.toHaveBeenCalled();
+    }
+  });
+
+  it("does not echo request values in unknown help errors", async () => {
+    const privateValue = "private-request-value";
+    const failure = await runReelctl(["frames", "unknown", "--note", privateValue, "--help"], {
+      client: makeClient([]), stdout: () => {},
+    }).then(
+      () => { throw new Error("expected unknown help to fail"); },
+      (error: unknown) => error as LiveCliError,
+    );
+    expect(failure).toMatchObject({ kind: "args", exitCode: 2 });
+    expect(failure.message).toContain("frames unknown");
+    expect(failure.message).not.toContain(privateValue);
+  });
+
+  it("uses local usage and capability metadata for wrapper help without probing", async () => {
+    vi.mocked(runEnvironment).mockClear();
+    for (const { argv, expected } of [
+      { argv: ["tools", "--help"], expected: "reelctl tools" },
+      { argv: ["tools", "video", "--help"], expected: "video." },
+      { argv: ["tools", "system.environment", "--help"], expected: "environment get" },
+      { argv: ["start", "--help"], expected: "reelctl start --target" },
+      { argv: ["status", "-h"], expected: "reelctl status" },
+      { argv: ["environment", "check", "--help"], expected: "environment check" },
+      { argv: ["schema", "frames.extract", "--help"], expected: "reelctl schema" },
+    ]) {
+      const api = makeClient([]);
+      const stdout: string[] = [];
+      await expect(runReelctl(argv, { client: api, stdout: line => stdout.push(line) }), argv.join(" ")).resolves.toBe(0);
+      expect(stdout[0], argv.join(" ")).toContain(expected);
+      expect(api.status).not.toHaveBeenCalled();
+      expect(api.catalog).not.toHaveBeenCalled();
+      expect(api.catalogEntry).not.toHaveBeenCalled();
+      expect(api.command).not.toHaveBeenCalled();
+    }
+    expect(runEnvironment).not.toHaveBeenCalled();
+  });
+});
 
 describe("reelctl command parsing and safety", () => {
   it("discovers short domain and capability cards offline and selects only the requested op contract", async () => {
@@ -103,6 +274,24 @@ describe("reelctl command parsing and safety", () => {
     expect(parseInvocation(["frames", "extract", "--start-frame", "2"]).arguments).toEqual({ startFrame: 2 });
     expect(parseInvocation(["context", "--compact"]).compact).toBe(true);
     expect(() => parseInvocation(["review", "repair", "inspect", "unexpected"])).toThrow(/Unexpected positional/);
+  });
+
+  it("does not echo request content in ordinary invocation errors", () => {
+    const invocationError = (tokens: readonly string[]): Error => {
+      try {
+        parseInvocation(tokens);
+      } catch (error) {
+        return error as Error;
+      }
+      throw new Error("expected invocation parsing to fail");
+    };
+    const optionFailure = invocationError(["unknown", "--note", "private-option-value"]);
+    expect(optionFailure.message).toContain("Unknown command");
+    expect(optionFailure.message).not.toContain("private-option-value");
+
+    const positionalFailure = invocationError(["frames", "extract", "private-positional-value"]);
+    expect(positionalFailure.message).toContain("Unexpected positional argument");
+    expect(positionalFailure.message).not.toContain("private-positional-value");
   });
 
   it("dispatches repair files and resolves the same dedicated alias for help and schema", async () => {
@@ -443,8 +632,9 @@ describe("reelctl review discovery", () => {
     expect(await runReelctl(["schema", "review.ingest"], { client: api, stdout: (line) => stdout.push(line) })).toBe(0);
     expect(JSON.parse(stdout[0]!).command).toEqual(reviewEntry);
     expect(await runReelctl(["help", "review.ingest"], { client: api, stdout: (line) => stdout.push(line) })).toBe(0);
-    expect(stdout[1]).toContain(reviewEntry.description);
-    expect(stdout[1]).toContain("Keep the item title compact");
+    expect(stdout[1]).toContain("Atomically ingest review content into an explicit node");
+    expect(stdout[1]).toContain("4–8 Chinese characters");
+    expect(api.catalogEntry).toHaveBeenCalledTimes(1);
     expect(api.command).not.toHaveBeenCalled();
   });
 });

@@ -212,7 +212,10 @@ function commandFromWords(words: readonly string[]): { readonly commandName: str
     const commandName = Object.hasOwn(COMMAND_ALIASES, joined) ? COMMAND_ALIASES[joined] : undefined;
     if (commandName !== undefined) return { commandName, consumed: length };
   }
-  fail(`Unknown command "${words.join(" ")}". Use reelctl help for usage.`);
+  const optionIndex = words.findIndex(word => word.startsWith("-"));
+  const commandPath = optionIndex < 0 ? words : words.slice(0, optionIndex);
+  const displayPath = commandPath.length > 0 ? commandPath : words.slice(0, 1);
+  fail(`Unknown command "${displayPath.join(" ")}". Use reelctl help for usage.`);
 }
 
 function normalizeArgs(commandName: string, raw: Record<string, unknown>): Record<string, unknown> {
@@ -252,7 +255,7 @@ export function parseInvocation(tokens: readonly string[]): ParsedInvocation {
     if (args.jobId === undefined) args.jobId = parsed.positional[0];
     if (parsed.positional.length > 1) fail("Unexpected positional arguments");
   } else if (parsed.positional.length > 0) {
-    fail(`Unexpected positional argument "${parsed.positional[0]}"; use --name value flags or --file`);
+    fail("Unexpected positional argument; use --name value flags or --file");
   }
 
   if (commandName === "history.control") {
@@ -345,7 +348,9 @@ export function requireExplicitSafetyGuards(
   }
 }
 
-export function commandHelp(entry: CommandCatalogEntry): string {
+export function commandHelp(
+  entry: Pick<CommandCatalogEntry, "name" | "toolName" | "description"> & { readonly inputSchema: object },
+): string {
   return [
     `${entry.name} (${entry.toolName})`,
     "",

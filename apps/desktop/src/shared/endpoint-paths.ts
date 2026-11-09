@@ -196,40 +196,36 @@ export interface EndpointPathOptions {
 
 function foreignConflictMessage(
   resource: EndpointResource,
-  canonical: string,
-  legacy: string,
   foreignProduct: string,
 ): string {
   const { newName } = OVERRIDE_ENV_NAMES[resource];
   return (
-    `Both ${canonical} and ${legacy} exist and the legacy descriptor belongs ` +
+    "Both canonical and legacy endpoint descriptors exist and the legacy descriptor belongs " +
     `to another product (product "${foreignProduct}"); set ${newName} to the ` +
-    `descriptor path you want instead of relying on default discovery.`
+    "descriptor path you want instead of relying on default discovery."
   );
 }
 
 function foreignOverrideMessage(
   resource: EndpointResource,
-  filePath: string,
   foreignProduct: string,
 ): string {
   const { newName } = OVERRIDE_ENV_NAMES[resource];
   return (
-    `${filePath} is the descriptor of another product (product ` +
+    "The selected endpoint descriptor belongs to another product (product " +
     `"${foreignProduct}"), not ReelTerminal. Point ${newName} at a ` +
-    `ReelTerminal endpoint descriptor to connect.`
+    "ReelTerminal endpoint descriptor to connect."
   );
 }
 
 function invalidLegacyMessage(
   resource: EndpointResource,
-  legacy: string,
 ): string {
   const { newName } = OVERRIDE_ENV_NAMES[resource];
   return (
-    `${legacy} is present but is not a readable ReelTerminal endpoint ` +
+    "The legacy endpoint descriptor is present but is not a readable ReelTerminal endpoint " +
     `descriptor; set ${newName} to a descriptor path, or remove the stale ` +
-    `file and restart the ReelTerminal host.`
+    "file and restart the ReelTerminal host."
   );
 }
 
@@ -266,8 +262,6 @@ export function resolveEndpointReadPath(
         path: canonical,
         conflict: foreignConflictMessage(
           resource,
-          canonical,
-          legacy,
           foreignProduct ?? "unknown",
         ),
       };
@@ -278,7 +272,7 @@ export function resolveEndpointReadPath(
   if (legacyExists) {
     const probe = probeDescriptorOwnership(legacy, resource);
     if (probe.kind === "unreadable") {
-      return { path: legacy, conflict: invalidLegacyMessage(resource, legacy) };
+      return { path: legacy, conflict: invalidLegacyMessage(resource) };
     }
     if (probe.ownership === "foreign") {
       const foreignProduct = readForeignProductId(legacy);
@@ -286,13 +280,12 @@ export function resolveEndpointReadPath(
         path: legacy,
         conflict: foreignOverrideMessage(
           resource,
-          legacy,
           foreignProduct ?? "unknown",
         ),
       };
     }
     if (probe.ownership === "invalid") {
-      return { path: legacy, conflict: invalidLegacyMessage(resource, legacy) };
+      return { path: legacy, conflict: invalidLegacyMessage(resource) };
     }
     return { path: legacy, legacyDiscovery: true };
   }
@@ -333,5 +326,5 @@ export function foreignDescriptorRefusal(
     return undefined;
   }
   const foreignProduct = readForeignProductId(filePath) ?? "unknown";
-  return foreignOverrideMessage(resource, filePath, foreignProduct);
+  return foreignOverrideMessage(resource, foreignProduct);
 }

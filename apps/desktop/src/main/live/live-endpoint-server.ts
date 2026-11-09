@@ -531,13 +531,13 @@ export function startLiveEndpointServer(
       void (async () => {
         try {
           writeEndpointFile(endpointFile, descriptor);
-        } catch (error) {
+        } catch {
           // A descriptor write failure (e.g. an unwritable home directory)
           // must settle like the bind-failure path ("error" → reject):
           // reject so the caller's enable() can roll back and be retried,
           // and close the half-started server so no listener is left behind.
           server.close();
-          reject(error);
+          reject(new Error("Unable to write the selected live endpoint descriptor; check that its parent location is writable"));
           return;
         }
         resolve({

@@ -120,7 +120,7 @@ function readBoundedDescriptor(file: string): Record<string, unknown> {
   } catch (error) {
     if (error instanceof LiveCliError) throw error;
     throw new LiveCliError(
-      `Unable to read live endpoint descriptor at ${file}: ${error instanceof Error ? error.message : "read failed"}`,
+      "Unable to read the selected live endpoint descriptor; check that it exists and is readable",
       "connection",
       4,
     );
@@ -130,7 +130,7 @@ function readBoundedDescriptor(file: string): Record<string, unknown> {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid descriptor");
     return parsed as Record<string, unknown>;
   } catch {
-    throw new LiveCliError(`Invalid live endpoint descriptor at ${file}`, "connection", 4);
+    throw new LiveCliError("Invalid live endpoint descriptor", "connection", 4);
   }
 }
 
@@ -143,13 +143,13 @@ export function readLiveEndpoint(home?: string): LiveEndpoint {
   const parsed = readBoundedDescriptor(resolution.path);
   if (classifyDescriptorOwnership("live-endpoint", parsed) === "foreign") {
     throw new LiveCliError(
-      `The live endpoint descriptor at ${resolution.path} belongs to another product; set REELTERMINAL_LIVE_ENDPOINT_FILE to a ReelTerminal descriptor.`,
+      "The selected live endpoint descriptor belongs to another product; set REELTERMINAL_LIVE_ENDPOINT_FILE to a ReelTerminal descriptor",
       "connection",
       4,
     );
   }
   if (typeof parsed.token !== "string" || !parsed.token) {
-    throw new LiveCliError(`Invalid live endpoint descriptor at ${resolution.path}`, "connection", 4);
+    throw new LiveCliError("Invalid live endpoint descriptor", "connection", 4);
   }
   if (typeof parsed.url === "string" && parsed.url.length > 0) validateLoopbackUrl(parsed.url, "live endpoint");
   const commandApi = parsed.commandApi;
@@ -185,10 +185,10 @@ export function readEndpointCredentials(home?: string): { readonly url: string; 
   if (resolution.conflict) throw new LiveCliError(resolution.conflict, "connection", 4);
   const parsed = readBoundedDescriptor(resolution.path);
   if (classifyDescriptorOwnership("live-endpoint", parsed) === "foreign") {
-    throw new LiveCliError(`The live endpoint descriptor at ${resolution.path} belongs to another product`, "connection", 4);
+    throw new LiveCliError("The selected live endpoint descriptor belongs to another product", "connection", 4);
   }
   if (typeof parsed.url !== "string" || !parsed.url || typeof parsed.token !== "string" || !parsed.token) {
-    throw new LiveCliError(`Invalid live endpoint descriptor at ${resolution.path}`, "connection", 4);
+    throw new LiveCliError("Invalid live endpoint descriptor", "connection", 4);
   }
   validateLoopbackUrl(parsed.url, "live endpoint");
   return { url: parsed.url, token: parsed.token };

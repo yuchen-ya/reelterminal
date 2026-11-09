@@ -117,7 +117,10 @@ describe("resolveEndpointReadPath", () => {
     expect(resolution.conflict).toContain("another product");
     expect(resolution.conflict).toContain("someone-else");
     expect(resolution.conflict).toContain("REELTERMINAL_LIVE_ENDPOINT_FILE");
-    // The message names paths and the product id only — never contents.
+    // The product id is safe; descriptor paths and contents are not disclosed.
+    expect(resolution.conflict).not.toContain(home);
+    expect(resolution.conflict).not.toContain(canonical);
+    expect(resolution.conflict).not.toContain(legacyEndpointPath(home, "live-endpoint"));
     expect(resolution.conflict).not.toContain("a".repeat(64));
   });
 
@@ -135,6 +138,8 @@ describe("resolveEndpointReadPath", () => {
     writeDescriptor(legacy, "{not json");
     const resolution = resolveEndpointReadPath("live-endpoint", { env: {}, home });
     expect(resolution.conflict).toContain("not a readable ReelTerminal");
+    expect(resolution.conflict).not.toContain(home);
+    expect(resolution.conflict).not.toContain(legacy);
   });
 
   it("falls back to the canonical path when nothing exists", () => {
@@ -206,7 +211,8 @@ describe("foreignDescriptorRefusal (explicit host targets)", () => {
     const message = foreignDescriptorRefusal("live-endpoint", file);
     expect(message).toContain("rival-app");
     expect(message).toContain("REELTERMINAL_LIVE_ENDPOINT_FILE");
-    expect(message).toContain(file);
+    expect(message).not.toContain(home);
+    expect(message).not.toContain(file);
   });
 
   it("allows absent or owned targets", () => {

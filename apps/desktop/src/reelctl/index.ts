@@ -15,16 +15,15 @@ import {
 } from "./client";
 import {
   applyRequestEnvelope,
-  commandHelp,
   resolveCommandName,
   aliasesForCommand,
   parseFlags,
   parseInvocation,
-  REELCTL_HELP,
   requireExplicitSafetyGuards,
   type ParsedInvocation,
 } from "./commands";
 import { compactContextResult, formatResult, successResult } from "./output";
+import { offlineHelp } from "./help";
 
 const MAX_INPUT_BYTES = 16 * 1024 * 1024;
 
@@ -99,8 +98,9 @@ function failResult(message: string, code = "TIMEOUT"): FacadeResult<never> {
   return { ok: false, error: { code, message } };
 }
 
-function resultExitCode(result: FacadeResult<unknown>): number {
+function resultExitCode(result: FacadeResult<unknown>, commandName?: string): number {
   if (!result.ok) return 3;
+  if (commandName === "edit.validate" && isRecord(result.value) && result.value.valid === false) return 3;
   if (isRecord(result.value) && (result.value.state === "error" || result.value.state === "failed" || result.value.state === "cancelled")) return 3;
   return 0;
 }
@@ -219,6 +219,7 @@ function outputProjection(entry: CommandCatalogEntry, args: Record<string, unkno
 
 async function runGenericCall(client: LiveCommandClient, argv: readonly string[]): Promise<{
   readonly result: FacadeResult<unknown>;
+  readonly commandName: string;
   readonly format: { readonly human: boolean; readonly compact: boolean; readonly outputFields?: readonly string[]; readonly outputFile?: string };
 }> {
   const command = argv[1];
@@ -259,6 +260,7 @@ async function runGenericCall(client: LiveCommandClient, argv: readonly string[]
   if (entry.name === "editor.get_context" && parsed.compact) result = compactContextResult(result);
   return {
     result,
+    commandName: entry.name,
     format: {
       human: parsed.human,
       compact: parsed.compact,
@@ -284,6 +286,11 @@ export function cliErrorEnvelope(error: unknown): FacadeResult<never> {
 
 export async function runReelctl(argv: readonly string[], options: RunOptions = {}): Promise<number> {
   const output = options.stdout ?? printLine;
+  const help = offlineHelp(argv);
+  if (help !== undefined) {
+    output(help);
+    return 0;
+  }
   if (argv[0] === "tools") {
     if (argv.length > 2 || argv[1]?.startsWith("--")) throw new LiveCliError("Usage: reelctl tools [video|review|library|system|<package.id>]", "args", 2);
     const name = argv[1];
@@ -318,10 +325,6 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
     if (!verb || (argv[0] === "review" ? !verb.startsWith("review.") : verb.startsWith("review."))) throw new LiveCliError("The call verb must belong to the explicit workspace kind", "args", 2);
     return runReelctl(["call", verb, ...argv.slice(3)], options);
   }
-  if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h" || argv[0] === "help" && argv.length === 1) {
-    output(REELCTL_HELP);
-    return 0;
-  }
   if (argv[0] === "environment") {
     const value = await runEnvironment(argv.slice(1));
     output(JSON.stringify({ ok: true, value }));
@@ -339,54 +342,45 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
 
   const client = options.client ?? new LiveCommandClient();
 
-  if (argv[0] === "schema" || argv[0] === "help" && argv.length > 1) {
-    const { domain, rest } = argv[0] === "schema"
-      ? splitSchemaDomainFlag(argv.slice(1))
-      : { rest: argv.slice(1) } as { domain?: string; rest: readonly string[] };
+  if (argv[0] === "schema") {
+    const { domain, rest } = splitSchemaDomainFlag(argv.slice(1));
     const text = rest.join(" ").trim();
-    if (argv[0] === "schema") {
-      if (domain !== undefined && text) {
-        throw new LiveCliError("choose either a command name or --domain for reelctl schema, not both", "args", 2);
-      }
-      if (text && domain === undefined) {
-        const entry = await readCommandEntry(client, resolveCommandName(text));
-        output(JSON.stringify({ ok: true, command: entry }));
-        return 0;
-      }
-      const catalog = await client.catalog();
-      const domains = catalogDomains(catalog);
-      if (domain !== undefined) {
-        if (!domains.includes(domain)) {
-          throw new LiveCliError(`Unknown schema domain "${domain}". Available domains: ${domains.join(", ")}`, "args", 2);
-        }
-        output(JSON.stringify({
-          ok: true,
-          domain,
-          domains,
-          commands: catalog.commands
-            .filter((command) => command.name.split(".")[0] === domain)
-            .map(({ name, toolName, description, effects, retry }) => ({ name, toolName, description, effects, retry })),
-        }));
-        return 0;
-      }
-      if (!text) {
-        output(JSON.stringify({
-          ok: true,
-          domains,
-          commands: catalog.commands.map(({ name, toolName, description, effects, retry }) => ({ name, toolName, description, effects, retry })),
-        }));
-        return 0;
-      }
+    if (domain !== undefined && text) {
+      throw new LiveCliError("choose either a command name or --domain for reelctl schema, not both", "args", 2);
     }
-    const entry = await readCommandEntry(client, resolveCommandName(text));
-    output(commandHelp(entry));
+    if (text && domain === undefined) {
+      const entry = await readCommandEntry(client, resolveCommandName(text));
+      output(JSON.stringify({ ok: true, command: entry }));
+      return 0;
+    }
+    const catalog = await client.catalog();
+    const domains = catalogDomains(catalog);
+    if (domain !== undefined) {
+      if (!domains.includes(domain)) {
+        throw new LiveCliError(`Unknown schema domain "${domain}". Available domains: ${domains.join(", ")}`, "args", 2);
+      }
+      output(JSON.stringify({
+        ok: true,
+        domain,
+        domains,
+        commands: catalog.commands
+          .filter((command) => command.name.split(".")[0] === domain)
+          .map(({ name, toolName, description, effects, retry }) => ({ name, toolName, description, effects, retry })),
+      }));
+      return 0;
+    }
+    output(JSON.stringify({
+      ok: true,
+      domains,
+      commands: catalog.commands.map(({ name, toolName, description, effects, retry }) => ({ name, toolName, description, effects, retry })),
+    }));
     return 0;
   }
 
   if (argv[0] === "call") {
     const call = await runGenericCall(client, argv);
     output(formatResult(call.result, call.format));
-    return resultExitCode(call.result);
+    return resultExitCode(call.result, call.commandName);
   }
 
   if (argv[0] === "requirements") {
@@ -432,7 +426,7 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
     ...(outputFields === undefined ? {} : { outputFields }),
     ...(invocation.outputFile === undefined ? {} : { outputFile: invocation.outputFile }),
   }));
-  return resultExitCode(result);
+  return resultExitCode(result, entry.name);
 }
 
 async function main(): Promise<void> {
