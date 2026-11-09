@@ -117,12 +117,14 @@ function isDirectory(candidate: string): boolean {
 
 /**
  * Roots under which export.start's destinationPath may deliver finished
- * artifacts (`<root>/jobs/<slug>/output/`). Defaults to the Agent workspace
- * root — the one place the workspace convention defines a deliverables
- * directory. REELTERMINAL_LIVE_DELIVERY_ROOTS overrides
- * for advanced hosts.
+ * artifacts (`<root>/jobs/<slug>/output/`). Defaults to the video workspace
+ * recommendation plus its parent, which keeps existing parent-root jobs
+ * deliverable without granting the review partition video export access.
+ * REELTERMINAL_LIVE_DELIVERY_ROOTS overrides both defaults for advanced hosts.
  */
-function liveDeliveryRoots(): readonly string[] {
+function liveDeliveryRoots(
+  workspaceRoots: ReturnType<typeof agentWorkspaceScopes>,
+): readonly string[] {
   const configured = process.env.REELTERMINAL_LIVE_DELIVERY_ROOTS;
   if (configured?.trim()) {
     return configured
@@ -130,7 +132,7 @@ function liveDeliveryRoots(): readonly string[] {
       .map((entry) => entry.trim())
       .filter((entry) => path.isAbsolute(entry) && isDirectory(entry));
   }
-  return [agentWorkspaceRoot()];
+  return [workspaceRoots.video, agentWorkspaceRoot()];
 }
 
 /**
@@ -157,11 +159,12 @@ function chromiumProvidersFromEnv(): Parameters<typeof createChromiumProviders>[
 
 export function getLiveSessionHost(): LiveSessionHost {
   if (!host) {
+    const workspaceRoots = agentWorkspaceScopes();
     host = createLiveSessionHost({
       artifactRoot: path.join(app.getPath("userData"), "live-artifacts"),
       mediaRoots: liveMediaRoots(),
-      workspaceRoots: agentWorkspaceScopes(),
-      deliveryRoots: liveDeliveryRoots(),
+      workspaceRoots,
+      deliveryRoots: liveDeliveryRoots(workspaceRoots),
       installStoreBridge: installLiveStoreBridge,
       createProviders: (): LiveProviders => {
         const chromium = createChromiumProviders({
