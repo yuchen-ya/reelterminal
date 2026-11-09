@@ -1,6 +1,7 @@
 import { expect } from "vitest";
 /** External-agent tests invoke the shipped CLI in a fresh process per request. */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import path from "node:path";
 import { REELCTL_PATH } from "./paths";
 import type { CommandCatalogEntry } from "../../src/reelctl/client";
 
@@ -18,7 +19,15 @@ export interface ExternalAgent {
   close(): Promise<void>;
 }
 
-export async function connectExternalAgent(endpointFile: string): Promise<ExternalAgent> {
+export interface CliLaunch {
+  readonly executable: string;
+  readonly args: readonly string[];
+  readonly env?: NodeJS.ProcessEnv;
+}
+
+export async function connectExternalAgent(endpointFile: string, launch: CliLaunch = {
+  executable: process.execPath, args: [REELCTL_PATH],
+}): Promise<ExternalAgent> {
   const children = new Map<ChildProcessWithoutNullStreams, Promise<void>>();
   let stderr = "";
   let closed = false;
@@ -26,8 +35,8 @@ export async function connectExternalAgent(endpointFile: string): Promise<Extern
   const invoke = (args: string[], input?: unknown, timeoutMs = 120_000): Promise<any> => {
     if (closed) return Promise.reject(new Error("CLI client is closed"));
     return new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, [REELCTL_PATH, ...args], {
-        env: { ...process.env, REELTERMINAL_LIVE_ENDPOINT_FILE: endpointFile },
+      const child = spawn(launch.executable, [...launch.args, ...args], {
+        env: { ...process.env, ...launch.env, LOCALAPPDATA: path.join(path.dirname(endpointFile), "cli-data"), REELTERMINAL_LIVE_ENDPOINT_FILE: endpointFile },
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
       });

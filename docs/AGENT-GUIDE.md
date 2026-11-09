@@ -74,6 +74,14 @@ their folder is not on PATH. macOS/Linux packaged prompts invoke the installed
 Electron executable with `ELECTRON_RUN_AS_NODE=1` and the CLI entry in app.asar.
 The desktop does not change Agent configuration.
 
+For scoped video work, `reelctl video capabilities` recommends
+`<workspace>/video`; review discovery recommends `<workspace>/review`.
+Ordinary `capabilities.get` keeps the parent workspace recommendation. Default
+video exports accept the video root and existing parent `jobs/` layouts, but
+not review destinations. Use `export.details.deliveryRoots` when an explicit
+`REELTERMINAL_LIVE_DELIVERY_ROOTS` override replaces the defaults; media read
+roots do not authorize delivery. See [workspace layout](AGENT-WORKSPACE.md).
+
 ## Audio analysis and processing
 
 For local audio measurements, start with [material analysis](MATERIAL-ANALYSIS.md).

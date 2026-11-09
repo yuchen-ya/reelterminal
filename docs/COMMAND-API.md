@@ -40,6 +40,34 @@ Legacy `schema --domain video` means the API-name prefix (`video.compare`),
 not the video capability domain. `status`, job controls, offline `environment`
 commands and existing JSON/stdin/flag calls remain available.
 
+`--help`, `-h`, and `help <command>` resolve known nested aliases and canonical
+verbs offline, including `frames extract`, `call frames.extract`, and
+`video call media.inspect`. They do not read request files/stdin or probe the
+desktop or dependencies. Unknown help paths exit 2 with discovery guidance;
+`schema` still queries the live catalog. `edit.validate` preserves the API JSON
+(`ok:true` with conflicts/warnings/normalizedOps): valid plans exit 0 and
+`valid:false` plans exit 3 through generic, alias and scoped CLI calls. Validation
+does not commit edits.
+
+Video discovery (`video capabilities`) recommends `agent-workspace/video`,
+review discovery recommends `agent-workspace/review`, and ordinary
+`capabilities.get` retains the parent recommendation. Default video delivery
+roots include the video partition and parent workspace for old `jobs/` layouts;
+review destinations are excluded. Delivery still requires
+`<deliveryRoot>/jobs/<slug>/output/<name>.mp4`, realpath containment and a new
+destination. `REELTERMINAL_LIVE_DELIVERY_ROOTS` fully replaces the defaults:
+consult `export.details.deliveryRoots`, especially when the override excludes
+the recommended media root. Media read roots grant no delivery permission.
+
+Media-ID reads use the imported controlled `contentUrl` whenever set, including
+source inspection, extraction, timeline preview and export. Only legacy media
+without that field use `originalUrl`. A missing, unreadable or forbidden
+controlled source fails explicitly without falling back to an altered original;
+diagnostics retain `details.reason`, `mediaId` and `sourceKind`, without exposing
+the backing path through media-ID errors. Explicit paths retain their existing
+root restrictions and explicit-path diagnostics. Endpoint read/discovery errors
+do not echo descriptor paths or contents.
+
 ## Access
 
 The app-lifetime command service starts read-only. For video projects, use

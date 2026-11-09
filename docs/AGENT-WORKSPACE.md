@@ -21,6 +21,18 @@ An environment override may change the path, so an Agent must use the reported
 absolute path rather than hard-code `~/Movies`, `~/Videos`, or a repository
 path. The reported `mediaRoots` remain the authoritative import allowlist.
 
+Scoped discovery uses `reelctl video capabilities` for
+`agent-workspace/video`, and `reelctl review capabilities` for
+`agent-workspace/review`. Ordinary `capabilities.get` retains the parent
+`agent-workspace` recommendation. Default video delivery accepts both the video
+partition and the parent root, preserving existing parent `jobs/` directories;
+the review partition does not receive video delivery permission. Each destination
+must match `<deliveryRoot>/jobs/<slug>/output/<name>.mp4` exactly.
+`REELTERMINAL_LIVE_DELIVERY_ROOTS` replaces these defaults. With an explicit
+override, select a root from `export.details.deliveryRoots`; the recommended
+media root is not necessarily an authorized delivery root. Read access through
+`REELTERMINAL_LIVE_MEDIA_ROOTS` does not grant delivery access.
+
 ## One task, one directory
 
 Create a filesystem-safe job name:

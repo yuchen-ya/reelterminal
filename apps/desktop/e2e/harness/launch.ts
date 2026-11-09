@@ -82,6 +82,30 @@ function makeRunDirs(runDir?: string): {
   };
 }
 
+export function isolatedLaunchEnvironment(
+  paths: ReturnType<typeof makeRunDirs>,
+  extraEnv: NodeJS.ProcessEnv = {},
+): { [key: string]: string } {
+  const environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    // Do not inherit user delivery locations, a fixed loopback port, or an
+    // outward crash reporter. A spec may still opt into a hermetic replacement.
+    REELTERMINAL_CRASH_ENDPOINT: "",
+    REELTERMINAL_LIVE_DELIVERY_ROOTS: "",
+    REELTERMINAL_LIVE_PORT: "0",
+    ...extraEnv,
+    REELTERMINAL_USER_DATA_DIR: paths.userDataDir,
+    REELTERMINAL_LIVE_ENDPOINT_FILE: paths.endpointFile,
+    // The per-run directory is the only media root needed by import E2E;
+    // every other spec simply observes the additional honest capability.
+    REELTERMINAL_LIVE_MEDIA_ROOTS: [path.join(paths.runDir, "agent-workspace"), paths.runDir].join(path.delimiter),
+    REELTERMINAL_AGENT_WORKSPACE_ROOT: path.join(paths.runDir, "agent-workspace"),
+  };
+  return Object.fromEntries(Object.entries(environment).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string",
+  ));
+}
+
 async function launch(
   paths: ReturnType<typeof makeRunDirs>,
   extraEnv: NodeJS.ProcessEnv = {},
@@ -116,16 +140,7 @@ async function launch(
     ...(executablePath ? { executablePath } : {}),
     args: [...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? [] : ["."]), ...(process.env.REELTERMINAL_E2E_SOFTWARE_GL === "1" ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : []), ...chromiumArgs, "--lang=en-US", `--user-data-dir=${paths.userDataDir}`],
     cwd: DESKTOP_DIR,
-    env: {
-      ...process.env,
-      ...extraEnv,
-      REELTERMINAL_USER_DATA_DIR: paths.userDataDir,
-      REELTERMINAL_LIVE_ENDPOINT_FILE: paths.endpointFile,
-      // The per-run directory is the only media root needed by import E2E;
-      // every other spec simply observes the additional honest capability.
-      REELTERMINAL_LIVE_MEDIA_ROOTS: [path.join(paths.runDir, "agent-workspace"), paths.runDir].join(path.delimiter),
-      REELTERMINAL_AGENT_WORKSPACE_ROOT: path.join(paths.runDir, "agent-workspace"),
-    },
+    env: isolatedLaunchEnvironment(paths, extraEnv),
     timeout: 120_000,
   });
 

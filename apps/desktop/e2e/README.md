@@ -8,6 +8,9 @@ and private endpoint path. It never uses the user's live endpoint or prints its
 token. Human actions use real Playwright mouse/keyboard input. Agent actions use
 independent reelctl processes forwarding
 to the desktop Command API. No conversation adapter or Agent login is involved.
+Inherited delivery roots, fixed live ports and crash-report endpoints are cleared
+unless a spec explicitly supplies a hermetic replacement; isolation paths always
+win. Automatic CLI result files stay under the test run directory's `cli-data`.
 
 `reelctl.e2e.ts` verifies separate CLI processes see the same project,
 a CLI edit appears in the GUI, replay across processes creates no duplicate,
@@ -71,6 +74,19 @@ The P2 synthetic performance suite is opt-in and remains skipped by ordinary
 E2E runs. Use `test:perf:counts`, `test:perf:quick`, or `test:perf:benchmark`;
 see [P2 runner](../../../docs/performance/p2-runner.md) for strict CLI options,
 production build stamps, cold/warm definitions and measurement limitations.
+
+`cli-contract-consistency.e2e.ts` explicitly selects both the packaged EXE and
+its `resources/app.asar/dist/reelctl/index.js` when
+`REELTERMINAL_E2E_APP_EXECUTABLE` is set. It checks that entry using Electron's
+Node runtime and fails if missing, with no checkout fallback. Only CLI children
+receive `ELECTRON_RUN_AS_NODE=1`. It covers offline help/OS exit codes, controlled
+red media after replacing the blue original, three media tracks and native SRT,
+real export/delivery/verification, independent decode/audio checks and saved
+project relaunch. Dependencies are required, not conditionally skipped. Evidence
+is retained under `.artifacts/cli-contract-{checkout,packaged}-<timestamp>*`,
+including actual executable/entry, JSON/exit codes, previews and MP4. Other specs
+retain their existing CLI selection; switching only the EXE does not prove a
+packaged CLI passed.
 
 ## Paused video frame stepping
 
