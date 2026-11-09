@@ -1,27 +1,30 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Settings } from "@/icons/lucide-compat";
+import { Bot, Settings } from "@/icons/lucide-compat";
 import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@reelterminal/ui";
 import { ToolcraftSegmentedControl } from "@reelterminal/ui";
 import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent } from "@reelterminal/ui";
 import { useSettingsStore } from "../../../stores/settings-store";
+import { AgentModelSettingsPanel } from "./AgentModelSettingsPanel";
 import { AudioEnvironmentPanel } from "./AudioEnvironmentPanel";
 import { GeneralPanel } from "./GeneralPanel";
 import { SavingPanel } from "./SavingPanel";
 import { StoragePanel } from "./StoragePanel";
 import { KeyboardShortcutsPanel } from "./KeyboardShortcutsPanel";
 
-type SettingsPanelId = "general" | "saving" | "storage" | "shortcuts" | "models";
+type SettingsPanelId = "agent" | "general" | "saving" | "storage" | "shortcuts" | "models";
 
 export const SettingsDialog: React.FC = () => {
   const { t } = useTranslation();
   const { settingsOpen, settingsTab, closeSettings } = useSettingsStore();
-  const [activePanel, setActivePanel] = useState<SettingsPanelId>("general");
+  const [activePanel, setActivePanel] = useState<SettingsPanelId>("agent");
 
   // Contextual entry points (such as captions) open the relevant settings panel.
   useEffect(() => {
     if (settingsOpen) {
-      setActivePanel(settingsTab);
+      if (settingsTab) {
+        setActivePanel(settingsTab as SettingsPanelId);
+      }
     }
   }, [settingsOpen, settingsTab]);
 
@@ -50,6 +53,11 @@ export const SettingsDialog: React.FC = () => {
                 value={activePanel}
                 onChange={setActivePanel}
                 options={[
+                  {
+                    value: "agent",
+                    label: t("settingsDialog.agent", "内置 Agent"),
+                    icon: <Bot size={14} />,
+                  },
                   { value: "models", label: t("audioEnvironment.title") },
                   { value: "general", label: t("settingsDialog.general") },
                   { value: "saving", label: t("settingsDialog.savingTab") },
@@ -57,7 +65,11 @@ export const SettingsDialog: React.FC = () => {
                   { value: "shortcuts", label: t("settingsDialog.shortcuts") },
                 ]}
               />
-              {activePanel === "models" ? <AudioEnvironmentPanel /> : activePanel === "general" ? (
+              {activePanel === "agent" ? (
+                <AgentModelSettingsPanel />
+              ) : activePanel === "models" ? (
+                <AudioEnvironmentPanel />
+              ) : activePanel === "general" ? (
                 <GeneralPanel />
               ) : activePanel === "saving" ? (
                 <SavingPanel />

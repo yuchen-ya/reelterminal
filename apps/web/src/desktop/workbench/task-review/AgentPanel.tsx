@@ -6,6 +6,7 @@ import type { TaskAgentBridge, TaskAgentJob } from "../../../../../desktop/src/s
 import { wbButton } from "../wb-button";
 import { currentSources } from "./queries";
 import { preflightCoverage, type TaskAgentRuntime } from "./useTaskAgentState";
+import { MODEL_PROVIDER_PRESETS, detectProviderPreset, getProviderPreset } from "./model-presets";
 
 const jobLabels: Record<TaskAgentJob["status"], string> = {
   queued: "排队中",
@@ -43,6 +44,7 @@ export function AgentPanel({
     hasApiKey: false,
   });
   const [apiKey, setApiKey] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState<string>("custom");
   const [modelState, setModelState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [modelError, setModelError] = useState<string | null>(null);
 
@@ -54,6 +56,7 @@ export function AgentPanel({
       .then((config) => {
         if (cancelled) return;
         setModel({ loaded: true, ...config });
+        setSelectedProvider(detectProviderPreset(config.endpoint || ""));
       })
       .catch((problem) => {
         if (!cancelled) setModelError(String(problem));
@@ -83,6 +86,22 @@ export function AgentPanel({
     }
   };
 
+  const handleProviderSelect = (providerId: string) => {
+    setSelectedProvider(providerId);
+    const preset = getProviderPreset(providerId);
+    if (preset && preset.id !== "custom") {
+      const firstModel = preset.models[0] ?? "";
+      setModel((prev) => ({
+        ...prev,
+        endpoint: preset.endpoint,
+        backgroundModel: firstModel,
+        completionModel: firstModel,
+      }));
+    }
+  };
+
+  const currentPreset = getProviderPreset(selectedProvider);
+
   const coverage = preflightCoverage(snapshot, runtime.state);
   const grant = runtime.state?.grant;
   const sourceIds = currentSources(snapshot).filter(isTextTaskSource).map((source) => source.id);
@@ -100,12 +119,32 @@ export function AgentPanel({
       </div>
       {model.loaded && (
         <div className="grid gap-1.5 sm:grid-cols-2">
+          <label className="flex items-center gap-1.5 sm:col-span-2">
+            <span className="w-20 shrink-0 text-fg-3">{t("服务商")}</span>
+            <select
+              className={inputClass}
+              value={selectedProvider}
+              data-testid="task-review-agent-panel-provider-select"
+              aria-label={t("服务商预设")}
+              onChange={(e) => handleProviderSelect(e.target.value)}
+            >
+              {MODEL_PROVIDER_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="flex items-center gap-1.5">
             <span className="w-20 shrink-0 text-fg-3">{t("接口地址")}</span>
             <input
               className={inputClass}
               value={model.endpoint}
-              onChange={(event) => setModel({ ...model, endpoint: event.target.value })}
+              onChange={(event) => {
+                const endpoint = event.target.value;
+                setModel({ ...model, endpoint });
+                setSelectedProvider(detectProviderPreset(endpoint));
+              }}
               aria-label={t("模型接口地址")}
             />
           </label>
@@ -139,6 +178,33 @@ export function AgentPanel({
               aria-label={t("模型 API 密钥")}
             />
           </label>
+          {currentPreset && currentPreset.models.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1 sm:col-span-2">
+              <span className="w-20 shrink-0 text-fg-3">{t("推荐模型")}</span>
+              <div className="flex flex-wrap gap-1">
+                {currentPreset.models.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`rounded border px-1.5 py-0.5 text-[10px] cursor-pointer transition-colors ${
+                      model.backgroundModel === m
+                        ? "border-accent bg-accent/20 text-accent font-medium"
+                        : "border-border bg-bg-2 text-fg-2 hover:border-fg-3 hover:text-white"
+                    }`}
+                    onClick={() => {
+                      setModel((prev) => ({
+                        ...prev,
+                        backgroundModel: m,
+                        completionModel: m,
+                      }));
+                    }}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
