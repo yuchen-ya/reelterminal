@@ -8,7 +8,14 @@ const handlers = vi.hoisted(() => ({ invoke: new Map<string, Function>(), events
 vi.mock("../data-root", () => ({ getDataRootLayout: () => handlers.dataRoot ? { review: path.join(handlers.dataRoot, "review") } : null }));
 vi.mock("electron", () => ({
   app: { getFileIcon: vi.fn().mockResolvedValue({ icon: true, isEmpty: () => false }) },
-  dialog: {}, shell: {},
+  dialog: {},
+  shell: {
+    trashItem: vi.fn().mockImplementation(async (targetPath: string) => {
+      await rm(targetPath, { recursive: true, force: true });
+    }),
+    openPath: vi.fn().mockResolvedValue(""),
+    showItemInFolder: vi.fn(),
+  },
   ipcMain: {
     handle: (channel: string, fn: Function) => handlers.invoke.set(channel, fn),
     on: (channel: string, fn: Function) => handlers.events.set(channel, fn),
@@ -83,5 +90,23 @@ it("creates tasks under the configured review root and keeps task names independ
   const legacy = await invoke({}, { action: "open", root: second.root });
   expect(legacy.name).toBe("task-two");
   handlers.dataRoot = "";
+});
+
+it("trashes entries or whole roots safely through shell.trashItem", async () => {
+  root = await mkdtemp(path.join(os.tmpdir(), "folder-trash-"));
+  await writeFile(path.join(root, "file1.txt"), "1");
+  await writeFile(path.join(root, "file2.txt"), "2");
+  registerFolderReviewIpc();
+  const invoke = handlers.invoke.get(CHANNELS.folderReview)!;
+  const snapshot = await invoke({}, { action: "open", root });
+  const file1 = snapshot.entries.find((e: { relativePath: string }) => e.relativePath === "file1.txt")!;
+  const updated = await invoke({}, { action: "trash", root, ids: [file1.id] });
+  expect(updated.entries.map((e: { relativePath: string }) => e.relativePath)).toEqual(["file2.txt"]);
+  await expect(readFile(path.join(root, "file1.txt"))).rejects.toThrow();
+
+  const trashed = await invoke({}, { action: "trash", root, trashRoot: true });
+  expect(trashed).toEqual({ trashedRoot: true });
+  await expect(readFile(path.join(root, "file2.txt"))).rejects.toThrow();
+  root = "";
 });
 

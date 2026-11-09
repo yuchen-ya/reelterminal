@@ -312,7 +312,7 @@ it("file-management mode keeps real file operations and hides every legacy revie
     expect(screen.queryByRole("button", { name: label })).toBeNull();
   }
   expect(host.textContent).not.toContain("已审");
-  expect(screen.getByText("选择文件以预览；台词审阅在条目场景进行")).toBeTruthy();
+  expect(screen.getByText("选择左侧文件预览内容")).toBeTruthy();
   // Genuine file management stays: search, create, rename task, reveal,
   // refresh, select, move/copy and preview.
   expect(screen.getByLabelText("搜索文件")).toBeTruthy();
@@ -408,4 +408,65 @@ it("pauses polling and preview media while covered and restores selection on ret
       .getByText("clip.mp4")
       .closest('[role="treeitem"]'),
   ).toHaveAttribute("aria-selected", "true");
+});
+
+it("opens right click context menu on row, reveals in folder, and trashes selected files", async () => {
+  const snapshot = {
+    root: "task",
+    taskId: "task-id",
+    revision: 1,
+    entries: [
+      { id: "file-1", relativePath: "doc.txt", kind: "file" as const, size: 10, mtimeMs: 1, review: { status: "pending" as const, note: "" } },
+      { id: "file-2", relativePath: "image.png", kind: "file" as const, size: 20, mtimeMs: 1, review: { status: "pending" as const, note: "" } },
+    ],
+  };
+  const showInFolder = vi.fn().mockResolvedValue(undefined);
+  const trash = vi.fn().mockResolvedValue({
+    ...snapshot,
+    revision: 2,
+    entries: [snapshot.entries[1]],
+  });
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  Object.defineProperty(window, "reelterminal", {
+    configurable: true,
+    value: {
+      folderReview: {
+        open: vi.fn().mockResolvedValue(snapshot),
+        refresh: vi.fn().mockResolvedValue(snapshot),
+        preview: vi.fn().mockResolvedValue({ kind: "text", text: "doc" }),
+        showInFolder,
+        trash,
+      },
+    },
+  });
+
+  render(<FolderReviewWorkspace root="task" mode="files" />);
+  const row = (await screen.findByText("doc.txt")).closest('[role="treeitem"]')!;
+  fireEvent.contextMenu(row);
+
+  const menu = screen.getByRole("menu");
+  expect(menu).toBeInTheDocument();
+  expect(within(menu).getByText("在文件夹中显示")).toBeInTheDocument();
+  expect(within(menu).getByText("重命名")).toBeInTheDocument();
+  expect(within(menu).getByText("移入回收站")).toBeInTheDocument();
+
+  fireEvent.click(within(menu).getByText("在文件夹中显示"));
+  expect(showInFolder).toHaveBeenCalledWith({ root: "task", id: "file-1" });
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+  // Test row trash via context menu
+  fireEvent.contextMenu(row);
+  fireEvent.click(within(screen.getByRole("menu")).getByText("移入回收站"));
+  await waitFor(() => {
+    expect(trash).toHaveBeenCalledWith({ root: "task", ids: ["file-1"] });
+  });
+
+  // Test action bar "移入回收站" button
+  const imageRow = screen.getByText("image.png").closest('[role="treeitem"]')!;
+  fireEvent.click(imageRow);
+  const trashBtn = screen.getByRole("button", { name: "移入回收站" });
+  fireEvent.click(trashBtn);
+  await waitFor(() => {
+    expect(trash).toHaveBeenCalledWith({ root: "task", ids: ["file-2"] });
+  });
 });

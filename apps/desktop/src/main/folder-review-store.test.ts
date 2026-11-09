@@ -320,4 +320,27 @@ describe('folder review store', () => {
       ).rejects.toThrow();
     }
   });
+
+  it('safely trashes selected files and directory subtrees without touching parents', async () => {
+    const root = await temp();
+    await fs.mkdir(path.join(root, 'dir'));
+    await fs.writeFile(path.join(root, 'dir', 'sub.txt'), 'sub');
+    await fs.writeFile(path.join(root, 'root.txt'), 'root-file');
+    const store = new FolderReviewStore();
+    const state = await store.open(root);
+    const dirEntry = state.entries.find((e) => e.relativePath === 'dir')!;
+    const subEntry = state.entries.find((e) => e.relativePath === 'dir/sub.txt')!;
+    const trashedPaths: string[] = [];
+    const updated = await store.trashEntries(
+      root,
+      [subEntry.id, dirEntry.id],
+      async (p) => {
+        trashedPaths.push(p);
+        await fs.rm(p, { recursive: true, force: true });
+      },
+    );
+    expect(trashedPaths).toHaveLength(1);
+    expect(trashedPaths[0]).toBe(path.join(await fs.realpath(root), 'dir'));
+    expect(updated.entries.map((e) => e.relativePath)).toEqual(['root.txt']);
+  });
 });

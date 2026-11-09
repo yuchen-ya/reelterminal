@@ -19,6 +19,7 @@ interface WorkbenchTabsState {
   close: (key: string) => void;
   move: (source: string, destination: string) => void;
   rename: (key: string, name: string) => void;
+  removeFolder: (id: string) => void;
 }
 
 /** View identity only. Private board content never becomes an Agent target. */
@@ -56,6 +57,16 @@ export const useWorkbenchTabsStore = create<WorkbenchTabsState>()(persist((set) 
       tabs: state.tabs.map(tab => needsRename(tab) ? { ...tab, name } : tab),
       recentFolders: state.recentFolders.map(tab => needsRename(tab) ? { ...tab, name } : tab),
     };
+  }),
+  removeFolder: (id) => set(state => {
+    const key = workbenchTabKey({ kind: "folder", id });
+    const index = state.tabs.findIndex(tab => workbenchTabKey(tab) === key);
+    const tabs = state.tabs.filter(tab => workbenchTabKey(tab) !== key);
+    const recentFolders = state.recentFolders.filter(row => row.id !== id);
+    const activeKey = state.activeKey === key
+      ? (tabs[Math.min(index, tabs.length - 1)] ? workbenchTabKey(tabs[Math.min(index, tabs.length - 1)]) : null)
+      : state.activeKey;
+    return { tabs, activeKey, recentFolders };
   }),
 }), {
   name: "reelterminal.workbench.tabs",

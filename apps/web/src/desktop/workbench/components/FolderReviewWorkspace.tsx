@@ -103,6 +103,11 @@ export function FolderReviewWorkspace({
     value: string;
     id?: string;
   } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const [saveState, setSaveState] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
@@ -116,6 +121,61 @@ export function FolderReviewWorkspace({
     setSnapshot(value);
     useWorkbenchTabsStore.getState().rename(`folder:${value.root}`, value.name);
   }, []);
+
+  const trashEntries = async (targetIds: string[]) => {
+    if (!targetIds.length || busyRef.current || !current.current) return;
+    const names = targetIds
+      .map((id) => {
+        const item = current.current?.entries.find((e) => e.id === id);
+        return item ? baseName(item.relativePath) : id;
+      })
+      .slice(0, 3)
+      .join("、");
+    const label =
+      targetIds.length > 3
+        ? `${names} 等 ${targetIds.length} 项`
+        : names;
+    const confirmed = window.confirm(
+      t("确定要将 {{name}} 移入回收站吗？", { name: label }),
+    );
+    if (!confirmed) return;
+
+    busyRef.current = true;
+    setBusy(true);
+    generation.current++;
+    setError("");
+    try {
+      const updated = await bridge.trash({ root, ids: targetIds });
+      if ("entries" in updated) {
+        setData(updated);
+      }
+      setSelected((old) => old.filter((id) => !targetIds.includes(id)));
+      if (activeId && targetIds.includes(activeId)) {
+        setActiveId(null);
+      }
+    } catch (problem) {
+      setError(errorText(problem));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const closeMenu = () => setContextMenu(null);
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("contextmenu", closeMenu);
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setContextMenu(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("contextmenu", closeMenu);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [contextMenu]);
 
   const refresh = useCallback(async () => {
     if (busyRef.current || refreshing.current) return;
@@ -597,7 +657,7 @@ export function FolderReviewWorkspace({
       data-mode={mode}
     >
       <div className="flex flex-wrap items-center gap-2 border-b border-border p-2">
-        <strong>{snapshot?.name ?? t("文件夹审阅")}</strong>
+        {mode === "review" && <strong>{snapshot?.name ?? t("文件夹审阅")}</strong>}
         <button className={wbButton.ghost} disabled={busy || !snapshot} onClick={() => setDialog({ mode: "renameTask", value: snapshot!.name })}>{t("重命名任务")}</button>
         <span className="min-w-0 flex-1 truncate text-fg-3" title={root}>
           {root}
@@ -677,6 +737,54 @@ export function FolderReviewWorkspace({
           </form>
         </div>
       )}
+      {contextMenu && (() => {
+        const entry = entries.find((e) => e.id === contextMenu.id);
+        if (!entry) return null;
+        return (
+          <div
+            role="menu"
+            className="fixed z-[9999] w-40 rounded-md border border-border bg-bg-1 py-1 shadow-lg text-xs"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-fg-2 hover:bg-bg-2 hover:text-fg"
+              onClick={() => {
+                setContextMenu(null);
+                void bridge
+                  .showInFolder({ root, id: entry.id })
+                  .catch((problem) => setError(errorText(problem)));
+              }}
+            >
+              {t("在文件夹中显示")}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-fg-2 hover:bg-bg-2 hover:text-fg"
+              onClick={() => {
+                setContextMenu(null);
+                rename(entry);
+              }}
+            >
+              {t("重命名")}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left text-status-error hover:bg-bg-2 hover:text-status-error"
+              onClick={() => {
+                setContextMenu(null);
+                void trashEntries([entry.id]);
+              }}
+            >
+              {t("移入回收站")}
+            </button>
+          </div>
+        );
+      })()}
       {error && (
         <div
           role="alert"
@@ -745,9 +853,21 @@ export function FolderReviewWorkspace({
                   data-testid="folder-review-row"
                   data-path={path}
                   aria-selected={selected.includes(item.id)}
-                  className={`flex min-w-0 select-none items-center gap-1 rounded py-1 pr-1 ${selected.includes(item.id) ? "bg-bg-3 text-fg" : "hover:bg-bg-2"} ${hover === path ? "ring-1 ring-accent" : ""}`}
+                  className={`group flex min-w-0 select-none items-center gap-1 rounded py-1 pr-1 ${selected.includes(item.id) ? "bg-bg-3 text-fg" : "hover:bg-bg-2"} ${hover === path ? "ring-1 ring-accent" : ""}`}
                   style={{
                     paddingLeft: `${4 + path.split("/").length * 14 - 14}px`,
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (!selected.includes(item.id)) {
+                      setSelected([item.id]);
+                      setActiveId(item.id);
+                      anchor.current = item.id;
+                    }
+                    const x = Math.min(event.clientX, window.innerWidth - 180);
+                    const y = Math.min(event.clientY, window.innerHeight - 150);
+                    setContextMenu({ id: item.id, x, y });
                   }}
                   onClick={(event) => {
                     if (suppressClick.current) {
@@ -927,7 +1047,7 @@ export function FolderReviewWorkspace({
                     </span>
                   )}
                   <button
-                    className="px-1 text-fg-3 hover:text-fg"
+                    className="px-1 text-fg-3 opacity-0 transition-opacity hover:text-fg focus:opacity-100 group-hover:opacity-100"
                     aria-label={t("重命名")}
                     onClick={(event) => {
                       event.stopPropagation();
@@ -936,10 +1056,31 @@ export function FolderReviewWorkspace({
                   >
                     ✎
                   </button>
+                  <button
+                    className="px-1 text-fg-3 opacity-0 transition-opacity hover:text-fg focus:opacity-100 group-hover:opacity-100"
+                    aria-label={t("更多操作")}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (!selected.includes(item.id)) {
+                        setSelected([item.id]);
+                        setActiveId(item.id);
+                        anchor.current = item.id;
+                      }
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setContextMenu({
+                        id: item.id,
+                        x: Math.min(rect.left, window.innerWidth - 180),
+                        y: Math.min(rect.bottom + 4, window.innerHeight - 150),
+                      });
+                    }}
+                  >
+                    ···
+                  </button>
                 </div>
               );
             })}
           </div>
+          {selectedVisible.length > 0 && (
           <div className="space-y-1 border-t border-border p-2">
             <div className="flex items-center gap-1">
               <span>{t("目标文件夹")}</span>
@@ -1011,8 +1152,16 @@ export function FolderReviewWorkspace({
               >
                 {t("复制到外部…")}
               </button>
+              <button
+                className={`${wbButton.secondary} text-status-error hover:text-status-error`}
+                disabled={busy || !selectedVisible.length}
+                onClick={() => void trashEntries(selectedVisible)}
+              >
+                {t("移入回收站")}
+              </button>
             </div>
           </div>
+          )}
         </section>
         <section className="flex min-w-0 flex-1 flex-col p-3">
           {active?.kind === "file" ? (
@@ -1162,13 +1311,15 @@ export function FolderReviewWorkspace({
               )}
             </>
           ) : (
-            <p className="m-auto text-fg-3">
-              {t(
-                mode === "files"
-                  ? "选择文件以预览；台词审阅在条目场景进行"
-                  : "选择文件以预览和审阅",
-              )}
-            </p>
+            <div className="flex flex-1 items-center justify-center">
+              <p className="text-fg-3">
+                {t(
+                  mode === "files"
+                    ? "选择左侧文件预览内容"
+                    : "选择文件以预览和审阅",
+                )}
+              </p>
+            </div>
           )}
         </section>
       </div>

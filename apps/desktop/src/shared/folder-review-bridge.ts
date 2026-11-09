@@ -47,5 +47,10 @@ export interface FolderReviewBridge {
   startDrag(token: string): Promise<void>;
   showInFolder(input: Target & { id?: string }): Promise<void>;
   openFile(input: Target & { id: string }): Promise<void>;
+  trash(
+    input:
+      | { root: string; trashRoot: true }
+      | { root: string; ids: string[]; trashRoot?: false },
+  ): Promise<{ trashedRoot: true } | FolderReviewSnapshot>;
   preview(input: Target & { id: string }): Promise<FolderReviewPreview>;
 }

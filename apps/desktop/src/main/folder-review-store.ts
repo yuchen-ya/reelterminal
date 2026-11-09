@@ -675,6 +675,31 @@ export class FolderReviewStore {
     });
   }
 
+  async trashEntries(
+    root: string,
+    ids: string[],
+    trashItemFn: (fullPath: string) => Promise<void>,
+  ): Promise<FolderReviewSnapshot> {
+    return this.locked(root, async (canonical) => {
+      const index = await this.load(canonical);
+      const targetPaths = await Promise.all(
+        this.selectedRoots(index, ids).map((id) => {
+          const entry = index.entries.find((e) => e.id === id);
+          if (!entry) throw new Error('Entry not found');
+          return this.safe(canonical, entry.relativePath);
+        }),
+      );
+      try {
+        for (const targetPath of targetPaths) {
+          await trashItemFn(targetPath);
+        }
+      } finally {
+        await this.reconcile(canonical, index);
+      }
+      return snapshot(canonical, index);
+    });
+  }
+
   /** Read a frozen UTF-8 text candidate through the existing folder/path boundary. */
   async readTextFile(root: string, id: string): Promise<{ relativePath: string; text: string; hash: string; size: number; mtimeMs: number; ctimeMs: number }> {
     return this.locked(root, async (canonical) => {

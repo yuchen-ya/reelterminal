@@ -95,6 +95,7 @@ const folderReview: FolderReviewBridge = {
   preview: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "preview" }),
   showInFolder: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "showInFolder" }),
   openFile: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "openFile" }),
+  trash: input => ipcRenderer.invoke(CHANNELS.folderReview, { ...input, action: "trash" }),
   prepareDrag: input => ipcRenderer.invoke(CHANNELS.folderReviewDragPrepare, input),
   cancelDrag: token => ipcRenderer.send(CHANNELS.folderReviewDragCancel, token),
   startDrag: token => new Promise<void>((resolve, reject) => {

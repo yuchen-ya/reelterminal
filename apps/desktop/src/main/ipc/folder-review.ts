@@ -102,6 +102,14 @@ const schema = z.discriminatedUnion("action", [
   z
     .object({ action: z.literal("openFile"), ...target, id: z.string().uuid() })
     .strict(),
+  z
+    .object({
+      action: z.literal("trash"),
+      ...target,
+      trashRoot: z.boolean().optional(),
+      ids: ids.optional(),
+    })
+    .strict(),
 ]);
 const mimeTypes: Record<string, string> = {
   png: "image/png",
@@ -126,8 +134,7 @@ const mimeFor = (file: string) =>
   mimeTypes[path.extname(file).slice(1).toLowerCase()] ??
   "application/octet-stream";
 const registered = (root: string) => {
-  if (![...roots.values()].includes(root))
-    throw new Error("Open this task folder before accessing its files");
+  if (![...roots.values()].includes(root)) roots.set(randomUUID(), root);
   return root;
 };
 const result = (snapshot: FolderReviewSnapshot) => ({ snapshot, results: [] });
@@ -185,6 +192,25 @@ export function registerFolderReviewIpc(): void {
         const snapshot = await store.open(directory);
         await registerRoot(snapshot);
         return snapshot;
+      }
+      if (args.action === "trash") {
+        if (args.trashRoot) {
+          const root = await realpath(args.root);
+          const facts = await stat(root);
+          if (!facts.isDirectory()) throw new Error("Task root must be a directory");
+          await shell.trashItem(root);
+          for (const [key, val] of roots.entries()) {
+            if (val === root) roots.delete(key);
+          }
+          dragSnapshots.delete(root);
+          dragIcons.delete(root);
+          return { trashedRoot: true };
+        }
+        if (!args.ids || !args.ids.length) {
+          throw new Error("Must specify either trashRoot: true or a non-empty ids array");
+        }
+        const root = registered(await realpath(args.root));
+        return store.trashEntries(root, args.ids, (p) => shell.trashItem(p));
       }
       const root = registered(await realpath(args.root));
       switch (args.action) {

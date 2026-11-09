@@ -652,7 +652,8 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                       const renaming = folderRename?.id === folder.id ? folderRename : null;
                       return (
                         <div key={folder.id}
-                          className={`group relative rounded-md border px-2.5 py-2 text-xs transition-colors ${active || folderMenu === folder.id || renaming ? "border-accent/60 bg-bg-2" : "border-border hover:border-accent/60 hover:bg-bg-2"}`}>
+                          className={`group relative rounded-md border px-2.5 py-2 text-xs transition-colors ${active || folderMenu === folder.id || renaming ? "border-accent/60 bg-bg-2" : "border-border hover:border-accent/60 hover:bg-bg-2"}`}
+                          onContextMenu={event => { event.preventDefault(); event.stopPropagation(); setFolderMenu(folder.id); }}>
                           {renaming ? (
                             <form className="flex items-center gap-1.5" onClick={event => event.stopPropagation()} onSubmit={event => { event.preventDefault(); void saveFolderRename().catch(report); }}>
                               <input autoFocus className={`${input} min-w-0 flex-1`} aria-label="重命名任务" maxLength={200} value={renaming.name} disabled={switching}
@@ -679,10 +680,41 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                                 <MoreHorizontal className="h-3.5 w-3.5" />
                               </button>
                               {folderMenu === folder.id && (
-                                <div role="menu" className="absolute right-1.5 top-8 z-20 w-28 rounded-md border border-border bg-bg-1 py-1 shadow-lg" onClick={event => event.stopPropagation()}>
+                                <div role="menu" className="absolute right-1.5 top-8 z-20 w-44 rounded-md border border-border bg-bg-1 py-1 shadow-lg" onClick={event => event.stopPropagation()}>
+                                  <button type="button" role="menuitem" disabled={switching || !folder.root}
+                                    className="block w-full px-3 py-1.5 text-left text-fg-2 hover:bg-bg-2 hover:text-fg"
+                                    onClick={() => {
+                                      setFolderMenu(null);
+                                      if (folder.root) {
+                                        void window.reelterminal?.folderReview?.showInFolder({ root: folder.root }).catch(report);
+                                      }
+                                    }}>打开文件所在位置</button>
                                   <button type="button" role="menuitem" disabled={switching}
                                     className="block w-full px-3 py-1.5 text-left text-fg-2 hover:bg-bg-2 hover:text-fg"
                                     onClick={() => { setFolderMenu(null); void beginFolderRename(folder).catch(report); }}>重命名</button>
+                                  <button type="button" role="menuitem" disabled={switching}
+                                    className="block w-full px-3 py-1.5 text-left text-fg-2 hover:bg-bg-2 hover:text-fg"
+                                    onClick={() => {
+                                      setFolderMenu(null);
+                                      useWorkbenchTabsStore.getState().removeFolder(folder.id);
+                                    }}>从列表中移除</button>
+                                  <button type="button" role="menuitem" disabled={switching || !folder.root}
+                                    className="block w-full px-3 py-1.5 text-left text-status-error hover:bg-bg-2 hover:text-status-error"
+                                    onClick={() => {
+                                      setFolderMenu(null);
+                                      if (!folder.root) return;
+                                      const confirmed = window.confirm(`确定要将任务文件夹 "${folder.name}" 移入回收站吗？\n路径：${folder.root}`);
+                                      if (!confirmed) return;
+                                      void (async () => {
+                                        try {
+                                          await window.reelterminal?.folderReview?.trash({ root: folder.root!, trashRoot: true });
+                                          useWorkbenchTabsStore.getState().removeFolder(folder.id);
+                                          toast.info(`已将 "${folder.name}" 移入回收站`);
+                                        } catch (err) {
+                                          report(err);
+                                        }
+                                      })();
+                                    }}>移入回收站</button>
                                 </div>
                               )}
                             </>
@@ -876,26 +908,15 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                 />
               )
             ) : (
-              <>
-                <ReviewNodeHeader
-                  node={null}
-                  context={context}
-                  busy={busy}
-                  onToggleAccess={handleToggleAccess}
-                  browserDemo={browserDemo}
-                  addressContent={reviewAddressContent}
-                  adminMenu={adminMenu}
-                />
-                <div ref={emptyHost} className="grid flex-1 place-items-center p-8 text-center outline-none" data-testid="workbench-empty" tabIndex={0}>
-                  <div>
-                    <h1 className="text-lg font-semibold">{t("review.title")}</h1>
-                    <p className="mt-2 max-w-md text-sm leading-relaxed text-fg-2">{browserDemo ? t("Open an existing review task or free board, or create a board by dropping files or pasting images, text and links.") : "打开真实文件夹，直接查看和整理素材文件。台词审阅在任务工作台逐条进行，导出只包含人工判定通过的条目；对文件的移动或复制只是文件操作。审阅记录随任务文件夹保存。"}</p>
-                    {!browserDemo && window.reelterminal?.folderReview && <button className={`${wbButton.primary} mt-4`} onClick={() => void openFolder().catch(report)}>打开任务文件夹</button>}
-                    <button className={`${wbButton.secondary} ml-2 mt-4`} onClick={() => setManagerOpen(true)} data-testid="review-empty-create">{t("Open / New")}</button>
-                    <button className={`${wbButton.secondary} ml-2 mt-4`} onClick={() => newBoardFiles.current?.click()}>{t("Import files and create a board")}</button>
-                  </div>
+              <div ref={emptyHost} className="grid flex-1 place-items-center p-8 text-center outline-none" data-testid="workbench-empty" tabIndex={0}>
+                <div>
+                  <h1 className="text-lg font-semibold">{t("review.title")}</h1>
+                  <p className="mt-2 max-w-md text-sm leading-relaxed text-fg-2">{browserDemo ? t("Open an existing review task or free board, or create a board by dropping files or pasting images, text and links.") : "打开真实文件夹，直接查看和整理素材文件。台词审阅在任务工作台逐条进行，导出只包含人工判定通过的条目；对文件的移动或复制只是文件操作。审阅记录随任务文件夹保存。"}</p>
+                  {!browserDemo && window.reelterminal?.folderReview && <button className={`${wbButton.primary} mt-4`} onClick={() => void openFolder().catch(report)}>打开任务文件夹</button>}
+                  <button className={`${wbButton.secondary} ml-2 mt-4`} onClick={() => setManagerOpen(true)} data-testid="review-empty-create">{t("Open / New")}</button>
+                  <button className={`${wbButton.secondary} ml-2 mt-4`} onClick={() => newBoardFiles.current?.click()}>{t("Import files and create a board")}</button>
                 </div>
-              </>
+              </div>
             )}
           </main>
         </div>
