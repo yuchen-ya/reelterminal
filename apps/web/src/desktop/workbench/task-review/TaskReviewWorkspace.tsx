@@ -11,6 +11,7 @@ import {
   FileText,
   Layers,
   RotateCcw,
+  SlidersHorizontal,
   Sparkles,
   Upload,
   X,
@@ -21,10 +22,10 @@ import type {
   TaskSceneSuggestion,
   TaskTextReviewUnit,
 } from "../../../../../desktop/src/shared/task-review";
-import { isCurrentTaskUnit, isTextTaskUnit } from "../../../../../desktop/src/shared/task-review";
+import { isCurrentTaskUnit, isTextTaskSource, isTextTaskUnit } from "../../../../../desktop/src/shared/task-review";
 import type { TaskCriteriaScope } from "../../../../../desktop/src/shared/task-review-context";
 import { isTaskSceneCurrent, selectTaskDecisionHistory } from "../../../../../desktop/src/shared/task-review-selectors";
-import type { TaskAgentJob } from "../../../../../desktop/src/shared/task-review-runtime-types";
+import type { TaskAgentJob, TaskModelConfig } from "../../../../../desktop/src/shared/task-review-runtime-types";
 import { FolderReviewWorkspace } from "../components/FolderReviewWorkspace";
 import { wbButton } from "../wb-button";
 import { taskAgentBridge, taskContextBridge, taskReviewBridge, taskExportBridge, taskMediaBridge } from "./bridge";
@@ -34,9 +35,10 @@ import { GlobalScene } from "./GlobalScene";
 import { MediaScene } from "./MediaScene";
 import { ResultExportPanel } from "./ResultExportPanel";
 import { SpotlightCard, type SpotlightLauncherItem, type SpotlightPrimaryAction, type SpotlightStepDot } from "./spotlight-card";
+import { MODEL_PROVIDER_PRESETS, detectProviderPreset, getProviderPreset } from "./model-presets";
 import { StageUnitCard } from "./stage-unit-card";
 import { useHoverTip } from "./task-tooltip";
-import { CriteriaAdoptionForm, TaskContextBrief } from "./TaskContextPanel";
+import { CriteriaAdoptionForm } from "./TaskContextPanel";
 import { sourceTitle, statusLabels, unitTitle } from "./display";
 import {
   currentSourceIds,
@@ -47,10 +49,14 @@ import {
   planScenes,
   planStepForUnit,
   REVIEW_PURPOSE,
+  currentAuthorizedSourceVersionIds,
+  currentSources,
+  selectAdoptedTaskContext,
+  selectTaskContextForPlanning,
   unitDecisionState,
   unitStats,
 } from "./queries";
-import { analyzedUnitIds, useTaskAgentState } from "./useTaskAgentState";
+import { analyzedUnitIds, preflightCoverage, useTaskAgentState } from "./useTaskAgentState";
 import { useTaskDrafts } from "./useTaskDrafts";
 import { useTaskReviewController } from "./useTaskReviewController";
 import { readTimeline, useSceneScroll, viewKey } from "./view-state";
@@ -328,7 +334,7 @@ export function TaskReviewWorkspace({
   const [spotlightActive, setSpotlightActive] = useState(true);
   const [cardFace, setCardFace] = useState<"tool" | "launcher">("tool");
   const [forceCompletion, setForceCompletion] = useState(false);
-  const [bottomTrackCollapsed, setBottomTrackCollapsed] = useState(false);
+  const [bottomTrackCollapsed, setBottomTrackCollapsed] = useState(true);
   const [cardToolTab, setCardToolTab] = useState<"rewrite" | "note" | "criteria">("rewrite");
   const [replacement, setReplacement] = useState("");
   const [compareReplacements, setCompareReplacements] = useState<Record<string, string>>({});
@@ -336,6 +342,44 @@ export function TaskReviewWorkspace({
   const [criterionScope, setCriterionScope] = useState<"unit" | "source" | "task">("unit");
   const [exportFormat, setExportFormat] = useState<"srt" | "txt" | "json">("srt");
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [quickImportOpen, setQuickImportOpen] = useState(false);
+  const [quickImportName, setQuickImportName] = useState("台词文本.txt");
+  const [quickImportText, setQuickImportText] = useState("");
+  const [quickImportBusy, setQuickImportBusy] = useState(false);
+  const [agentSetupSkipped, setAgentSetupSkipped] = useState(false);
+  const [dismissedProposalId, setDismissedProposalId] = useState<string | null>(null);
+  const [cardModelSettingsOpen, setCardModelSettingsOpen] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<string>("custom");
+  const [modelConfig, setModelConfig] = useState<TaskModelConfig | null>(null);
+  const [inlineEndpoint, setInlineEndpoint] = useState("");
+  const [inlineModel, setInlineModel] = useState("");
+  const [inlineApiKey, setInlineApiKey] = useState("");
+  const [inlineSaving, setInlineSaving] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!agent) return;
+    let cancelled = false;
+    void agent
+      .getModelConfig()
+      .then((cfg) => {
+        if (!cancelled) setModelConfig(cfg);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [agent]);
+
+  useEffect(() => {
+    if (modelConfig) {
+      if (modelConfig.endpoint) {
+        setInlineEndpoint((prev) => prev || modelConfig.endpoint);
+        setSelectedProvider(detectProviderPreset(modelConfig.endpoint));
+      }
+      if (modelConfig.backgroundModel) setInlineModel((prev) => prev || modelConfig.backgroundModel);
+    }
+  }, [modelConfig]);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
@@ -378,6 +422,27 @@ export function TaskReviewWorkspace({
   const allDecided = Boolean(stats && stats.total > 0 && stats.pending === 0);
   const completedView = allDecided || forceCompletion;
   const busy = controller.busy || savingGroup;
+  const sourceFilesCount = (snapshot?.sourceFiles?.length ?? 0) || (snapshot?.sources?.length ?? 0);
+  const coverage = snapshot ? preflightCoverage(snapshot, agentRuntime.state) : null;
+  const isAuthorized = Boolean(agentRuntime.state?.grant);
+  const isModelConfigured = Boolean(
+    modelConfig &&
+    modelConfig.endpoint?.trim() &&
+    (modelConfig.backgroundModel?.trim() || modelConfig.completionModel?.trim()) &&
+    modelConfig.hasApiKey,
+  );
+  const activeJob = (agentRuntime.state?.jobs ?? []).find(
+    (job) => job.status === "queued" || job.status === "running",
+  );
+  const isPreflightRunning = Boolean(activeJob);
+  const proposal = snapshot?.contextHistory ? selectTaskContextForPlanning(snapshot.contextHistory) : undefined;
+  const adopted = snapshot?.contextHistory ? selectAdoptedTaskContext(snapshot.contextHistory) : undefined;
+  const isProposalPendingAdoption = Boolean(
+    proposal &&
+    proposal.proposedBy === "agent" &&
+    adopted?.id !== proposal.id &&
+    dismissedProposalId !== proposal.id,
+  );
 
   const focusedDecision =
     snapshot && openRef ? unitDecisionState(snapshot, openRef.unitId, openRef.purpose) : null;
@@ -797,6 +862,134 @@ export function TaskReviewWorkspace({
     return `# 返工指令 (${name ?? root} · r${snapshot.revision})\n路径：${root}\n\n${rows.map((row) => row.line).join("\n\n") || "（当前没有需要返工或含疑点的条目）"}`;
   }, [snapshot, currentIds, draftMap, name, root]);
 
+  const buildStartupPrompt = useCallback(() => {
+    const title = name ?? root;
+    return `# ReelTerminal 外部 Agent 审阅协作启动指令
+- 任务：${title}
+- 任务根目录：${root}
+
+你正在通过 reelctl 命令行或 MCP 工具协同处理 ReelTerminal 审阅任务。
+请按以下步骤操作：
+1. 检查任务状态与原件：
+   reelctl task-review status --root "${root}"
+2. 查看当前已有条目或导入台词文件：
+   reelctl task-review import --root "${root}" <台词文件路径>
+3. 按照审阅口径进行预审或生成审阅建议。
+`;
+  }, [name, root]);
+
+  const handleQuickImport = useCallback(async () => {
+    if (!quickImportText.trim()) return;
+    setQuickImportBusy(true);
+    try {
+      const res = await controller.importText({
+        name: quickImportName.trim() || "台词文本.txt",
+        text: quickImportText,
+        format: "txt",
+      });
+      if (res.ok) {
+        setQuickImportText("");
+        setQuickImportOpen(false);
+        showToast(t("文本导入成功"));
+      } else if (res.error) {
+        showToast(t("导入失败: {{msg}}", { msg: res.error }));
+      }
+    } catch (e) {
+      showToast(t("导入失败: {{msg}}", { msg: e instanceof Error ? e.message : String(e) }));
+    } finally {
+      setQuickImportBusy(false);
+    }
+  }, [controller, quickImportName, quickImportText, showToast, t]);
+
+  const handleSelectProvider = useCallback((providerId: string) => {
+    setSelectedProvider(providerId);
+    const preset = getProviderPreset(providerId);
+    if (preset && preset.id !== "custom") {
+      setInlineEndpoint(preset.endpoint);
+      const firstModel = preset.models[0] ?? "";
+      setInlineModel(firstModel);
+    }
+  }, []);
+
+  const handleSaveModelOnly = useCallback(async () => {
+    if (!agent) return;
+    setInlineSaving(true);
+    setInlineError(null);
+    try {
+      const updated = await agent.configureModel({
+        endpoint: inlineEndpoint.trim(),
+        backgroundModel: inlineModel.trim(),
+        completionModel: inlineModel.trim(),
+        ...(inlineApiKey.trim() ? { apiKey: inlineApiKey.trim() } : {}),
+      });
+      setModelConfig(updated);
+      setInlineApiKey("");
+      setCardModelSettingsOpen(false);
+      setInlineApiKey("");
+      setCardModelSettingsOpen(false);
+      showToast(t("模型配置已保存"));
+    } catch (err) {
+      setInlineError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInlineSaving(false);
+    }
+  }, [agent, inlineApiKey, inlineEndpoint, inlineModel, showToast, t]);
+
+  const handleConfigureAndStartPreflight = useCallback(async () => {
+    if (!agent || !snapshot) return;
+    setInlineSaving(true);
+    setInlineError(null);
+    try {
+      const updated = await agent.configureModel({
+        endpoint: inlineEndpoint.trim(),
+        backgroundModel: inlineModel.trim(),
+        completionModel: inlineModel.trim(),
+        ...(inlineApiKey.trim() ? { apiKey: inlineApiKey.trim() } : {}),
+      });
+      setModelConfig(updated);
+      const sourceIds = currentSources(snapshot).filter(isTextTaskSource).map((s) => s.id);
+      await agent.authorize({ root: snapshot.root, taskId: snapshot.taskId, scope: "task", sourceVersionIds: sourceIds });
+      await agent.startPreflight({ root: snapshot.root, taskId: snapshot.taskId });
+      void agentRuntime.refresh(true);
+      showToast(t("模型已配置并启动预审"));
+    } catch (err) {
+      setInlineError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInlineSaving(false);
+    }
+  }, [agent, agentRuntime, inlineApiKey, inlineEndpoint, inlineModel, snapshot, showToast, t]);
+
+  const handleStartPreflight = useCallback(async () => {
+    if (!agent || !snapshot) return;
+    try {
+      const sourceIds = currentSources(snapshot).filter(isTextTaskSource).map((s) => s.id);
+      await agent.authorize({ root: snapshot.root, taskId: snapshot.taskId, scope: "task", sourceVersionIds: sourceIds });
+      await agent.startPreflight({ root: snapshot.root, taskId: snapshot.taskId });
+      void agentRuntime.refresh(true);
+      showToast(t("AI 预审已启动"));
+    } catch (err) {
+      showToast(t("启动预审失败: {{msg}}", { msg: err instanceof Error ? err.message : String(err) }));
+    }
+  }, [agent, agentRuntime, snapshot, showToast, t]);
+
+  const handleAdoptProposal = useCallback(async () => {
+    if (!proposal || !snapshot) return;
+    const authorizedSourceVersionIds = currentAuthorizedSourceVersionIds(snapshot);
+    const result = await controller.adoptContext({
+      proposalId: proposal.id,
+      authorizedSourceVersionIds,
+    });
+    if (result.ok) {
+      showToast(t("已采用 AI 理解提案"));
+      const firstScene = planList[0];
+      if (firstScene) {
+        openPlannedScene(firstScene);
+      }
+    } else if (result.error) {
+      showToast(t("采用提案失败: {{msg}}", { msg: result.error }));
+    }
+  }, [controller, openPlannedScene, planList, proposal, snapshot, showToast, t]);
+
   // ---- Card assembly. ----
   const focusedSource = snapshot && focusedUnitRow ? snapshot.sources.find((item) => item.id === focusedUnitRow.sourceVersionId) : null;
   const describeCurrentScene = () => {
@@ -812,7 +1005,9 @@ export function TaskReviewWorkspace({
     return name ?? root;
   };
 
-  const cardHeaderTitle = cardFace === "launcher"
+  const cardHeaderTitle = cardModelSettingsOpen
+    ? t("模型与 API 密钥")
+    : cardFace === "launcher"
     ? t("工作台")
     : completedView && stats
       ? t("已完成 {{decided}}/{{total}}", { decided: stats.decided, total: stats.total })
@@ -820,7 +1015,15 @@ export function TaskReviewWorkspace({
         ? agentScene.suggestion.checkIntent
         : unit
           ? `#${unit.ordinal} ${focusedSource ? sourceTitle(focusedSource.relativePath) : ""}`
-          : t("工作台");
+          : snapshot?.units.length === 0
+            ? t("内置 Agent · 待命")
+            : isPreflightRunning
+              ? t("内置 Agent · 预审中")
+              : isProposalPendingAdoption
+                ? t("内置 Agent · 任务理解提案")
+                : agent && !isAuthorized && !agentSetupSkipped && (coverage?.unanalyzed ?? 0) > 0 && !isModelConfigured
+                  ? t("内置 Agent · 模型配置")
+                  : t("内置 Agent");
 
   const returnToStage = () => {
     setCardFace("tool");
@@ -847,8 +1050,12 @@ export function TaskReviewWorkspace({
     { id: "export", label: t("导出"), tip: t("打开原件与结果导出面板"), icon: Download,
       active: exportOpen, testId: "task-review-launcher-export",
       onClick: () => { setCardFace("tool"); setExportOpen(true); } },
-    { id: "agent", label: "Agent", tip: t("查看后台分析任务与复制返工指令"), icon: Bot,
-      active: agentModalOpen, testId: "task-review-launcher-agent", onClick: () => setAgentModalOpen(true) },
+    { id: "agent", label: t("模型与 Agent"), tip: t("配置内置 Agent 模型通道与 API 密钥"), icon: Bot,
+      active: cardModelSettingsOpen, testId: "task-review-launcher-agent",
+      onClick: () => {
+        setCardFace("tool");
+        setCardModelSettingsOpen(true);
+      } },
     { id: "copy", label: t("复制"), tip: t("复制当前条目、返工指令或通过字幕"), icon: Copy,
       active: copyModalOpen, testId: "task-review-launcher-copy", onClick: () => setCopyModalOpen(true) },
     { id: "import", label: t("导入"), tip: t("在总览中导入新的原文内容"), icon: Upload,
@@ -860,7 +1067,7 @@ export function TaskReviewWorkspace({
       active: false, testId: "task-review-launcher-criteria", onClick: openGlobal },
   ];
 
-  const stepDots: SpotlightStepDot[] = snapshot ? planList.map((suggestion) => ({
+  const stepDots: SpotlightStepDot[] = snapshot && !cardModelSettingsOpen && !directoryActive ? planList.map((suggestion) => ({
     id: suggestion.id,
     title: t("场景：{{intent}}", { intent: suggestion.checkIntent }),
     detail: pendingSceneTargets(snapshot, suggestion).length === 0
@@ -872,7 +1079,35 @@ export function TaskReviewWorkspace({
   })) : [];
 
   const primaryAction: SpotlightPrimaryAction | null = (() => {
-    if (!snapshot || !stats || !openRef || scene.kind === "edit" || completedView) return null;
+    if (!snapshot || !stats || scene.kind === "edit" || completedView) return null;
+    const shouldStartPreflightAfterSave =
+      (coverage?.unanalyzed ?? 0) > 0 && !isAuthorized && (snapshot?.units.length ?? 0) > 0;
+    if (cardModelSettingsOpen) {
+      return {
+        label: inlineSaving
+          ? t("正在保存…")
+          : shouldStartPreflightAfterSave
+            ? t("保存并启动预审")
+            : t("保存模型配置"),
+        testId: "task-review-save-model-btn",
+        disabled:
+          inlineSaving ||
+          !inlineEndpoint.trim() ||
+          !inlineModel.trim() ||
+          (!modelConfig?.hasApiKey && !inlineApiKey.trim()),
+        tipTitle: shouldStartPreflightAfterSave
+          ? t("保存模型配置，授权本任务并启动 AI 预审")
+          : t("保存内置 Agent 模型通道与 API 密钥配置"),
+        onClick: () => {
+          if (shouldStartPreflightAfterSave) {
+            void handleConfigureAndStartPreflight();
+          } else {
+            void handleSaveModelOnly();
+          }
+        },
+      };
+    }
+    if (openRef) {
     if (agentScene && agentScene.suggestion.kind === "lowRiskGroup") {
       return {
         label: t("保留所选({{count}})并继续", { count: chosenGroupIds.length }),
@@ -917,22 +1152,70 @@ export function TaskReviewWorkspace({
         onClick: () => void keepUndecidedAndContinue(),
       };
     }
-    return {
-      label: t("保留并继续"),
-      testId: "task-review-keep-continue",
-      disabled: busy || !currentIds.has(openRef.sourceVersionId),
-      tipTitle: t("将 #{{no}} 设为「保留」并进入下一场景", { no: focusedUnitRow?.ordinal ?? "" }),
-      tipDetail: t("一步完成「确认保留 + 推进到下一项」"),
-      onClick: () => void decideAndContinue("kept"),
-    };
+      return {
+        label: t("保留并继续"),
+        testId: "task-review-keep-continue",
+        disabled: busy || !currentIds.has(openRef.sourceVersionId),
+        tipTitle: t("将 #{{no}} 设为「保留」并进入下一场景", { no: focusedUnitRow?.ordinal ?? "" }),
+        tipDetail: t("一步完成「确认保留 + 推进到下一项」"),
+        onClick: () => void decideAndContinue("kept"),
+      };
+    }
+    if (snapshot.units.length > 0) {
+      if (isProposalPendingAdoption) {
+        return {
+          label: t("采用并继续审阅"),
+          testId: "task-review-adopt-proposal-cta",
+          disabled: busy,
+          tipTitle: t("采用 AI 理解提案并继续进入第一场景"),
+          onClick: () => void handleAdoptProposal(),
+        };
+      }
+      if (agent && !isAuthorized && !agentSetupSkipped && (coverage?.unanalyzed ?? 0) > 0) {
+        if (!isModelConfigured) {
+          return {
+            label: inlineSaving ? t("正在保存…") : t("保存并启动预审"),
+            testId: "task-review-save-model-btn",
+            disabled: inlineSaving || !inlineEndpoint.trim() || !inlineModel.trim() || (!modelConfig?.hasApiKey && !inlineApiKey.trim()),
+            tipTitle: t("保存模型配置，授权本任务并启动 AI 预审"),
+            onClick: () => void handleConfigureAndStartPreflight(),
+          };
+        }
+        return {
+          label: t("启动 AI 预审"),
+          testId: "task-review-start-preflight",
+          disabled: busy,
+          tipTitle: t("为本任务启动 AI 预审与编排"),
+          tipDetail: t("自动归纳口径并整理计划场景"),
+          onClick: () => void handleStartPreflight(),
+        };
+      }
+    }
+    return null;
   })();
 
-  const footerStatus = openRef && focusedUnitRow && !completedView ? (
-    <span className="flex min-w-0 items-center gap-1 text-[11px] text-fg-3" data-testid="task-review-card-status">
-      <span className="shrink-0 font-mono text-[11px] font-bold text-accent">#{focusedUnitRow.ordinal}</span>
-      <span className="shrink-0">{focusedStatusText}</span>
-    </span>
-  ) : null;
+  const footerStatus = (() => {
+    const runningBadge = isPreflightRunning ? (
+      <span className="flex items-center gap-1.5 text-[11px] text-accent" data-testid="task-review-agent-running">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+        </span>
+        <span>{t("AI 正在预审编排中…")}</span>
+      </span>
+    ) : null;
+
+    if (openRef && focusedUnitRow && !completedView && !cardModelSettingsOpen) {
+      return (
+        <span className="flex min-w-0 items-center gap-2 text-[11px] text-fg-3" data-testid="task-review-card-status">
+          <span className="shrink-0 font-mono text-[11px] font-bold text-accent">#{focusedUnitRow.ordinal}</span>
+          <span className="shrink-0">{focusedStatusText}</span>
+          {runningBadge}
+        </span>
+      );
+    }
+    return runningBadge;
+  })();
 
   // ---- Tool-card body per stage type. ----
   const hint = (text: string) => (
@@ -1226,14 +1509,383 @@ export function TaskReviewWorkspace({
     </div>
   );
 
+  const emptyAgentBody = (
+    <div className="flex flex-col gap-3" data-testid="task-review-empty-agent-state">
+      <div className="flex items-start gap-2.5 rounded-lg bg-[#101216] p-3 border border-white/5">
+        <Bot className="h-5 w-5 shrink-0 text-accent mt-0.5" />
+        <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
+          <strong className="text-fg font-medium">
+            {sourceFilesCount > 0 ? t("发现素材原件") : t("内置 Agent 待命")}
+          </strong>
+          <p className="text-fg-3">
+            {sourceFilesCount > 0
+              ? t("文件夹内已有原件素材。请导入台词文本或通过启动提示词由 Agent 生成审阅条目。")
+              : t("当前任务还没有内容。导入台词或原件后，我将为您自动预审并安排审阅顺序；也可以复制启动提示词交由外部 Agent 协作。")}
+          </p>
+        </div>
+      </div>
+
+      {quickImportOpen ? (
+        <div className="flex flex-col gap-2 rounded-lg bg-[#101216] p-2.5 border border-accent/40" data-testid="task-review-inline-import-form">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-semibold text-fg">{t("快速导入台词 / 文本")}</span>
+            <button
+              type="button"
+              onClick={() => setQuickImportOpen(false)}
+              className="text-fg-3 hover:text-fg cursor-pointer text-[10px]"
+            >
+              {t("取消")}
+            </button>
+          </div>
+          <input
+            className="w-full rounded border border-border bg-bg-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
+            placeholder={t("素材名称（如：第一集台词.txt）")}
+            value={quickImportName}
+            onChange={(e) => setQuickImportName(e.target.value)}
+          />
+          <textarea
+            className="min-h-24 w-full rounded border border-border bg-bg-2 p-2 text-xs text-fg focus:border-accent focus:outline-none"
+            placeholder={t("粘贴台词或字幕文本，每行一条…")}
+            value={quickImportText}
+            onChange={(e) => setQuickImportText(e.target.value)}
+          />
+          <button
+            type="button"
+            disabled={quickImportBusy || !quickImportText.trim()}
+            onClick={() => void handleQuickImport()}
+            className="flex h-7 items-center justify-center rounded-lg bg-accent px-3 text-xs font-bold text-accent-fg hover:brightness-110 cursor-pointer disabled:opacity-40"
+            data-testid="task-review-quick-import-submit"
+          >
+            {quickImportBusy ? t("正在导入…") : t("确认导入")}
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => setQuickImportOpen(true)}
+            data-testid="task-review-empty-import-text"
+            className="flex h-8 items-center justify-center gap-2 rounded-lg bg-accent/20 border border-accent/40 px-3 text-xs font-medium text-accent hover:bg-accent/30 cursor-pointer transition-colors"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            {t("导入文本 / 台词")}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setCardFace("tool");
+              setTimeline((state) => openTemporary(state, "directory"));
+            }}
+            data-testid="task-review-empty-open-files"
+            className="flex h-8 items-center justify-center gap-2 rounded-lg bg-[#101216] border border-white/10 px-3 text-xs font-medium text-fg-2 hover:bg-[#1a1f27] hover:text-white cursor-pointer transition-colors"
+          >
+            <FileText className="h-3.5 w-3.5 text-accent" />
+            {t("打开原件 / 导入文件")}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void copyText(buildStartupPrompt(), t("启动提示词"))}
+            data-testid="task-review-copy-startup-prompt"
+            className="flex h-8 items-center justify-center gap-2 rounded-lg bg-[#101216] border border-white/10 px-3 text-xs font-medium text-fg-2 hover:bg-[#1a1f27] hover:text-white cursor-pointer transition-colors"
+          >
+            <Copy className="h-3.5 w-3.5 text-accent" />
+            {t("复制启动提示词")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCardFace("tool");
+              setCardModelSettingsOpen(true);
+            }}
+            data-testid="task-review-open-model-settings-btn"
+            className="flex h-8 items-center justify-center gap-2 rounded-lg bg-[#101216] border border-white/10 px-3 text-xs font-medium text-fg-2 hover:bg-[#1a1f27] hover:text-white cursor-pointer transition-colors"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 text-accent" />
+            {isModelConfigured
+              ? t("模型: {{model}} (点击修改)", {
+                  model: modelConfig?.backgroundModel || modelConfig?.completionModel || "已配置",
+                })
+              : t("配置模型与 API 密钥")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+    const currentProviderPreset = getProviderPreset(selectedProvider);
+
+  const modelSettingsCardBody = (
+    <div className="flex flex-col gap-3" data-testid="task-review-agent-unconfigured">
+      <div className="flex items-start gap-2.5 rounded-lg bg-[#101216] p-3 border border-white/5">
+        <Bot className="h-5 w-5 shrink-0 text-accent mt-0.5" />
+        <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
+          <strong className="text-fg font-medium">{t("配置内置 Agent 模型通道")}</strong>
+          <p className="text-fg-3">
+            {t("配置大模型接口后，内置 Agent 将实时为您预审台词、编排审阅顺序并识别潜在疑点。")}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-lg bg-[#101216] p-2.5 border border-border">
+        {/* 1. 服务商 */}
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-fg-3">{t("服务商")}</span>
+          <select
+            data-testid="task-review-provider-select"
+            className="w-full rounded border border-border bg-bg-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
+            value={selectedProvider}
+            onChange={(e) => handleSelectProvider(e.target.value)}
+          >
+            {MODEL_PROVIDER_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* 2. 接口地址 */}
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-fg-3">{t("接口地址")}</span>
+          <input
+            data-testid="task-review-config-endpoint"
+            className="w-full rounded border border-border bg-bg-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
+            placeholder="https://api.openai.com/v1"
+            value={inlineEndpoint}
+            onChange={(e) => {
+              const val = e.target.value;
+              setInlineEndpoint(val);
+              setSelectedProvider(detectProviderPreset(val));
+            }}
+          />
+        </label>
+
+        {/* 3. 模型名称 */}
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-fg-3">{t("模型名称")}</span>
+          <select
+            data-testid="task-review-model-preset-select"
+            className="w-full rounded border border-border bg-bg-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
+            value={currentProviderPreset?.models.includes(inlineModel) ? inlineModel : "__custom__"}
+            onChange={(e) => {
+              if (e.target.value !== "__custom__") {
+                setInlineModel(e.target.value);
+              }
+            }}
+          >
+            {(currentProviderPreset?.models ?? []).map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+            <option value="__custom__">
+              {(currentProviderPreset?.models.length ?? 0) > 0 ? t("其他自定义模型…") : t("自定义模型")}
+            </option>
+          </select>
+          <input
+            data-testid="task-review-config-model"
+            className="w-full rounded border border-border bg-bg-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
+            placeholder="gpt-4o / deepseek-chat"
+            value={inlineModel}
+            onChange={(e) => setInlineModel(e.target.value)}
+          />
+        </div>
+
+        {/* 4. API 密钥 */}
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-fg-3">{t("API 密钥")}</span>
+          <input
+            type="password"
+            data-testid="task-review-config-apikey"
+            className="w-full rounded border border-border bg-bg-2 px-2 py-1 text-xs text-fg focus:border-accent focus:outline-none"
+            placeholder={
+              modelConfig?.hasApiKey
+                ? t("已保存密钥（留空保持不变，输入新密钥覆盖）")
+                : "sk-..."
+            }
+            value={inlineApiKey}
+            onChange={(e) => setInlineApiKey(e.target.value)}
+          />
+        </label>
+
+        {inlineError && (
+          <p className="text-[11px] text-status-error">{inlineError}</p>
+        )}
+      </div>
+
+      {/* 5. Secondary action */}
+      <div className="flex items-center justify-between gap-2">
+        {cardModelSettingsOpen ? (
+          <button
+            type="button"
+            onClick={() => setCardModelSettingsOpen(false)}
+            data-testid="task-review-close-model-settings-btn"
+            className="flex h-7 items-center justify-center rounded-lg border border-white/10 bg-[#101216] px-3 text-xs text-fg-2 hover:bg-[#1a1f27] hover:text-white cursor-pointer"
+          >
+            {t("返回")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAgentSetupSkipped(true)}
+            className="text-[11px] text-fg-3 hover:text-fg hover:underline cursor-pointer"
+          >
+            {t("暂时跳过，纯人工审阅")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  const readyToPreflightBody = (
+    <div className="flex flex-col gap-3" data-testid="task-review-agent-ready">
+      <div className="flex items-start gap-2.5 rounded-lg bg-[#101216] p-3 border border-white/5">
+        <Bot className="h-5 w-5 shrink-0 text-accent mt-0.5" />
+        <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
+          <strong className="text-fg font-medium">{t("内置 Agent 准备就绪")}</strong>
+          <p className="text-fg-3">
+            {t("我已准备好为您预审本任务的条目，自动归纳审阅口径、打包低风险项并标记存疑片段。")}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between px-1">
+        <span className="text-[11px] text-fg-3">
+          {t("共 {{count}} 条待审条目", { count: snapshot?.units.length ?? 0 })}
+        </span>
+        <button
+          type="button"
+          onClick={() => setAgentSetupSkipped(true)}
+          className="text-[11px] text-fg-3 hover:text-fg hover:underline cursor-pointer"
+        >
+          {t("跳过预审")}
+        </button>
+      </div>
+    </div>
+  );
+
+  const preflightRunningBody = (
+    <div className="flex flex-col gap-3" data-testid="task-review-agent-running-body">
+      <div className="flex items-start gap-2.5 rounded-lg bg-[#101216] p-3 border border-white/5">
+        <Bot className="h-5 w-5 shrink-0 text-accent mt-0.5 animate-pulse" />
+        <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
+          <strong className="text-fg font-medium">{t("AI 正在预审编排中…")}</strong>
+          <p className="text-fg-3">
+            {t("内置 Agent 正在分析条目语义、归纳审阅口径并整理检查场景。您可以等待完成，或直接从左侧开始审阅。")}
+          </p>
+        </div>
+      </div>
+      {coverage && (
+        <div className="flex items-center justify-between rounded-lg bg-[#101216] p-2 text-[11px] text-fg-3">
+          <span>{t("已分析进度")}</span>
+          <span className="font-mono text-fg-2">
+            {coverage.analyzed} / {coverage.total}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+
+  const proposalBody = proposal && (
+    <div className="flex flex-col gap-2.5" data-testid="task-review-proposal-body">
+      <div className="flex items-start gap-2.5 rounded-lg bg-[#101216] p-3 border border-white/5">
+        <Bot className="h-5 w-5 shrink-0 text-accent mt-0.5" />
+        <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
+          <strong className="text-fg font-medium">{t("AI 任务理解提案")}</strong>
+          {snapshot?.goal && (
+            <p className="text-fg-3">
+              <span className="text-fg-2">{t("任务目标：")}</span>
+              {snapshot.goal}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-lg bg-[#101216] p-2.5 border border-border text-[11px]">
+        {proposal.content.groundedClaims.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <strong className="text-fg-2 font-medium">{t("口径与事实梳理：")}</strong>
+            <ul className="list-disc pl-4 space-y-0.5 text-fg-3">
+              {proposal.content.groundedClaims.slice(0, 3).map((claim, idx) => (
+                <li key={idx} className="line-clamp-2">{claim}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {proposal.content.hypotheses.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <strong className="text-fg-2 font-medium">{t("待推断假设：")}</strong>
+            <ul className="list-disc pl-4 space-y-0.5 text-fg-3">
+              {proposal.content.hypotheses.slice(0, 2).map((hyp, idx) => (
+                <li key={idx} className="line-clamp-2">{hyp}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {proposal.openQuestions.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <strong className="text-amber-300 font-medium">{t("待澄清疑问：")}</strong>
+            <ul className="list-disc pl-4 space-y-0.5 text-fg-3">
+              {proposal.openQuestions.slice(0, 2).map((q, idx) => (
+                <li key={idx} className="line-clamp-2">{q}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between text-[11px]">
+        <button
+          type="button"
+          onClick={() => openGlobal()}
+          className="text-fg-3 hover:text-fg hover:underline cursor-pointer"
+        >
+          {t("查看详细口径与证据")}
+        </button>
+        <button
+          type="button"
+          onClick={() => setDismissedProposalId(proposal.id)}
+          className="text-fg-3 hover:text-fg cursor-pointer"
+        >
+          {t("稍后处理")}
+        </button>
+      </div>
+    </div>
+  );
+
   const toolBody = (() => {
     if (!snapshot || !stats) return null;
+    if (cardModelSettingsOpen) return modelSettingsCardBody;
     if (completedView) return completionHub;
     if (scene.kind === "edit") return hint(t("精细编辑中：在左侧编辑器修改草稿，完成后返回条目审阅。"));
     if (agentScene && agentScene.suggestion.kind === "lowRiskGroup") return groupToolBody;
     if (agentScene && agentScene.suggestion.kind === "compare") return compareToolBody;
     if (unit && isTextTaskUnit(unit)) return textToolBody;
     if (unit) return mediaToolBody;
+
+    if (snapshot.units.length === 0) {
+      return emptyAgentBody;
+    }
+
+    if (isPreflightRunning) {
+      return preflightRunningBody;
+    }
+
+    if (isProposalPendingAdoption) {
+      return proposalBody;
+    }
+
+    if (agent && !isAuthorized && !agentSetupSkipped && (coverage?.unanalyzed ?? 0) > 0) {
+      if (!isModelConfigured) {
+        return modelSettingsCardBody;
+      }
+      return readyToPreflightBody;
+    }
+
     return hint(t("从左侧计划或单元坞选择条目开始审阅。"));
   })();
 
@@ -1249,6 +1901,12 @@ export function TaskReviewWorkspace({
       onToggleCompletion={() => setForceCompletion((value) => !value)}
       spotlightActive={spotlightActive}
       onToggleSpotlight={() => setSpotlightActive((value) => !value)}
+      onOpenModelSettings={() => {
+        setCardFace("tool");
+        setCardModelSettingsOpen((prev) => !prev);
+      }}
+      modelSettingsActive={cardModelSettingsOpen}
+      modelConfigured={isModelConfigured}
       onBack={() => {
         setCardFace("tool");
         setTimeline((state) => back(state));
@@ -1518,7 +2176,7 @@ export function TaskReviewWorkspace({
   })();
 
   // ---- Dock / track / drawer content. ----
-  const leftDock = snapshot && stats && (
+  const leftDock = snapshot && stats && snapshot.units.length > 0 && (
     <aside className="flex h-full min-h-0 w-[216px] shrink-0 flex-col overflow-hidden bg-bg-1 xl:w-[232px]">
       <div className="flex shrink-0 flex-col gap-0.5 border-b border-border p-2">
         <div className="flex items-center justify-between px-1.5 py-1 text-[11px] text-fg-3">
@@ -1604,7 +2262,7 @@ export function TaskReviewWorkspace({
     </aside>
   );
 
-  const bottomTrack = snapshot && (
+  const bottomTrack = snapshot && snapshot.units.length > 0 && (
     bottomTrackCollapsed ? (
       <div className="flex h-6 shrink-0 items-center justify-end bg-bg-1 px-2">
         <button
@@ -1763,7 +2421,7 @@ export function TaskReviewWorkspace({
             {name ?? root}
           </strong>
           {snapshot && (
-            <span className="shrink-0 font-mono text-[11px] tabular-nums text-fg-3" data-testid="task-review-revision">
+            <span className="sr-only" data-testid="task-review-revision">
               r{snapshot.revision}
             </span>
           )}
@@ -1987,14 +2645,12 @@ export function TaskReviewWorkspace({
           polling and preview media pause and every legacy file-level review
           entry stays hidden: task decisions have exactly one authority — the
           task domain. */}
-      {directoryActive && snapshot && (
-        <TaskContextBrief snapshot={snapshot} next={nextTarget?.suggestion ?? undefined} />
-      )}
+
       <div
         className={`items-start gap-3.5 p-3.5 ${directoryActive ? "flex min-h-0 flex-1 overflow-y-auto" : "hidden"}`}
       >
         <div
-          className={`flex min-h-0 min-w-0 flex-1 flex-col ${directoryActive ? "" : "hidden"}`}
+          className={`flex h-full min-h-0 min-w-0 flex-1 flex-col self-stretch ${directoryActive ? "" : "hidden"}`}
           data-testid="task-review-directory-host"
         >
           <FolderReviewWorkspace
@@ -2014,9 +2670,9 @@ export function TaskReviewWorkspace({
           className="relative flex min-h-0 flex-1 divide-x divide-border overflow-hidden bg-border"
           data-testid="task-review-active-scene"
         >
-          {spotlightActive && (
+          {spotlightActive && unit && (
             <div
-              className="pointer-events-none absolute inset-0 z-20 bg-black/50 transition-opacity"
+              className="pointer-events-none absolute inset-0 z-20 bg-black/20 transition-opacity backdrop-blur-[0.5px]"
               aria-hidden="true"
             />
           )}
@@ -2075,6 +2731,17 @@ export function TaskReviewWorkspace({
                 className="flex cursor-pointer items-center justify-between rounded-lg border border-border bg-bg px-3 py-2 text-left hover:border-accent"
               >
                 <span className="font-medium text-fg">{t("返工指令 (Prompt)")}</span>
+                <Copy className="h-3.5 w-3.5 text-accent" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void copyText(buildStartupPrompt(), t("启动提示词"));
+                  setCopyModalOpen(false);
+                }}
+                className="flex cursor-pointer items-center justify-between rounded-lg border border-border bg-bg px-3 py-2 text-left hover:border-accent"
+              >
+                <span className="font-medium text-fg">{t("启动提示词 (Prompt)")}</span>
                 <Copy className="h-3.5 w-3.5 text-accent" />
               </button>
               <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-bg px-3 py-2">

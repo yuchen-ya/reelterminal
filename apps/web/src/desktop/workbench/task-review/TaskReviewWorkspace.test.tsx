@@ -6,6 +6,7 @@ import type { TaskOriginalExportRecord, TaskReviewExportBridge } from "../../../
 import { TaskReviewWorkspace } from "./TaskReviewWorkspace";
 import {
   createFakeTaskAgentBridge,
+  createFakeTaskContextBridge,
   createFakeTaskReviewBridge,
   fakeJob,
   grantFor,
@@ -824,5 +825,267 @@ describe("task review workspace", () => {
     expect(screen.getByTestId("task-review-progress").textContent).toContain("3/3");
     // The green CTA steps aside in the completed state.
     expect(screen.queryByTestId("task-review-keep-continue")).toBeNull();
+  });
+
+  it("embodies built-in agent standby state with startup prompt and inline import on an empty task", async () => {
+    const { taskReview } = installBridges();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+
+    render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
+    await screen.findByTestId("task-review-progress");
+
+    // Header title embodies built-in agent standby
+    expect(screen.getByText("内置 Agent · 待命")).toBeVisible();
+
+    // Clean UI: empty left dock, bottom track and top banner are hidden
+    expect(screen.queryByTestId("task-review-dock-scene")).toBeNull();
+    expect(screen.queryByTestId("task-review-unit-track")).toBeNull();
+    expect(screen.queryByTestId("task-review-context-brief")).toBeNull();
+
+    // Empty agent state in card body
+    expect(screen.getByTestId("task-review-empty-agent-state")).toBeVisible();
+    expect(screen.getByTestId("task-review-copy-startup-prompt")).toBeVisible();
+    expect(screen.getByTestId("task-review-empty-import-text")).toBeVisible();
+    expect(screen.getByTestId("task-review-empty-open-files")).toBeVisible();
+
+    // Copy startup prompt writes prompt to clipboard
+    fireEvent.click(screen.getByTestId("task-review-copy-startup-prompt"));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("reelctl task-review")),
+    );
+    await screen.findByTestId("task-review-toast");
+
+    // Quick inline import right in the card
+    fireEvent.click(screen.getByTestId("task-review-empty-import-text"));
+    expect(screen.getByTestId("task-review-inline-import-form")).toBeVisible();
+    fireEvent.change(screen.getByPlaceholderText("粘贴台词或字幕文本，每行一条…"), {
+      target: { value: "台词一\n台词二" },
+    });
+    fireEvent.click(screen.getByTestId("task-review-quick-import-submit"));
+    await waitFor(() => expect(taskReview.snapshotState().units).toHaveLength(2));
+  });
+
+  it("embodies built-in agent ready state with preflight CTA when units exist without grant", async () => {
+    const { taskAgent, taskReview } = installBridges();
+    const sourceVersionId = crypto.randomUUID();
+    const entryId = crypto.randomUUID();
+    taskReview.mutateState((state) => {
+      state.sources = [{ id: sourceVersionId, entryId, relativePath: "dialogue.txt", hash: "h", format: "txt", text: "一句\n两句", createdAt: 1 }];
+      state.sourceFiles = [{ entryId, relativePath: "dialogue.txt", size: 10, mtimeMs: 1, currentVersionId: sourceVersionId, status: "available" }];
+      state.units = [
+        { id: "u1", sourceVersionId, ordinal: 1, text: "一句", startLine: 1, endLine: 1 },
+        { id: "u2", sourceVersionId, ordinal: 2, text: "两句", startLine: 2, endLine: 2 },
+      ];
+    });
+    const authorizeSpy = vi.spyOn(taskAgent, "authorize");
+    const preflightSpy = vi.spyOn(taskAgent, "startPreflight");
+
+    render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
+    await screen.findByTestId("task-review-progress");
+
+    expect(screen.getByTestId("task-review-agent-ready")).toBeVisible();
+    expect(screen.getByTestId("task-review-start-preflight")).toBeVisible();
+
+    fireEvent.click(screen.getByTestId("task-review-start-preflight"));
+    await waitFor(() => expect(authorizeSpy).toHaveBeenCalled());
+    expect(preflightSpy).toHaveBeenCalled();
+  });
+
+  it("shows live preflight indicator in card footer when background job is running", async () => {
+    const { taskAgent, taskReview } = installBridges();
+    const sourceVersionId = crypto.randomUUID();
+    const entryId = crypto.randomUUID();
+    taskReview.mutateState((state) => {
+      state.sources = [{ id: sourceVersionId, entryId, relativePath: "dialogue.txt", hash: "h", format: "txt", text: "一句", createdAt: 1 }];
+      state.sourceFiles = [{ entryId, relativePath: "dialogue.txt", size: 10, mtimeMs: 1, currentVersionId: sourceVersionId, status: "available" }];
+      state.units = [{ id: "u1", sourceVersionId, ordinal: 1, text: "一句", startLine: 1, endLine: 1 }];
+    });
+    taskAgent.setGrant(grantFor());
+    taskAgent.setJobs([{ ...fakeJob("job-run", "running", ["u1"]), sourceVersionIds: [sourceVersionId], policyRevision: 0 }]);
+
+    render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
+    await screen.findByTestId("task-review-progress");
+
+    await screen.findByTestId("task-review-agent-running");
+    expect(screen.getAllByText("AI 正在预审编排中…")[0]).toBeVisible();
+  });
+
+  it("presents understanding proposal in SpotlightCard with adopt CTA and adopts it", async () => {
+    const { taskReview } = installBridges();
+    const taskReviewContext = createFakeTaskContextBridge(taskReview);
+    Object.defineProperty(window, "reelterminal", {
+      configurable: true,
+      value: { ...window.reelterminal, taskReviewContext },
+    });
+    const sourceVersionId = crypto.randomUUID();
+    const entryId = crypto.randomUUID();
+    const proposalId = crypto.randomUUID();
+    taskReview.mutateState((state) => {
+      state.sources = [{ id: sourceVersionId, entryId, relativePath: "dialogue.txt", hash: "h", format: "txt", text: "一句\n两句", createdAt: 1 }];
+      state.sourceFiles = [{ entryId, relativePath: "dialogue.txt", size: 10, mtimeMs: 1, currentVersionId: sourceVersionId, status: "available" }];
+      state.units = [
+        { id: "u1", sourceVersionId, ordinal: 1, text: "一句", startLine: 1, endLine: 1 },
+        { id: "u2", sourceVersionId, ordinal: 2, text: "两句", startLine: 2, endLine: 2 },
+      ];
+      state.contextHistory = {
+        taskId: state.taskId,
+        proposals: [
+          {
+            id: proposalId,
+            taskId: state.taskId,
+            content: {
+              groundedClaims: ["关于剧情设定的事实梳理"],
+              hypotheses: ["角色口吻一致性假设"],
+            },
+            sourceRefs: [{ unitId: "u1", sourceVersionId, start: 0, end: 2, text: "一句" }],
+            openQuestions: ["第二句的感情基调待确定"],
+            proposedBy: "agent",
+            createdAt: 1,
+          },
+        ],
+        adoptions: [],
+        criteriaVersions: [],
+        criteriaActions: [],
+      };
+    });
+
+    render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
+    await screen.findByTestId("task-review-progress");
+
+    expect(screen.getByText("内置 Agent · 任务理解提案")).toBeVisible();
+    expect(screen.getByTestId("task-review-proposal-body")).toBeVisible();
+    expect(screen.getByText("关于剧情设定的事实梳理")).toBeVisible();
+    expect(screen.getByTestId("task-review-adopt-proposal-cta")).toBeVisible();
+
+    fireEvent.click(screen.getByTestId("task-review-adopt-proposal-cta"));
+    await waitFor(() =>
+      expect(
+        taskReviewContext.calls.filter((call) => call.method === "adoptContext"),
+      ).toHaveLength(1),
+    );
+  });
+  it("allows opening model and API key settings from gear button, changing provider and saving", async () => {
+    const { taskAgent } = installBridges();
+    const configureSpy = vi.spyOn(taskAgent, "configureModel");
+
+    render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
+    await screen.findByTestId("task-review-progress");
+
+    const settingsBtn = screen.getByTestId("spotlight-model-settings-btn");
+    expect(settingsBtn).toBeVisible();
+
+    fireEvent.click(settingsBtn);
+
+    const providerSelect = await screen.findByTestId("task-review-provider-select");
+    expect(providerSelect).toBeVisible();
+
+    // Select DeepSeek preset
+    fireEvent.change(providerSelect, { target: { value: "deepseek" } });
+
+    const endpointInput = screen.getByTestId("task-review-config-endpoint") as HTMLInputElement;
+    expect(endpointInput.value).toBe("https://api.deepseek.com");
+
+    const modelInput = screen.getByTestId("task-review-config-model") as HTMLInputElement;
+    expect(modelInput.value).toBe("deepseek-chat");
+
+    // Select model preset
+    const modelSelect = screen.getByTestId("task-review-model-preset-select");
+    fireEvent.change(modelSelect, { target: { value: "deepseek-reasoner" } });
+    expect(modelInput.value).toBe("deepseek-reasoner");
+
+    // Enter API key
+    const apikeyInput = screen.getByTestId("task-review-config-apikey") as HTMLInputElement;
+    fireEvent.change(apikeyInput, { target: { value: "sk-my-deepseek-key" } });
+
+    // Click Save
+    const saveBtn = screen.getByTestId("task-review-save-model-btn");
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(configureSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          endpoint: "https://api.deepseek.com",
+          backgroundModel: "deepseek-reasoner",
+          completionModel: "deepseek-reasoner",
+          apiKey: "sk-my-deepseek-key",
+        }),
+      );
+    });
+
+    // Verify settings closed after save
+    await waitFor(() => {
+      expect(screen.queryByTestId("task-review-provider-select")).toBeNull();
+    });
+  });
+
+  it("opens model settings from empty state button and from launcher items", async () => {
+    installBridges();
+
+    render(<TaskReviewWorkspace root="task-root" name="空任务" />);
+    await screen.findByTestId("task-review-progress");
+
+    // 1. Click empty state button
+    const openBtn = await screen.findByTestId("task-review-open-model-settings-btn");
+    expect(openBtn).toBeVisible();
+    fireEvent.click(openBtn);
+
+    expect(screen.getByTestId("task-review-provider-select")).toBeVisible();
+
+    // Close settings via return button
+    fireEvent.click(screen.getByTestId("task-review-close-model-settings-btn"));
+    expect(screen.queryByTestId("task-review-provider-select")).toBeNull();
+
+    // 2. Open launcher and click Agent launcher item
+    openLauncher();
+    const launcherAgent = screen.getByTestId("task-review-launcher-agent");
+    expect(launcherAgent).toBeVisible();
+    fireEvent.click(launcherAgent);
+
+    expect(screen.getByTestId("task-review-provider-select")).toBeVisible();
+  });
+
+  it("detects and saves model configuration with preflight when unanalyzed units exist", async () => {
+    const { taskAgent, taskReview } = installBridges();
+    const sourceVersionId = crypto.randomUUID();
+    const entryId = crypto.randomUUID();
+    taskReview.mutateState((state) => {
+      state.sources = [{ id: sourceVersionId, entryId, relativePath: "dialogue.txt", hash: "h", format: "txt", text: "一句", createdAt: 1 }];
+      state.sourceFiles = [{ entryId, relativePath: "dialogue.txt", size: 10, mtimeMs: 1, currentVersionId: sourceVersionId, status: "available" }];
+      state.units = [{ id: "u1", sourceVersionId, ordinal: 1, text: "一句", startLine: 1, endLine: 1 }];
+    });
+
+    const configureSpy = vi.spyOn(taskAgent, "configureModel");
+    const authorizeSpy = vi.spyOn(taskAgent, "authorize");
+    const preflightSpy = vi.spyOn(taskAgent, "startPreflight");
+
+    render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
+    await screen.findByTestId("task-review-progress");
+
+    // Click header gear button to configure
+    fireEvent.click(screen.getByTestId("spotlight-model-settings-btn"));
+
+    const endpointInput = await screen.findByTestId("task-review-config-endpoint");
+    fireEvent.change(endpointInput, { target: { value: "https://custom-ai.internal/v1" } });
+
+    const modelInput = screen.getByTestId("task-review-config-model");
+    fireEvent.change(modelInput, { target: { value: "internal-custom-model" } });
+
+    const keyInput = screen.getByTestId("task-review-config-apikey");
+    fireEvent.change(keyInput, { target: { value: "custom-secret-key" } });
+
+    fireEvent.click(screen.getByTestId("task-review-save-model-btn"));
+
+    await waitFor(() => {
+      expect(configureSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          endpoint: "https://custom-ai.internal/v1",
+          backgroundModel: "internal-custom-model",
+        }),
+      );
+    });
+
+    await waitFor(() => expect(authorizeSpy).toHaveBeenCalled());
+    expect(preflightSpy).toHaveBeenCalled();
   });
 });

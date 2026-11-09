@@ -115,10 +115,18 @@ describe("task media scene", () => {
 
   it("saves and explicitly keeps only the returned new region in the primary action", async () => {
     const { picture, operations, onDecide, onOpenUnit } = setup();
+    const viewport = screen.getByTestId("task-review-media-viewport");
+    expect(viewport.style.height).toContain("65vh");
     fireEvent.pointerDown(await picture(), { clientX: 200, clientY: 100, button: 0 });
-    await screen.findByTestId("task-review-media-accept-keep");
+    const acceptKeep = await screen.findByRole("button", { name: "保存并保留此区域" });
+    expect(viewport.style.height).toContain("48vh");
+    expect(viewport.style.height).toContain("560px");
+    expect(viewport.style.height).not.toContain("65vh");
+    expect(screen.getByRole("button", { name: "仅保存区域" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新计算区域" })).toBeEnabled();
     fireEvent.change(screen.getByLabelText("区域标签"), { target: { value: "蓝色的鱼" } });
-    fireEvent.click(screen.getByTestId("task-review-media-accept-keep"));
+    expect(acceptKeep).toBeEnabled();
+    fireEvent.click(acceptKeep);
     await waitFor(() => expect(onOpenUnit).toHaveBeenCalledWith("new-region"));
     expect(operations.decide).toHaveBeenCalledWith({ unitId: "new-region", sourceVersionId: "media-source", purpose: "review", status: "kept", note: "人工媒体意见" }, expect.any(Function));
     expect(onDecide).not.toHaveBeenCalled();

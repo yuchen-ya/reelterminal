@@ -185,29 +185,33 @@ export class TaskReviewMediaService implements TaskReviewMediaBridge {
 
   async open(input: TaskMediaTarget): Promise<Awaited<ReturnType<TaskReviewMediaBridge['open']>>> {
     const args = taskReviewMediaSchemas.open.parse(input);
-    let snapshot = await this.snapshot(args);
-    const { source, unit } = this.target(snapshot, args, false);
-    const historical = !isCurrentTaskUnit(snapshot, unit);
-    const promptTokenLimit = this.backends.get(snapshot.taskId)?.promptTokenLimit ?? this.options.promptTokenLimit;
-    if (unit.kind === 'video') {
-      if (historical) throw new Error('This original video version is no longer available; saved frame results remain in history');
-      return { snapshot, source, unit, url: url(snapshot.taskId, `source-${source.id}`), width: source.width, height: source.height, promptTokenLimit };
-    }
-    if (unit.kind === 'region') {
-      if (!historical) await this.stamp(snapshot, source);
-      const asset = snapshot.mediaAssets?.find(asset => asset.id === unit.cutoutAssetId && asset.status === 'ready');
-      const maskAsset = snapshot.mediaAssets?.find(asset => asset.id === unit.maskAssetId && asset.status === 'ready');
-      if (!asset || !maskAsset) throw new Error('Registered region cutout or mask is unavailable');
-      return { snapshot, source, unit, asset, maskAsset, url: url(snapshot.taskId, asset.id), cutoutUrl: url(snapshot.taskId, asset.id), maskUrl: url(snapshot.taskId, maskAsset.id), width: asset.width, height: asset.height, promptTokenLimit, historical };
-    }
-    if (historical) {
-      const asset = unit.kind === 'video-frame' ? snapshot.mediaAssets?.find(asset => asset.id === unit.assetId && asset.status === 'ready') : snapshot.mediaAssets?.find(asset => asset.unitId === unit.id && asset.kind === 'normalized-image' && asset.status === 'ready');
-      if (!asset) throw new Error('This historical media version has no saved pixels');
-      return { snapshot, source, unit, asset, url: url(snapshot.taskId, asset.id), width: asset.width, height: asset.height, historical: true };
-    }
-    const prepared = await this.prepare(args);
-    snapshot = await this.snapshot(args);
-    return { snapshot, source, unit, asset: prepared.asset, url: url(snapshot.taskId, prepared.asset.id), width: prepared.frame.width, height: prepared.frame.height, promptTokenLimit };
+    const operation = this.begin('open', args, randomUUID());
+    try {
+      let snapshot = await this.snapshot(args);
+      const { source, unit } = this.target(snapshot, args, false);
+      const historical = !isCurrentTaskUnit(snapshot, unit);
+      const promptTokenLimit = this.backends.get(snapshot.taskId)?.promptTokenLimit ?? this.options.promptTokenLimit;
+      if (unit.kind === 'video') {
+        if (historical) throw new Error('This original video version is no longer available; saved frame results remain in history');
+        return { snapshot, source, unit, url: url(snapshot.taskId, `source-${source.id}`), width: source.width, height: source.height, promptTokenLimit };
+      }
+      if (unit.kind === 'region') {
+        if (!historical) await this.stamp(snapshot, source);
+        const asset = snapshot.mediaAssets?.find(asset => asset.id === unit.cutoutAssetId && asset.status === 'ready');
+        const maskAsset = snapshot.mediaAssets?.find(asset => asset.id === unit.maskAssetId && asset.status === 'ready');
+        if (!asset || !maskAsset) throw new Error('Registered region cutout or mask is unavailable');
+        return { snapshot, source, unit, asset, maskAsset, url: url(snapshot.taskId, asset.id), cutoutUrl: url(snapshot.taskId, asset.id), maskUrl: url(snapshot.taskId, maskAsset.id), width: asset.width, height: asset.height, promptTokenLimit, historical };
+      }
+      if (historical) {
+        const asset = unit.kind === 'video-frame' ? snapshot.mediaAssets?.find(asset => asset.id === unit.assetId && asset.status === 'ready') : snapshot.mediaAssets?.find(asset => asset.unitId === unit.id && asset.kind === 'normalized-image' && asset.status === 'ready');
+        if (!asset) throw new Error('This historical media version has no saved pixels');
+        return { snapshot, source, unit, asset, url: url(snapshot.taskId, asset.id), width: asset.width, height: asset.height, historical: true };
+      }
+      const prepared = await this.prepare(args, operation.controller.signal);
+      this.current('open', operation);
+      snapshot = await this.snapshot(args);
+      return { snapshot, source, unit, asset: prepared.asset, url: url(snapshot.taskId, prepared.asset.id), width: prepared.frame.width, height: prepared.frame.height, promptTokenLimit };
+    } finally { this.finish('open', operation); }
   }
 
   async captureFrame(input: Parameters<TaskReviewMediaBridge['captureFrame']>[0]): Promise<Awaited<ReturnType<TaskReviewMediaBridge['captureFrame']>>> {

@@ -75,15 +75,24 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
     setOpened(null);
     setCandidate(null);
     setError(null);
+    const OPEN_TIMEOUT_MS = 30_000;
+    const timeoutId = window.setTimeout(() => {
+      if (active.current && currentRequest) {
+        setError("画面读取超时，请重新读取画面");
+        setPhase("error");
+      }
+    }, OPEN_TIMEOUT_MS);
     void (async () => {
       try {
         const current = await openMedia({ root, taskId, sourceVersionId: unit.sourceVersionId, unitId: unit.id });
         const base = unit.kind === "region"
           ? await openMedia({ root, taskId, sourceVersionId: unit.sourceVersionId, unitId: unit.parentUnitId }) : current;
         if (!active.current || !currentRequest) return;
+        window.clearTimeout(timeoutId);
         setOpened({ base, ...(unit.kind === "region" ? { mask: current.maskUrl, cutout: current.cutoutUrl ?? current.url } : {}) });
         setPhase("idle");
       } catch (problem) {
+        window.clearTimeout(timeoutId);
         if (active.current && currentRequest) {
           setError(String(problem));
           setPhase("error");
@@ -93,6 +102,7 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
     return () => {
       active.current = false;
       currentRequest = false;
+      window.clearTimeout(timeoutId);
       video.current?.pause();
       cancelCandidate();
       refinement.current = crypto.randomUUID();
@@ -318,7 +328,7 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
             <div
               ref={pane}
               className="overflow-auto rounded border border-border bg-black/40"
-              style={{ height: "min(65vh,720px)" }}
+              style={{ height: candidate && !view.previewResult ? "min(48vh,560px)" : "min(65vh,720px)" }}
               data-testid="task-review-media-viewport">
               {!opened ? <div className="p-4 text-fg-3"><p>{phase === "error" ? "画面暂不可用" : "正在读取画面…"}</p></div> : opened.base.unit.kind === "video" ? (
                 <video
@@ -389,6 +399,7 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
                 type="button"
                 className={wbButton.secondary}
                 disabled={!opened || stale || view.previewResult || !promptTokens(view.prompts) || phase === "segmenting"}
+                aria-label="重新计算区域"
                 data-testid="task-review-media-segment"
                 onClick={() => void requestMask()}>{phase === "segmenting" ? "正在计算区域…" : "重新计算区域"}</button>
               {(phase === "segmenting" || phase === "capturing") && <button
@@ -409,12 +420,19 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
               value={view.label}
               onChange={(event) => setView((current) => ({ ...current, label: event.target.value }))} /></label><button
                 type="button"
+                className={wbButton.primary}
+                aria-label="保存并保留此区域"
+                disabled={busy || stale || phase !== "candidate" || !view.label.trim()}
+                data-testid="task-review-media-accept-keep"
+                onClick={() => void accept(true)}>保存并保留此区域</button>
+              <button
+                type="button"
                 className={wbButton.secondary}
+                aria-label="仅保存区域"
                 disabled={busy || stale || phase !== "candidate" || !view.label.trim()}
                 data-testid="task-review-media-accept"
                 onClick={() => void accept(false)}>仅保存区域</button>
-              <button type="button" className={wbButton.primary} disabled={busy || stale || phase !== "candidate" || !view.label.trim()} data-testid="task-review-media-accept-keep" onClick={() => void accept(true)}>保存并保留此区域</button>
-              <span className="text-fg-3">仅保存不改变判定；保留只作用于这个新区域</span></div>}
+              <span className="basis-full text-fg-3">仅保存不改变判定；保留只作用于这个新区域</span></div>}
           </section>
           <section className="flex min-w-0 flex-col gap-3">
             <FeedbackEditor

@@ -15,6 +15,7 @@ import {
   GripHorizontal,
   LayoutGrid,
   RotateCcw,
+  SlidersHorizontal,
   Wrench,
 } from "lucide-react";
 import { useHoverTip } from "./task-tooltip";
@@ -78,6 +79,9 @@ export function SpotlightCard({
   onToggleCompletion,
   spotlightActive,
   onToggleSpotlight,
+  onOpenModelSettings,
+  modelSettingsActive,
+  modelConfigured,
   onBack,
   canBack,
   footerStatus,
@@ -101,6 +105,10 @@ export function SpotlightCard({
   /** 启动盘底部「聚光」压暗开关状态 */
   spotlightActive: boolean;
   onToggleSpotlight: () => void;
+  /** 头部模型与 API 密钥设置切换 */
+  onOpenModelSettings?: () => void;
+  modelSettingsActive?: boolean;
+  modelConfigured?: boolean;
   /** footer 左侧返回箭头（纯浏览返回） */
   onBack: () => void;
   canBack: boolean;
@@ -171,6 +179,26 @@ export function SpotlightCard({
     }
   };
 
+  // 步骤圆点只渲染活动项附近的最多 9 个（活动项居中，首尾自然截断），
+  // 避免数百个场景时 footer 横向溢出把主 CTA 挤出可视区。
+  const STEP_DOT_WINDOW = 9;
+  const stepDotHalfWindow = STEP_DOT_WINDOW >> 1;
+  const activeDotIndex = Math.max(
+    0,
+    stepDots.findIndex((dot) => dot.active),
+  );
+  const stepDotStart = Math.max(
+    0,
+    Math.min(
+      activeDotIndex - stepDotHalfWindow,
+      Math.max(0, stepDots.length - STEP_DOT_WINDOW),
+    ),
+  );
+  const visibleStepDots = stepDots.slice(
+    stepDotStart,
+    stepDotStart + STEP_DOT_WINDOW,
+  );
+
   const cardPositionStyle: CSSProperties = cardPos
     ? {
         position: "fixed",
@@ -218,6 +246,7 @@ export function SpotlightCard({
             <button
               type="button"
               onClick={() => setCardPos(null)}
+              aria-label="卡片归位"
               {...bindTip("卡片归位", "将工具卡恢复到舞台右侧默认停靠区")}
               className="flex h-6 w-6 items-center justify-center rounded text-fg-3 hover:bg-white/10 hover:text-white cursor-pointer"
               data-testid="spotlight-card-reset"
@@ -225,11 +254,36 @@ export function SpotlightCard({
               <RotateCcw className="h-3 w-3" />
             </button>
           )}
+          {onOpenModelSettings && (
+            <button
+              type="button"
+              onClick={() => onOpenModelSettings()}
+              aria-label={modelSettingsActive ? "返回审阅工具" : "模型与 API 密钥"}
+              {...bindTip(
+                modelSettingsActive ? "返回审阅工具" : "模型与 API 密钥",
+                modelConfigured
+                  ? "配置内置 Agent 模型通道与 API 密钥（当前已配置）"
+                  : "尚未配置模型或 API 密钥，点击立即配置",
+              )}
+              className={`relative flex h-6 w-6 items-center justify-center rounded transition-colors cursor-pointer ${
+                modelSettingsActive
+                  ? "bg-accent/20 text-accent"
+                  : "text-fg-3 hover:bg-white/10 hover:text-white"
+              }`}
+              data-testid="spotlight-model-settings-btn"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {!modelConfigured && (
+                <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-amber-400" />
+              )}
+            </button>
+          )}
 
           {face === "tool" && showCompletionToggle && (
             <button
               type="button"
               onClick={() => onToggleCompletion()}
+              aria-label={completionActive ? "返回审阅工具" : "导出与总览"}
               {...bindTip(
                 completionActive ? "返回审阅工具" : "导出与总览",
                 "切换查看成果导出与全局复盘面板",
@@ -248,6 +302,7 @@ export function SpotlightCard({
           <button
             type="button"
             onClick={() => onFlipFace(face === "tool" ? "launcher" : "tool")}
+            aria-label={face === "tool" ? "打开九宫格功能面板" : "返回当前审阅工具"}
             {...bindTip(
               face === "tool" ? "打开九宫格功能面板" : "返回当前审阅工具",
               face === "tool"
@@ -335,17 +390,18 @@ export function SpotlightCard({
       </div>
 
       {/* CARD FOOTER: Left = Current Unit In-Place Status | Right = Smart Scene Advance CTA */}
-      <div className="flex items-center justify-between gap-1.5 rounded-b-xl border-t border-white/10 bg-[#1c2028] px-3 py-2">
-        <div className="flex items-center gap-1">
+      <div className="flex min-w-0 items-center justify-between gap-1.5 rounded-b-xl border-t border-white/10 bg-[#1c2028] px-3 py-2">
+        <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
           <button
             type="button"
             disabled={!canBack}
             onClick={() => onBack()}
+            aria-label="返回上一画面"
             {...bindTip(
               "返回上一画面",
               "只回到上一次浏览的位置，不会撤销任何已作出的裁决",
             )}
-            className="flex h-7 w-7 items-center justify-center rounded text-fg-2 hover:bg-white/10 hover:text-white disabled:opacity-30 cursor-pointer"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-2 hover:bg-white/10 hover:text-white disabled:opacity-30 cursor-pointer"
             data-testid="spotlight-back-btn"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -354,17 +410,18 @@ export function SpotlightCard({
           {footerStatus}
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Step Dots */}
+        <div className="flex min-w-0 items-center gap-2">
+          {/* Step Dots：只显示活动项附近的最多 9 个（活动居中，首尾自然截断） */}
           {stepDots.length > 0 && (
-            <div className="flex items-center gap-1">
-              {stepDots.map((dot) => (
+            <div className="flex min-w-0 shrink items-center gap-1">
+              {visibleStepDots.map((dot) => (
                 <button
                   key={dot.id}
                   type="button"
+                  aria-label={dot.title}
                   {...bindTip(dot.title, dot.detail)}
                   onClick={() => dot.onClick()}
-                  className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                  className={`h-1.5 shrink-0 rounded-full transition-all cursor-pointer ${
                     dot.active
                       ? "w-3 bg-accent"
                       : dot.done
@@ -385,7 +442,7 @@ export function SpotlightCard({
               disabled={primaryAction.disabled}
               onClick={() => primaryAction.onClick()}
               {...bindTip(primaryAction.tipTitle, primaryAction.tipDetail)}
-              className="inline-flex h-7 items-center gap-1 rounded-lg bg-accent px-2.5 text-xs font-bold text-accent-fg hover:brightness-110 cursor-pointer shrink-0 shadow-[0_0_14px_var(--accent-glow)] disabled:opacity-40"
+              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-accent px-2.5 text-xs font-bold whitespace-nowrap text-accent-fg hover:brightness-110 cursor-pointer shadow-[0_0_14px_var(--accent-glow)] disabled:opacity-40"
             >
               {primaryAction.doneState && (
                 <Check className="h-3.5 w-3.5 stroke-[2.5]" />

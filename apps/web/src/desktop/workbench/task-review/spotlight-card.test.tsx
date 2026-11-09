@@ -75,6 +75,9 @@ interface Options {
   showCompletionToggle?: boolean;
   completionActive?: boolean;
   spotlightActive?: boolean;
+  onOpenModelSettings?: () => void;
+  modelSettingsActive?: boolean;
+  modelConfigured?: boolean;
   canBack?: boolean;
   footerStatus?: ReactNode;
   stepDots?: SpotlightStepDot[];
@@ -89,6 +92,9 @@ function renderCard(options: Options = {}) {
     showCompletionToggle = false,
     completionActive = false,
     spotlightActive = false,
+    onOpenModelSettings,
+    modelSettingsActive = false,
+    modelConfigured = true,
     canBack = true,
     footerStatus = null,
     stepDots = [],
@@ -110,6 +116,9 @@ function renderCard(options: Options = {}) {
       onToggleCompletion={onToggleCompletion}
       spotlightActive={spotlightActive}
       onToggleSpotlight={onToggleSpotlight}
+      onOpenModelSettings={onOpenModelSettings}
+      modelSettingsActive={modelSettingsActive}
+      modelConfigured={modelConfigured}
       onBack={onBack}
       canBack={canBack}
       footerStatus={footerStatus}
@@ -118,6 +127,24 @@ function renderCard(options: Options = {}) {
     />,
   );
   return { onFlipFace, onToggleCompletion, onToggleSpotlight, onBack };
+}
+
+/** 构造 total 个步骤圆点，第 activeIndex（0 基）个为活动项。 */
+function makeStepDots(total: number, activeIndex: number): SpotlightStepDot[] {
+  return Array.from({ length: total }, (_, i) => ({
+    id: `s${i + 1}`,
+    title: `场景 ${i + 1}`,
+    active: i === activeIndex,
+    done: i < activeIndex,
+    onClick: vi.fn(),
+  }));
+}
+
+/** 只统计 footer 中实际渲染出的步骤圆点按钮数量。 */
+function renderedDotCount(): number {
+  return document.querySelectorAll(
+    '[data-testid^="spotlight-step-dot-"]',
+  ).length;
 }
 
 describe("spotlight card", () => {
@@ -244,5 +271,113 @@ describe("spotlight card", () => {
     const allowed = renderCard({ canBack: true });
     fireEvent.click(screen.getByTestId("spotlight-back-btn"));
     expect(allowed.onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("labels every icon-only button with an accessible name", () => {
+    const onOpenModelSettings = vi.fn();
+    renderCard({
+      face: "tool",
+      showCompletionToggle: true,
+      completionActive: false,
+      onOpenModelSettings,
+      modelSettingsActive: false,
+      modelConfigured: false,
+      stepDots,
+      primaryAction,
+    });
+    // aria-label reuses the bindTip title text of each icon button.
+    expect(
+      screen.getByRole("button", { name: "打开九宫格功能面板" }),
+    ).toHaveAttribute("data-testid", "spotlight-flip-btn");
+    expect(
+      screen.getByRole("button", { name: "模型与 API 密钥" }),
+    ).toHaveAttribute("data-testid", "spotlight-model-settings-btn");
+    expect(
+      screen.getByRole("button", { name: "导出与总览" }),
+    ).toHaveAttribute("data-testid", "spotlight-completion-toggle");
+    expect(
+      screen.getByRole("button", { name: "返回上一画面" }),
+    ).toHaveAttribute("data-testid", "spotlight-back-btn");
+    expect(
+      screen.getByRole("button", { name: "场景 1" }),
+    ).toHaveAttribute("data-testid", "spotlight-step-dot-s1");
+
+    // Dragging the header out reveals the reset button, also labelled.
+    const card = screen.getByTestId("agent-spotlight-card");
+    const header = headerOf();
+    enablePointerCapture(header);
+    vi.spyOn(card, "getBoundingClientRect").mockReturnValue({
+      left: 100, top: 60, width: 0, height: 0, right: 100, bottom: 60, x: 100, y: 60, toJSON: () => ({}),
+    });
+    fireEvent.pointerDown(header, { clientX: 100, clientY: 60, button: 0 });
+    expect(
+      screen.getByRole("button", { name: "卡片归位" }),
+    ).toHaveAttribute("data-testid", "spotlight-card-reset");
+    expect(onOpenModelSettings).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "模型与 API 密钥" }));
+    expect(onOpenModelSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps 1069 step dots in the footer DOM-finite, active centered, CTA clickable", () => {
+    const total = 1069;
+    const activeIndex = 533; // 0-based
+    const dots = makeStepDots(total, activeIndex);
+    // Local CTA mock: the shared fixture is reused across tests and its mock
+    // would accumulate clicks.
+    const ctaAction: SpotlightPrimaryAction = { ...primaryAction, onClick: vi.fn() };
+    renderCard({ stepDots: dots, primaryAction: ctaAction });
+
+    // Footer stays bounded: at most the 9-dot window is ever rendered.
+    expect(renderedDotCount()).toBe(9);
+
+    // Active item (index 533 → 场景 534) is centered in the 9-dot window.
+    const visible = Array.from(
+      document.querySelectorAll("[data-testid^='spotlight-step-dot-']"),
+    ) as HTMLElement[];
+    expect(visible[4]).toHaveAttribute("data-testid", "spotlight-step-dot-s534");
+    expect(visible[0]).toHaveAttribute("data-testid", "spotlight-step-dot-s530");
+    expect(visible[8]).toHaveAttribute("data-testid", "spotlight-step-dot-s538");
+    expect(visible[4].className).toContain("bg-accent");
+    expect(visible[0].className).toContain("bg-accent/40"); // done
+
+    // The active dot stays clickable and forwards to its handler.
+    const activeDot = visible[4];
+    fireEvent.click(activeDot);
+    expect(dots[activeIndex].onClick).toHaveBeenCalledTimes(1);
+    expect(dots[activeIndex - 1].onClick).not.toHaveBeenCalled();
+
+    // The single primary CTA is still rendered, clickable and not clipped.
+    const cta = screen.getByTestId("spotlight-cta") as HTMLButtonElement;
+    expect(cta.disabled).toBe(false);
+    fireEvent.click(cta);
+    expect(ctaAction.onClick).toHaveBeenCalledTimes(1);
+    expect(cta.className).toContain("shrink-0");
+  });
+
+  it("truncates the step-dot window naturally at the first and last positions", () => {
+    // Active at the very start: window is the first 9 dots, active centered is
+    // impossible, so the window flushes against index 0 (场景 1 .. 场景 9).
+    renderCard({ stepDots: makeStepDots(1069, 0), primaryAction });
+    expect(renderedDotCount()).toBe(9);
+    expect(
+      screen.queryByTestId("spotlight-step-dot-s1"),
+    ).toHaveAttribute("data-testid", "spotlight-step-dot-s1");
+    expect(screen.getByTestId("spotlight-step-dot-s9")).toBeTruthy();
+    expect(screen.queryByTestId("spotlight-step-dot-s10")).toBeNull();
+
+    cleanup();
+    // Active at the very end: window is the last 9 dots (场景 1061 .. 1069).
+    const tailDots = makeStepDots(1069, 1068);
+    renderCard({ stepDots: tailDots, primaryAction });
+    expect(renderedDotCount()).toBe(9);
+    expect(screen.queryByTestId("spotlight-step-dot-s1061")).not.toBeNull();
+    expect(screen.getByTestId("spotlight-step-dot-s1069")).toBeTruthy();
+    expect(screen.queryByTestId("spotlight-step-dot-s1060")).toBeNull();
+    // The last dot is the active one and stays clickable; CTA remains.
+    const last = screen.getByTestId("spotlight-step-dot-s1069") as HTMLButtonElement;
+    expect(last.className).toContain("bg-accent");
+    fireEvent.click(last);
+    expect(tailDots[1068].onClick).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("spotlight-cta")).toBeTruthy();
   });
 });
