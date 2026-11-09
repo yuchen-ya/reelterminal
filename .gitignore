@@ -102,6 +102,10 @@ creating-views/
 # Signing certs — never commit
 *.p12
 *.pfx
+
+# Local review/debug fixture bundle (open-licensed sample material, ~24 MB; see .dev-assets/README.md)
+.dev-assets/
+_tmp_codex_promo/
 packages/runtime-chromium/.artifacts/
 apps/desktop/e2e/.artifacts/
 apps/desktop/e2e/scratch/
