@@ -1,6 +1,6 @@
 import { BUNDLED_PLUGINS } from "./plugins";
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createAgentFacade, createLiveFacade, LiveWriterLease } from "./index";
@@ -8,10 +8,16 @@ import { assertUniqueToolNames, bindTools, collectPluginTools, definePlugin, def
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 import type { RenderFrameRequest, RenderProvider } from "./providers";
 import type { LiveProjectStore } from "./live-store";
+import type { Project } from "@reelterminal/core/types/project";
+import { AgentFacadeSession } from "./session";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
 const dirs: string[] = [];
-afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))); });
+const liveSessions: ReturnType<typeof createLiveFacade>[] = [];
+afterEach(async () => {
+  await Promise.all(liveSessions.splice(0).map((live) => live.dispose()));
+  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
 
 async function setup() {
   const root = await mkdtemp(path.join(tmpdir(), "source-plugin-")); dirs.push(root);
@@ -26,7 +32,16 @@ async function setup() {
   await facade["project.create"]({ name: "Keep this project" });
   const imported = await facade["media.import"]({ path: writeTinyMp4(root) });
   if (!imported.ok) throw new Error(imported.error.message);
-  return { facade, config, requests, input: { mediaId: imported.value.mediaId, startSec: 0.1, endSec: 0.5, sampleCount: 3 } };
+  const openLive = async (mutate?: (project: Project) => void) => {
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error("No project");
+    mutate?.(state.value.project);
+    const store = { getState: async () => structuredClone(state.value) } as unknown as LiveProjectStore;
+    const live = createLiveFacade({ ...config, store, sessionId: `source-test-${liveSessions.length}`, access: "read-only", lease: new LiveWriterLease() });
+    liveSessions.push(live);
+    return live;
+  };
+  return { facade, config, requests, openLive, input: { mediaId: imported.value.mediaId, startSec: 0.1, endSec: 0.5, sampleCount: 3 } };
 }
 
 describe("bundled tool plugins", () => {
@@ -111,5 +126,126 @@ describe("bundled tool plugins", () => {
     await live.dispose();
     config.renderProvider.renderContactSheetPng = async () => { throw new Error("No sheet"); };
     expect(await facade["media.inspect"](input)).toMatchObject({ ok: true, value: { contactSheet: null } });
+  });
+
+  it.each([
+    { id: "M01", original: "deleted" },
+    { id: "M02", original: "replaced" },
+  ] as const)("$id media.inspect reads only the controlled copy and preserves the snapshot", async ({ original }) => {
+    const { facade, config, input, requests, openLive } = await setup();
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error("No project");
+    const originalPath = state.value.project.mediaLibrary.items[0]!.originalUrl!;
+    const controlledPath = path.join(config.mediaRoots[0]!, "controlled-A.mp4");
+    await copyFile(originalPath, controlledPath);
+    const live = await openLive((project) => {
+      project.mediaLibrary.items[0] = { ...project.mediaLibrary.items[0]!, contentUrl: controlledPath };
+    });
+    if (original === "deleted") await rm(originalPath);
+    else await writeFile(originalPath, "visually different original B");
+    const before = await live["project.get_state"]();
+    const result = await live["media.inspect"](input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    const file = await stat(controlledPath);
+    const resolvedControlled = await realpath(controlledPath);
+    expect(result.value.sourceFingerprint).toEqual({ size: file.size, lastModified: Math.round(file.mtimeMs) });
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every((request) => request.mediaFiles[input.mediaId] === resolvedControlled)).toBe(true);
+    expect(await live["project.get_state"]()).toEqual(before);
+  });
+
+  it("M03 reports a missing controlled copy without rendering the readable original", async () => {
+    const { config, input, requests, openLive } = await setup();
+    const controlledPath = path.join(config.mediaRoots[0]!, "missing-controlled.mp4");
+    const live = await openLive((project) => {
+      project.mediaLibrary.items[0] = { ...project.mediaLibrary.items[0]!, contentUrl: controlledPath };
+    });
+    const result = await live["media.inspect"](input);
+    expect(result).toMatchObject({ ok: false, error: {
+      code: "NOT_FOUND",
+      details: { reason: "source_missing", mediaId: input.mediaId, sourceKind: "controlled" },
+    } });
+    if (!result.ok) expect(result.error.message).toMatch(/without falling back|no fallback|refusing to fall back/i);
+    expect(requests).toHaveLength(0);
+  });
+
+  it.each(["", null])("M03 treats malformed controlled contentUrl %s as authoritative, never as a fallback", async (contentUrl) => {
+    const { input, requests, openLive } = await setup();
+    const live = await openLive((project) => {
+      project.mediaLibrary.items[0] = { ...project.mediaLibrary.items[0]!, contentUrl: contentUrl as string };
+    });
+    expect(await live["media.inspect"](input)).toMatchObject({ ok: false, error: {
+      code: "UNSUPPORTED",
+      details: { reason: "file_backing_unavailable", mediaId: input.mediaId, sourceKind: "controlled" },
+    } });
+    expect(requests).toHaveLength(0);
+  });
+
+  it("M04 rejects a controlled copy outside media roots without reading the original", async () => {
+    const { facade, input, requests, openLive } = await setup();
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error("No project");
+    const outsideRoot = await mkdtemp(path.join(tmpdir(), "source-outside-"));
+    dirs.push(outsideRoot);
+    const controlledPath = path.join(outsideRoot, "controlled-A.mp4");
+    await copyFile(state.value.project.mediaLibrary.items[0]!.originalUrl!, controlledPath);
+    const live = await openLive((project) => {
+      project.mediaLibrary.items[0] = { ...project.mediaLibrary.items[0]!, contentUrl: controlledPath };
+    });
+    expect(await live["media.inspect"](input)).toMatchObject({ ok: false, error: {
+      code: "INVALID_PARAMS",
+      details: { reason: "outside_roots", mediaId: input.mediaId, sourceKind: "controlled" },
+    } });
+    expect(requests).toHaveLength(0);
+  });
+
+  it("M05 keeps legacy originalUrl media and classifies unknown, missing and unbacked records", async () => {
+    const { facade, input, requests, openLive } = await setup();
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error("No project");
+    const originalPath = state.value.project.mediaLibrary.items[0]!.originalUrl!;
+    const legacy = await openLive();
+    const valid = await legacy["media.inspect"](input);
+    expect(valid.ok).toBe(true);
+    if (!valid.ok) throw new Error(valid.error.message);
+    const originalStat = await stat(originalPath);
+    expect(valid.value.sourceFingerprint).toEqual({ size: originalStat.size, lastModified: Math.round(originalStat.mtimeMs) });
+    expect(await legacy["media.inspect"]({ ...input, mediaId: "unknown" })).toMatchObject({ ok: false, error: {
+      code: "NOT_FOUND", details: { reason: "media_not_found", mediaId: "unknown" },
+    } });
+
+    await rm(originalPath);
+    const requestCount = requests.length;
+    expect(await legacy["media.inspect"](input)).toMatchObject({ ok: false, error: {
+      code: "NOT_FOUND", details: { reason: "source_missing", mediaId: input.mediaId, sourceKind: "original" },
+    } });
+    expect(requests).toHaveLength(requestCount);
+
+    const unbacked = await openLive((project) => {
+      const { originalUrl: _originalUrl, contentUrl: _contentUrl, ...item } = project.mediaLibrary.items[0]!;
+      project.mediaLibrary.items[0] = item;
+    });
+    expect(await unbacked["media.inspect"](input)).toMatchObject({ ok: false, error: {
+      code: "UNSUPPORTED", details: { reason: "file_backing_unavailable", mediaId: input.mediaId, sourceKind: "original" },
+    } });
+  });
+
+  it("M02 maps headless timeline previews to the controlled source", async () => {
+    const { facade, config, input, requests } = await setup();
+    await facade["edit.apply"]({ ops: [
+      { op: "track.add", trackType: "video", trackId: "v1" },
+      { op: "clip.add", trackId: "v1", mediaId: input.mediaId, clipId: "c1", startTime: 0, inPoint: 0, outPoint: 0.5 },
+    ] });
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error("No project");
+    const controlledPath = path.join(config.mediaRoots[0]!, "headless-controlled.mp4");
+    await copyFile(state.value.project.mediaLibrary.items[0]!.originalUrl!, controlledPath);
+    state.value.project.mediaLibrary.items[0] = { ...state.value.project.mediaLibrary.items[0]!, contentUrl: controlledPath };
+    const session = new AgentFacadeSession(config);
+    (session as unknown as { project: Project }).project = state.value.project;
+    const preview = await session.previewRenderFrame({ timeSec: 0.2 });
+    expect(preview.ok).toBe(true);
+    expect(requests.at(-1)?.mediaFiles[input.mediaId]).toBe(await realpath(controlledPath));
   });
 });

@@ -120,6 +120,7 @@ import {
   hasUrlScheme,
   resolveContainedPathDetailed,
 } from "./media/path-roots";
+import { resolveLocalSourceFile, selectMediaSource } from "./media/source-file";
 import { probeLocalMediaFile } from "./media/node-media-adapter";
 import { assessColorSupport, probeColorMetadata } from "./color-policy";
 import {
@@ -1290,12 +1291,12 @@ export class AgentFacadeSession {
         return ok({ ...prior.value, kind: "audio-process", state: job.state, replayed: true });
       }
       const media = this.project.mediaLibrary.items.find((item) => item.id === valid.mediaId);
-      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.normalize: media "${valid.mediaId}" not found`);
+      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.normalize: media "${valid.mediaId}" not found`, { reason: "media_not_found", mediaId: valid.mediaId });
       if (valid.endSec > media.metadata.duration) throw new FacadeError("INVALID_PARAMS", "audio.process.normalize: range exceeds source duration");
       const roots = this.config.mediaRoots ?? [];
       if (roots.length === 0) throw new FacadeError("UNSUPPORTED", "audio.process.normalize requires media roots for persistent generated assets");
-      const resolution = resolveContainedPathDetailed(typeof media.originalUrl === "string" ? media.originalUrl : "", roots);
-      if (resolution.kind !== "ok") throw new FacadeError("UNSUPPORTED", "audio.process.normalize requires a readable source inside configured media roots");
+      const resolvedSource = await resolveLocalSourceFile(selectMediaSource(media), { verb: "audio.process.normalize", roots });
+      const sourcePath = resolvedSource.path;
       const ready = await audioAnalysisPreflight();
       if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       if (this.analysisControllers.size >= AUDIO_LIMITS.maxConcurrentPerSession) throw new FacadeError("UNSUPPORTED", "At most two audio/analysis jobs per session; wait or cancel an existing job.");
@@ -1307,7 +1308,7 @@ export class AgentFacadeSession {
       const value = { jobId, sourceRevision };
       this.ledger.set("audio.process.normalize", idempotencyKey, { revision: sourceRevision, value, payloadHash: stableStringify(parameters) });
       void runAudioNormalizationTask(this.jobs, this.analysisControllers, jobId, controller, {
-        sourcePath: resolution.path, mediaRoots: roots, params: parameters,
+        sourcePath, mediaRoots: roots, params: parameters,
         sourceProjectId: this.project.id, sourceRevision,
       });
       return ok({ ...value, kind: "audio-process", state: "queued", replayed: false });
@@ -1331,12 +1332,12 @@ export class AgentFacadeSession {
         return ok({ ...prior.value, kind: "audio-process", state: job.state, replayed: true });
       }
       const media = this.project.mediaLibrary.items.find((item) => item.id === valid.mediaId);
-      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.denoise: media "${valid.mediaId}" not found`);
+      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.denoise: media "${valid.mediaId}" not found`, { reason: "media_not_found", mediaId: valid.mediaId });
       if (valid.endSec > media.metadata.duration) throw new FacadeError("INVALID_PARAMS", "audio.process.denoise: range exceeds source duration");
       const roots = this.config.mediaRoots ?? [];
       if (roots.length === 0) throw new FacadeError("UNSUPPORTED", "audio.process.denoise requires media roots for persistent generated assets");
-      const resolution = resolveContainedPathDetailed(typeof media.originalUrl === "string" ? media.originalUrl : "", roots);
-      if (resolution.kind !== "ok") throw new FacadeError("UNSUPPORTED", "audio.process.denoise requires a readable source inside configured media roots");
+      const resolvedSource = await resolveLocalSourceFile(selectMediaSource(media), { verb: "audio.process.denoise", roots });
+      const sourcePath = resolvedSource.path;
       const ready = await audioAnalysisPreflight();
       if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       if (this.analysisControllers.size >= AUDIO_LIMITS.maxConcurrentPerSession) throw new FacadeError("UNSUPPORTED", "At most two audio/analysis jobs per session; wait or cancel an existing job.");
@@ -1348,7 +1349,7 @@ export class AgentFacadeSession {
       const value = { jobId, sourceRevision };
       this.ledger.set("audio.process.denoise", idempotencyKey, { revision: sourceRevision, value, payloadHash: stableStringify(parameters) });
       void runAudioDenoiseTask(this.jobs, this.analysisControllers, jobId, controller, {
-        sourcePath: resolution.path, mediaRoots: roots, params: parameters,
+        sourcePath, mediaRoots: roots, params: parameters,
         sourceProjectId: this.project.id, sourceRevision,
       });
       return ok({ ...value, kind: "audio-process", state: "queued", replayed: false });
@@ -1370,12 +1371,12 @@ export class AgentFacadeSession {
         return ok({ ...prior.value, kind: "audio-process", state: job.state, replayed: true });
       }
       const media = this.project.mediaLibrary.items.find((item) => item.id === valid.mediaId);
-      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.separate: media "${valid.mediaId}" not found`);
+      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.separate: media "${valid.mediaId}" not found`, { reason: "media_not_found", mediaId: valid.mediaId });
       if (valid.endSec > media.metadata.duration) throw new FacadeError("INVALID_PARAMS", "audio.process.separate: range exceeds source duration");
       const roots = this.config.mediaRoots ?? [];
       if (roots.length === 0) throw new FacadeError("UNSUPPORTED", "audio.process.separate requires media roots for persistent generated assets");
-      const resolution = resolveContainedPathDetailed(typeof media.originalUrl === "string" ? media.originalUrl : "", roots);
-      if (resolution.kind !== "ok") throw new FacadeError("UNSUPPORTED", "audio.process.separate requires a readable source inside configured media roots");
+      const resolvedSource = await resolveLocalSourceFile(selectMediaSource(media), { verb: "audio.process.separate", roots });
+      const sourcePath = resolvedSource.path;
       const ready = await audioAnalysisPreflight();
       if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       const models = await probeAudioModelsRuntime(requiredAudioModelPackages("separate"), "separate");
@@ -1390,7 +1391,7 @@ export class AgentFacadeSession {
       const value = { jobId, sourceRevision };
       this.ledger.set("audio.process.separate", idempotencyKey, { revision: sourceRevision, value, payloadHash: stableStringify(parameters) });
       void runAudioSeparationTask(this.jobs, this.analysisControllers, jobId, controller, {
-        sourcePath: resolution.path, mediaRoots: roots, params: parameters,
+        sourcePath, mediaRoots: roots, params: parameters,
         sourceProjectId: this.project.id, sourceRevision,
       });
       return ok({ ...value, kind: "audio-process", state: "queued", replayed: false });
@@ -1513,7 +1514,7 @@ export class AgentFacadeSession {
         throw new FacadeError(
           "NOT_FOUND",
           `media.analyze_start: media "${valid.mediaId}" not found`,
-          { mediaId: valid.mediaId },
+          { reason: "media_not_found", mediaId: valid.mediaId },
         );
       }
       if (valid.analysisTypes.includes("videoReview") && media.type !== "video") throw new FacadeError("UNSUPPORTED", "videoReview requires video media");
@@ -1562,52 +1563,42 @@ export class AgentFacadeSession {
           replayed: true,
         });
       }
-      const originalUrl = typeof media.originalUrl === "string" ? media.originalUrl : "";
-      const resolution = resolveContainedPathDetailed(
-        originalUrl,
-        this.config.mediaRoots ?? [],
-      );
-      if (resolution.kind !== "ok") {
+      const resolvedSource = await resolveLocalSourceFile(selectMediaSource(media), {
+        verb: "media.analyze_start",
+        roots: this.config.mediaRoots ?? [],
+      });
+      if (resolvedSource.info.size > MAX_MEDIA_FILE_BYTES) {
         throw new FacadeError(
           "UNSUPPORTED",
-          `media.analyze_start: media "${valid.mediaId}" is outside configured media roots or unreadable`,
-        );
-      }
-      const sourceStat = await stat(resolution.path).catch(() => null);
-      if (!sourceStat?.isFile() || sourceStat.size > MAX_MEDIA_FILE_BYTES) {
-        throw new FacadeError(
-          "UNSUPPORTED",
-          `media.analyze_start: media "${valid.mediaId}" is not backed by a readable source file`,
+          `media.analyze_start: media "${valid.mediaId}" exceeds the readable source size limit`,
         );
       }
       let syncReference: SyncOffsetReference | undefined;
       if (syncOffsetParams) {
         const referenceMedia = this.project.mediaLibrary.items.find((item) => item.id === syncOffsetParams.referenceMediaId);
         if (!referenceMedia) {
-          throw new FacadeError("NOT_FOUND", `syncOffset: reference media "${syncOffsetParams.referenceMediaId}" is not in this project's media library`, { referenceMediaId: syncOffsetParams.referenceMediaId });
+          throw new FacadeError("NOT_FOUND", `syncOffset: reference media "${syncOffsetParams.referenceMediaId}" is not in this project's media library`, { reason: "media_not_found", mediaId: syncOffsetParams.referenceMediaId, referenceMediaId: syncOffsetParams.referenceMediaId });
         }
         const targetDurationSec = endSec - startSec;
         const referenceEndSec = syncOffsetParams.referenceStartSec + targetDurationSec;
         if (referenceEndSec > referenceMedia.metadata.duration + 1 / SYNC_OFFSET_ANALYSIS_RATE) {
           throw new FacadeError("INVALID_PARAMS", `syncOffset: reference range ${syncOffsetParams.referenceStartSec.toFixed(3)}–${referenceEndSec.toFixed(3)}s exceeds reference media duration ${referenceMedia.metadata.duration.toFixed(3)}s`, { referenceMediaId: referenceMedia.id, referenceDurationSec: referenceMedia.metadata.duration });
         }
-        const referenceUrl = typeof referenceMedia.originalUrl === "string" ? referenceMedia.originalUrl : "";
-        const referenceResolution = resolveContainedPathDetailed(referenceUrl, this.config.mediaRoots ?? []);
-        if (referenceResolution.kind !== "ok") {
-          throw new FacadeError("UNSUPPORTED", `syncOffset: reference media "${referenceMedia.id}" is outside configured media roots or unreadable`);
-        }
-        const referenceStat = await stat(referenceResolution.path).catch(() => null);
-        if (!referenceStat?.isFile() || referenceStat.size > MAX_MEDIA_FILE_BYTES) {
-          throw new FacadeError("UNSUPPORTED", `syncOffset: reference media "${referenceMedia.id}" is not backed by a readable source file`);
+        const resolvedReference = await resolveLocalSourceFile(selectMediaSource(referenceMedia), {
+          verb: "syncOffset",
+          roots: this.config.mediaRoots ?? [],
+        });
+        if (resolvedReference.info.size > MAX_MEDIA_FILE_BYTES) {
+          throw new FacadeError("UNSUPPORTED", `syncOffset: reference media "${referenceMedia.id}" exceeds the readable source size limit`);
         }
         syncReference = {
           mediaId: referenceMedia.id,
           name: referenceMedia.name,
-          path: referenceResolution.path,
+          path: resolvedReference.path,
           startSec: syncOffsetParams.referenceStartSec,
           endSec: referenceEndSec,
           durationSec: referenceMedia.metadata.duration,
-          sourceFingerprint: { size: referenceStat.size, lastModified: Math.round(referenceStat.mtimeMs) },
+          sourceFingerprint: { size: resolvedReference.info.size, lastModified: Math.round(resolvedReference.info.mtimeMs) },
         };
       }
       if (valid.analysisTypes.includes("videoReview")) {
@@ -1615,7 +1606,7 @@ export class AgentFacadeSession {
         if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       }
       if (this.analysisControllers.size >= AUDIO_LIMITS.maxConcurrentPerSession) throw new FacadeError("UNSUPPORTED", "At most two analysis jobs per session; wait or cancel an existing job.");
-      const sourcePath = resolution.path;
+      const sourcePath = resolvedSource.path;
       const sourceRevision = this.revision;
       const projectId = this.project.id;
       const jobId = `job-${crypto.randomUUID()}`;
@@ -3567,17 +3558,12 @@ export class AgentFacadeSession {
   /** Resolve ONE media item's file with the builder's containment checks. */
   private async resolveMediaItemFile(itemInput: unknown): Promise<string | null> {
     const item = itemInput as MediaItem;
-    const originalUrl =
-      typeof (item as { originalUrl?: unknown }).originalUrl === "string"
-        ? ((item as { originalUrl?: string }).originalUrl as string)
-        : null;
-    if (!originalUrl) return null;
-    const roots = this.config.mediaRoots ?? [];
-    const resolution = resolveContainedPathDetailed(originalUrl, roots);
-    if (resolution.kind !== "ok") return null;
-    const fileStat = await stat(resolution.path).catch(() => null);
-    if (!fileStat?.isFile() || fileStat.size > MAX_MEDIA_FILE_BYTES) return null;
-    return resolution.path;
+    const resolved = await resolveLocalSourceFile(selectMediaSource(item), {
+      verb: "headless media resolution",
+      roots: this.config.mediaRoots ?? [],
+    });
+    if (resolved.info.size > MAX_MEDIA_FILE_BYTES) return null;
+    return resolved.path;
   }
 
   /**
@@ -3597,34 +3583,21 @@ export class AgentFacadeSession {
     }
     const roots = this.config.mediaRoots ?? [];
     const files: Record<string, string> = {};
-    const missing: string[] = [];
+    const oversized: string[] = [];
     for (const item of project.mediaLibrary.items) {
       if (!referenced.has(item.id)) continue;
-      const originalUrl =
-        typeof (item as { originalUrl?: unknown }).originalUrl === "string"
-          ? ((item as { originalUrl?: string }).originalUrl as string)
-          : null;
-      if (!originalUrl) {
-        missing.push(item.id);
+      const resolved = await resolveLocalSourceFile(selectMediaSource(item), { verb, roots });
+      if (resolved.info.size > MAX_MEDIA_FILE_BYTES) {
+        oversized.push(item.id);
         continue;
       }
-      const resolution = resolveContainedPathDetailed(originalUrl, roots);
-      if (resolution.kind !== "ok") {
-        missing.push(item.id);
-        continue;
-      }
-      const fileStat = await stat(resolution.path).catch(() => null);
-      if (!fileStat || !fileStat.isFile() || fileStat.size > MAX_MEDIA_FILE_BYTES) {
-        missing.push(item.id);
-        continue;
-      }
-      files[item.id] = resolution.path;
+      files[item.id] = resolved.path;
     }
-    if (missing.length > 0) {
+    if (oversized.length > 0) {
       throw new FacadeError(
         "INVALID_PARAMS",
-        `${verb}: ${missing.length} referenced media item(s) have no readable file inside the configured mediaRoots`,
-        { mediaIds: missing, mediaRoots: [...roots] },
+        `${verb}: ${oversized.length} referenced media item(s) exceed the source size limit`,
+        { mediaIds: oversized, mediaRoots: [...roots] },
       );
     }
     return files;

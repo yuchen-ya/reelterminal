@@ -137,6 +137,7 @@ import { WORK_ASSET_MAX_MEMBERS } from "@reelterminal/core/types/work-asset";
 import { timelineDurationSec } from "./projection";
 import { basename } from "node:path";
 import { resolveContainedPathDetailed } from "./media/path-roots";
+import { resolveLocalSourceFile, selectMediaSource } from "./media/source-file";
 import {
   WORKBENCH_CONTENT_UPDATE_OP_SCHEMA,
   WORKBENCH_DECIDE_OP_SCHEMA,
@@ -3300,20 +3301,19 @@ export async function enrichMediaFileOps(
       if (replace.replacementMediaId !== undefined) {
         const candidate = project?.mediaLibrary.items.find((item) => item.id === replace.replacementMediaId);
         if (!candidate) {
-          throw new FacadeError("NOT_FOUND", `media.replace: candidate media "${replace.replacementMediaId}" was not found in this project`, { replacementMediaId: replace.replacementMediaId });
+          throw new FacadeError("NOT_FOUND", `media.replace: candidate media "${replace.replacementMediaId}" was not found in this project`, { reason: "media_not_found", mediaId: replace.replacementMediaId, replacementMediaId: replace.replacementMediaId });
         }
         if (candidate.id === replace.mediaId) {
           throw new FacadeError("INVALID_PARAMS", "media.replace: replacementMediaId must name a different media version");
         }
         const original = project?.mediaLibrary.items.find((item) => item.id === replace.mediaId);
+        if (!original) {
+          throw new FacadeError("NOT_FOUND", `media.replace: media "${replace.mediaId}" was not found in this project`, { reason: "media_not_found", mediaId: replace.mediaId });
+        }
         let verifiedDuration: number | undefined;
         if (replace.preserveFrames) {
-          const originalPath = typeof original?.contentUrl === "string" ? original.contentUrl : original?.originalUrl;
-          const candidatePath = typeof candidate.contentUrl === "string" ? candidate.contentUrl : candidate.originalUrl;
-          if (!originalPath || !candidatePath) throw new FacadeError("INVALID_PARAMS", "Strict replacement requires file-backed source and candidate media");
-          const originalResolution = resolveContainedPathDetailed(originalPath, mediaRoots);
-          const candidateResolution = resolveContainedPathDetailed(candidatePath, mediaRoots);
-          if (originalResolution.kind !== "ok" || candidateResolution.kind !== "ok") throw new FacadeError("INVALID_PARAMS", "Strict replacement media must be readable from configured media roots");
+          const originalResolution = await resolveLocalSourceFile(selectMediaSource(original), { verb: "media.replace", roots: mediaRoots });
+          const candidateResolution = await resolveLocalSourceFile(selectMediaSource(candidate), { verb: "media.replace", roots: mediaRoots });
           const verified = await verifyReplacementFrames(originalResolution.path, candidateResolution.path, mediaRoots);
           verifiedDuration = verified.durationSec;
         }
@@ -3332,9 +3332,11 @@ export async function enrichMediaFileOps(
       let verifiedDuration: number | undefined;
       if (replace.preserveFrames) {
         const original = project?.mediaLibrary.items.find((item) => item.id === replace.mediaId);
-        const originalPath = typeof original?.contentUrl === "string" ? original.contentUrl : original?.originalUrl;
-        if (!originalPath) throw new FacadeError("INVALID_PARAMS", "Strict replacement requires file-backed source media");
-        const verified = await verifyReplacementFrames(originalPath, resolution.path, mediaRoots);
+        if (!original) {
+          throw new FacadeError("NOT_FOUND", `media.replace: media "${replace.mediaId}" was not found in this project`, { reason: "media_not_found", mediaId: replace.mediaId });
+        }
+        const originalResolution = await resolveLocalSourceFile(selectMediaSource(original), { verb: "media.replace", roots: mediaRoots });
+        const verified = await verifyReplacementFrames(originalResolution.path, resolution.path, mediaRoots);
         verifiedDuration = verified.durationSec;
       }
       const probed = await probeFile(resolution.path);

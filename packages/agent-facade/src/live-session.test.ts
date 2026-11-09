@@ -2392,6 +2392,90 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     expect(seenMediaFiles).toEqual([{ "m-file": sourcePath }]);
   });
 
+  it("M02 preview, visual inspection and export map the controlled version", async () => {
+    const originalPath = path.join(artifactRoot, "original-B.mp4");
+    const controlledPath = path.join(artifactRoot, "controlled-A.mp4");
+    await writeFile(originalPath, Buffer.from("original-B"));
+    await writeFile(controlledPath, Buffer.from("controlled-A"));
+    const project = structuredClone(store.project);
+    project.mediaLibrary.items.push({
+      id: "m-controlled",
+      name: "controlled.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      originalUrl: originalPath,
+      contentUrl: controlledPath,
+      metadata: { duration: 5, width: 1920, height: 1080, frameRate: 30, codec: "h264", sampleRate: 0, channels: 0, fileSize: 12 },
+      thumbnailUrl: null,
+      waveformData: null,
+    });
+    project.timeline.tracks.push({
+      id: "v1", type: "video", name: "Video 1", locked: false, hidden: false, muted: false, solo: false, transitions: [],
+      clips: [{
+        id: "c1", trackId: "v1", mediaId: "m-controlled", startTime: 0, duration: 5, inPoint: 0, outPoint: 5,
+        effects: [], audioEffects: [], keyframes: [], volume: 1,
+        transform: { position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0, anchor: { x: 0.5, y: 0.5 }, opacity: 1 },
+      }],
+    });
+    (project as unknown as { timeline: { duration: number } }).timeline.duration = 5;
+    store.project = project;
+
+    const baseProvider = stubRenderProvider();
+    const seenMediaFiles: Array<Readonly<Record<string, string>>> = [];
+    const provider: RenderProvider = {
+      ...baseProvider,
+      renderFramePng: async (request) => {
+        seenMediaFiles.push(request.mediaFiles);
+        return baseProvider.renderFramePng(request);
+      },
+    };
+    const exporter = stubExportProvider();
+    const facade = liveFacade({ renderProvider: provider, exportProvider: exporter.provider });
+    expect((await facade["preview.render_frame"]({ timeSec: 1 })).ok).toBe(true);
+    expect((await facade["visual.inspect"]({ timeRange: { startSec: 0, endSec: 1 }, sampleCount: 1 })).ok).toBe(true);
+    const started = await facade["export.start"]({});
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+    await exporter.awaitStart(started.value.jobId);
+    expect(seenMediaFiles.length).toBeGreaterThan(0);
+    expect(seenMediaFiles.every((files) => files["m-controlled"] === controlledPath)).toBe(true);
+    expect(exporter.requests[0]?.mediaFiles["m-controlled"]).toBe(controlledPath);
+    exporter.settle(started.value.jobId, "done");
+    expect((await waitForJob(facade, started.value.jobId)).state).toBe("done");
+  });
+
+  it("M03 live rendering classifies a missing controlled source without using the original", async () => {
+    const originalPath = path.join(artifactRoot, "readable-original.mp4");
+    const controlledPath = path.join(artifactRoot, "missing-controlled.mp4");
+    await writeFile(originalPath, Buffer.from("original"));
+    const project = structuredClone(store.project);
+    project.mediaLibrary.items.push({
+      id: "m-controlled-missing", name: "controlled.mp4", type: "video", fileHandle: null, blob: null,
+      originalUrl: originalPath, contentUrl: controlledPath,
+      metadata: { duration: 5, width: 1920, height: 1080, frameRate: 30, codec: "h264", sampleRate: 0, channels: 0, fileSize: 12 },
+      thumbnailUrl: null, waveformData: null,
+    });
+    project.timeline.tracks.push({
+      id: "v1", type: "video", name: "Video 1", locked: false, hidden: false, muted: false, solo: false, transitions: [],
+      clips: [{
+        id: "c1", trackId: "v1", mediaId: "m-controlled-missing", startTime: 0, duration: 5, inPoint: 0, outPoint: 5,
+        effects: [], audioEffects: [], keyframes: [], volume: 1,
+        transform: { position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0, anchor: { x: 0.5, y: 0.5 }, opacity: 1 },
+      }],
+    });
+    (project as unknown as { timeline: { duration: number } }).timeline.duration = 5;
+    store.project = project;
+    const provider = stubRenderProvider();
+    const render = vi.spyOn(provider, "renderFramePng");
+    const result = await liveFacade({ renderProvider: provider })["preview.render_frame"]({ timeSec: 1 });
+    expect(result).toMatchObject({ ok: false, error: {
+      code: "NOT_FOUND",
+      details: { reason: "source_missing", mediaId: "m-controlled-missing", sourceKind: "controlled" },
+    } });
+    expect(render).not.toHaveBeenCalled();
+  });
+
   it("pixel-reading verbs reject blob/GUI-only media instead of rendering wrong pixels", async () => {
     // A clip referencing media with no absolute file path (blob-only).
     const project = structuredClone(store.project) as unknown as {

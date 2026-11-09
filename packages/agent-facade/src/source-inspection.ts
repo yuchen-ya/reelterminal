@@ -17,7 +17,7 @@ export async function inspectSource(input: SourceInspectInput, context: ToolCont
     throw new FacadeError("CONFLICT", `revision conflict: expected ${input.expectedRevision}, current is ${revision}`);
   }
   const media = project.mediaLibrary.items.find((item) => item.id === input.mediaId);
-  if (!media) throw new FacadeError("NOT_FOUND", `Unknown media id: ${input.mediaId}`);
+  if (!media) throw new FacadeError("NOT_FOUND", `Unknown media id: ${input.mediaId}`, { reason: "media_not_found", mediaId: input.mediaId });
   if (media.type !== "video") throw new FacadeError("UNSUPPORTED", "Source inspection currently supports video; audio is not reviewed");
   if (!(input.endSec > input.startSec) || input.endSec > media.metadata.duration) {
     throw new FacadeError("INVALID_PARAMS", "Source range must satisfy 0 ≤ startSec < endSec ≤ media duration");

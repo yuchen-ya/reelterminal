@@ -8,7 +8,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { hasUrlScheme, resolveContainedPath } from "./path-roots";
+import { hasUrlScheme, resolveContainedPath, resolveContainedPathDetailed } from "./path-roots";
 
 describe("hasUrlScheme", () => {
   it("flags URL schemes we do not accept", () => {
@@ -150,6 +150,20 @@ describe("resolveContainedPath", () => {
   it("rejects nonexistent and unreadable candidates", () => {
     expect(resolveContainedPath(path.join(root, "ghost.mp4"), [root])).toBeNull();
     expect(existsSync(path.join(root, "ghost.mp4"))).toBe(false);
+  });
+
+  it.each(["ENOENT", "ENOTDIR", "EACCES", "EPERM"])("preserves injected filesystem error %s for media diagnostics", (code) => {
+    const result = resolveContainedPathDetailed(insideFile, [root], () => {
+      throw Object.assign(new Error(`injected ${code}`), { code });
+    });
+    expect(result).toEqual({ kind: "unresolvable", fsCode: code });
+  });
+
+  it("keeps an unknown realpath failure distinguishable from missing and permission errors", () => {
+    const result = resolveContainedPathDetailed(insideFile, [root], () => {
+      throw new Error("injected unknown failure");
+    });
+    expect(result).toEqual({ kind: "unresolvable" });
   });
 
   it("rejects URL-scheme candidates", () => {

@@ -1,9 +1,7 @@
-import { isAbsolute } from "node:path";
-import { stat } from "node:fs/promises";
 import { bindTools, type PluginBindings } from "./plugin-api";
 import { PLUGIN_TOOLS } from "./plugins";
 import { FacadeError, type FacadeResult } from "./errors";
-import { resolveContainedPathDetailed } from "./media/path-roots";
+import { resolveLocalSourceFile, selectProjectMediaSource } from "./media/source-file";
 import type { MediaAnalyzeStartParams, MediaAnalyzeStartResult, JobParams, JobStatusView, ProjectState } from "./types";
 import type { RenderProvider } from "./providers";
 
@@ -26,13 +24,12 @@ export function bindBundledTools(
       return { project: structuredClone(result.value.project), revision: result.value.revision };
     },
     async resolveMediaPath(mediaId, project) {
-      const url = project.mediaLibrary.items.find((item) => item.id === mediaId)?.originalUrl;
-      if (!url || !isAbsolute(url)) throw new FacadeError("UNSUPPORTED", "Source inspection requires file-backed media");
-      const resolution = resolveContainedPathDetailed(url, config.mediaRoots ?? []);
-      if (resolution.kind !== "ok") throw new FacadeError("INVALID_PARAMS", "Source media is outside configured roots or unreadable");
-      const info = await stat(resolution.path);
-      if (!info.isFile()) throw new FacadeError("INVALID_PARAMS", "Source media must be a regular file");
-      return resolution.path;
+      const { source } = selectProjectMediaSource(project, mediaId);
+      const resolved = await resolveLocalSourceFile(source, {
+        verb: "media source resolution",
+        roots: config.mediaRoots ?? [],
+      });
+      return resolved.path;
     },
   });
 }

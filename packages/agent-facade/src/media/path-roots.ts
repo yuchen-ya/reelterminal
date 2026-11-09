@@ -53,7 +53,7 @@ function comparablePath(p: string): string {
 export type ContainmentResult =
   | { readonly kind: "ok"; readonly path: string }
   | { readonly kind: "outside" }
-  | { readonly kind: "unresolvable" };
+  | { readonly kind: "unresolvable"; readonly fsCode?: string };
 
 /**
  * Resolves `candidate` (absolute, or relative to `process.cwd()`) and checks
@@ -90,8 +90,14 @@ export function resolveContainedPathDetailed(
     const real = resolveRealPath(absolute);
     if (isForbiddenLocalPath(real)) return { kind: "outside" };
     resolvedReal = path.normalize(real);
-  } catch {
-    return { kind: "unresolvable" };
+  } catch (error) {
+    const fsCode = typeof error === "object" && error !== null && "code" in error
+      ? (error as { code?: unknown }).code
+      : undefined;
+    return {
+      kind: "unresolvable",
+      ...(typeof fsCode === "string" ? { fsCode } : {}),
+    };
   }
 
   const comparableCandidate = comparablePath(resolvedReal);

@@ -5,11 +5,12 @@
  * known-content 75-frame clip as media/frame-exact.test.ts (cuts at frames
  * 20/40/45/55, black 45–54, frozen tail 65–74).
  */
-import { mkdtemp, rm, stat, readFile } from "node:fs/promises";
+import { copyFile, mkdtemp, rm, stat, readFile, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
-import { createAgentFacade } from "../index";
+import { createAgentFacade, createLiveFacade, LiveWriterLease, type AgentFacade } from "../index";
+import type { LiveProjectStore } from "../live-store";
 import { resolveToolFfmpeg, runToolProcess } from "../media/ffmpeg-bin";
 import { writeTinyMp4 } from "../media/fixtures/tiny-mp4";
 
@@ -19,6 +20,7 @@ const skip = () => (hasFfmpeg ? undefined : true);
 
 const dirs: string[] = [];
 afterAll(async () => {
+  await Promise.all(liveSessions.splice(0).map((live) => live.dispose()));
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -27,6 +29,34 @@ let facade: ReturnType<typeof createAgentFacade> | undefined;
 let mediaId = "";
 let samplePath = "";
 let spacesPath = "";
+const liveSessions: ReturnType<typeof createLiveFacade>[] = [];
+
+async function withControlledCopy(base: AgentFacade, mediaRoot: string, contentUrl: string) {
+  const state = await base["project.get_state"]();
+  if (!state.ok) throw new Error("No project");
+  state.value.project.mediaLibrary.items[0] = { ...state.value.project.mediaLibrary.items[0]!, contentUrl };
+  const store = { getState: async () => structuredClone(state.value) } as unknown as LiveProjectStore;
+  const live = createLiveFacade({
+    store,
+    lease: new LiveWriterLease(),
+    sessionId: `controlled-frames-${liveSessions.length}`,
+    access: "read-only",
+    mediaRoots: [mediaRoot],
+    artifactRoot: path.join(mediaRoot, "artifacts"),
+  });
+  liveSessions.push(live);
+  return live;
+}
+
+async function makeSolidSample(dir: string, name: string, color: string, durationSec: number): Promise<string> {
+  const target = path.join(dir, name);
+  await runToolProcess(binaries!.ffmpeg, [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-f", "lavfi", "-i", `color=${color}:size=64x64:rate=10:duration=${durationSec}`,
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", target,
+  ]);
+  return target;
+}
 
 async function makeSample(dir: string, name: string): Promise<string> {
   const target = path.join(dir, name);
@@ -77,6 +107,106 @@ describe("frames.extract (plugin)", () => {
     expect(await facade!["project.get_state"]()).toEqual(before);
   });
 
+  it.skipIf(skip())("M01 extracts from the controlled copy after the original disappears", async () => {
+    const versionRoot = await mkdtemp(path.join(root, "m01-"));
+    const originalPath = writeTinyMp4(versionRoot);
+    const controlledPath = path.join(versionRoot, "controlled.mp4");
+    await copyFile(originalPath, controlledPath);
+    const base = createAgentFacade({ mediaRoots: [versionRoot], artifactRoot: path.join(versionRoot, "artifacts") });
+    await base["project.create"]({ name: "M01" });
+    const imported = await base["media.import"]({ path: originalPath });
+    if (!imported.ok) throw new Error(imported.error.message);
+    const live = await withControlledCopy(base, versionRoot, controlledPath);
+    await rm(originalPath);
+    const before = await live["project.get_state"]();
+    const result = await live["frames.extract"]({ source: { mediaId: imported.value.mediaId }, selection: { frames: [0] } });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.sourcePath).toBe(await realpath(controlledPath));
+    const controlledStat = await stat(controlledPath);
+    expect(result.value.sourceFingerprint).toEqual({ size: controlledStat.size, lastModified: Math.round(controlledStat.mtimeMs) });
+    expect(await live["project.get_state"]()).toEqual(before);
+  });
+
+  it.skipIf(skip())("M02 decodes controlled A pixels and duration after original B changes", async () => {
+    const versionRoot = await mkdtemp(path.join(root, "m02-"));
+    const originalB = await makeSolidSample(versionRoot, "original-B.mp4", "blue", 2);
+    const controlledA = await makeSolidSample(versionRoot, "controlled-A.mp4", "red", 1);
+    const base = createAgentFacade({ mediaRoots: [versionRoot], artifactRoot: path.join(versionRoot, "artifacts") });
+    await base["project.create"]({ name: "M02" });
+    const imported = await base["media.import"]({ path: originalB });
+    if (!imported.ok) throw new Error(imported.error.message);
+    const live = await withControlledCopy(base, versionRoot, controlledA);
+    const before = await live["project.get_state"]();
+    const result = await live["frames.extract"]({ source: { mediaId: imported.value.mediaId }, selection: { frames: [0] } });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.sourcePath).toBe(await realpath(controlledA));
+    expect(result.value.facts.durationSec).toBeCloseTo(1, 2);
+    expect(result.value.facts.durationSec).not.toBeCloseTo(2, 2);
+    const controlledStat = await stat(controlledA);
+    expect(result.value.sourceFingerprint).toEqual({ size: controlledStat.size, lastModified: Math.round(controlledStat.mtimeMs) });
+
+    const decoded = await runToolProcess(binaries!.ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-i", result.value.frames[0]!.artifact.path,
+      "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-",
+    ]);
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    for (let index = 0; index < decoded.stdout.length; index += 3) {
+      red += decoded.stdout[index]!;
+      green += decoded.stdout[index + 1]!;
+      blue += decoded.stdout[index + 2]!;
+    }
+    const pixels = decoded.stdout.length / 3;
+    expect(red / pixels).toBeGreaterThan(200);
+    expect(green / pixels).toBeLessThan(60);
+    expect(blue / pixels).toBeLessThan(60);
+
+    const sheet = await live["frames.contact_sheet"]({
+      frames: result.value.frames.map((frame) => ({ path: frame.artifact.path, frame: frame.frame })),
+      columns: 1,
+      cellWidth: 64,
+    });
+    expect(sheet.ok).toBe(true);
+    if (!sheet.ok) throw new Error(sheet.error.message);
+    expect(sheet.value.cells).toMatchObject([{ frame: 0, sourcePath: result.value.frames[0]!.artifact.path }]);
+    expect(await live["project.get_state"]()).toEqual(before);
+  });
+
+  it.skipIf(skip())("M03 fails a missing controlled copy instead of decoding the original", async () => {
+    const versionRoot = await mkdtemp(path.join(root, "m03-"));
+    const originalPath = writeTinyMp4(versionRoot);
+    const base = createAgentFacade({ mediaRoots: [versionRoot], artifactRoot: path.join(versionRoot, "artifacts") });
+    await base["project.create"]({ name: "M03" });
+    const imported = await base["media.import"]({ path: originalPath });
+    if (!imported.ok) throw new Error(imported.error.message);
+    const live = await withControlledCopy(base, versionRoot, path.join(versionRoot, "missing-controlled.mp4"));
+    const result = await live["frames.extract"]({ source: { mediaId: imported.value.mediaId }, selection: { frames: [0] } });
+    expect(result).toMatchObject({ ok: false, error: {
+      code: "NOT_FOUND",
+      details: { reason: "source_missing", mediaId: imported.value.mediaId, sourceKind: "controlled" },
+    } });
+  });
+
+  it.skipIf(skip())("M04 rejects an outside controlled copy instead of decoding the contained original", async () => {
+    const versionRoot = await mkdtemp(path.join(root, "m04-"));
+    const originalPath = writeTinyMp4(versionRoot);
+    const controlledPath = path.join(root, "outside-controlled.mp4");
+    await copyFile(originalPath, controlledPath);
+    const base = createAgentFacade({ mediaRoots: [versionRoot], artifactRoot: path.join(versionRoot, "artifacts") });
+    await base["project.create"]({ name: "M04" });
+    const imported = await base["media.import"]({ path: originalPath });
+    if (!imported.ok) throw new Error(imported.error.message);
+    const live = await withControlledCopy(base, versionRoot, controlledPath);
+    const result = await live["frames.extract"]({ source: { mediaId: imported.value.mediaId }, selection: { frames: [0] } });
+    expect(result).toMatchObject({ ok: false, error: {
+      code: "INVALID_PARAMS",
+      details: { reason: "outside_roots", mediaId: imported.value.mediaId, sourceKind: "controlled" },
+    } });
+  });
+
   it.skipIf(skip())("extracts a range including the first and last frame via a path with spaces/Chinese", async () => {
     const result = await facade!["frames.extract"]({
       source: { path: spacesPath },
@@ -94,10 +224,19 @@ describe("frames.extract (plugin)", () => {
     if (beyond.ok) return;
     expect(beyond.error.code).toBe("INVALID_PARAMS");
 
-    const outside = await facade!["frames.extract"]({ source: { path: "C:/definitely/not/inside.mp4" }, selection: { startFrame: 0, endFrame: 1 } });
-    expect(outside.ok).toBe(false);
-    if (outside.ok) return;
-    expect(outside.error.code).toBe("INVALID_PARAMS");
+    const outsideRoot = await mkdtemp(path.join(tmpdir(), "frame-tools-outside-"));
+    dirs.push(outsideRoot);
+    const outsidePath = writeTinyMp4(outsideRoot);
+    const outside = await facade!["frames.extract"]({ source: { path: outsidePath }, selection: { startFrame: 0, endFrame: 1 } });
+    expect(outside).toMatchObject({ ok: false, error: {
+      code: "INVALID_PARAMS", details: { reason: "outside_roots", path: outsidePath },
+    } });
+
+    const missingPath = path.join(root, "missing-explicit.mp4");
+    const missing = await facade!["frames.extract"]({ source: { path: missingPath }, selection: { startFrame: 0, endFrame: 1 } });
+    expect(missing).toMatchObject({ ok: false, error: {
+      code: "NOT_FOUND", details: { reason: "source_missing", path: missingPath },
+    } });
 
     const both = await facade!["frames.extract"]({ source: { mediaId }, selection: { frames: [1], startFrame: 0, endFrame: 2 } } as never);
     expect(both.ok).toBe(false);

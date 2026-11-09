@@ -26,6 +26,7 @@ import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
 import { ActionHistory } from "@reelterminal/core/actions/action-history";
 import type { Action } from "@reelterminal/core/types/actions";
 import { createEmptyProject } from "./project-factory";
+import { enrichMediaFileOps } from "./ops";
 
 const execute = promisify(execFile);
 
@@ -264,6 +265,73 @@ describe("media.replace / media.relink", () => {
       ops: [{ op: "media.relink", mediaId: before.clip!.mediaId, filePath: "/etc/hosts" }],
     });
     expect(outside.ok).toBe(false);
+  });
+
+  it.each(["replacementMediaId", "filePath"] as const)("strict replacement (%s) never falls back when the controlled original is missing", async (mode) => {
+    const { project } = await clipState("clip-a");
+    const original = project.mediaLibrary.items[0]!;
+    const controlledPath = path.join(mediaRoot, `controlled-original-${mode}.mp4`);
+    await copyFile(originalPath, controlledPath);
+    project.mediaLibrary.items[0] = { ...original, contentUrl: controlledPath };
+    const replacementPath = path.join(mediaRoot, `replacement-${mode}.mp4`);
+    await copyFile(originalPath, replacementPath);
+    project.mediaLibrary.items.push({ ...original, id: `candidate-${mode}`, originalUrl: replacementPath });
+    await rm(controlledPath);
+    const op = mode === "replacementMediaId"
+      ? { op: "media.replace", mediaId: original.id, replacementMediaId: `candidate-${mode}`, scope: "project", preserveFrames: true }
+      : { op: "media.replace", mediaId: original.id, filePath: replacementPath, scope: "project", preserveFrames: true };
+    await expect(enrichMediaFileOps(
+      [op as never],
+      [mediaRoot],
+      async () => { throw new Error("probe must not run after source failure"); },
+      async () => { throw new Error("stat must not run after source failure"); },
+      async () => project,
+    )).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      details: { reason: "source_missing", mediaId: original.id, sourceKind: "controlled" },
+    });
+  });
+
+  it("strict replacement treats a null controlled field as authoritative", async () => {
+    const { project } = await clipState("clip-a");
+    const original = project.mediaLibrary.items[0]!;
+    project.mediaLibrary.items[0] = { ...original, contentUrl: null as unknown as string };
+    const replacementPath = path.join(mediaRoot, "replacement-null-controlled.mp4");
+    await copyFile(originalPath, replacementPath);
+    project.mediaLibrary.items.push({ ...original, id: "candidate-null-controlled", originalUrl: replacementPath });
+    await expect(enrichMediaFileOps(
+      [{ op: "media.replace", mediaId: original.id, replacementMediaId: "candidate-null-controlled", scope: "project", preserveFrames: true } as never],
+      [mediaRoot],
+      async () => { throw new Error("probe must not run"); },
+      async () => { throw new Error("stat must not run"); },
+      async () => project,
+    )).rejects.toMatchObject({
+      code: "UNSUPPORTED",
+      details: { reason: "file_backing_unavailable", mediaId: original.id, sourceKind: "controlled" },
+    });
+  });
+
+  it("strict replacement verifies the controlled original and candidate when both originals disappear", async () => {
+    const { project } = await clipState("clip-a");
+    const original = project.mediaLibrary.items[0]!;
+    const originalControlled = path.join(mediaRoot, "controlled-old.mp4");
+    const candidateControlled = path.join(mediaRoot, "controlled-new.mp4");
+    const candidateOriginal = path.join(mediaRoot, "original-new.mp4");
+    await copyFile(originalPath, originalControlled);
+    await copyFile(originalPath, candidateControlled);
+    await copyFile(originalPath, candidateOriginal);
+    project.mediaLibrary.items[0] = { ...original, contentUrl: originalControlled };
+    project.mediaLibrary.items.push({ ...original, id: "controlled-candidate", originalUrl: candidateOriginal, contentUrl: candidateControlled });
+    await rm(originalPath);
+    await rm(candidateOriginal);
+    const enriched = await enrichMediaFileOps(
+      [{ op: "media.replace", mediaId: original.id, replacementMediaId: "controlled-candidate", scope: "project", preserveFrames: true } as never],
+      [mediaRoot],
+      async () => { throw new Error("existing candidate must not be re-probed"); },
+      async () => { throw new Error("stat must not run"); },
+      async () => project,
+    );
+    expect(enriched[0]).toMatchObject({ verifiedDuration: 6 });
   });
 });
 

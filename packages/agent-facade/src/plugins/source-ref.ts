@@ -3,10 +3,8 @@
  * (frame-tools, motion-tools): {"mediaId"} or {"path"} — exactly one —
  * resolved against the session's media roots plus the artifact root.
  */
-import { stat } from "node:fs/promises";
-import { FacadeError } from "../errors";
 import type { ToolContext } from "../plugin-api";
-import { resolveContainedPathDetailed } from "../media/path-roots";
+import { resolveLocalSourceFile } from "../media/source-file";
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -30,11 +28,9 @@ export async function resolveSourceFile(source: SourceRef, context: ToolContext,
     return context.resolveMediaPath(source.value, project);
   }
   const roots = [...context.mediaRoots, ...(context.artifactRoot ? [context.artifactRoot] : [])];
-  const resolution = resolveContainedPathDetailed(source.value, roots);
-  if (resolution.kind !== "ok") {
-    throw new FacadeError("INVALID_PARAMS", `${verb}: input path is outside the configured media/artifact roots or unreadable`, { path: source.value });
-  }
-  const info = await stat(resolution.path).catch(() => null);
-  if (!info?.isFile()) throw new FacadeError("INVALID_PARAMS", `${verb}: input path is not a readable file`, { path: source.value });
-  return resolution.path;
+  const resolved = await resolveLocalSourceFile(
+    { path: source.value },
+    { verb, roots, requireAbsolute: false },
+  );
+  return resolved.path;
 }
