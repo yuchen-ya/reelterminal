@@ -1,7 +1,9 @@
 # External network access
 
 ReelTerminal ships as a local editor. The publisher operates no template,
-sharing, transcription, marketplace, model-mirror or stabilization service.
+sharing, transcription, marketplace or stabilization backend. Fixed model
+resources for source builds are published separately on this project's GitHub
+Releases; the application does not fetch them at startup.
 There are no default runtime requests to the upstream hosted services. Public resource
 downloads and user-configured provider requests are described below.
 
@@ -10,6 +12,8 @@ downloads and user-configured provider requests are described below.
 | Capability | Default delivery |
 |---|---|
 | Import, edit, save, export, local templates | Local application and files; no cloud backend required. |
+| Task-review Agent | Optional requests to the model endpoint configured by the user. A task/source grant is required before its text is sent; setting a key alone does not grant access. Keys are encrypted locally with Electron safeStorage and used for authorized requests to that endpoint. Manual review remains available without a model or key. |
+| Task-review region segmentation | The desktop package includes the pinned MobileSAM split ONNX models and Apache-2.0 notices. CPU inference stays local; region segmentation does not upload images or download models at startup. |
 | Private Free Boards (Markdown, local HTML, web URL containers) | Markdown and local HTML imports retain only referenced local assets inside the document directory and generate initial HTML snapshots in an isolated Chromium view with network access disabled. Standalone HTTP/S URL containers display only the URL until the user explicitly clicks **Enter browse**, which loads the remote page in an isolated Chromium content view (no Node/preload access, no downloads or permission grants). See [Free Boards guide](HUMAN-BOARDS.zh-CN.md). |
 | Local Qwen/SenseVoice captions | Optional user-configured Python interpreters and local Qwen ASR/ForcedAligner model directories; SenseVoice also needs its local runtime/model. The caption worker uses CPU float32 and local files only. No model weights are bundled and the app does not run pip. Settings reports missing components and provides setup guidance. Recognition and alignment stay local. See [user help](USER-GUIDE.md). |
 | Legacy browser Whisper captions | The old desktop/browser Whisper download UI has been removed in favor of local Qwen/SenseVoice captions; any remaining browser-only Transformers.js fallback contacts Hugging Face only if explicitly invoked outside the desktop caption UI. |
@@ -28,7 +32,7 @@ downloads and user-configured provider requests are described below.
 | Studio marketplace | Unused submission/API clients removed. Studio editing and package export remain local. |
 | Studio samples | Catalog empty; import your own footage. No upstream footage or CDN is supplied. |
 | Product analytics | PostHog and tracking calls removed. |
-| Updates | Packaged app checks this project's GitHub Releases. Download requires user action; once downloaded, the update installs on the next normal quit after the unsaved-changes guard. Legacy unsafe Windows installations are blocked by the new installer; do not use in-place updates for them. Follow [Windows upgrade and backup](WINDOWS-UPGRADE.md#english). Signed installer/update acceptance remains pending. |
+| Updates | Packaged app checks this project's GitHub application Releases. Download requires user action; once downloaded, the update installs on the next normal quit after the unsaved-changes guard. Legacy unsafe Windows installations are blocked by the new installer; do not use in-place updates for them. Follow [Windows upgrade and backup](WINDOWS-UPGRADE.md#english). Windows builds are unsigned; verify the download source and published checksums. |
 
 Resource GET requests disclose ordinary request metadata (IP, user agent and
 possibly referrer). They do not upload the edited clip. Remote URLs contained
@@ -67,21 +71,19 @@ Crash reporting sends only an allowlisted event category and app/platform
 versions when its endpoint is configured; error message, stack and context
 remain local.
 
-## Rights and release records
+## Third-party licenses
 
 Silero VAD v5.1.2 (AUD-01) is implemented with the pinned weights above and
-the MIT-licensed `onnxruntime-node` package; its notices enter the generated
-third-party list at package-build time. The 1.2.2 Windows x64 build packages
-the runtime correctly (`onnxruntime-node` and `onnxruntime-common` unpacked in
-`app.asar.unpacked`, the win32/x64 NAPI binding beside them, other OS and
-unused arch binaries pruned). The macOS and Linux configurations keep their
-own platform binary and prune the non-target arch after pack instead of
-applying the Windows-only prune, but those installers still need the same load
-check on their own platforms before they are represented as VAD-capable.
+the MIT-licensed `onnxruntime-node` package. Bundled dependencies, their declared
+licenses and available upstream notices are listed in the application's
+`licenses/` directory. Standard license reference terms, where used for an npm
+archive without a package-specific notice, are explicitly identified as such;
+they do not invent a copyright attribution.
 
 SenseVoice transcription, anonymous speaker grouping and Demucs separation are implemented as optional local tools, not bundled environments. Their setup and model-download permissions are described above. Qwen/SenseVoice desktop captions are distinct from the sentence-level Agent speechTranscript API. DeepFilterNet and other unimplemented backends must not be presented as available.
 
-See [Asset rights review](archive/ASSET-LICENSE-REVIEW.md). Removed sample footage and
-retired private mirrors are not default release dependencies. FFmpeg core
-artifact/source/license records and the remaining npm notice gaps still need
-review before an installer is represented as fully cleared for distribution.
+Removed sample footage and retired private mirrors are not default release
+dependencies. Native FFmpeg and Blender executables are not bundled. The
+`licenses/` directory includes the relevant terms and source references for
+FFmpeg.wasm, optional external tools and bundled native convenience sidecars.
+Users remain responsible for the rights to their own media and optional tools.

@@ -37,15 +37,53 @@ async function settled(runtime: TaskReviewRuntime, target: TaskAgentTarget, time
     const state = await runtime.getState(target);
     expect(state.jobs.length).toBeGreaterThan(0);
     expect(state.jobs.some((job) => ['queued', 'running'].includes(job.status))).toBe(false);
-  }, { timeout, interval: 10 });
+  }, { timeout, interval: 50 });
   return runtime.getState(target);
 }
 afterEach(async () => {
-  runtimes.splice(0).forEach((runtime) => runtime.dispose());
+  await Promise.all(runtimes.splice(0).map((runtime) => runtime.dispose()));
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { force: true, recursive: true })));
 });
 
 describe('production multi-unit runtime', () => {
+  it('awaits the interrupted checkpoint before releasing a disposed task directory', async () => {
+    const started = gate(); const stopping = gate(); const release = gate();
+    const f = await fixture('shutdown checkpoint', async request => {
+      started.resolve();
+      await new Promise<void>((_resolve, reject) => {
+        request.signal.throwIfAborted();
+        request.signal.addEventListener('abort', () => {
+          stopping.resolve();
+          void release.promise.then(() => reject(request.signal.reason));
+        }, { once: true });
+      });
+      return '';
+    });
+    await authorize(f.runtime, f.target); await started.promise;
+    const file = path.join(f.root, '.reelterminal', 'task-review-jobs.json');
+    const previous = await fs.readFile(file, 'utf8');
+    let stopped = false;
+    const disposing = f.runtime.dispose().then(() => { stopped = true; });
+    try {
+      await stopping.promise;
+      expect(stopped).toBe(false);
+      expect(await fs.readFile(file, 'utf8')).toBe(previous);
+      release.resolve(); await disposing;
+      const stored = JSON.parse(await fs.readFile(file, 'utf8'));
+      expect(stored.jobs).toHaveLength(1);
+      expect(stored.jobs[0]).toMatchObject({ status: 'interrupted', attempts: 1 });
+      expect((await fs.readdir(path.dirname(file))).filter(name => name.endsWith('.tmp'))).toEqual([]);
+      // Awaited shutdown makes removal safe, rather than racing a late rename.
+      const root = path.resolve(f.root);
+      expect(path.dirname(root)).toBe(path.resolve(os.tmpdir()));
+      expect(path.basename(root)).toMatch(/^batch-runtime-/);
+      await fs.rm(root, { recursive: true, force: true });
+      roots.splice(roots.indexOf(f.root), 1);
+    } finally {
+      release.resolve(); await disposing;
+    }
+  });
+
   it('analyzes only real text while media outside the cloud grant remains in the same manual scene plan', async () => {
     const model = vi.fn<Model>(async request => request.system.includes('Find semantic matches') ? JSON.stringify({ matches: [] }) : clean(request));
     const f = await fixture('first text\nsecond text', model);
@@ -323,15 +361,23 @@ describe('production multi-unit runtime', () => {
 
   it('limits background concurrency across tasks while foreground completion remains independent', async () => {
     const first = await fixture('任务一'); const second = await fixture('任务二'); const third = await fixture('任务三');
-    const gates = [gate(), gate(), gate()]; let calls = 0; let active = 0; let peak = 0;
+    const gates = [gate(), gate(), gate()]; const thirdStarted = gate(); let calls = 0; let active = 0; let peak = 0;
     const runtime = new TaskReviewRuntime(first.store, first.models, async (request) => {
       if (request.onDelta) { request.onDelta('继续反馈'); return ''; }
-      const index = calls++; active++; peak = Math.max(peak, active); await gates[index].promise; active--; return JSON.stringify(response(request));
+      request.signal.throwIfAborted();
+      const index = calls++; active++; peak = Math.max(peak, active); if (index === 2) thirdStarted.resolve();
+      let abort!: () => void;
+      const cancelled = new Promise<never>((_resolve, reject) => { abort = () => reject(request.signal.reason); request.signal.addEventListener('abort', abort, { once: true }); });
+      try { await Promise.race([gates[index].promise, cancelled]); }
+      finally { active--; request.signal.removeEventListener('abort', abort); }
+      return JSON.stringify(response(request));
     }); runtimes.push(runtime);
     await authorize(runtime, first.target); await authorize(runtime, second.target); await authorize(runtime, third.target); await vi.waitFor(() => expect(calls).toBe(2));
     const events: TaskCompletionEvent[] = []; runtime.onCompletion((event) => events.push(event));
     await runtime.complete({ ...first.target, unitId: first.snapshot.units[0].id, sourceVersionId: first.snapshot.units[0].sourceVersionId, generationId: 'foreground', text: '问题是' }); expect(events[0].delta).toBe('继续反馈');
-    gates[0].resolve(); await vi.waitFor(() => expect(calls).toBe(3)); gates[1].resolve(); gates[2].resolve(); await Promise.all([first, second, third].map((f) => settled(runtime, f.target))); expect(peak).toBe(2);
+    try {
+      gates[0].resolve(); await thirdStarted.promise; expect(calls).toBe(3); gates[1].resolve(); gates[2].resolve(); await Promise.all([first, second, third].map((f) => settled(runtime, f.target))); expect(peak).toBe(2);
+    } finally { gates.forEach(item => item.resolve()); }
   });
 
   it('resumes only interrupted batches and never trusts a copied task grant', async () => {

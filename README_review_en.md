@@ -3,7 +3,7 @@
 [← Video Editor Home](README_en.md) &nbsp;·&nbsp; **🧪 Review Workspace (English)** | [简体中文](README_review.md)
 
 # ReelTerminal · Review Workspace & Free Boards
-### Batch curation, version comparison and local repair for multimodal assets
+### Real folders, goal-driven human review and private boards
 
 [Why Review Workspace](#why-review-workspace) · [Workspace Tabs](#workspace-tabs) · [Review Tasks](#review-tasks) · [Free Boards](#free-boards) · [Agent CLI](#agent-cli-and-repair-workflow) · [Documentation](#documentation)
 
@@ -27,25 +27,18 @@ Generated assets often need several rounds of **curation, comparison and repair*
 
 ## Workspace Tabs
 
-Review Tasks and Free Boards share a reorderable workspace tab strip.
-
-- **Unified tab strip & management:** arrange review tasks and Free Boards side by side, drag to reorder, and close tabs without deleting underlying data. Open tabs and their order restore automatically across restarts. The **Open / Manage** view organizes task categories, archives, the recycle bin, and saved boards in one place.
-- **Task startup command:** open a Review Task and copy its `start --target <ref>` command from the address bar.
-
----
+Real task folders and free boards share sortable tabs. Open an existing folder, or use New task to create one under the active data directory. Closing a tab does not delete its files; recent tasks can be reopened. Renaming, moving and copying directory entries operates on real files, so confirm the destination.
 
 ## Review Tasks
 
-Each Review Task represents an independent goal for **batch curation, version comparison and rework records**. Agents submit new batches or item revisions within the designated task rather than spawning separate tasks for retries:
+- **Separate file management and review:** inspect, organize, move and copy files in the directory. Enter the task workbench to review units against a goal; copying a file does not approve its content.
+- **Human decisions:** inspect text, images, video frames or regions and record keep, discard, rework and notes. Decisions and drafts live in the task folder's .reelterminal directory. Discarding does not delete originals.
+- **Goal and criteria:** set a task goal and inspect source relationships and current analysis. Model suggestions do not replace human judgment; adopting or deactivating scoped criteria requires an explicit action.
+- **Optional built-in models:** configure your endpoint and key, then explicitly authorize the task/source scope before text is sent. Manual review works without authorization. External Agents do not receive the key. Bundled MobileSAM region segmentation runs locally on the CPU.
+- **Save recovery:** an uncertain result retains input and pauses related writes. Reconcile that decision first: do not replay a committed decision; explicitly retry only after confirming no commit. Persistent sharing or permission failures remain visible.
+- **Delivery:** preview the scope before exporting selected and explicitly approved text, regions or original files. An original containing multiple units exposes mixed decisions in the preview; approving one unit does not approve the entire original.
 
-| Capability | Highlights & Boundaries |
-| :--- | :--- |
-| **5 First-Class Content Types** | • **Image (`image`):** adaptive board or category grouping, integer-multiple pixel zoom, spatial annotations, and source-pixel repair.<br>• **Text (`text`):** Markdown reading view, live-preview Markdown editor, and exact character-range source annotations; saving creates a new version.<br>• **Structured Data (`data`):** tabular inspection, original-vs-proposed value comparison, cell-level patches, and explicit rework badges.<br>• **Video (`video`):** browser-timeline playback, range markers, and pre-bound baseline video side-by-side or overlay comparison.<br>• **3D Model (`model3d`):** lightweight read-only preview for self-contained GLB 2.0 triangle meshes (PBR, skinning, morph targets), dual-view comparison, and camera-viewpoint snapshot feedback. |
-| **Scoped Pixel Repair & Exact Frame Capture** | • **Pixel repair & drafts:** brush, transparent-layer eraser, clone stamp, and image patches; supports CLI region inspection, multi-step unsaved repair drafts (`review.repair.draft.*`), and atomic single-version commits.<br>• **Exact frame capture:** `review.frames.capture` extracts an exact **zero-based decoded frame index with real source PTS** from a video item into a linked image item in the same task for immediate repair.<br>• **Flicker-free continuity:** consecutive CLI image updates preserve the decoded image, viewport zoom/pan, and focus; if a first repair image fails to decode, the viewer automatically falls back to the original image and reports the exact error. |
-| **Immutable Handoff & Process Traceability** | • **Edit decisions:** keep, discard, and rework verdicts are undoable.<br>• **Explicit handoff:** clicking **Publish decisions** freezes an immutable snapshot and waits for real Agent acknowledgement and version-bound rework.<br>• **Process view & CLI activity:** inspect recorded inputs, outputs, parameters, and candidate branches, pin two versions to compare, and monitor target-isolated real CLI activity logs (with sensitive text automatically redacted). |
-| **File Export** | • Drag items or groups directly to your OS file manager, or export originals, current saved versions, human-adopted versions, or full node packages with history. |
-
-Integration with video projects remains limited. **Attach adopted to project** copies an adopted image or video into a selected project’s media library. It does not synchronize editing state or automatically build a timeline.
+This version does not migrate legacy batch tasks or restore their tabs. Keep old data and backups; legacy batch/version-package/rework commands are not the current folder-review entry. Integration with video projects remains limited, and review does not automatically arrange a timeline.
 
 ---
 
@@ -71,33 +64,9 @@ See 📖 **[Free Boards Guide (docs/HUMAN-BOARDS.zh-CN.md)](docs/HUMAN-BOARDS.zh
 
 ## Agent CLI and Repair Workflow
 
-Review Workspace has its own **Agent edit permission toggle**, independent of video project permissions. External Agents can connect via `reelctl` even when no video project is open:
+External video-editing Agents connect using the startup command copied from the application, then discover current contracts through tools and describe. Bind targets and revisions explicitly; switching tabs grants no access to other content.
 
-```powershell
-# 1. Run the startup command copied from the Review Task address bar (binds explicit review target, no token)
-reelctl start --target <rt1-review-ref>
-
-# 2. Discover review capabilities and command schemas on demand (lightweight, zero environment probing)
-reelctl tools review
-reelctl tools review.content
-reelctl tools review.image-repair
-reelctl describe review.ingest
-reelctl describe review.repair.draft.apply
-
-# 3. Capture an exact zero-based decoded frame from a video item as a repairable image item
-reelctl review frames capture --file exact-frame.json
-
-# 4. Inspect pixel region -> preview multi-step repair draft -> commit atomically as one item version
-reelctl review repair inspect --file inspect-region.json
-reelctl call review.repair.draft.create --file draft-create.json
-reelctl call review.repair.draft.apply --file draft-ops.json
-reelctl call review.repair.draft.inspect --file draft-inspect.json
-reelctl call review.repair.draft.commit --file draft-commit.json
-```
-
-> 📌 **Core Execution Contracts:**
-> - **Explicit target binding:** all reads and writes must carry the explicit `target` (`reviewWorkspaceId`, `instanceId`, `nodeId`) and revision guards (`expectedNodeRevision` / `expectedItemVersion`). Never retarget silently when the GUI switches tabs or opens a Free Board.
-> - **Continue within the designated task:** use `review.ingest` for new batches, `review.items.submit` for full item replacements, and `review.repair.*` for scoped pixel repairs within the same task—do not create new tasks for retries or rework.
+Human decisions, drafts and model keys for current folder tasks use desktop-internal interfaces; equivalent external Agent commands are not available. Legacy review.* compatibility code does not imply control over current tasks. Private free boards remain separate: only explicitly exported snapshots become deliverable content. See the [external Agent guide](docs/AGENT-GUIDE.md).
 
 ---
 
@@ -106,4 +75,4 @@ reelctl call review.repair.draft.commit --file draft-commit.json
 - 🎨 [**Free Boards Guide (Chinese)**](docs/HUMAN-BOARDS.zh-CN.md) — 7 media types, Markdown/HTML/web browsing, pixel repair, region PNG freeze, and explicit review-node export.
 - ⚙️ [**Command API · Independent Review Workspace**](docs/COMMAND-API.md#independent-review-workspace) — `review.*` command families, `review.repair.*` / `draft.*` contracts, and `review.frames.capture`.
 - 🧊 [**Review 3D (GLB) Preview Delivery**](docs/REVIEW-3D-PREVIEW-DELIVERY.md) — GLB 2.0 validation bounds, dual-view comparison, and viewpoint observation snapshots.
-- 📖 [**Desktop User Guide · Review Workspace**](docs/USER-GUIDE.md#审阅工作台与自由画板) — UI navigation, keyboard shortcuts, collection views, and node package backup/restore.
+- 📖 [**Desktop User Guide · Review Workspace**](docs/USER-GUIDE.md#审阅工作台与自由画板) — current folder tasks, human review, save recovery and help.

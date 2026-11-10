@@ -96,7 +96,9 @@ export class TaskReviewRuntime {
   private readonly searchCache = new Map<string, TaskSemanticSearchResult>();
   private readonly searches = new Map<string, AbortController>();
   private readonly listeners = new Set<(event: TaskCompletionEvent) => void>();
+  private readonly pending = new Set<Promise<unknown>>();
   private pumping = false;
+  private pumpRequested = false;
   private disposed = false;
 
   constructor(private readonly store: TaskStore, readonly models: TaskReviewModelConfigStore, private readonly callModel: ModelCall = streamTaskModel, private readonly limits = { maxConcurrent: 2, jobTimeoutMs: 120000, completionTimeoutMs: 30000 }) {}
@@ -105,6 +107,11 @@ export class TaskReviewRuntime {
     this.listeners.add(listener); return () => this.listeners.delete(listener);
   }
   private emit(event: TaskCompletionEvent) { for (const listener of this.listeners) listener(event); }
+  private track<T>(operation: Promise<T>): Promise<T> {
+    const tracked = operation.finally(() => { this.pending.delete(tracked); });
+    this.pending.add(tracked);
+    return tracked;
+  }
   private lock<T>(root: string, work: () => Promise<T>): Promise<T> {
     const previous = this.serial.get(root) ?? Promise.resolve();
     const operation = previous.then(work);
@@ -129,8 +136,8 @@ export class TaskReviewRuntime {
     }
     throw new Error('Task refresh did not complete');
   }
-  private async state(target: TaskAgentTarget): Promise<StoredState> {
-    await this.snapshot(target);
+  private async state(target: TaskAgentTarget, snapshot?: TaskReviewSnapshot): Promise<StoredState> {
+    if (!snapshot) await this.snapshot(target);
     const root = path.resolve(target.root);
     const cached = this.states.get(root);
     if (cached) return cached;
@@ -167,7 +174,12 @@ export class TaskReviewRuntime {
   async getState(target: TaskAgentTarget): Promise<TaskAgentState> {
     target = await this.canonical(target);
     const loading = !this.states.has(path.resolve(target.root));
-    const result = await this.lock(path.resolve(target.root), async () => this.projectState(target, await this.state(target)));
+    const result = await this.lock(path.resolve(target.root), async () => {
+      // Reuse only this read's validated snapshot, never one cached across IPC
+      // calls. Duplicate full parses inside the same lock delay queued writes.
+      const snapshot = await this.snapshot(target);
+      return this.projectState(target, await this.state(target, snapshot), snapshot);
+    });
     if (loading && result.grant && result.jobs.some((job) => job.status === 'interrupted' || job.status === 'queued')) {
       return this.schedule(target, false);
     }
@@ -219,9 +231,9 @@ export class TaskReviewRuntime {
   private validCheckpoint(snapshot: TaskReviewSnapshot, job: StoredJob, unitId: string, keys: Map<string, string>, allowed: string[]) {
     return job.completedUnitIds.includes(unitId) && job.unitInputKeys[unitId] === keys.get(unitId) && job.issues.filter((issue) => issue.unitId === unitId).every((issue) => isTaskIssueCurrent(snapshot, issue) && isTaskModelInputScopeCurrent(snapshot, issue.inputSourceVersionIds, allowed) && (issue.sourceRefs ?? [issue]).every((ref) => allowed.includes(ref.sourceVersionId)));
   }
-  private async projectState(target: TaskAgentTarget, state: StoredState): Promise<TaskAgentState> {
+  private async projectState(target: TaskAgentTarget, state: StoredState, currentSnapshot?: TaskReviewSnapshot): Promise<TaskAgentState> {
     const result = publicState(state);
-    const snapshot = await this.snapshot(target);
+    const snapshot = currentSnapshot ?? await this.snapshot(target);
     const config = await this.models.get();
     const grant = state.grant;
     const allowed = grant?.endpoint === config.endpoint ? scopedTextSources(snapshot, grant).map(source => source.id) : [];
@@ -295,7 +307,7 @@ export class TaskReviewRuntime {
       if (snapshot.planRevisions.length || currentSources(snapshot).some(source => !isTextTaskSource(source))) await this.publishFuture(target, state);
       await this.persist(target.root, state); return this.projectState(target, state);
     });
-    void this.pump(); return result;
+    void this.track(this.pump()); return result;
   }
   async cancelJob(input: TaskAgentTarget & { jobId: string }): Promise<TaskAgentState> {
     input = await this.canonical(input);
@@ -317,25 +329,35 @@ export class TaskReviewRuntime {
       if (job.attempts >= 3 || job.reservedOutputTokens >= job.maxOutputTokens) throw new Error('Job retry or token budget exhausted');
       job.status = 'queued'; delete job.error; await this.persist(input.root, state); return this.projectState(input, state);
     });
-    void this.pump(); return result;
+    void this.track(this.pump()); return result;
   }
   private async pump(): Promise<void> {
-    if (this.pumping || this.disposed) return;
+    if (this.disposed) return;
+    if (this.pumping) { this.pumpRequested = true; return; }
     this.pumping = true;
     try {
-      for (const [root, target] of this.targets) {
-        if (this.running.size >= this.limits.maxConcurrent) break;
-        const picked = await this.lock(root, async () => {
-          const state = this.states.get(root)!;
-          if (state.jobs.some((job) => job.status === 'running')) return;
-          const job = state.jobs.find((item) => item.status === 'queued' && !this.running.has(item.id));
-          if (!job) return;
-          job.status = 'running'; job.attempts++; job.updatedAt = Date.now();
-          const controller = new AbortController(); this.running.set(job.id, controller);
-          await this.persist(root, state); return { job, controller };
-        });
-        if (picked) void this.run(target, picked.job, picked.controller).finally(() => { this.running.delete(picked.job.id); void this.pump(); });
-      }
+      do {
+        this.pumpRequested = false;
+        for (const [root, target] of this.targets) {
+          if (this.running.size >= this.limits.maxConcurrent) break;
+          const picked = await this.lock(root, async () => {
+            if (this.disposed) return;
+            const state = this.states.get(root)!;
+            if (state.jobs.some((job) => job.status === 'running')) return;
+            const job = state.jobs.find((item) => item.status === 'queued' && !this.running.has(item.id));
+            if (!job) return;
+            job.status = 'running'; job.attempts++; job.updatedAt = Date.now();
+            const controller = new AbortController(); this.running.set(job.id, controller);
+            await this.persist(root, state); return { job, controller };
+          });
+          if (picked) void this.track(this.run(target, picked.job, picked.controller).finally(() => {
+            this.running.delete(picked.job.id);
+            void this.track(this.pump());
+          }));
+        }
+        // A completion or newly queued task may arrive during an awaited root
+        // lock. Keep that wake-up rather than leaving its job queued indefinitely.
+      } while (this.pumpRequested && !this.disposed);
     } finally { this.pumping = false; }
   }
   private async run(target: TaskAgentTarget, job: StoredJob, controller: AbortController) {
@@ -626,10 +648,14 @@ export class TaskReviewRuntime {
     const current = this.completions.get(input.taskId);
     if (current?.generationId === input.generationId) current.controller.abort();
   }
-  dispose() {
+  async dispose(): Promise<void> {
     this.disposed = true;
     for (const controller of this.running.values()) controller.abort();
     for (const completion of this.completions.values()) completion.controller.abort();
     for (const controller of this.searches.values()) controller.abort();
+    // Aborting is immediate; owners that release the task directory can also
+    // await the final interrupted checkpoint and all already queued writes.
+    while (this.pending.size) await Promise.allSettled([...this.pending]);
+    await Promise.all([...this.serial.values()]);
   }
 }

@@ -105,7 +105,7 @@ for (const pkg of packages) {
     for (const label of labels) sections.push("", `--- ${label} ---`);
     sections.push(contents.trim());
   }
-  if (texts.size === 0) sections.push("No separate license text is included in this npm archive. Consult the upstream project for its complete terms.");
+  if (texts.size === 0) throw new Error(`Missing license materials for ${pkg.name}@${pkg.versions.join(',')}; add a verified upstream notice or an explicitly labelled reference before packaging`);
 }
 
 mkdirSync(outputRoot, { recursive: true });

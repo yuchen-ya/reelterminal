@@ -1,6 +1,6 @@
 # Windows：下载、备份与升级
 
-1.3.6 目前仅有本地构建，尚未公开发布；公开下载以实际 Release 资产为准。见[发布说明草稿](RELEASE-NOTES-DRAFT.md)及[本地构建记录](RELEASE-1.3.6.md)。 / 1.3.6 is currently a local build, not a published release; use the actual release assets when available.
+从项目的 [Releases 页面](https://github.com/yuchen-ya/reelterminal/releases)选择应用版本及其 Windows 资产。独立模型资源版本仅供源码构建使用，不是应用安装包。 / Choose an application release and its Windows assets; standalone model-resource releases are for source builds, not application installation.
 
 ## 第一次使用
 

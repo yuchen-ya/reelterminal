@@ -61,3 +61,18 @@ test("rejects a standard-text mapping that contradicts the published package dec
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("rejects an uncovered dependency before emitting distributable notices", async () => {
+  const { root, input } = await fixture({ license: "ISC" });
+  try {
+    await writeFile(path.join(root, "LICENSES", "npm-upstream-sources.json"), "{}");
+    const result = spawnSync(process.execPath, [path.join(root, "scripts", "build-third-party-notices.mjs")], { input, encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Missing license materials for example-package@1\.0\.0/);
+    await assert.rejects(readFile(path.join(root, "resources", "licenses", "dependency-inventory.json")), { code: "ENOENT" });
+  } finally {
+    assert.equal(path.dirname(path.resolve(root)), path.resolve(tmpdir()));
+    assert.match(path.basename(root), /^rt-license-notices-/);
+    await rm(root, { recursive: true, force: true });
+  }
+});
