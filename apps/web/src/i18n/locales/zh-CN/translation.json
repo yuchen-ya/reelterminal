@@ -38,7 +38,6 @@
   "reviewUi.showKey": "显示密钥",
   "Clear saved key": "清除已存密钥",
   "reviewUi.Clear_37": "清除",
-  "The API key is stored locally using the operating system keychain (Electron safeStorage), never uploaded or stored as plain text.": "API Key 将使用操作系统的加密钥匙串 (Electron safeStorage) 本地保存，绝不上传云端或明文存储。",
   "common.saving": "保存中...",
   "reviewUi.saving": "保存中...",
   "Save settings": "保存设置",
@@ -1149,7 +1148,7 @@
     "showKey": "显示密钥",
     "clearSavedKey": "清除已存密钥",
     "clearKeyButton": "清除密钥",
-    "apiKeyDescription": "API Key 将使用操作系统的加密钥匙串 (Electron safeStorage) 本地保存，绝不上传云端或明文存储。",
+    "apiKeyDescription": "API 密钥通过 Electron safeStorage 在本机加密保存，仅用于你授权的已配置模型接口请求。",
     "saveButton": "保存设置",
     "desktopNoticeTitle": "仅限桌面端运行",
     "desktopNoticeBody": "内置 Agent 模型与安全密钥配置依赖 ReelTerminal 桌面应用运行时环境 (Electron safeStorage)。"

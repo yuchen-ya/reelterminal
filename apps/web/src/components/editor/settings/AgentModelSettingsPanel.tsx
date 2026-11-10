@@ -558,7 +558,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
             <p className="text-[11px] text-fg-muted">
               {t(
                 "agentSettings.apiKeyDescription",
-                "The API key is stored locally using the operating system keychain (Electron safeStorage), never uploaded or stored as plain text.",
+                "The API key is encrypted locally with Electron safeStorage and used only for authorized requests to your configured model endpoint.",
               )}
             </p>
           </div>

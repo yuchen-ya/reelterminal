@@ -38,7 +38,6 @@
   "reviewUi.showKey": "Show key",
   "Clear saved key": "Clear saved key",
   "reviewUi.Clear_37": "Clear",
-  "The API key is stored locally using the operating system keychain (Electron safeStorage), never uploaded or stored as plain text.": "The API key is stored locally using the operating system keychain (Electron safeStorage), never uploaded or stored as plain text.",
   "common.saving": "Saving...",
   "reviewUi.saving": "Saving...",
   "Save settings": "Save settings",
@@ -1149,7 +1148,7 @@
     "showKey": "Show key",
     "clearSavedKey": "Clear stored API key",
     "clearKeyButton": "Clear Key",
-    "apiKeyDescription": "API Key is stored locally using operating system keychain encryption (Electron safeStorage), never transmitted in plaintext.",
+    "apiKeyDescription": "The API key is encrypted locally with Electron safeStorage and used only for authorized requests to your configured model endpoint.",
     "saveButton": "Save Settings",
     "desktopNoticeTitle": "Desktop Application Required",
     "desktopNoticeBody": "Built-in Agent model configuration and credential encryption depend on the ReelTerminal desktop environment (Electron safeStorage)."
