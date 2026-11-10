@@ -14,6 +14,7 @@ import { TaskModelError, type TaskModelRequest } from './task-review-provider';
 type Model = (request: TaskModelRequest) => Promise<string>;
 const roots: string[] = [];
 const runtimes: TaskReviewRuntime[] = [];
+const releaseFixtureGates: Array<() => void> = [];
 const encryption = { isEncryptionAvailable: () => true, encryptString: (text: string) => Buffer.from(text), decryptString: (buffer: Buffer) => buffer.toString() };
 function gate() { let resolve!: () => void; const promise = new Promise<void>((done) => { resolve = done; }); return { promise, resolve }; }
 function response(request: TaskModelRequest): TaskBatchModelResponse {
@@ -22,14 +23,22 @@ function response(request: TaskModelRequest): TaskBatchModelResponse {
   return { understanding: { groundedClaims: [{ content: `合成观察：${first.text}`, sourceRefs: [{ unitId: first.unitId, sourceVersionId: first.sourceVersionId, start: 0, end: first.text.length, text: first.text }] }], hypotheses: [], openQuestions: [] }, coverage: body.coverage.targets.map((target: object) => ({ ...target, status: 'analyzed', reason: '合成模型检查了当前口径' })), issues: [], scenes: [] };
 }
 const clean: Model = async (request) => JSON.stringify(response(request));
-async function fixture(text = '第一句\n第二句', model: Model = clean) {
+async function taskFixture(text: string) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'batch-runtime-')); roots.push(root);
   const store = new TaskReviewStore(); let snapshot = await store.open(root);
   snapshot = await store.importText({ root, taskId: snapshot.taskId, expectedRevision: snapshot.revision, name: 'text.txt', text, format: 'txt' });
-  const models = new TaskReviewModelConfigStore(path.join(root, 'models.json'), encryption);
+  return { root, store, snapshot: { ...snapshot, sources: snapshot.sources.filter(isTextTaskSource), units: snapshot.units.filter(isTextTaskUnit) }, target: { root, taskId: snapshot.taskId } };
+}
+async function fixture(text = '第一句\n第二句', model: Model = clean) {
+  const task = await taskFixture(text);
+  // Match production ownership: profile credentials/grants are not task files.
+  // Keeping their atomic temporary file in a scanned task root can create a false
+  // ENOENT race while another task is being authorized.
+  const profileRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'batch-runtime-profile-')); roots.push(profileRoot);
+  const models = new TaskReviewModelConfigStore(path.join(profileRoot, 'models.json'), encryption);
   await models.save({ endpoint: 'https://provider.example/v1', backgroundModel: 'review', completionModel: 'completion', apiKey: 'test-key' });
-  const runtime = new TaskReviewRuntime(store, models, model); runtimes.push(runtime);
-  return { root, store, snapshot: { ...snapshot, sources: snapshot.sources.filter(isTextTaskSource), units: snapshot.units.filter(isTextTaskUnit) }, models, runtime, target: { root, taskId: snapshot.taskId } };
+  const runtime = new TaskReviewRuntime(task.store, models, model); runtimes.push(runtime);
+  return { ...task, models, runtime };
 }
 const authorize = (runtime: TaskReviewRuntime, target: TaskAgentTarget) => runtime.authorize({ ...target, scope: 'task', sourceVersionIds: [] });
 async function settled(runtime: TaskReviewRuntime, target: TaskAgentTarget, timeout = 5000) {
@@ -41,8 +50,14 @@ async function settled(runtime: TaskReviewRuntime, target: TaskAgentTarget, time
   return runtime.getState(target);
 }
 afterEach(async () => {
+  releaseFixtureGates.splice(0).forEach(release => release());
   await Promise.all(runtimes.splice(0).map((runtime) => runtime.dispose()));
-  await Promise.all(roots.splice(0).map((root) => fs.rm(root, { force: true, recursive: true })));
+  await Promise.all(roots.splice(0).map(root => {
+    const resolved = path.resolve(root);
+    expect(path.dirname(resolved)).toBe(path.resolve(os.tmpdir()));
+    expect(path.basename(resolved)).toMatch(/^(?:batch-runtime-|copied-task-)/);
+    return fs.rm(resolved, { force: true, recursive: true });
+  }));
 });
 
 describe('production multi-unit runtime', () => {
@@ -360,25 +375,91 @@ describe('production multi-unit runtime', () => {
   }, 20000);
 
   it('limits background concurrency across tasks while foreground completion remains independent', async () => {
-    const first = await fixture('任务一'); const second = await fixture('任务二'); const third = await fixture('任务三');
-    const gates = [gate(), gate(), gate()]; const thirdStarted = gate(); let calls = 0; let active = 0; let peak = 0;
+    const phase = async <T>(stage: string, work: () => Promise<T>) => {
+      const started = performance.now();
+      process.stdout.write(`TASK_RUNTIME_CONCURRENCY_STAGE ${JSON.stringify({ stage: `${stage}.start`, elapsedMs: 0 })}\n`);
+      try { return await work(); }
+      finally { process.stdout.write(`TASK_RUNTIME_CONCURRENCY_STAGE ${JSON.stringify({ stage, elapsedMs: Math.round(performance.now() - started) })}\n`); }
+    };
+    // One runtime uses one model profile across real task roots. The other
+    // tasks do not need unrelated, unused credential/configuration files.
+    const [first, second, third] = await phase('prepare-task-roots', async () => [await fixture('任务一'), await taskFixture('任务二'), await taskFixture('任务三')] as const);
+    const gates = [gate(), gate(), gate()]; const firstTwoStarted = gate(); const thirdStarted = gate(); let calls = 0; let active = 0; let peak = 0;
     const runtime = new TaskReviewRuntime(first.store, first.models, async (request) => {
       if (request.onDelta) { request.onDelta('继续反馈'); return ''; }
       request.signal.throwIfAborted();
-      const index = calls++; active++; peak = Math.max(peak, active); if (index === 2) thirdStarted.resolve();
+      const index = calls++; active++; peak = Math.max(peak, active); if (index === 1) firstTwoStarted.resolve(); if (index === 2) thirdStarted.resolve();
       let abort!: () => void;
       const cancelled = new Promise<never>((_resolve, reject) => { abort = () => reject(request.signal.reason); request.signal.addEventListener('abort', abort, { once: true }); });
       try { await Promise.race([gates[index].promise, cancelled]); }
       finally { active--; request.signal.removeEventListener('abort', abort); }
       return JSON.stringify(response(request));
     }); runtimes.push(runtime);
-    await authorize(runtime, first.target); await authorize(runtime, second.target); await authorize(runtime, third.target); await vi.waitFor(() => expect(calls).toBe(2));
+    await phase('authorize-and-occupy-two-slots', async () => {
+      await authorize(runtime, first.target); await authorize(runtime, second.target); await authorize(runtime, third.target); await firstTwoStarted.promise; expect(calls).toBe(2);
+      const states = await Promise.all([first, second, third].map(task => runtime.getState(task.target)));
+      expect(states.flatMap(state => state.jobs).some(job => job.status === 'failed')).toBe(false);
+    });
     const events: TaskCompletionEvent[] = []; runtime.onCompletion((event) => events.push(event));
     await runtime.complete({ ...first.target, unitId: first.snapshot.units[0].id, sourceVersionId: first.snapshot.units[0].sourceVersionId, generationId: 'foreground', text: '问题是' }); expect(events[0].delta).toBe('继续反馈');
     try {
-      gates[0].resolve(); await thirdStarted.promise; expect(calls).toBe(3); gates[1].resolve(); gates[2].resolve(); await Promise.all([first, second, third].map((f) => settled(runtime, f.target))); expect(peak).toBe(2);
+      await phase('release-first-and-start-third', async () => { gates[0].resolve(); await thirdStarted.promise; expect(calls).toBe(3); });
+      await phase('finish-all-tasks', async () => {
+        gates[1].resolve(); gates[2].resolve();
+        const states = await Promise.all([first, second, third].map((f) => settled(runtime, f.target)));
+        expect(states.map(state => state.jobs[0].status)).toEqual(['completed', 'completed', 'completed']);
+        expect(calls).toBe(3); expect(peak).toBe(2);
+      });
     } finally { gates.forEach(item => item.resolve()); }
   });
+
+  it('starts an earlier queued batch when its completion overlaps another task checkpoint', async () => {
+    const first = await fixture(Array.from({ length: 9 }, (_, index) => `queued ${index}`).join('\n'));
+    const second = await taskFixture('other active task');
+    const firstStarted = gate(); const releaseFirst = gate(); const firstCompleted = gate();
+    const checkpointEntered = gate(); const releaseCheckpoint = gate();
+    const secondStarted = gate(); const releaseSecond = gate(); const nextBatchStarted = gate();
+    releaseFixtureGates.push(() => { releaseFirst.resolve(); releaseCheckpoint.resolve(); releaseSecond.resolve(); });
+    const wait = async (request: TaskModelRequest, pending: Promise<void>) => {
+      request.signal.throwIfAborted();
+      let abort!: () => void;
+      const cancelled = new Promise<never>((_resolve, reject) => { abort = () => reject(request.signal.reason); request.signal.addEventListener('abort', abort, { once: true }); });
+      try { await Promise.race([pending, cancelled]); }
+      finally { request.signal.removeEventListener('abort', abort); }
+    };
+    const runtime = new TaskReviewRuntime(first.store, first.models, async request => {
+      const ids = JSON.parse(request.input).coverage.targets.map((target: { unitId: string }) => target.unitId);
+      if (ids.includes(first.snapshot.units[0].id)) { firstStarted.resolve(); await wait(request, releaseFirst.promise); }
+      else if (ids.includes(second.snapshot.units[0].id)) { secondStarted.resolve(); await wait(request, releaseSecond.promise); }
+      else { expect(ids).toEqual([first.snapshot.units[8].id]); nextBatchStarted.resolve(); }
+      return clean(request);
+    }); runtimes.push(runtime);
+    // Hold one real checkpoint to force completion while the pump awaits I/O.
+    // Observe model progress and public job state, rather than pump internals.
+    const writer = runtime as unknown as { persist(root: string, state: { jobs: Array<{ status: string }> }): Promise<void> };
+    const persist = writer.persist.bind(runtime); let held = false;
+    const checkpoint = vi.spyOn(writer, 'persist').mockImplementation(async (root, state) => {
+      await persist(root, state);
+      if (root === first.root && state.jobs[0]?.status === 'completed') firstCompleted.resolve();
+      if (root === second.root && state.jobs[0]?.status === 'running' && !held) {
+        held = true; checkpointEntered.resolve(); await releaseCheckpoint.promise;
+      }
+    });
+    try {
+      await authorize(runtime, first.target); await firstStarted.promise;
+      await authorize(runtime, second.target); await checkpointEntered.promise;
+      releaseFirst.resolve(); await firstCompleted.promise;
+      // Drain the completion's microtasks while the second checkpoint is held.
+      await new Promise<void>(resolve => setImmediate(resolve));
+      releaseCheckpoint.resolve();
+      await Promise.all([secondStarted.promise, nextBatchStarted.promise]);
+      releaseSecond.resolve();
+      const states = await Promise.all([first, second].map(task => settled(runtime, task.target)));
+      expect(states.map(state => state.jobs.map(job => job.status))).toEqual([['completed', 'completed'], ['completed']]);
+    } finally {
+      releaseFirst.resolve(); releaseCheckpoint.resolve(); releaseSecond.resolve(); checkpoint.mockRestore();
+    }
+  }, 10000);
 
   it('resumes only interrupted batches and never trusts a copied task grant', async () => {
     const started = gate(); let calls = 0;
