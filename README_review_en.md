@@ -38,7 +38,7 @@ Real task folders and free boards share sortable tabs. Open an existing folder, 
 - **Save recovery:** an uncertain result retains input and pauses related writes. Reconcile that decision first: do not replay a committed decision; explicitly retry only after confirming no commit. Persistent sharing or permission failures remain visible.
 - **Delivery:** preview the scope before exporting selected and explicitly approved text, regions or original files. An original containing multiple units exposes mixed decisions in the preview; approving one unit does not approve the entire original.
 
-This version does not migrate legacy batch tasks or restore their tabs. Keep old data and backups; legacy batch/version-package/rework commands are not the current folder-review entry. Integration with video projects remains limited, and review does not automatically arrange a timeline.
+Legacy batch tasks are not automatically converted into folder tasks, and their tabs are not automatically restored. For an open video project, the management menu on the right of Open / Manage still opens its original project workbench, separately from folder tasks. Keep old data and backups; legacy batch/version-package/rework commands are not the current folder-review entry. Integration with video projects remains limited, and review does not automatically arrange a timeline.
 
 ---
 

@@ -556,7 +556,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                   onClick={() => setManagerOpen(false)}
                 >{t("Return to the current tab")}</button>
               )}
-              {browserDemo && adminMenu}
+              {adminMenu}
             </div>
           </div>
           <div
