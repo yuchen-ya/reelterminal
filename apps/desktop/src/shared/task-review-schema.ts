@@ -26,11 +26,12 @@ export const taskReviewContextSchemas = {
 };
 export const taskReviewSchemas = {
   open: z.object({ root: z.string().min(1) }).strict(),
+  getDecisionOutcome: z.object({ root: z.string().min(1), taskId: id, decisionId: id }).strict(),
   refreshSources: z.object(commit).strict(),
   setGoal: z.object({ ...commit, goal: z.string().max(200000) }).strict(),
   importText: z.object({ ...commit, name: z.string().trim().min(1).max(200), text, format }).strict(),
   importFile: z.object({ ...commit, entryId: id }).strict(),
-  decide: z.object({ ...commit, ...target, purpose, status: z.enum(['kept', 'rework', 'discarded']), note: z.string().max(200000), replacementText: text.optional() }).strict(),
+  decide: z.object({ ...commit, ...target, purpose, decisionId: id.optional(), status: z.enum(['kept', 'rework', 'discarded']), note: z.string().max(200000), replacementText: text.optional() }).strict(),
   undoDecision: z.object(decisionHistory).strict(),
   redoDecision: z.object(decisionHistory).strict(),
   saveDraft: z.object({ ...commit, draft: taskDraftSchema.omit({ updatedAt: true }) }).strict(),

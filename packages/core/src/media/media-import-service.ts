@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
+import { beginPerfOperation, endPerfOperation, failPerfOperation } from "../performance";
 import type { MediaItem, MediaMetadata } from "../types/project";
 import type {
   ProcessedMedia,
@@ -122,7 +123,17 @@ export class MediaImportService {
     }
 
     try {
-      const metadata = await this.mediaEngine.extractMetadata(file);
+      const metadataOperation = beginPerfOperation("media_import.metadata");
+      const metadata = await this.mediaEngine.extractMetadata(file).then(
+        (metadata) => {
+          endPerfOperation(metadataOperation, "ok");
+          return metadata;
+        },
+        (error: unknown) => {
+          failPerfOperation(metadataOperation, error);
+          throw error;
+        },
+      );
       const mediaType = inferMediaType(file.type);
 
       if (!mediaType) {

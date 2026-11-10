@@ -340,7 +340,7 @@ app.whenReady().then(async () => {
     }),
     { promptTokenLimit: SEGMENTATION_PROMPT_TOKEN_LIMIT },
   );
-  registerTaskReviewMediaIpc(taskReviewMedia, target => taskReviewRuntime.onTaskChanged(target));
+  registerTaskReviewMediaIpc(taskReviewMedia, target => taskReviewRuntime.onTaskChanged(target), root => taskReviewStore.open(root));
   // The app scheme must be registered before createWindow() loads APP_INDEX.
   // It sits after the task media service so task-media assets authorize
   // through the service — there is no raw-filesystem fallback for them.

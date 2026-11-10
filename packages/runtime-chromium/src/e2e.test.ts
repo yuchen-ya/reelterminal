@@ -262,9 +262,13 @@ describe("Chromium render and export", () => {
       `[e2e] exported MP4 via ${final.route}: ${mp4.path} (${mp4.sizeBytes} bytes, sha256=${mp4.sha256.slice(0, 16)}…)`,
     );
 
-    // No partial files survive a successful export ------------------------
+    // Only the completed media and the registered timing work artifact remain;
+    // no partial encoder files survive a successful export.
     const exportDirFiles = await readdir(path.dirname(mp4.path));
-    expect(exportDirFiles).toEqual(["output.mp4"]);
+    expect(exportDirFiles.sort()).toEqual(["export-timing.json", "output.mp4"]);
+    const timing = JSON.parse(await readFile(path.join(path.dirname(mp4.path), "export-timing.json"), "utf8"));
+    expect(timing).toMatchObject({ schema: "reelterminal.export-timing/v1", route: "chromium-webcodecs" });
+    expect(timing.routeElapsedMs).toBeGreaterThanOrEqual(0);
 
     // 7a) verify.artifact: container/codec/geometry/duration --------------
     const verified = await facade["verify.artifact"]({

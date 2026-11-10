@@ -38,6 +38,10 @@ files:
   - "!**/.artifacts{,/**}"
   - "!**/{test,tests,__tests__,e2e}{,/**}"
   - "!**/*.{test,spec}.{ts,tsx,js,cjs,mjs}"
+  - "!**/*.test-helper.{ts,tsx,js,cjs,mjs}"
+  # The renderer bundles FFmpeg's ESM entry. The unused UMD archive retains an
+  # upstream developer's absolute build path and is not a desktop runtime entry.
+  - "!**/node_modules/@ffmpeg/ffmpeg/dist/umd{,/**}"
   - "!**/{.env,.env.*,.npmrc,.pypirc,.git-credentials}"
   - "!**/{.git,.aws,.ssh}{,/**}"
   - package.json
@@ -72,6 +76,7 @@ extraResources:
     to: LICENSES
     filter:
       - "**/*"
+      - "!RELEASE-READINESS.md"
   - from: resources/licenses
     to: LICENSES
     filter:

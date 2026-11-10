@@ -26,6 +26,12 @@ ReelTerminal 把时间线、预览画面和外部 AI 助手连接到同一个视
 
 工程、素材缓存、编辑和渲染以本地运行。模型下载、外部网页和可选网络服务的边界见[外部依赖说明](docs/EXTERNAL-DEPENDENCIES.md)；AI 助手由你自行选择和配置。
 
+## 1.4.1 更新
+
+- 大视频导入时更早显示素材卡片，缩略图在后台继续生成；工程保存后使用受控副本，原文件移走后仍可播放。
+- 审阅决定保存异常时保留批注与输入，先核对保存结果，再明确重试，避免重复决定。
+- 改进 CLI 的离线帮助、参数校验和受控素材交付。
+
 ## 开始使用
 
 1. 从 [Releases](https://github.com/yuchen-ya/reelterminal/releases) 下载 Windows x64 安装包或便携 ZIP；使用 ZIP 时完整解压后运行 `ReelTerminal.exe`。其他平台的可用安装包以发布页列出的资产为准。
@@ -72,5 +78,5 @@ corepack pnpm --filter @reelterminal/desktop start
 ## 许可与归属
 
 - 项目核心代码采用 [MIT 许可](LICENSE)。
-- ReelTerminal 基于 Augustus Otu 及贡献者的 MIT 项目 [OpenReel](https://github.com/Augustus-Otu/openreel)，保留原有版权声明。
+- ReelTerminal 基于 Augustus Otu 及贡献者的 MIT 项目 [OpenReel](https://github.com/Augani/openreel-video)，保留原有版权声明。
 - 独立许可的组件、字体和模型资源见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

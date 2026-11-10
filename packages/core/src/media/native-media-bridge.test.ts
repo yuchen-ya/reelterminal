@@ -129,4 +129,42 @@ describe("native-media-bridge", () => {
   it("probeAudioStreamCountViaNative returns the stream count", async () => {
     expect(await probeAudioStreamCountViaNative(new File([new Uint8Array([1])], "in.mp4"))).toBe(1);
   });
+
+  it.each(["C:\\media\\large.mp4", "/media/large.mp4", "\\\\server\\media\\large.mp4"])(
+    "probes a preload-resolved native File directly: %s", async (srcPath) => {
+      const file = new File([new Uint8Array([1, 2])], "large.mp4");
+      const bridge = bridgeMock();
+      bridge.fs.getPathForFile = vi.fn(() => srcPath);
+      bridge.media.probeAudioStreams.mockResolvedValue({ streams: [{}, {}] });
+      expect(await probeAudioStreamCountViaNative(file)).toBe(2);
+      expect(bridge.fs.getPathForFile).toHaveBeenCalledWith(file);
+      expect(bridge.media.probeAudioStreams).toHaveBeenCalledWith({ srcPath });
+      expect(bridge.fs.tempFilePath).not.toHaveBeenCalled();
+      expect(bridge.fs.writeChunk).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["", "relative.mp4", "file:///media/in.mp4", "throws"])(
+    "keeps byte materialization when native path resolution returns %s", async (path) => {
+      const file = new File([new Uint8Array([3, 4])], "in.mp4");
+      Object.defineProperty(file, "path", { value: "C:\\untrusted.mp4" });
+      const bridge = bridgeMock();
+      bridge.fs.getPathForFile = vi.fn(() => {
+        if (path === "throws") throw new Error("Not a native File");
+        return path;
+      });
+      expect(await probeAudioStreamCountViaNative(file)).toBe(1);
+      const srcPath = bridge.media.probeAudioStreams.mock.calls[0][0].srcPath;
+      expect(Array.from(disk.get(srcPath)!)).toEqual([3, 4]);
+    },
+  );
+
+  it("does not resolve plain Blobs as native Files", async () => {
+    const bridge = bridgeMock();
+    bridge.fs.getPathForFile = vi.fn(() => "C:\\unrelated.mp4");
+    expect(await probeAudioStreamCountViaNative(new Blob([new Uint8Array([9])]))).toBe(1);
+    expect(bridge.fs.getPathForFile).not.toHaveBeenCalled();
+    const srcPath = bridge.media.probeAudioStreams.mock.calls[0][0].srcPath;
+    expect(Array.from(disk.get(srcPath)!)).toEqual([9]);
+  });
 });

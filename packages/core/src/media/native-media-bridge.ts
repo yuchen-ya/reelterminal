@@ -1,10 +1,13 @@
 // Renderer-side bridge to the desktop native FFmpeg sidecar (window.reelterminal.media).
 // packages/core cannot see apps/web's ambient window.reelterminal type, so we declare the
 // minimal slice this module uses and access it via a typed cast on globalThis.
+import { beginPerfOperation, endPerfOperation, failPerfOperation, markPerfOperation } from "../performance";
 
 export interface NativeMediaBridge {
   platform?: string;
   fs: {
+    /** Electron webUtils resolves genuine OS-backed Files; synthetic Files return "". */
+    getPathForFile?(file: File): string;
     tempFilePath(ext: string): Promise<string>;
     openWrite(path: string): Promise<string>;
     writeChunk(handleId: string, data: ArrayBuffer, position: number): Promise<void>;
@@ -129,7 +132,30 @@ export async function extractAudioWavViaNative(file: File | Blob, streamIndex?: 
 export async function probeAudioStreamCountViaNative(file: File | Blob): Promise<number> {
   const bridge = getBridge();
   if (!bridge) throw new Error("native media bridge unavailable");
-  const srcPath = await materializeToTemp(bridge, file);
-  const { streams } = await bridge.media.probeAudioStreams({ srcPath });
-  return streams.length;
+  const operation = beginPerfOperation("media_import.native_audio_probe");
+  try {
+    // This is a read-only probe. Resolve the original OS File through the
+    // preload trust boundary instead of copying hundreds of MB over IPC just
+    // to count audio tracks. Never trust an arbitrary File.path property.
+    // Generated Blob/File sources still need a materialized snapshot.
+    let nativePath: string | undefined;
+    if (file instanceof File && bridge.fs.getPathForFile) {
+      try {
+        const path = bridge.fs.getPathForFile(file);
+        if (path && (path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\"))) {
+          nativePath = path;
+        }
+      } catch {
+        // webUtils may reject generated Files; preserve blob-only imports.
+      }
+    }
+    const srcPath = nativePath ?? await materializeToTemp(bridge, file);
+    markPerfOperation(operation, "media_import.probe_source_ready", { native_file: nativePath !== undefined });
+    const { streams } = await bridge.media.probeAudioStreams({ srcPath });
+    endPerfOperation(operation, "ok");
+    return streams.length;
+  } catch (error) {
+    failPerfOperation(operation, error);
+    throw error;
+  }
 }

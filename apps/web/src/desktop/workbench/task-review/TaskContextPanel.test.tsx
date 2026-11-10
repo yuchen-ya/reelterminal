@@ -1,3 +1,4 @@
+import { useChineseReviewLocale } from "../../../test/review-locale";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FolderReviewBridge } from "../../../../../desktop/src/shared/folder-review-bridge";
@@ -337,3 +338,5 @@ describe("task context and criteria adoption", () => {
     expect(screen.queryByTestId("task-review-adopt-criteria-toggle")).toBeNull();
   });
 });
+
+useChineseReviewLocale();

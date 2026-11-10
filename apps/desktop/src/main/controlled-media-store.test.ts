@@ -65,6 +65,45 @@ describe("ControlledMediaStore", () => {
     expect((await store.listAll())[0]?.contentHash).toBe(hash(bytes));
   });
 
+  it("computes a new version's hash while streaming and publishes only complete bytes", async () => {
+    const bytes = Buffer.alloc(1024 * 1024 + 37, 29);
+    const session = await store.beginWrite({ projectId: "project-1", mediaId: "native-hashed", extension: "mp4" });
+    await store.writeChunk(session, bytes.subarray(0, 29));
+    expect(await store.listAll()).toEqual([]);
+    await store.writeChunk(session, bytes.subarray(29));
+    const result = await store.commitWrite(session);
+    expect(result).toMatchObject({ contentHash: hash(bytes), created: true });
+    expect(path.basename(result.path)).toBe(`native-hashed.${hash(bytes)}.mp4`);
+    expect(await readFile(result.path)).toEqual(bytes);
+  });
+
+  it("preserves idempotency and immutability when no expected hash was supplied", async () => {
+    const write = async (bytes: Buffer, projectId: string) => {
+      const session = await store.beginWrite({ projectId, mediaId: "native-shared", extension: "mp4" });
+      await store.writeChunk(session, bytes);
+      return store.commitWrite(session);
+    };
+    const original = Buffer.from("original");
+    const first = await write(original, "project-1");
+    expect(await write(original, "project-2")).toEqual({ ...first, created: false });
+    await expect(write(Buffer.from("different"), "project-2")).rejects.toThrow(/immutable/);
+    expect(await readFile(first.path)).toEqual(original);
+    expect(await store.listAll()).toHaveLength(1);
+  });
+
+  it("serializes competing unknown-hash commits for the same media id", async () => {
+    const sessions = await Promise.all(["project-1", "project-2"].map(projectId =>
+      store.beginWrite({ projectId, mediaId: "native-race", extension: "mp4" })));
+    await store.writeChunk(sessions[0], Buffer.from("one"));
+    await store.writeChunk(sessions[1], Buffer.from("two"));
+    const results = await Promise.allSettled(sessions.map(session => store.commitWrite(session)));
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(result => result.status === "rejected")).toHaveLength(1);
+    expect(await store.listAll()).toHaveLength(1);
+    const files = (await Promise.all(["project-1", "project-2"].map(projectId => readdir(path.join(root, projectId))))).flat();
+    expect(files.some(name => name.startsWith(".pending-"))).toBe(false);
+  });
+
   it("retains a same-size file changed after the reviewed fingerprint", async () => {
     const saved = await save("cleanup-media", Buffer.from("original"));
     const reviewed = await store.listAll();

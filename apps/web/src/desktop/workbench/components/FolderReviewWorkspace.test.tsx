@@ -1,3 +1,4 @@
+import { useChineseReviewLocale } from "../../../test/review-locale";
 import {
   act,
   within,
@@ -470,3 +471,5 @@ it("opens right click context menu on row, reveals in folder, and trashes select
     expect(trash).toHaveBeenCalledWith({ root: "task", ids: ["file-2"] });
   });
 });
+
+useChineseReviewLocale();

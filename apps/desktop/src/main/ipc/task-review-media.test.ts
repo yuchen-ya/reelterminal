@@ -48,7 +48,7 @@ function stubService(overrides: Partial<TaskReviewMediaBridge> = {}) {
 
 it("rejects foreign senders before touching the service", async () => {
   const { bridge } = stubService();
-  registerTaskReviewMediaIpc(bridge, async () => {});
+  registerTaskReviewMediaIpc(bridge, async () => {}, async () => snapshot);
   await expect(invoke("open", target, { sender: {} as typeof state.editor, senderFrame: state.editor.mainFrame })).rejects.toThrow("main editor frame");
   await expect(invoke("segment", { ...target, generationId, refinementId: "refine", prompts: { points: [{ x: 0.5, y: 0.5, foreground: true }] } }, { sender: state.editor, senderFrame: { url: "https://evil.example/index.html" } as typeof state.editor.mainFrame })).rejects.toThrow("main editor frame");
   // The editor's own main frame must still sit on the app origin.
@@ -66,7 +66,7 @@ it("rejects foreign senders before touching the service", async () => {
 it("rejects renderer payloads that would smuggle pixels, disk paths or a human decision", async () => {
   const { bridge } = stubService();
   const changed = vi.fn(async () => {});
-  registerTaskReviewMediaIpc(bridge, changed);
+  registerTaskReviewMediaIpc(bridge, changed, async () => snapshot);
   const prompts = { points: [{ x: 0.5, y: 0.5, foreground: true }] };
   // Extra sensitive fields: raw pixels, absolute paths, mask lists, forged decisions.
   await expect(invoke("open", { ...target, rgba: new Uint8Array(4) })).rejects.toThrow();
@@ -98,7 +98,7 @@ it("rejects renderer payloads that would smuggle pixels, disk paths or a human d
 it("passes legal methods and results through verbatim and propagates service errors", async () => {
   const { bridge, fixtures } = stubService();
   const changed = vi.fn(async () => {});
-  registerTaskReviewMediaIpc(bridge, changed);
+  registerTaskReviewMediaIpc(bridge, changed, async () => snapshot);
   const importInput = { root, taskId, expectedRevision: 3, entryId: randomUUID() };
   expect(await invoke("importFile", importInput)).toEqual(snapshot);
   expect(bridge.importFile).toHaveBeenCalledWith(importInput);
@@ -119,14 +119,14 @@ it("passes legal methods and results through verbatim and propagates service err
   // Errors from the real service surface as rejections; the boundary never
   // converts them into success payloads.
   const failing = stubService({ open: vi.fn(async () => { throw new Error("Media source is no longer available"); }) });
-  registerTaskReviewMediaIpc(failing.bridge, changed);
+  registerTaskReviewMediaIpc(failing.bridge, changed, async () => snapshot);
   await expect(invoke("open", target)).rejects.toThrow("no longer available");
 });
 
 it("notifies the runtime only for snapshot-changing methods, never for candidates or cancellation", async () => {
   const { bridge } = stubService();
   const changed = vi.fn(async () => {});
-  registerTaskReviewMediaIpc(bridge, changed);
+  registerTaskReviewMediaIpc(bridge, changed, async () => snapshot);
   await invoke("open", target);
   await invoke("segment", { ...target, generationId, refinementId: "refine", prompts: { points: [{ x: 0.5, y: 0.5, foreground: true }] } });
   await invoke("cancel", { root, taskId, generationId });
@@ -144,7 +144,44 @@ it("notifies the runtime only for snapshot-changing methods, never for candidate
 it("does not report success when a snapshot-changing method fails", async () => {
   const { bridge } = stubService({ acceptRegion: vi.fn(async () => { throw new Error("Region candidate has been superseded or cancelled"); }) });
   const changed = vi.fn(async () => {});
-  registerTaskReviewMediaIpc(bridge, changed);
+  registerTaskReviewMediaIpc(bridge, changed, async () => snapshot);
   await expect(invoke("acceptRegion", { ...target, expectedRevision: 4, generationId, label: "Subject face" })).rejects.toThrow("superseded");
   expect(changed).not.toHaveBeenCalled();
+});
+
+it.each(["importFile", "captureFrame", "acceptRegion"] as const)("returns post-notification authority for %s without replaying the media operation", async method => {
+  const { bridge, fixtures } = stubService();
+  let notified = false;
+  const latest = { ...snapshot, revision: snapshot.revision + 1 };
+  const read = vi.fn(async requestedRoot => { expect(requestedRoot).toBe(root); expect(notified).toBe(true); return latest; });
+  registerTaskReviewMediaIpc(bridge, async () => { notified = true; }, read);
+  const input = method === "importFile" ? { root, taskId, expectedRevision: 4, entryId: randomUUID() }
+    : method === "captureFrame" ? { ...target, expectedRevision: 4, generationId, selection: { frameIndex: 3 } }
+      : { ...target, expectedRevision: 4, generationId, label: "Explicitly kept region" };
+  const result = await invoke(method, input);
+  expect(method === "importFile" ? result : result.snapshot).toEqual(latest);
+  if (method === "captureFrame") expect(result.unitId).toBe(fixtures.capture.unitId);
+  if (method === "acceptRegion") expect(result.unitId).toBe(fixtures.accept.unitId);
+  expect(bridge[method]).toHaveBeenCalledTimes(1);
+  expect(read).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  { ...snapshot, root: "C:/different-task" },
+  { ...snapshot, taskId: randomUUID() },
+  { ...snapshot, revision: snapshot.revision - 1 },
+])("rejects changed or downgraded authority after a media update", async latest => {
+  const { bridge } = stubService();
+  registerTaskReviewMediaIpc(bridge, async () => {}, async () => latest);
+  await expect(invoke("acceptRegion", { ...target, expectedRevision: 4, generationId, label: "Subject" })).rejects.toThrow("authority");
+  expect(bridge.acceptRegion).toHaveBeenCalledTimes(1);
+});
+
+it("keeps notification failures visible and never retries a completed media mutation", async () => {
+  const { bridge } = stubService();
+  const read = vi.fn(async () => snapshot);
+  registerTaskReviewMediaIpc(bridge, async () => { throw new Error("controlled notification failure"); }, read);
+  await expect(invoke("acceptRegion", { ...target, expectedRevision: 4, generationId, label: "Subject" })).rejects.toThrow("notification failure");
+  expect(read).not.toHaveBeenCalled();
+  expect(bridge.acceptRegion).toHaveBeenCalledTimes(1);
 });

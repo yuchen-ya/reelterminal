@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent, KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -22,10 +23,10 @@ const normalized = (value: string) => value.replace(/\\/g, "/");
 const entryVersion = (item: Entry) =>
   `${item.id}:${item.mtimeMs}:${item.size}:${item.review.versionHash ?? ""}`;
 const labels: Record<Status, string> = {
-  pending: "待审",
-  kept: "采用",
-  rework: "返工",
-  discarded: "不采用",
+  get pending() { return t("Pending"); },
+  get kept() { return t("reviewUi.Keep_67"); },
+  get rework() { return t("Rework"); },
+  get discarded() { return t("reviewUi.Discard_69"); },
 };
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -133,10 +134,10 @@ export function FolderReviewWorkspace({
       .join("、");
     const label =
       targetIds.length > 3
-        ? `${names} 等 ${targetIds.length} 项`
+        ? t("{{v0}} and others ({{v1}} items)", { v0: names, v1: targetIds.length })
         : names;
     const confirmed = window.confirm(
-      t("确定要将 {{name}} 移入回收站吗？", { name: label }),
+      t("Move {{name}} to the recycle bin?", { name: label }),
     );
     if (!confirmed) return;
 
@@ -241,7 +242,7 @@ export function FolderReviewWorkspace({
       if (failures.length) {
         setError(
           failures
-            .map((item) => `${item.source}: ${item.error ?? t("操作失败")}`)
+            .map((item) => `${item.source}: ${item.error ?? t("Operation failed")}`)
             .join("\n"),
         );
         return false;
@@ -530,7 +531,7 @@ export function FolderReviewWorkspace({
           destination: target,
         }),
       );
-    else if (paths.length) setError(t("无法读取拖入文件的路径"));
+    else if (paths.length) setError(t("Unable to read the dropped file path"));
   };
   const dragOver = (event: DragEvent, target: string) => {
     if (
@@ -557,10 +558,10 @@ export function FolderReviewWorkspace({
     }
   };
   const flushDrafts = useCallback(async () => {
-    if (busyRef.current) throw new Error(t("操作尚未完成，请稍后重试"));
+    if (busyRef.current) throw new Error(t("An operation is still in progress. Try again shortly."));
     const drafts = Object.entries(notesRef.current);
     if (!drafts.length) return;
-    if (!current.current) throw new Error(t("文件夹尚未加载"));
+    if (!current.current) throw new Error(t("Folder not loaded"));
     busyRef.current = true;
     setBusy(true);
     setSaveState("saving");
@@ -571,7 +572,7 @@ export function FolderReviewWorkspace({
           (item) => item.id === id && item.kind === "file",
         );
         if (!entry || entryVersion(entry) !== draft.version)
-          throw new Error(t("文件已变化，请重新检查未保存的备注"));
+          throw new Error(t("The file changed. Check your unsaved notes."));
         let nextVersion = draft.version;
         if (draft.value !== entry.review.note) {
           const result = await bridge.review({
@@ -583,7 +584,7 @@ export function FolderReviewWorkspace({
           });
           setData(result.snapshot);
           const failure = result.results.find((item) => !item.success);
-          if (failure) throw new Error(failure.error ?? t("保存备注失败"));
+          if (failure) throw new Error(failure.error ?? t("Failed to save notes"));
           const updated = result.snapshot.entries.find(
             (item) => item.id === id,
           );
@@ -657,19 +658,19 @@ export function FolderReviewWorkspace({
       data-mode={mode}
     >
       <div className="flex flex-wrap items-center gap-2 border-b border-border p-2">
-        {mode === "review" && <strong>{snapshot?.name ?? t("文件夹审阅")}</strong>}
-        <button className={wbButton.ghost} disabled={busy || !snapshot} onClick={() => setDialog({ mode: "renameTask", value: snapshot!.name })}>{t("重命名任务")}</button>
+        {mode === "review" && <strong>{snapshot?.name ?? t("Folder review")}</strong>}
+        <button className={wbButton.ghost} disabled={busy || !snapshot} onClick={() => setDialog({ mode: "renameTask", value: snapshot!.name })}>{t("Rename task")}</button>
         <span className="min-w-0 flex-1 truncate text-fg-3" title={root}>
           {root}
         </span>
         <span className="shrink-0 text-fg-3" role="status">
           {mode === "review"
-            ? t("共 {{files}} 文件 · 已审 {{reviewed}} · 待审 {{pending}}", {
+            ? t("{{files}} files · {{reviewed}} reviewed · {{pending}} pending", {
                 files: fileCount,
                 reviewed: reviewedCount,
                 pending: fileCount - reviewedCount,
               })
-            : t("共 {{files}} 文件", { files: fileCount })}
+            : t("{{files}} files", { files: fileCount })}
         </span>
         <button
           className={wbButton.ghost}
@@ -679,14 +680,14 @@ export function FolderReviewWorkspace({
               .catch((problem) => setError(errorText(problem)))
           }
         >
-          {t("打开位置")}
+          {t("Open location")}
         </button>
         <button className={wbButton.ghost} onClick={() => void refresh()}>
-          {t("刷新")}
+          {t("Refresh")}
         </button>
         {onClose && (
           <button className={wbButton.ghost} onClick={onClose}>
-            {t("关闭")}
+            {t("Close")}
           </button>
         )}
       </div>
@@ -699,14 +700,14 @@ export function FolderReviewWorkspace({
             className="flex w-80 flex-col gap-3 rounded-lg border border-border bg-bg-1 p-4 shadow-lg"
             role="dialog"
             aria-modal="true"
-            aria-label={t(dialog.mode === "renameTask" ? "重命名任务" : dialog.mode === "rename" ? "重命名" : "新建文件夹")}
+            aria-label={t(dialog.mode === "renameTask" ? t("Rename task") : dialog.mode === "rename" ? t("Rename") : t("New folder"))}
             onSubmit={(event) => {
               event.preventDefault();
               submitDialog();
             }}
           >
             <label className="flex flex-col gap-1">
-              {t(dialog.mode === "renameTask" ? "任务名称" : dialog.mode === "rename" ? "新名称" : "文件夹名称")}
+              {t(dialog.mode === "renameTask" ? t("Task name") : dialog.mode === "rename" ? t("New name") : t("Folder name"))}
               <input
                 autoFocus
                 className="rounded border border-border bg-bg-2 p-2"
@@ -725,13 +726,13 @@ export function FolderReviewWorkspace({
                 className={wbButton.ghost}
                 onClick={() => setDialog(null)}
               >
-                {t("取消")}
+                {t("Cancel")}
               </button>
               <button
                 className={wbButton.primary}
                 disabled={!dialog.value.trim() || busy}
               >
-                {t("确定")}
+                {t("Confirm")}
               </button>
             </div>
           </form>
@@ -758,7 +759,7 @@ export function FolderReviewWorkspace({
                   .catch((problem) => setError(errorText(problem)));
               }}
             >
-              {t("在文件夹中显示")}
+              {t("Show in folder")}
             </button>
             <button
               type="button"
@@ -769,7 +770,7 @@ export function FolderReviewWorkspace({
                 rename(entry);
               }}
             >
-              {t("重命名")}
+              {t("Rename")}
             </button>
             <button
               type="button"
@@ -780,7 +781,7 @@ export function FolderReviewWorkspace({
                 void trashEntries([entry.id]);
               }}
             >
-              {t("移入回收站")}
+              {t("Move to recycle bin")}
             </button>
           </div>
         );
@@ -798,21 +799,21 @@ export function FolderReviewWorkspace({
           <div className="flex flex-wrap gap-1 border-b border-border p-2">
             <input
               className="min-w-24 flex-1 rounded border border-border bg-bg-2 px-2"
-              aria-label={t("搜索文件")}
-              placeholder={t("搜索文件")}
+              aria-label={t("Search files")}
+              placeholder={t("Search files")}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
             {mode === "review" && (
               <select
                 className="rounded border border-border bg-bg-2 p-1"
-                aria-label={t("审阅结果筛选")}
+                aria-label={t("Filter by review status")}
                 value={filter}
                 onChange={(event) =>
                   setFilter(event.target.value as Status | "all")
                 }
               >
-                <option value="all">{t("全部")}</option>
+                <option value="all">{t("All")}</option>
                 {(Object.keys(labels) as Status[]).map((status) => (
                   <option key={status} value={status}>
                     {t(labels[status])}
@@ -825,7 +826,7 @@ export function FolderReviewWorkspace({
               className={wbButton.secondary}
               onClick={() => setDialog({ mode: "mkdir", value: "" })}
             >
-              {t("新建文件夹")}
+              {t("New folder")}
             </button>
           </div>
           <div
@@ -836,10 +837,10 @@ export function FolderReviewWorkspace({
             ref={treeRef}
             data-testid="folder-review-tree"
             role="tree"
-            aria-label={t("任务文件")}
+            aria-label={t("Task files")}
           >
             {!snapshot && (
-              <p className="p-2 text-fg-3">{t("正在读取文件夹…")}</p>
+              <p className="p-2 text-fg-3">{t("Reading folder…")}</p>
             )}
             {visible.map((item) => {
               const path = normalized(item.relativePath),
@@ -1023,7 +1024,7 @@ export function FolderReviewWorkspace({
                   {directory ? (
                     <button
                       className="w-5 shrink-0"
-                      aria-label={t(expanded.has(path) ? "收起" : "展开")}
+                      aria-label={t(expanded.has(path) ? t("Collapse") : t("Expand"))}
                       onClick={(event) => {
                         event.stopPropagation();
                         toggle(path);
@@ -1048,7 +1049,7 @@ export function FolderReviewWorkspace({
                   )}
                   <button
                     className="px-1 text-fg-3 opacity-0 transition-opacity hover:text-fg focus:opacity-100 group-hover:opacity-100"
-                    aria-label={t("重命名")}
+                    aria-label={t("Rename")}
                     onClick={(event) => {
                       event.stopPropagation();
                       rename(item);
@@ -1058,7 +1059,7 @@ export function FolderReviewWorkspace({
                   </button>
                   <button
                     className="px-1 text-fg-3 opacity-0 transition-opacity hover:text-fg focus:opacity-100 group-hover:opacity-100"
-                    aria-label={t("更多操作")}
+                    aria-label={t("More actions")}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (!selected.includes(item.id)) {
@@ -1083,7 +1084,7 @@ export function FolderReviewWorkspace({
           {selectedVisible.length > 0 && (
           <div className="space-y-1 border-t border-border p-2">
             <div className="flex items-center gap-1">
-              <span>{t("目标文件夹")}</span>
+              <span>{t("Destination folder")}</span>
               <select
                 className="min-w-0 flex-1 rounded border border-border bg-bg-2 p-1"
                 value={destination}
@@ -1101,7 +1102,7 @@ export function FolderReviewWorkspace({
             </div>
             <div className="flex flex-wrap gap-1">
               <span className="self-center text-fg-3">
-                {t("已选 {{count}} 项", { count: selectedVisible.length })}
+                {t("{{count}} selected", { count: selectedVisible.length })}
               </span>
               <button
                 className={wbButton.secondary}
@@ -1118,7 +1119,7 @@ export function FolderReviewWorkspace({
                   )
                 }
               >
-                {t("移动到")}
+                {t("Move to")}
               </button>
               <button
                 className={wbButton.secondary}
@@ -1135,7 +1136,7 @@ export function FolderReviewWorkspace({
                   )
                 }
               >
-                {t("复制到")}
+                {t("Copy to")}
               </button>
               <button
                 className={wbButton.secondary}
@@ -1150,14 +1151,14 @@ export function FolderReviewWorkspace({
                   )
                 }
               >
-                {t("复制到外部…")}
+                {t("Copy outside task…")}
               </button>
               <button
                 className={`${wbButton.secondary} text-status-error hover:text-status-error`}
                 disabled={busy || !selectedVisible.length}
                 onClick={() => void trashEntries(selectedVisible)}
               >
-                {t("移入回收站")}
+                {t("Move to recycle bin")}
               </button>
             </div>
           </div>
@@ -1168,7 +1169,7 @@ export function FolderReviewWorkspace({
             <>
               {!visibleIds.has(active.id) && (
                 <p className="text-fg-3">
-                  {t("当前文件不符合筛选条件，预览仍然保留。")}
+                  {t("This file does not match the filter. Its preview remains open.")}
                 </p>
               )}
               <div className="flex items-center gap-2">
@@ -1186,7 +1187,7 @@ export function FolderReviewWorkspace({
                       .catch((problem) => setError(errorText(problem)))
                   }
                 >
-                  {t("在文件夹中显示")}
+                  {t("Show in folder")}
                 </button>
               </div>
               <div className="flex min-h-0 flex-1 overflow-auto rounded bg-bg-2 p-2">
@@ -1195,7 +1196,7 @@ export function FolderReviewWorkspace({
                     {previewError}
                   </p>
                 ) : !preview ? (
-                  <p className="text-fg-3">{t("正在加载预览…")}</p>
+                  <p className="text-fg-3">{t("Loading preview…")}</p>
                 ) : preview.kind === "image" && preview.url ? (
                   <img
                     className="m-auto max-h-full max-w-full object-contain"
@@ -1226,7 +1227,7 @@ export function FolderReviewWorkspace({
                   </pre>
                 ) : (
                   <div className="m-auto text-fg-3">
-                    <p>{t("此文件暂不支持预览。")}</p>
+                    <p>{t("Preview is not supported for this file yet.")}</p>
                     <button
                       className={wbButton.secondary}
                       onClick={() =>
@@ -1235,7 +1236,7 @@ export function FolderReviewWorkspace({
                           .catch((problem) => setError(errorText(problem)))
                       }
                     >
-                      {t("使用系统应用打开")}
+                      {t("Open with system app")}
                     </button>
                   </div>
                 )}
@@ -1243,7 +1244,7 @@ export function FolderReviewWorkspace({
               {mode === "review" && (
                 <>
                   <label className="mt-2 flex flex-col gap-1">
-                    {t("审阅备注")}
+                    {t("Review notes")}
                     <textarea
                       className="min-h-16 rounded border border-border bg-bg-2 p-2"
                       value={
@@ -1270,18 +1271,18 @@ export function FolderReviewWorkspace({
                       disabled={busy || !Object.keys(notes).length}
                       onClick={() => void flushDrafts().catch(() => undefined)}
                     >
-                      {t("保存备注")}
+                      {t("Save notes")}
                     </button>
                     <span role="status" className="text-fg-3">
                       {t(
                         saveState === "saving"
-                          ? "正在保存"
+                          ? t("Saving")
                           : saveState === "error"
-                            ? "保存失败，请重试"
+                            ? t("Save failed. Try again.")
                             : Object.keys(notes).length
-                              ? "未保存"
+                              ? t("Unsaved")
                               : saveState === "saved"
-                                ? "已保存"
+                                ? t("Saved")
                                 : "",
                       )}
                     </span>
@@ -1299,7 +1300,7 @@ export function FolderReviewWorkspace({
                         onClick={() => decide(status)}
                       >
                         {selectedFiles.length > 1
-                          ? t("{{status}}选中的 {{count}} 项", {
+                          ? t("{{status}} {{count}} selected items", {
                               status: t(labels[status]),
                               count: selectedFiles.length,
                             })
@@ -1315,8 +1316,8 @@ export function FolderReviewWorkspace({
               <p className="text-fg-3">
                 {t(
                   mode === "files"
-                    ? "选择左侧文件预览内容"
-                    : "选择文件以预览和审阅",
+                    ? t("Select a file on the left to preview")
+                    : t("Select a file to preview and review"),
                 )}
               </p>
             </div>

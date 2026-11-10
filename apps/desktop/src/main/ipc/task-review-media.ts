@@ -2,6 +2,7 @@ import { ipcMain } from "electron";
 import { z } from "zod";
 import { CHANNELS } from "../../shared/channels";
 import { taskReviewMediaSchemas, type TaskReviewMediaBridge } from "../../shared/task-review-media";
+import type { TaskReviewSnapshot } from "../../shared/task-review";
 import { assertEditorIpcSender } from "./index";
 
 const envelopeSchema = z.object({
@@ -21,22 +22,29 @@ const envelopeSchema = z.object({
 export function registerTaskReviewMediaIpc(
   service: TaskReviewMediaBridge,
   onTaskChanged: (target: { root: string; taskId: string }) => Promise<void>,
+  readSnapshot: (root: string) => Promise<TaskReviewSnapshot>,
 ): void {
+  const changedSnapshot = async (snapshot: TaskReviewSnapshot) => {
+    await onTaskChanged({ root: snapshot.root, taskId: snapshot.taskId });
+    const latest = await readSnapshot(snapshot.root);
+    if (latest.root !== snapshot.root || latest.taskId !== snapshot.taskId || latest.revision < snapshot.revision) {
+      throw new Error("Task media authority changed after the update");
+    }
+    return latest;
+  };
   ipcMain.handle(CHANNELS.taskReviewMedia, async (event, raw) => {
     assertEditorIpcSender(event);
     const request = envelopeSchema.parse(raw);
     switch (request.method) {
       case "importFile": {
         const snapshot = await service.importFile(taskReviewMediaSchemas.importFile.parse(request.input));
-        await onTaskChanged({ root: snapshot.root, taskId: snapshot.taskId });
-        return snapshot;
+        return changedSnapshot(snapshot);
       }
       case "open":
         return service.open(taskReviewMediaSchemas.open.parse(request.input));
       case "captureFrame": {
         const result = await service.captureFrame(taskReviewMediaSchemas.captureFrame.parse(request.input));
-        await onTaskChanged({ root: result.snapshot.root, taskId: result.snapshot.taskId });
-        return result;
+        return { ...result, snapshot: await changedSnapshot(result.snapshot) };
       }
       case "segment":
         return service.segment(taskReviewMediaSchemas.segment.parse(request.input));
@@ -44,8 +52,7 @@ export function registerTaskReviewMediaIpc(
         return service.cancel(taskReviewMediaSchemas.cancel.parse(request.input));
       case "acceptRegion": {
         const result = await service.acceptRegion(taskReviewMediaSchemas.acceptRegion.parse(request.input));
-        await onTaskChanged({ root: result.snapshot.root, taskId: result.snapshot.taskId });
-        return result;
+        return { ...result, snapshot: await changedSnapshot(result.snapshot) };
       }
     }
     throw new Error(`Unknown task review media method: ${String(request.method)}`);

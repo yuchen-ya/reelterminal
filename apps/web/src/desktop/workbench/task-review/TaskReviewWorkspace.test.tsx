@@ -1,3 +1,4 @@
+import { useChineseReviewLocale } from "../../../test/review-locale";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FolderReviewBridge } from "../../../../../desktop/src/shared/folder-review-bridge";
@@ -1089,3 +1090,5 @@ describe("task review workspace", () => {
     expect(preflightSpy).toHaveBeenCalled();
   });
 });
+
+useChineseReviewLocale();

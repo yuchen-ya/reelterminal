@@ -630,21 +630,21 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
               /> : (
                 <div className="flex min-h-0 flex-1 flex-col gap-2 p-3" data-testid="folder-task-directory">
                   <div className="flex h-7 items-center justify-between gap-2 px-1 text-xs">
-                    <strong className="font-semibold">任务文件夹</strong>
+                    <strong className="font-semibold">{t("Task folders")}</strong>
                     <div className="flex gap-1.5">
-                      <button type="button" className={wbButton.secondary} disabled={switching} onClick={() => void openFolder().catch(report)}>打开文件夹</button>
-                      <button type="button" className={wbButton.primary} disabled={switching} aria-expanded={!!newFolderTask} data-testid="folder-task-new" onClick={() => { if (newFolderTask) setNewFolderTask(null); else void showNewFolderTask().catch(report); }}>＋ 新建任务</button>
+                      <button type="button" className={wbButton.secondary} disabled={switching} onClick={() => void openFolder().catch(report)}>{t("Open folder")}</button>
+                      <button type="button" className={wbButton.primary} disabled={switching} aria-expanded={!!newFolderTask} data-testid="folder-task-new" onClick={() => { if (newFolderTask) setNewFolderTask(null); else void showNewFolderTask().catch(report); }}>{t("＋ New task")}</button>
                     </div>
                   </div>
                   {newFolderTask ? (
-                    <form role="dialog" aria-label="新建任务" className="mx-1 flex flex-col gap-2 rounded-md border border-accent/60 bg-bg-1 p-2.5" onSubmit={event => { event.preventDefault(); void createFolderTask().catch(report); }}>
-                      <label className="flex flex-col gap-1">任务名称<input autoFocus className={input} value={newFolderTask.name} onChange={event => setNewFolderTask({ ...newFolderTask, name: event.target.value })} /></label>
-                      <label className="flex flex-col gap-1">文件夹名称<input className={input} value={newFolderTask.folderName} onChange={event => setNewFolderTask({ ...newFolderTask, folderName: event.target.value })} /></label>
-                      <p className="break-all font-mono text-xs text-fg-3">保存位置：{newFolderTask.tasksRoot}{newFolderTask.tasksRoot.includes("\\") ? "\\" : "/"}{newFolderTask.folderName}</p>
-                      <div className="flex justify-end gap-2"><button type="button" className={wbButton.ghost} onClick={() => setNewFolderTask(null)}>取消</button><button className={wbButton.primary} disabled={switching || !newFolderTask.name.trim() || !newFolderTask.folderName}>创建</button></div>
+                    <form role="dialog" aria-label={t("New task")} className="mx-1 flex flex-col gap-2 rounded-md border border-accent/60 bg-bg-1 p-2.5" onSubmit={event => { event.preventDefault(); void createFolderTask().catch(report); }}>
+                      <label className="flex flex-col gap-1">{t("Task name")}<input autoFocus className={input} value={newFolderTask.name} onChange={event => setNewFolderTask({ ...newFolderTask, name: event.target.value })} /></label>
+                      <label className="flex flex-col gap-1">{t("Folder name")}<input className={input} value={newFolderTask.folderName} onChange={event => setNewFolderTask({ ...newFolderTask, folderName: event.target.value })} /></label>
+                      <p className="break-all font-mono text-xs text-fg-3">{t("Save location:")}{newFolderTask.tasksRoot}{newFolderTask.tasksRoot.includes("\\") ? "\\" : "/"}{newFolderTask.folderName}</p>
+                      <div className="flex justify-end gap-2"><button type="button" className={wbButton.ghost} onClick={() => setNewFolderTask(null)}>{t("Cancel")}</button><button className={wbButton.primary} disabled={switching || !newFolderTask.name.trim() || !newFolderTask.folderName}>{t("Create")}</button></div>
                     </form>
                   ) : (
-                    <p className="px-1 text-xs text-fg-3">在选择窗口中选择已有文件夹，或新建文件夹作为任务。</p>
+                    <p className="px-1 text-xs text-fg-3">{t("Choose an existing folder or create a new folder in the picker to use as a task.")}</p>
                   )}
                   <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto border-t border-border px-1 pt-1.5" onClick={() => { if (folderMenu) setFolderMenu(null); }}>
                     {recentFolders.map(folder => {
@@ -656,11 +656,11 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                           onContextMenu={event => { event.preventDefault(); event.stopPropagation(); setFolderMenu(folder.id); }}>
                           {renaming ? (
                             <form className="flex items-center gap-1.5" onClick={event => event.stopPropagation()} onSubmit={event => { event.preventDefault(); void saveFolderRename().catch(report); }}>
-                              <input autoFocus className={`${input} min-w-0 flex-1`} aria-label="重命名任务" maxLength={200} value={renaming.name} disabled={switching}
+                              <input autoFocus className={`${input} min-w-0 flex-1`} aria-label={t("Rename task")} maxLength={200} value={renaming.name} disabled={switching}
                                 onChange={event => setFolderRename({ ...renaming, name: event.target.value })}
                                 onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); setFolderRename(null); } }} />
-                              <button type="submit" className={wbButton.secondary} disabled={switching || !renaming.name.trim()}>保存</button>
-                              <button type="button" className={wbButton.ghost} onClick={() => setFolderRename(null)}>取消</button>
+                              <button type="submit" className={wbButton.secondary} disabled={switching || !renaming.name.trim()}>{t("Save")}</button>
+                              <button type="button" className={wbButton.ghost} onClick={() => setFolderRename(null)}>{t("Cancel")}</button>
                             </form>
                           ) : (
                             <>
@@ -674,7 +674,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                                 </span>
                               </button>
                               <button type="button" className={`${compactIconButton} absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
-                                aria-label={`任务 ${folder.name} 的操作`} aria-haspopup="menu" aria-expanded={folderMenu === folder.id}
+                                aria-label={t("Actions for task {{v0}}", { v0: folder.name })} aria-haspopup="menu" aria-expanded={folderMenu === folder.id}
                                 disabled={switching}
                                 onClick={event => { event.stopPropagation(); setFolderMenu(folderMenu === folder.id ? null : folder.id); }}>
                                 <MoreHorizontal className="h-3.5 w-3.5" />
@@ -688,33 +688,33 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                                       if (folder.root) {
                                         void window.reelterminal?.folderReview?.showInFolder({ root: folder.root }).catch(report);
                                       }
-                                    }}>打开文件所在位置</button>
+                                    }}>{t("Show file location")}</button>
                                   <button type="button" role="menuitem" disabled={switching}
                                     className="block w-full px-3 py-1.5 text-left text-fg-2 hover:bg-bg-2 hover:text-fg"
-                                    onClick={() => { setFolderMenu(null); void beginFolderRename(folder).catch(report); }}>重命名</button>
+                                    onClick={() => { setFolderMenu(null); void beginFolderRename(folder).catch(report); }}>{t("Rename")}</button>
                                   <button type="button" role="menuitem" disabled={switching}
                                     className="block w-full px-3 py-1.5 text-left text-fg-2 hover:bg-bg-2 hover:text-fg"
                                     onClick={() => {
                                       setFolderMenu(null);
                                       useWorkbenchTabsStore.getState().removeFolder(folder.id);
-                                    }}>从列表中移除</button>
+                                    }}>{t("Remove from list")}</button>
                                   <button type="button" role="menuitem" disabled={switching || !folder.root}
                                     className="block w-full px-3 py-1.5 text-left text-status-error hover:bg-bg-2 hover:text-status-error"
                                     onClick={() => {
                                       setFolderMenu(null);
                                       if (!folder.root) return;
-                                      const confirmed = window.confirm(`确定要将任务文件夹 "${folder.name}" 移入回收站吗？\n路径：${folder.root}`);
+                                      const confirmed = window.confirm(t("Move task folder \"{{v0}}\" to the recycle bin?\nPath: {{v1}}", { v0: folder.name, v1: folder.root }));
                                       if (!confirmed) return;
                                       void (async () => {
                                         try {
                                           await window.reelterminal?.folderReview?.trash({ root: folder.root!, trashRoot: true });
                                           useWorkbenchTabsStore.getState().removeFolder(folder.id);
-                                          toast.info(`已将 "${folder.name}" 移入回收站`);
+                                          toast.info(t("Moved \"{{v0}}\" to the recycle bin", { v0: folder.name }));
                                         } catch (err) {
                                           report(err);
                                         }
                                       })();
-                                    }}>移入回收站</button>
+                                    }}>{t("Move to recycle bin")}</button>
                                 </div>
                               )}
                             </>
@@ -722,7 +722,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
                         </div>
                       );
                     })}
-                    {!recentFolders.length && <p className="px-2 py-6 text-center text-xs text-fg-3">打开或新建任务文件夹后，它会显示在这里。</p>}
+                    {!recentFolders.length && <p className="px-2 py-6 text-center text-xs text-fg-3">{t("Open or create a task folder to see it here.")}</p>}
                   </div>
                 </div>
               )}
@@ -821,7 +821,7 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
           </div>
         </>
       ) : activeTab?.kind === "folder" && activeTab.root ? (
-        <Suspense fallback={<div className="p-6 text-sm">正在打开任务文件夹…</div>}>
+        <Suspense fallback={<div className="p-6 text-sm">{t("Opening task folder…")}</div>}>
           <TaskReviewWorkspace
             key={activeTab.id}
             root={activeTab.root}
@@ -911,8 +911,8 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
               <div ref={emptyHost} className="grid flex-1 place-items-center p-8 text-center outline-none" data-testid="workbench-empty" tabIndex={0}>
                 <div>
                   <h1 className="text-lg font-semibold">{t("review.title")}</h1>
-                  <p className="mt-2 max-w-md text-sm leading-relaxed text-fg-2">{browserDemo ? t("Open an existing review task or free board, or create a board by dropping files or pasting images, text and links.") : "打开真实文件夹，直接查看和整理素材文件。台词审阅在任务工作台逐条进行，导出只包含人工判定通过的条目；对文件的移动或复制只是文件操作。审阅记录随任务文件夹保存。"}</p>
-                  {!browserDemo && window.reelterminal?.folderReview && <button className={`${wbButton.primary} mt-4`} onClick={() => void openFolder().catch(report)}>打开任务文件夹</button>}
+                  <p className="mt-2 max-w-md text-sm leading-relaxed text-fg-2">{browserDemo ? t("Open an existing review task or free board, or create a board by dropping files or pasting images, text and links.") : t("Open a real folder to view and organize source files. Review dialogue individually in the task workbench; exports contain only items explicitly approved by a person. Moving or copying files is only a file operation. Review records stay with the task folder.")}</p>
+                  {!browserDemo && window.reelterminal?.folderReview && <button className={`${wbButton.primary} mt-4`} onClick={() => void openFolder().catch(report)}>{t("Open task folder")}</button>}
                   <button className={`${wbButton.secondary} ml-2 mt-4`} onClick={() => setManagerOpen(true)} data-testid="review-empty-create">{t("Open / New")}</button>
                   <button className={`${wbButton.secondary} ml-2 mt-4`} onClick={() => newBoardFiles.current?.click()}>{t("Import files and create a board")}</button>
                 </div>

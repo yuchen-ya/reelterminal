@@ -19,7 +19,7 @@ export function registerControlledMediaIpc(): void {
     z.object({
       projectId: z.string().min(1).max(128),
       mediaId: z.string().min(1).max(128),
-      expectedHash: z.string().regex(/^[0-9a-f]{64}$/),
+      expectedHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
       extension: z.string().regex(/^[a-z0-9]{1,10}$/),
     }),
     (args) => mediaStore.beginWrite(args),

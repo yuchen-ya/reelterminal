@@ -485,7 +485,8 @@ interface ReelTerminalDesktopBridge {
       };
       inputHistory?: (direction: "undo" | "redo") => Promise<void>;
       mediaStore?: {
-        beginWrite(args: { projectId: string; mediaId: string; expectedHash: string; extension: string }): Promise<string>;
+        /** A supplied hash is verified; otherwise commit returns the native streaming SHA-256. */
+        beginWrite(args: { projectId: string; mediaId: string; expectedHash?: string; extension: string }): Promise<string>;
         writeChunk(sessionId: string, data: ArrayBuffer | Uint8Array): Promise<void>;
         commitWrite(sessionId: string): Promise<{ path: string; contentHash: string; created: boolean }>;
         abortWrite(sessionId: string): Promise<void>;

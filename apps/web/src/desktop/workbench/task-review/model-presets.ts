@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 export interface ModelProviderPreset {
   id: string;
   label: string;
@@ -8,7 +9,7 @@ export interface ModelProviderPreset {
 export const MODEL_PROVIDER_PRESETS: readonly ModelProviderPreset[] = [
   {
     id: "magpie",
-    label: "Magpie (本地 Pi 代理)",
+    get label() { return t("Magpie (local Pi proxy)"); },
     endpoint: "http://127.0.0.1:3425/v1",
     models: [
       "deepseek/deepseek-flash",
@@ -39,19 +40,19 @@ export const MODEL_PROVIDER_PRESETS: readonly ModelProviderPreset[] = [
   },
   {
     id: "siliconflow",
-    label: "硅基流动 (SiliconFlow)",
+    get label() { return t("SiliconFlow"); },
     endpoint: "https://api.siliconflow.cn/v1",
     models: ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct"],
   },
   {
     id: "dashscope",
-    label: "阿里云百炼 (DashScope)",
+    get label() { return t("Alibaba Cloud DashScope"); },
     endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     models: ["qwen-max", "qwen-plus", "deepseek-v3"],
   },
   {
     id: "qwen-token-plan-cn",
-    label: "百炼 Token Plan (阿里云国内)",
+    get label() { return t("Bailian Token Plan (Alibaba Cloud China)"); },
     endpoint: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
     models: [
       "deepseek-v4.1-flash",
@@ -63,25 +64,25 @@ export const MODEL_PROVIDER_PRESETS: readonly ModelProviderPreset[] = [
   },
   {
     id: "kimi-coding",
-    label: "Kimi Coding (月之暗面)",
+    get label() { return t("Kimi Coding (Moonshot AI)"); },
     endpoint: "https://api.kimi.com/coding/v1",
     models: ["k3.1-pro", "k3.1-pro-highspeed", "k3", "k3-256k", "kimi-for-coding"],
   },
   {
     id: "moonshotai-cn",
-    label: "Moonshot AI (国内)",
+    get label() { return t("Moonshot AI (China)"); },
     endpoint: "https://api.moonshot.cn/v1",
     models: ["kimi-k3.1-pro", "kimi-k3", "kimi-k2.7-code"],
   },
   {
     id: "zai-coding-cn",
-    label: "智谱 GLM Coding (国内)",
+    get label() { return t("Zhipu GLM Coding (China)"); },
     endpoint: "https://open.bigmodel.cn/api/coding/paas/v4",
     models: ["glm-5.3", "glm-5.3-flash", "glm-4.6v"],
   },
   {
     id: "minimax-cn",
-    label: "MiniMax (国内)",
+    get label() { return t("MiniMax (China)"); },
     endpoint: "https://api.minimaxi.com/anthropic",
     models: ["MiniMax-M3.1-Flash", "MiniMax-M3", "MiniMax-M2.7"],
   },
@@ -135,13 +136,13 @@ export const MODEL_PROVIDER_PRESETS: readonly ModelProviderPreset[] = [
   },
   {
     id: "ollama",
-    label: "本地 Ollama",
+    get label() { return t("Local Ollama"); },
     endpoint: "http://127.0.0.1:11434/v1",
     models: ["qwen2.5:14b", "deepseek-r1:14b", "llama3.1:8b"],
   },
   {
     id: "custom",
-    label: "自定义 (OpenAI 兼容)",
+    get label() { return t("Custom (OpenAI compatible)"); },
     endpoint: "",
     models: [],
   },

@@ -8,13 +8,23 @@ export interface TaskReviewContextBridge {
   setCriterionActive(input: TaskCommit & { versionId: string; active: boolean }): Promise<TaskReviewSnapshot>;
 }
 
+export interface TaskDecisionOutcome {
+  snapshot: TaskReviewSnapshot;
+  decisionId: string;
+  outcome: 'committed' | 'not-committed' | 'unknown';
+}
+export type TaskDecisionReply = TaskReviewSnapshot & {
+  decisionReceipt?: { decisionId: string; outcome: 'committed' | 'not-committed'; notificationFailed?: boolean; refreshFailed?: boolean; rejection?: 'validation' };
+};
+
 export interface TaskReviewBridge {
+  getDecisionOutcome?(input: { root: string; taskId: string; decisionId: string }): Promise<TaskDecisionOutcome>;
   open(root: string): Promise<TaskReviewSnapshot>;
   refreshSources(input: TaskCommit): Promise<TaskReviewSnapshot>;
   setGoal(input: TaskCommit & { goal: string }): Promise<TaskReviewSnapshot>;
   importText(input: TaskCommit & { name: string; text: string; format: TaskTextFormat }): Promise<TaskReviewSnapshot>;
   importFile(input: TaskCommit & { entryId: string }): Promise<TaskReviewSnapshot>;
-  decide(input: TaskCommit & TaskUnitTarget & { purpose: string; status: TaskDecisionStatus; note: string; replacementText?: string }): Promise<TaskReviewSnapshot>;
+  decide(input: TaskCommit & TaskUnitTarget & { purpose: string; status: TaskDecisionStatus; note: string; replacementText?: string; decisionId?: string }): Promise<TaskDecisionReply>;
   undoDecision(input: TaskDecisionHistoryInput): Promise<TaskReviewSnapshot>;
   redoDecision(input: TaskDecisionHistoryInput): Promise<TaskReviewSnapshot>;
   saveDraft(input: TaskCommit & { draft: Omit<TaskDraft, 'updatedAt'> }): Promise<TaskReviewSnapshot>;

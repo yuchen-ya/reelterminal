@@ -13,7 +13,7 @@
 
 - 初始 `.cache/reelterminal-workbench-package.zip` 为 10,326 字节 HTML，标题 Cookie check，不是 ZIP。
   没有执行其中脚本，也没有覆盖该文件。
-- 用户补充的实际源码目录：`C:/Users/Administrator/Downloads/reelterminal-·-ai-素材工作台/`。
+- 用户补充的实际源码目录：`<prototype-source>`。
   下文 `P/` 均指这个目录，仓库相对路径均指 ReelTerminal。
 - 该目录 `public/reelterminal-workbench-package.zip` 是有效 ZIP（116,337 字节），有源码文件与 bun.lock。
   本次以用户指定目录中的展开源码为主，没有假定内嵌 ZIP 与外层文件完全相同。

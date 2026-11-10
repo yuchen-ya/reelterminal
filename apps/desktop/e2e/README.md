@@ -144,3 +144,14 @@ The selected specs use isolated profiles and the packaged executable:
 
 These checks do not exercise the installation wizard, OS drag-out receipt,
 pressure-sensitive hardware or optional model installation.
+
+`large-media-import.e2e.ts` is opt-in with `REELTERMINAL_LARGE_IMPORT_E2E=1`.
+It generates a roughly 299 MB H.264/AAC MP4 inside the isolated run directory,
+imports a genuine OS-backed File through the file input (the same store path
+as OS drop), and records import-to-visible and preview-decode-ready times plus
+opt-in product phase timings. It checks independent source/controlled SHA-256,
+background thumbnails, save/relaunch, and actual playback after moving the
+original away. `REELTERMINAL_LARGE_IMPORT_LABEL` labels the JSON evidence under
+`.artifacts/large-media-import-*.json`. This is a fresh-profile, warm-file-cache
+synthetic measurement; it does not automate an OS drag gesture or establish
+hardware-independent latency targets. Retain engineering measurements and raw evidence locally under the harness artifact directory; user release notes describe behavior and limitations separately.

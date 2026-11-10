@@ -18,7 +18,7 @@ import { parseTaskText, renderTaskText } from './task-review-text';
 
 type State = Omit<TaskReviewSnapshot, 'root'> & { contextHistory: TaskContextHistory; goalHistory: TaskGoalVersion[]; goalHistoryIncomplete: boolean };
 type DomainBridge = TaskReviewBridge & TaskReviewContextBridge;
-type Input<M extends keyof DomainBridge> = Parameters<DomainBridge[M]>[0];
+type Input<M extends keyof DomainBridge> = Parameters<NonNullable<DomainBridge[M]>>[0];
 const filename = 'task-review.json';
 const supportedSource = /\.(txt|md|srt|vtt|png|jpe?g|gif|webp|avif|bmp|mp4|m4v|mov|webm|mkv)$/i;
 type PreparedSource = { source: TaskSourceVersion; units: TaskReviewUnit[]; file: TaskReviewSnapshot['sourceFiles'][number]; binary?: TaskMediaFingerprint };
@@ -26,6 +26,7 @@ type PreparedSource = { source: TaskSourceVersion; units: TaskReviewUnit[]; file
 /** Local task authority. AI publication has no access to human decisions or drafts. */
 export class TaskReviewStore implements TaskReviewBridge, TaskReviewContextBridge {
   private static queues = new Map<string, Promise<unknown>>();
+  private static decisionRequests = new Map<string, { root: string; done: Promise<void>; completed: boolean }>();
   constructor(private readonly folders = new FolderReviewStore()) {}
 
   private async locked<T>(root: string, operation: (root: string) => Promise<T>): Promise<T> {
@@ -414,17 +415,42 @@ export class TaskReviewStore implements TaskReviewBridge, TaskReviewContextBridg
   }
   async decide(input: Input<'decide'>): Promise<TaskReviewSnapshot> {
     const args = taskReviewSchemas.decide.parse(input);
-    return this.commit(args, async (state, root) => {
+    const perform = () => this.commit(args, async (state, root) => {
       const unit = this.unit(state, args);
       await this.currentSource(state, root, args.sourceVersionId);
       if (!isCurrentTaskUnit({ root, ...state }, unit)) throw new Error('Review unit has been replaced by a newer media result');
       if (args.replacementText !== undefined && !args.replacementText.trim()) throw new Error('Replacement text must not be empty');
       if (args.replacementText !== undefined && !isTextTaskUnit(unit)) throw new Error('Media units cannot receive replacement text');
-      const id = randomUUID();
+      const id = args.decisionId ?? randomUUID();
+      if (state.decisions.some(item => item.id === id)) throw new Error('Decision identity already exists; query its outcome');
       const criteriaBasis = resolveUnitCriteriaBasis({ root, ...state }, state.contextHistory, args).basis;
       state.decisions.push({ id, unitId: args.unitId, sourceVersionId: args.sourceVersionId, policyRevision: state.policyRevision, purpose: args.purpose, status: args.status, note: args.note, ...(args.replacementText !== undefined ? { replacementText: args.replacementText } : {}), createdAt: Date.now(), criteriaBasis });
       state.decisionActions.push({ id: randomUUID(), kind: 'decide', decisionId: id, createdAt: Date.now() });
     });
+    if (!args.decisionId) return perform();
+    const key = args.taskId + ':' + args.decisionId;
+    if (TaskReviewStore.decisionRequests.has(key)) throw new Error('Decision request already tracked; query its outcome');
+    const entry = { root: args.root, done: Promise.resolve(), completed: false };
+    TaskReviewStore.decisionRequests.set(key, entry);
+    const result = perform();
+    entry.done = result.then(() => undefined, () => undefined).then(() => {
+      entry.completed = true;
+      for (const [oldKey, old] of TaskReviewStore.decisionRequests) {
+        if (TaskReviewStore.decisionRequests.size <= 256) break;
+        if (old.completed) TaskReviewStore.decisionRequests.delete(oldKey);
+      }
+    });
+    return result;
+  }
+  async getDecisionOutcome(input: { root: string; taskId: string; decisionId: string }) {
+    const args = taskReviewSchemas.getDecisionOutcome.parse(input);
+    const entry = TaskReviewStore.decisionRequests.get(args.taskId + ':' + args.decisionId);
+    if (entry?.root === args.root) await entry.done;
+    const snapshot = await this.open(args.root);
+    if (snapshot.taskId !== args.taskId) throw new Error('Task identity changed');
+    const present = snapshot.decisions.some(item => item.id === args.decisionId) && snapshot.decisionActions.some(item => item.kind === 'decide' && item.decisionId === args.decisionId);
+    const outcome: 'committed' | 'not-committed' | 'unknown' = present ? 'committed' : entry?.root === args.root && entry.completed ? 'not-committed' : 'unknown';
+    return { snapshot, decisionId: args.decisionId, outcome };
   }
   async undoDecision(input: Input<'undoDecision'>): Promise<TaskReviewSnapshot> {
     return this.changeDecisionHistory('undo', taskReviewSchemas.undoDecision.parse(input));

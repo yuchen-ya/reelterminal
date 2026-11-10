@@ -9,7 +9,7 @@
 - live `project.list` 列出 11 个 app-data 项目；对它们调用 `workspace.list` 后，每个 manifest owner pair 都可逐一核对。`project.get_state` 对一个大型项目因 live API 响应大小超限而失败，没有通过读数据库绕过限制。
 - `media.list` 在当前 live 会话不可用。`node.list` 对 3 个相关项目只读返回 30、2、14 个节点。一次 `node.media` 样本返回 87 个媒体条目，均为 `blob=null`，缺失依赖为 0；这是单节点样本，不代表项目已重开或所有节点都已检查。
 - 一次 `media.references` 检查了一个 manifest 明示的跨 job source：其 `mediaId` 有 18 条节点引用，且 manifest 的 savepoint node（revision 26）存在于 `node.list`。因为文件位于 manifest 所属 job 之外，它仍列为 unresolved，没有加入已审核的 81 条正式记录。
-- `node.media` 的 6,232,007 字节只读响应由 CLI 自动保存到 `C:\Users\Administrator\AppData\Local\ReelTerminal\cli-results\result-1792935963379-0ab81932-e9e7-412d-9aa3-6f03ca361d6c.json`。这是 CLI 结果文件，不是数据库写入；保留在原位，未删除。
+- `node.media` 的 6,232,007 字节只读响应由 CLI 自动保存到 `<user-home>\AppData\Local\ReelTerminal\cli-results\result-1792935963379-0ab81932-e9e7-412d-9aa3-6f03ca361d6c.json`。这是 CLI 结果文件，不是数据库写入；保留在原位，未删除。
 - 当前仍有多组 ComfyUI/Python 服务运行，无法仅凭进程名绑定到某个 job。旧 job 树在建立索引前的最新文件时间为 2026-10-24 01:32；本次仅索引明示证据，没有把整个目录判定为已静止。
 
 ## 数据布局
@@ -59,4 +59,4 @@
 - 回滚脚本 dry-run 通过，确认会移除 `project/ownership-index.json` 且不会递归删除迁移 job；没有实际执行删除。
 - `.oreel` 文件和 19 个项目未从 GUI 重新打开；在当前只读、无打开视频项目状态下没有切换项目。此限制已记录在 index 的 `ownerIdentityAudit`。
 
-dry-run 清单：`E:\Temp\reelterminal-legacy-job-index-dry-run-2026-10-25.json`。盘点脚本为 [legacy-job-index-dry-run.ps1](../../scripts/migrations/legacy-job-index-dry-run.ps1)，写入脚本为 [create-legacy-job-index.ps1](../../scripts/migrations/create-legacy-job-index.ps1)。剩余 unknown、review、app-data、shared 资产和 `.oreel` 文件均保留在原位。
+dry-run 清单：`<temporary-directory>/reelterminal-legacy-job-index-dry-run-2026-10-25.json`。盘点脚本为 [legacy-job-index-dry-run.ps1](../../scripts/migrations/legacy-job-index-dry-run.ps1)，写入脚本为 [create-legacy-job-index.ps1](../../scripts/migrations/create-legacy-job-index.ps1)。剩余 unknown、review、app-data、shared 资产和 `.oreel` 文件均保留在原位。

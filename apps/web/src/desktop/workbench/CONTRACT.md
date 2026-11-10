@@ -4,7 +4,7 @@
 
 ## 原型来源(只读,不修改原件)
 
-`C:/Users/Administrator/Downloads/reelterminal-·-ai-素材工作台/src/components/*.tsx`
+`<prototype-source>`
 
 保留原型的视图结构、布局和交互成果;按本契约替换数据来源、事件模型和样式体系。
 不复制原型 App.tsx / main.tsx / index.css / package.json / server.ts / mockBatches.ts。

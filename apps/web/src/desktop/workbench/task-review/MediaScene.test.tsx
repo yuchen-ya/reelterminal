@@ -1,9 +1,11 @@
+import { useChineseReviewLocale } from "../../../test/review-locale";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskMediaOpenResult, TaskMediaUnit, TaskRegionCandidate, TaskReviewMediaBridge } from "../../../../../desktop/src/shared/task-review-media";
 import type { TaskReviewController } from "./useTaskReviewController";
 import { emptySnapshot } from "./testing";
 import { MediaScene } from "./MediaScene";
+import i18n from "../../../i18n";
 import { normalizedMediaPoint } from "./media-view";
 
 beforeEach(() => {
@@ -50,6 +52,25 @@ function setup(kind: "image" | "video" = "image", limit = 32) {
 }
 
 describe("task media scene", () => {
+  it("switches tool language without reopening media, losing region input or replaying prompts", async () => {
+    const { operations, picture, props } = setup();
+    const image = await picture();
+    fireEvent.pointerDown(image, { clientX: 150, clientY: 75, button: 0 });
+    await waitFor(() => expect(operations.segmentMedia).toHaveBeenCalledTimes(1));
+    const label = await screen.findByLabelText("区域标签") as HTMLInputElement;
+    fireEvent.change(label, { target: { value: "用户区域 / region" } });
+    const prompts = structuredClone(operations.segmentMedia.mock.calls[0]![0].prompts);
+    await act(async () => { await i18n.changeLanguage("en"); });
+    expect(screen.getByRole("button", { name: "Include point" })).toBeVisible();
+    expect(screen.getByLabelText("Region label")).toHaveValue("用户区域 / region");
+    expect(screen.getByTestId("task-review-unit-note")).toHaveValue(props.draft.text);
+    expect(operations.openMedia).toHaveBeenCalledTimes(1);
+    expect(operations.segmentMedia).toHaveBeenCalledTimes(1);
+    expect(operations.segmentMedia.mock.calls[0]![0].prompts).toEqual(prompts);
+    expect(operations.acceptMediaRegion).not.toHaveBeenCalled();
+    expect(operations.decide).not.toHaveBeenCalled();
+  });
+
   it("maps the visible zoomed/normalized picture to source coordinates", () => {
     expect(normalizedMediaPoint(250, 200, { left: 50, top: 100, width: 400, height: 200 })).toEqual({ x: 0.5, y: 0.5 });
     expect(normalizedMediaPoint(450, 300, { left: 50, top: 100, width: 800, height: 400 })).toEqual({ x: 0.5, y: 0.5 });
@@ -206,3 +227,5 @@ describe("task media scene", () => {
     expect(operations.cancelMedia).toHaveBeenCalled();
   });
 });
+
+useChineseReviewLocale();

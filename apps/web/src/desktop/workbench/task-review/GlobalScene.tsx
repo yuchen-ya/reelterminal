@@ -210,7 +210,7 @@ export function GlobalScene({
       if (activeSearch.current !== generation) return;
       setSemantic({
         query,
-        matches: new Map(result.matches.map((match) => [match.unitId, `${match.reason}${match.sourceRefs?.length ? `\n引文：${match.sourceRefs.map((ref) => ref.text).join(" / ")}` : ""}`])),
+        matches: new Map(result.matches.map((match) => [match.unitId, `${match.reason}${match.sourceRefs?.length ? t("\nQuote: {{v0}}", { v0: match.sourceRefs.map((ref) => ref.text).join(" / ") }) : ""}`])),
         searchedUnitCount: result.searchedUnitCount,
         result,
       });
@@ -242,22 +242,22 @@ export function GlobalScene({
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-3">
         {panel !== "export" && <TaskContextBrief snapshot={snapshot} next={nextScene ?? undefined} />}
         <div className="flex flex-wrap items-center gap-2" data-testid="task-review-global-actions">
-          <strong className="mr-auto">已判定 {stats.decided}/{stats.total} · 待审 {stats.pending}</strong>
-          <button type="button" className={wbButton.secondary} onClick={showPending}>查看待审项</button>
-          {([["goal", "编辑目标"], ["import", "导入原文"], ["model", "模型与授权"]] as const).map(([key, label]) => <button
+          <strong className="mr-auto">{t("Decided ")}{stats.decided}/{stats.total} {t(" · Pending ")}{stats.pending}</strong>
+          <button type="button" className={wbButton.secondary} onClick={showPending}>{t("View pending items")}</button>
+          {([["goal", t("Edit goal")], ["import", t("Import source")], ["model", t("Model and authorization")]] as const).map(([key, label]) => <button
             key={key}
             type="button"
             className={wbButton.secondary}
             aria-expanded={panel === key}
             data-testid={`task-review-show-${key}`}
             onClick={() => setPanel(panel === key ? "overview" : key)}>{label}</button>)}
-          {panel !== "overview" && <button type="button" className={wbButton.ghost} onClick={() => setPanel("overview")}>返回总览</button>}
+          {panel !== "overview" && <button type="button" className={wbButton.ghost} onClick={() => setPanel("overview")}>{t("Return to overview")}</button>}
         </div>
         {actionError && (
           <p role="alert" className="rounded border border-status-error/40 p-2 text-status-error">
             {actionError}
             <button type="button" className={`${wbButton.ghost} ml-2`} onClick={() => setActionError(null)}>
-              {t("知道了")}
+              {t("Got it")}
             </button>
           </p>
         )}
@@ -274,23 +274,23 @@ export function GlobalScene({
           onChooseDestination={onChooseExportDestination} />}
         <div hidden={panel === "export"} className={panel === "export" ? "hidden" : "flex flex-col gap-3"}>
           <section hidden={panel !== "goal"} className={panel === "goal" ? "flex flex-col gap-1.5" : "hidden"} data-testid="task-review-goal-editor">
-            <strong>{t("任务目标口径")}</strong>
+            <strong>{t("Task goal and criteria")}</strong>
             <textarea
               className="min-h-14 rounded border border-border bg-bg-2 p-2"
-              aria-label={t("任务目标口径")}
+              aria-label={t("Task goal and criteria")}
               value={goalDraft}
-              placeholder={t("说明目标、受众和保留/返工/丢弃的判断口径")}
+              placeholder={t("Describe the goal, audience and criteria for keeping, reworking or discarding")}
               onChange={(event) => setGoalDraft(event.target.value)}
             />
             <div className="flex items-center gap-2">
               <button type="button" className={wbButton.secondary} disabled={busy || goalDraft === snapshot.goal} onClick={() => void saveGoal()}>
-                {t("保存目标口径")}
+                {t("Save goal and criteria")}
               </button>
               <span role="status">
                 {goalState === "saving"
-                  ? t("正在保存…")
+                  ? t("Saving…")
                   : goalState === "saved"
-                    ? t("已保存")
+                    ? t("Saved")
                     : goalState === "error"
                       ? goalError
                       : ""}
@@ -311,25 +311,25 @@ export function GlobalScene({
             hidden={panel !== "import"}
             className={panel === "import" ? "flex flex-col gap-1.5" : "hidden"}
             data-testid="task-review-import-editor">
-            <strong>{t("导入台词原文")}</strong>
+            <strong>{t("Import dialogue source")}</strong>
             <div className="flex flex-wrap items-center gap-1.5">
               <input
                 className={`${inputClass} max-w-48`}
-                aria-label={t("原文名称")}
-                placeholder={t("名称，如 第一集台词")}
+                aria-label={t("Source name")}
+                placeholder={t("Name, for example Episode 1 dialogue")}
                 value={paste.name}
                 onChange={(event) => setPaste({ ...paste, name: event.target.value })}
               />
               <select
                 className="rounded border border-border bg-bg-2 px-1 py-1"
-                aria-label={t("原文格式")}
+                aria-label={t("Source format")}
                 value={paste.format}
                 onChange={(event) => setPaste({ ...paste, format: event.target.value as TaskTextFormat })}
               >
-                <option value="txt">txt</option>
-                <option value="md">md</option>
-                <option value="srt">srt</option>
-                <option value="vtt">vtt</option>
+                <option value={t("txt")}>{t("txt")}</option>
+                <option value={t("md")}>{t("md")}</option>
+                <option value={t("srt")}>{t("srt")}</option>
+                <option value={t("vtt")}>{t("vtt")}</option>
               </select>
               <button
                 type="button"
@@ -337,13 +337,13 @@ export function GlobalScene({
                 disabled={busy || !paste.text.trim() || !paste.name.trim()}
                 onClick={() => void importText()}
                 data-testid="task-review-import-text">
-                {t("导入粘贴文本")}
+                {t("Import pasted text")}
               </button>
             </div>
             <textarea
               className="min-h-14 rounded border border-border bg-bg-2 p-2"
-              aria-label={t("粘贴文本内容")}
-              placeholder={t("粘贴 UTF-8 文本、Markdown 或字幕内容；原件将保存为不可变版本")}
+              aria-label={t("Pasted text content")}
+              placeholder={t("Paste UTF-8 text, Markdown or subtitles. The original is saved as an immutable version.")}
               value={paste.text}
               onChange={(event) => setPaste({ ...paste, text: event.target.value })}
             />
@@ -351,18 +351,18 @@ export function GlobalScene({
           {(snapshot.sourceFiles.length > 0 || snapshot.sources.length > 0) && (
             <div className="flex flex-col gap-1" data-testid="task-review-source-files">
               <div className="flex items-center gap-2">
-                <span className="text-fg-3">{t("任务文件夹中的文本文件（拖入文件请用目录场景）")}</span>
+                <span className="text-fg-3">{t("Text files in the task folder (use the directory view to drop files)")}</span>
                 <button
                   type="button"
                   className={wbButton.ghost}
                   disabled={busy}
                   data-testid="task-review-refresh-sources"
-                  title={t("对照任务文件夹重新扫描源文件；缺失或损坏的文件会标出")}
+                  title={t("Rescan the task folder for source files; missing or damaged files are marked")}
                   onClick={() => void onRefreshSources().then(result => {
                     if (!result.ok) setActionError(result.error);
                   })}
                 >
-                  {t("刷新源文件")}
+                  {t("Refresh source files")}
                 </button>
               </div>
               {snapshot.sourceFiles.map((file) => (
@@ -372,7 +372,7 @@ export function GlobalScene({
                   </span>
                   {file.status === "available" ? (
                     importedEntries.has(file.entryId) ? (
-                      <span className="shrink-0 text-fg-3">{t("已导入")}</span>
+                      <span className="shrink-0 text-fg-3">{t("Imported")}</span>
                     ) : (
                       <button
                         type="button"
@@ -382,12 +382,12 @@ export function GlobalScene({
                           if (!result.ok) setActionError(result.error);
                         })}
                       >
-                        {t("导入")}
+                        {t("Import")}
                       </button>
                     )
                   ) : (
                     <span className="shrink-0 text-status-error" title={file.error}>
-                      {file.status === "missing" ? t("文件缺失") : t("无法解析")}
+                      {file.status === "missing" ? t("File missing") : t("Cannot parse")}
                     </span>
                   )}
                 </div>
@@ -396,7 +396,7 @@ export function GlobalScene({
           )}
           <section className="flex flex-col gap-1.5">
             <strong>
-              {t("条目审阅与台词摘录 · 共 {{total}} 条 · 待审 {{pending}} · 保留 {{kept}} · 返工 {{rework}} · 丢弃 {{discarded}}", {
+              {t("Item review and dialogue selection · {{total}} total · {{pending}} pending · {{kept}} kept · {{rework}} rework · {{discarded}} discarded", {
                 total: stats.total,
                 pending: stats.pending,
                 kept: stats.kept,
@@ -413,7 +413,7 @@ export function GlobalScene({
                   type="button"
                   className={wbButton.secondary}
                   disabled={busy}
-                  title={t("导出口径下所有“保留”的条目，字幕保留时间与多行结构")}
+                  title={t("Export all kept items under the export criteria, preserving subtitle timing and multiline structure")}
                   onClick={() =>
                     void onExport({ sourceVersionId: source.id, purpose: REVIEW_PURPOSE }).then((result) => {
                       if (result.ok) {
@@ -424,13 +424,13 @@ export function GlobalScene({
                     })
                   }
                 >
-                  {t("导出通过条目")}
+                  {t("Export approved items")}
                 </button>
               </div>
             ))}
             {(snapshot.artifacts.length > 0 || exported) && (
               <div className="flex flex-col gap-1 text-fg-3" data-testid="task-review-artifacts">
-                <span>{t("结果文件")}</span>
+                <span>{t("Result files")}</span>
                 {snapshot.artifacts.map((artifact) => (
                   <div
                     key={artifact.id}
@@ -439,14 +439,14 @@ export function GlobalScene({
                     data-status={artifact.status}
                   >
                     <span className="min-w-0 flex-1 truncate" title={artifact.error ?? artifact.manifestRelativePath}>
-                      {artifact.relativePath} · {t("含 {{count}} 条", { count: artifact.unitIds.length })}
+                      {artifact.relativePath} · {t("{{count}} items", { count: artifact.unitIds.length })}
                     </span>
                     <span className={artifact.status === "failed" ? "shrink-0 text-status-error" : "shrink-0"}>
                       {artifact.status === "complete"
-                        ? t("已生成")
+                        ? t("Generated")
                         : artifact.status === "pending"
-                          ? t("生成中")
-                          : t("失败")}
+                          ? t("Generating")
+                          : t("Failed")}
                     </span>
                     {artifact.status === "failed" && artifact.error && (
                       <span className="min-w-0 flex-1 truncate text-status-error" title={artifact.error}>
@@ -460,11 +460,11 @@ export function GlobalScene({
           </section>
           <section ref={rowsRef} tabIndex={-1} className="flex flex-col gap-1.5 outline-none" data-testid="task-review-item-list">
             <div className="flex flex-wrap items-center gap-1.5">
-              <strong>{t("条目检索")}</strong>
+              <strong>{t("Item search")}</strong>
               <input
                 className={`${inputClass} max-w-56`}
-                aria-label={t("搜索条目文本")}
-                placeholder={t("搜索条目文本")}
+                aria-label={t("Search item text")}
+                placeholder={t("Search item text")}
                 value={query}
                 onChange={(event) => {
                   setQuery(event.target.value);
@@ -475,29 +475,29 @@ export function GlobalScene({
                 type="button"
                 className={wbButton.secondary}
                 disabled={!agent || !granted || semanticBusy || !query.trim() || !scopeValid}
-                title={granted ? t("AI 语义搜索：包含改写表述，需任务授权") : t("先在下方授权本任务后可用")}
+                title={granted ? t("AI semantic search includes paraphrases and requires task authorization") : t("Authorize this task below first")}
                 data-testid="task-review-semantic-search"
                 onClick={() => void runSemanticSearch()}
               >
-                {semanticBusy ? t("语义搜索中…") : t("语义搜索")}
+                {semanticBusy ? t("Searching semantically…") : t("Semantic search")}
               </button>
               <select
                 className={inputClass}
-                aria-label="语义搜索范围"
+                aria-label={t("Semantic search scope")}
                 value={searchScope}
                 onChange={(event) => setSearchScope(event.target.value as typeof searchScope)}>
-                <option value="task">整个已授权任务</option>
-                <option value="source" disabled={!activeSourceVersionId}>当前来源</option>
-                <option value="scene" disabled={!activeTargets.length}>当前场景条目</option>
+                <option value="task">{t("Entire authorized task")}</option>
+                <option value="source" disabled={!activeSourceVersionId}>{t("Current source")}</option>
+                <option value="scene" disabled={!activeTargets.length}>{t("Current scene items")}</option>
               </select>
-              {semanticBusy && <button type="button" className={wbButton.ghost} data-testid="task-review-cancel-search" onClick={cancelSemantic}>停止搜索</button>}
+              {semanticBusy && <button type="button" className={wbButton.ghost} data-testid="task-review-cancel-search" onClick={cancelSemantic}>{t("Stop search")}</button>}
               {semantic && (
                 <span className="text-fg-3" role="status" data-testid="task-review-semantic-result">
-                  {t("语义匹配 {{count}}/{{total}} 条", {
+                  {t("{{count}}/{{total}} semantic matches", {
                     count: semantic.matches.size,
                     total: semantic.searchedUnitCount,
                   })}
-                  {semantic.result.scopeUnitCount !== undefined && <span> · 范围 {semantic.result.scopeUnitCount} 条，本地检索 {semantic.result.locallyScannedUnitCount ?? semantic.result.scopeUnitCount} 条，AI 候选 {semantic.result.candidateUnitCount ?? semantic.searchedUnitCount} 条；{semantic.result.coverage === "scope" ? "覆盖所选范围" : "仅覆盖候选内容，未声称全范围分析"}{semantic.result.truncated ? `；未送入模型 ${semantic.result.omittedUnitCount ?? 0} 条` : ""}{semantic.result.cached ? "（复用有效缓存）" : ""}</span>}
+                  {semantic.result.scopeUnitCount !== undefined && <span>{t(" · Scope {{scope}} items, local search {{local}} items, AI candidates {{candidates}} items; ", { scope: semantic.result.scopeUnitCount, local: semantic.result.locallyScannedUnitCount ?? semantic.result.scopeUnitCount, candidates: semantic.result.candidateUnitCount ?? semantic.searchedUnitCount })}{semantic.result.coverage === "scope" ? t("Covers the selected scope") : t("Covers candidates only; does not claim full-scope analysis")}{semantic.result.truncated ? t("; {{v0}} items not sent to the model", { v0: semantic.result.omittedUnitCount ?? 0 }) : ""}{semantic.result.cached ? t(" (valid cache reused)") : ""}</span>}
                   <button
                     type="button"
                     className={`${wbButton.ghost} ml-1`}
@@ -506,7 +506,7 @@ export function GlobalScene({
                       setQuery("");
                     }}
                   >
-                    {t("清除")}
+                    {t("reviewUi.Clear_37")}
                   </button>
                 </span>
               )}
@@ -517,18 +517,18 @@ export function GlobalScene({
               )}
               <select
                 className="rounded border border-border bg-bg-2 px-1 py-1"
-                aria-label={t("状态筛选")}
+                aria-label={t("Status filter")}
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
               >
-                <option value="all">{t("全部")}</option>
-                <option value="pending">{t("待审")}</option>
-                <option value="decided">{t("已判定")}</option>
+                <option value="all">{t("All")}</option>
+                <option value="pending">{t("Pending")}</option>
+                <option value="decided">{t("Decided")}</option>
               </select>
             </div>
             {selected.size > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 rounded border border-accent/50 bg-accent/5 p-2" data-testid="task-review-batch-bar">
-                <span className="font-medium">{t("批量决定将作用于选中的 {{count}} 项", { count: selected.size })}</span>
+                <span className="font-medium">{t("The batch decision applies to {{count}} selected items", { count: selected.size })}</span>
                 {(Object.keys(statusLabels) as TaskDecisionStatus[]).map((status) => (
                   <button
                     key={status}
@@ -541,11 +541,11 @@ export function GlobalScene({
                       setSelected(new Set());
                     }}
                   >
-                    {t("{{status}}选中 {{count}} 项", { status: t(statusLabels[status]), count: selected.size })}
+                    {t("reviewUi.status_count_selected_items_239", { status: t(statusLabels[status]), count: selected.size })}
                   </button>
                 ))}
                 <button type="button" className={wbButton.ghost} onClick={() => setSelected(new Set())}>
-                  {t("取消选择")}
+                  {t("reviewUi.clearSelection")}
                 </button>
               </div>
             )}
@@ -556,7 +556,7 @@ export function GlobalScene({
                   <li key={unit.id} className="flex items-center gap-2 rounded px-1 py-1 hover:bg-bg-2">
                     <input
                       type="checkbox"
-                      aria-label={t("选择条目 #{{no}}", { no: unit.ordinal })}
+                      aria-label={t("Select item #{{no}}", { no: unit.ordinal })}
                       checked={selected.has(unit.id)}
                       onChange={(event) =>
                         setSelected((current) => {
@@ -578,23 +578,23 @@ export function GlobalScene({
                       {unitTitle(unit).split("\n")[0]}
                     </button>
                     {issues > 0 && (
-                      <span className="shrink-0 rounded bg-status-error/15 px-1 py-0.5 text-status-error" title={t("AI 疑点 {{count}} 条", { count: issues })}>
+                      <span className="shrink-0 rounded bg-status-error/15 px-1 py-0.5 text-status-error" title={t("{{count}} AI concerns", { count: issues })}>
                         {issues}
                       </span>
                     )}
-                    {inPlan && <span className="shrink-0 text-accent" title={t("在 Agent 未来计划中")}>◐</span>}
+                    {inPlan && <span className="shrink-0 text-accent" title={t("In the Agent's future plan")}>◐</span>}
                     <span className={`shrink-0 ${status ? "text-fg-3" : "text-accent"}`}>
-                      {status ? t(statusLabels[status]) : t("待审")}
+                      {status ? t(statusLabels[status]) : t("Pending")}
                     </span>
                   </li>
                 );
               })}
-              {!rows.length && <li className="p-3 text-center text-fg-3">{t("没有匹配的条目")}</li>}
+              {!rows.length && <li className="p-3 text-center text-fg-3">{t("No matching items")}</li>}
             </ul>
           </section>
           <section className="grid gap-3 md:grid-cols-2">
             <div className="flex flex-col gap-1" data-testid="task-review-plan-list">
-              <strong>{t("Agent 计划（未来，风险优先）")}</strong>
+              <strong>{t("Agent plan (upcoming, risk first)")}</strong>
               {scenes.map((scene) => {
                 const pending = pendingSceneTargets(snapshot, scene);
                 return (
@@ -606,16 +606,16 @@ export function GlobalScene({
                     data-scene-kind={scene.kind}
                     onClick={() => onOpenScene(scene)}
                   >
-                    <span className="shrink-0 text-fg-3">{scene.manual ? "人工查看 / 本地工具" : scene.kind === "compare" ? "关联对照" : scene.kind === "lowRiskGroup" ? "成组扫阅" : "单项"}</span>
-                    <span className="min-w-0 flex-1 truncate" title={`${scene.checkIntent}：${scene.reason}`}>{scene.targets.map((target) => (findUnit(snapshot, target.unitId) ? unitTitle(findUnit(snapshot, target.unitId)!).split("\n")[0] : "条目不可用")).join(" / ")}</span>
-                    <span className="shrink-0 text-fg-3">待审 {pending.length}/{scene.targets.length}</span>
+                    <span className="shrink-0 text-fg-3">{scene.manual ? t("Human review / local tools") : scene.kind === "compare" ? t("Related comparison") : scene.kind === "lowRiskGroup" ? t("Group skim") : t("Single item")}</span>
+                    <span className="min-w-0 flex-1 truncate" title={`${scene.checkIntent}：${scene.reason}`}>{scene.targets.map((target) => (findUnit(snapshot, target.unitId) ? unitTitle(findUnit(snapshot, target.unitId)!).split("\n")[0] : t("Item unavailable"))).join(" / ")}</span>
+                    <span className="shrink-0 text-fg-3">{t("Pending ")}{pending.length}/{scene.targets.length}</span>
                   </button>
                 );
               })}
-              {!plan.length && <span className="p-2 text-fg-3">{t("暂无未来计划；导入原文或等待预审发布")}</span>}
+              {!plan.length && <span className="p-2 text-fg-3">{t("No upcoming plan. Import source text or wait for review results.")}</span>}
             </div>
             <div className="flex flex-col gap-1" data-testid="task-review-history-list">
-              <strong>{t("已访问记录（实际历史）")}</strong>
+              <strong>{t("Visited items (actual history)")}</strong>
               {visits.map((visit) => {
                 const unit = findUnit(snapshot, visit.unitId);
                 return (
@@ -626,12 +626,12 @@ export function GlobalScene({
                     onClick={() => onOpenUnit(visit.unitId)}
                   >
                     <span className="shrink-0 text-fg-3">#{unit?.ordinal ?? "?"}</span>
-                    <span className="min-w-0 flex-1 truncate">{(unit ? unitTitle(unit) : "条目不可用").split("\n")[0]}</span>
+                    <span className="min-w-0 flex-1 truncate">{(unit ? unitTitle(unit) : t("Item unavailable")).split("\n")[0]}</span>
                     <span className="shrink-0 text-fg-3">{new Date(visit.createdAt).toLocaleTimeString()}</span>
                   </button>
                 );
               })}
-              {!visits.length && <span className="p-2 text-fg-3">{t("尚未访问任何条目")}</span>}
+              {!visits.length && <span className="p-2 text-fg-3">{t("No items visited yet")}</span>}
             </div>
           </section>
           <section hidden={panel !== "model"} className={panel === "model" ? "" : "hidden"} data-testid="task-review-model-settings"><AgentPanel agent={agent} snapshot={snapshot} runtime={agentRuntime} /></section>

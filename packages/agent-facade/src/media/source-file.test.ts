@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Stats } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   resolveLocalSourceFile,
   selectMediaSource,
@@ -9,8 +11,9 @@ import { createEmptyProject } from "../project-factory";
 
 const record = {
   id: "m1",
-  originalUrl: "C:/media/original.mp4",
+  originalUrl: join(tmpdir(), "source-classification", "media", "original.mp4"),
 };
+const mediaRoot = join(tmpdir(), "source-classification", "media");
 
 describe("media source selection", () => {
   it("uses originalUrl only when contentUrl is absent", () => {
@@ -26,7 +29,7 @@ describe("media source selection", () => {
     });
   });
 
-  it.each(["", null, "C:/media/controlled.mp4"])("takes contentUrl %s as authoritative", (contentUrl) => {
+  it.each(["", null, join(mediaRoot, "controlled.mp4")])("takes contentUrl %s as authoritative", (contentUrl) => {
     const selected = selectMediaSource({ ...record, contentUrl });
     expect(selected.sourceKind).toBe("controlled");
     expect(selected.path).toBe(typeof contentUrl === "string" ? contentUrl : null);
@@ -47,7 +50,7 @@ describe("local source error classification", () => {
     async (contentUrl) => {
       await expect(resolveLocalSourceFile(selectMediaSource({ ...record, contentUrl }), {
         verb: "media.inspect",
-        roots: ["C:/media"],
+        roots: [mediaRoot],
         resolvePath: () => { throw new Error("filesystem must not be consulted"); },
       })).rejects.toMatchObject({
         code: "INVALID_PARAMS",
@@ -57,9 +60,9 @@ describe("local source error classification", () => {
   );
 
   it.each(["EACCES", "EPERM"])("maps injected realpath %s to source_unreadable", async (fsCode) => {
-    await expect(resolveLocalSourceFile(selectMediaSource({ ...record, contentUrl: "C:/media/controlled.mp4" }), {
+    await expect(resolveLocalSourceFile(selectMediaSource({ ...record, contentUrl: join(mediaRoot, "controlled.mp4") }), {
       verb: "media.inspect",
-      roots: ["C:/media"],
+      roots: [mediaRoot],
       resolvePath: () => ({ kind: "unresolvable", fsCode }),
     })).rejects.toMatchObject({
       code: "INVALID_PARAMS",
@@ -75,7 +78,7 @@ describe("local source error classification", () => {
   it("keeps an unknown realpath failure unresolvable", async () => {
     await expect(resolveLocalSourceFile(selectMediaSource(record), {
       verb: "frames.extract",
-      roots: ["C:/media"],
+      roots: [mediaRoot],
       resolvePath: () => ({ kind: "unresolvable" }),
     })).rejects.toMatchObject({
       code: "INVALID_PARAMS",
@@ -113,10 +116,10 @@ describe("local source error classification", () => {
   it("omits backing paths from media-ID errors but retains explicit path diagnostics", async () => {
     const mediaFailure = await resolveLocalSourceFile(selectMediaSource({
       ...record,
-      contentUrl: "C:/private/controlled.mp4",
+      contentUrl: join(tmpdir(), "private", "controlled.mp4"),
     }), {
       verb: "media.inspect",
-      roots: ["C:/media"],
+      roots: [mediaRoot],
       resolvePath: () => ({ kind: "outside" }),
     }).then(
       () => { throw new Error("expected media-ID resolution to fail"); },
@@ -128,10 +131,10 @@ describe("local source error classification", () => {
     });
     expect(mediaFailure.details).not.toHaveProperty("path");
 
-    const explicitPath = "C:/private/explicit.mp4";
+    const explicitPath = join(tmpdir(), "private", "explicit.mp4");
     await expect(resolveLocalSourceFile({ path: explicitPath }, {
       verb: "frames.extract",
-      roots: ["C:/media"],
+      roots: [mediaRoot],
       resolvePath: () => ({ kind: "outside" }),
     })).rejects.toMatchObject({
       code: "INVALID_PARAMS",

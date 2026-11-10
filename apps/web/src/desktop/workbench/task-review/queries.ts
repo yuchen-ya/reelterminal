@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 import type {
   TaskDecisionStatus,
   TaskReviewSnapshot,
@@ -137,7 +138,7 @@ export function planScenes(snapshot: TaskReviewSnapshot): TaskSceneSuggestion[] 
   if (plan.scenes) return plan.scenes.filter((scene) => isTaskSceneCurrent(snapshot, scene, plan.policyRevision));
   return plan.steps.filter((step) => isTaskPlanStepCurrent(snapshot, step, plan.policyRevision)).map((step) => ({
     id: `legacy:${plan.id}:${step.unitId}:${step.purpose}`, kind: "single", targets: [{ unitId: step.unitId, sourceVersionId: step.sourceVersionId }],
-    purpose: step.purpose, decisionMode: "per-unit", checkIntent: "逐条审阅", reason: step.reason,
+    purpose: step.purpose, decisionMode: "per-unit", checkIntent: t("Review each item"), reason: step.reason,
     issueIds: [], criteriaRefs: step.criteriaBasis?.criteriaVersionIds ?? [], sourceRefs: step.sourceRefs ?? [], criteriaBasis: step.criteriaBasis ? [step.criteriaBasis] : [],
   }));
 }
@@ -255,16 +256,16 @@ export function criterionStates(history: TaskContextHistory | undefined): Criter
 /** Human-readable scope label; never widens the stored scope. */
 export function describeCriteriaScope(snapshot: TaskReviewSnapshot, scope: TaskCriteriaScope): string {
   if (scope.kind === "task")
-    return scope.versions === "future" ? "整个任务（含未来版本）" : "整个任务（当前版本）";
+    return scope.versions === "future" ? t("Entire task (including future versions)") : t("Entire task (current versions)");
   if (scope.kind === "sources") {
     const names = scope.entryIds
       .map((entryId) => snapshot.sourceFiles.find((file) => file.entryId === entryId)?.relativePath)
       .filter((name): name is string => Boolean(name));
-    const label = scope.versions === "future" ? "相关来源（含未来版本）" : "相关来源（当前版本）";
-    return `${label}：${names.join("、") || "未知来源"}`;
+    const label = scope.versions === "future" ? t("Related sources (including future versions)") : t("Related sources (current versions)");
+    return `${label}：${names.join("、") || t("Unknown source")}`;
   }
   const ordinals = scope.targets
     .map((target) => snapshot.units.find((unit) => unit.id === target.unitId && unit.sourceVersionId === target.sourceVersionId)?.ordinal)
     .map((ordinal) => `#${ordinal ?? "?"}`);
-  return `指定条目：${ordinals.join("、")}`;
+  return t("reviewUi.Selected_items_v0_315", { v0: ordinals.join("、") });
 }

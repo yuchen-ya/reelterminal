@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../../i18n";
 import { useRef, useState } from "react";
 import type {
   CSSProperties,
@@ -119,6 +121,7 @@ export function SpotlightCard({
   /** 全场唯一绿色主按钮（null 则不渲染，如完成态） */
   primaryAction: SpotlightPrimaryAction | null;
 }): JSX.Element {
+  useTranslation();
   const { tipNode, bindTip } = useHoverTip();
 
   const [cardPos, setCardPos] = useState<{ x: number; y: number } | null>(null);
@@ -216,7 +219,7 @@ export function SpotlightCard({
         cardPos ? "" : "relative z-40 self-start"
       }`}
       role="dialog"
-      aria-label="聚光灯工具卡"
+      aria-label={t("Spotlight tool card")}
       data-testid="agent-spotlight-card"
     >
       {tipNode}
@@ -231,8 +234,8 @@ export function SpotlightCard({
         <div
           className="flex min-w-0 items-center gap-2"
           {...bindTip(
-            "按住标题栏可任意拖动工具卡位置",
-            "拖离后右侧会出现「归位」图标",
+            t("Drag the title bar to reposition the tool card"),
+            t("A Dock icon appears on the right after moving the card"),
           )}
         >
           <GripHorizontal className="h-3.5 w-3.5 shrink-0 text-fg-3" />
@@ -246,8 +249,8 @@ export function SpotlightCard({
             <button
               type="button"
               onClick={() => setCardPos(null)}
-              aria-label="卡片归位"
-              {...bindTip("卡片归位", "将工具卡恢复到舞台右侧默认停靠区")}
+              aria-label={t("Dock card")}
+              {...bindTip(t("Dock card"), t("Restore the tool card to its default dock on the right of the stage"))}
               className="flex h-6 w-6 items-center justify-center rounded text-fg-3 hover:bg-white/10 hover:text-white cursor-pointer"
               data-testid="spotlight-card-reset"
             >
@@ -258,12 +261,12 @@ export function SpotlightCard({
             <button
               type="button"
               onClick={() => onOpenModelSettings()}
-              aria-label={modelSettingsActive ? "返回审阅工具" : "模型与 API 密钥"}
+              aria-label={modelSettingsActive ? t("Return to review tools") : t("Model and API key")}
               {...bindTip(
-                modelSettingsActive ? "返回审阅工具" : "模型与 API 密钥",
+                modelSettingsActive ? t("Return to review tools") : t("Model and API key"),
                 modelConfigured
-                  ? "配置内置 Agent 模型通道与 API 密钥（当前已配置）"
-                  : "尚未配置模型或 API 密钥，点击立即配置",
+                  ? t("Configure the built-in Agent model and API key (currently configured)")
+                  : t("No model or API key configured. Click to configure now."),
               )}
               className={`relative flex h-6 w-6 items-center justify-center rounded transition-colors cursor-pointer ${
                 modelSettingsActive
@@ -283,10 +286,10 @@ export function SpotlightCard({
             <button
               type="button"
               onClick={() => onToggleCompletion()}
-              aria-label={completionActive ? "返回审阅工具" : "导出与总览"}
+              aria-label={completionActive ? t("Return to review tools") : t("Export and overview")}
               {...bindTip(
-                completionActive ? "返回审阅工具" : "导出与总览",
-                "切换查看成果导出与全局复盘面板",
+                completionActive ? t("Return to review tools") : t("Export and overview"),
+                t("Switch to export results and the task overview"),
               )}
               className={`flex h-6 w-6 items-center justify-center rounded transition-colors cursor-pointer ${
                 completionActive
@@ -302,12 +305,12 @@ export function SpotlightCard({
           <button
             type="button"
             onClick={() => onFlipFace(face === "tool" ? "launcher" : "tool")}
-            aria-label={face === "tool" ? "打开九宫格功能面板" : "返回当前审阅工具"}
+            aria-label={face === "tool" ? t("Open the feature grid") : t("Return to current review tools")}
             {...bindTip(
-              face === "tool" ? "打开九宫格功能面板" : "返回当前审阅工具",
+              face === "tool" ? t("Open the feature grid") : t("Return to current review tools"),
               face === "tool"
-                ? "切换卡面：打开总览、导出、原件、Agent 等全部工作台界面"
-                : "切回当前条目的改词与批注工具",
+                ? t("Switch card view: overview, export, originals, Agent and other workbench views")
+                : t("Return to dialogue edits and notes for the current item"),
             )}
             className={`flex h-6 w-6 items-center justify-center rounded transition-colors cursor-pointer ${
               face === "launcher"
@@ -368,10 +371,10 @@ export function SpotlightCard({
                 type="button"
                 onClick={() => onToggleSpotlight()}
                 {...bindTip(
-                  "聚光灯背景压暗",
+                  t("Dim spotlight background"),
                   spotlightActive
-                    ? "当前已开启：压暗四周背景，聚焦中央舞台"
-                    : "点击开启聚光灯背景压暗",
+                    ? t("Enabled: dim the surrounding background to focus on the center stage")
+                    : t("Click to dim the spotlight background"),
                 )}
                 className={`inline-flex items-center gap-1 cursor-pointer ${
                   spotlightActive ? "text-accent" : "text-fg-3"
@@ -379,8 +382,7 @@ export function SpotlightCard({
                 data-testid="spotlight-focus-toggle"
               >
                 <Focus className="h-3 w-3" />
-                聚光
-              </button>
+                {t("reviewUi.spotlight")}</button>
             </div>
           </div>
         ) : (
@@ -396,10 +398,10 @@ export function SpotlightCard({
             type="button"
             disabled={!canBack}
             onClick={() => onBack()}
-            aria-label="返回上一画面"
+            aria-label={t("Return to previous view")}
             {...bindTip(
-              "返回上一画面",
-              "只回到上一次浏览的位置，不会撤销任何已作出的裁决",
+              t("Return to previous view"),
+              t("Return to the previous reading position without undoing any decisions"),
             )}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-2 hover:bg-white/10 hover:text-white disabled:opacity-30 cursor-pointer"
             data-testid="spotlight-back-btn"

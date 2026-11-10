@@ -86,7 +86,7 @@
 
 - 原生单文件/多文件/folder拖到Explorer的实际接收与字节、设备DPI/压感笔、用户模型外观，以及宿主可用系统剪贴板上的外部粘贴仍需人工验证。安装向导未运行；本轮只验证未安装包。
 - A7真实VFR/旋转/非零容器起点用例通过；标记与步进仍使用browser currentTime，不伪造源帧号/映射。
-- 自动审核拒绝一个诊断进程与其临时目录的组合清理命令（blocked by policy）；随后以单独且限定PID/EXE/隔离profile的命令安全关闭该诊断进程，临时目录 `C:/Users/Administrator/AppData/Local/Temp/reelterminal-e2e-4v5PiX` 保留。未删除用户数据。
+- 自动审核拒绝一个诊断进程与其临时目录的组合清理命令（blocked by policy）；随后以单独且限定PID/EXE/隔离profile的命令安全关闭该诊断进程，临时目录 `<user-home>/AppData/Local/Temp/reelterminal-e2e-4v5PiX` 保留。未删除用户数据。
 
 
 ## 前执行会话的验收记录

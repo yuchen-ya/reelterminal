@@ -8,7 +8,7 @@
 
 ## 1. 基准与边界
 
-- 用户前端源码：`C:/Users/Administrator/Downloads/reelterminal-·-ai-素材工作台/`（下文 P）。以展开目录为基准，不使用 `.cache/reelterminal-workbench-package.zip`，后者此前确认为 HTML。
+- 用户前端源码：`<prototype-source>`（下文 P）。以展开目录为基准，不使用 `.cache/reelterminal-workbench-package.zip`，后者此前确认为 HTML。
 - 外壳：现有 ReelTerminal 的窗口栏、项目选择、模式导航、帮助、设置和真实权限状态。
 - 内部交互与构成：P 的 `src/App.tsx` 及其真实引用的组件。早期 Figma 和文字方案用于解释意图，不覆盖用户后来提供的前端成果。
 - 产品目标：批量快速查看、决定、轻改、标注、反馈。不是生产编辑器、ComfyUI 管理器或节点编排器。

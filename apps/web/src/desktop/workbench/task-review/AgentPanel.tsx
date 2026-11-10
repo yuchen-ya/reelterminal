@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TaskReviewSnapshot } from "../../../../../desktop/src/shared/task-review";
@@ -9,13 +10,13 @@ import { preflightCoverage, type TaskAgentRuntime } from "./useTaskAgentState";
 import { MODEL_PROVIDER_PRESETS, detectProviderPreset, getProviderPreset } from "./model-presets";
 
 const jobLabels: Record<TaskAgentJob["status"], string> = {
-  queued: "排队中",
-  running: "分析中",
-  completed: "已完成",
-  failed: "失败",
-  cancelled: "已暂停",
-  interrupted: "被中断",
-  stale: "已过期",
+  get queued() { return t("Queued"); },
+  get running() { return t("Analyzing"); },
+  get completed() { return t("Completed"); },
+  get failed() { return t("Failed"); },
+  get cancelled() { return t("Paused"); },
+  get interrupted() { return t("Interrupted"); },
+  get stale() { return t("Stale"); },
 };
 
 const inputClass =
@@ -112,20 +113,20 @@ export function AgentPanel({
       data-testid="task-review-agent-panel"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <strong>{t("模型通道与任务授权")}</strong>
+        <strong>{t("Model connection and task authorization")}</strong>
         <span className="text-fg-3">
-          {t("令牌仅交给系统安全存储，不在界面持久保存")}
+          {t("Keys go directly to system secure storage and are not persisted in the UI")}
         </span>
       </div>
       {model.loaded && (
         <div className="grid gap-1.5 sm:grid-cols-2">
           <label className="flex items-center gap-1.5 sm:col-span-2">
-            <span className="w-20 shrink-0 text-fg-3">{t("服务商")}</span>
+            <span className="w-20 shrink-0 text-fg-3">{t("reviewUi.provider")}</span>
             <select
               className={inputClass}
               value={selectedProvider}
               data-testid="task-review-agent-panel-provider-select"
-              aria-label={t("服务商预设")}
+              aria-label={t("Provider presets")}
               onChange={(e) => handleProviderSelect(e.target.value)}
             >
               {MODEL_PROVIDER_PRESETS.map((p) => (
@@ -136,7 +137,7 @@ export function AgentPanel({
             </select>
           </label>
           <label className="flex items-center gap-1.5">
-            <span className="w-20 shrink-0 text-fg-3">{t("接口地址")}</span>
+            <span className="w-20 shrink-0 text-fg-3">{t("Endpoint")}</span>
             <input
               className={inputClass}
               value={model.endpoint}
@@ -145,42 +146,42 @@ export function AgentPanel({
                 setModel({ ...model, endpoint });
                 setSelectedProvider(detectProviderPreset(endpoint));
               }}
-              aria-label={t("模型接口地址")}
+              aria-label={t("Model endpoint")}
             />
           </label>
           <label className="flex items-center gap-1.5">
-            <span className="w-20 shrink-0 text-fg-3">{t("后台分析模型")}</span>
+            <span className="w-20 shrink-0 text-fg-3">{t("Background analysis model")}</span>
             <input
               className={inputClass}
               value={model.backgroundModel}
               onChange={(event) => setModel({ ...model, backgroundModel: event.target.value })}
-              aria-label={t("后台分析模型名称")}
+              aria-label={t("Background analysis model name")}
             />
           </label>
           <label className="flex items-center gap-1.5">
-            <span className="w-20 shrink-0 text-fg-3">{t("续写模型")}</span>
+            <span className="w-20 shrink-0 text-fg-3">{t("Completion model")}</span>
             <input
               className={inputClass}
               value={model.completionModel}
               onChange={(event) => setModel({ ...model, completionModel: event.target.value })}
-              aria-label={t("续写模型名称")}
+              aria-label={t("Completion model name")}
             />
           </label>
           <label className="flex items-center gap-1.5">
-            <span className="w-20 shrink-0 text-fg-3">{t("API 密钥")}</span>
+            <span className="w-20 shrink-0 text-fg-3">{t("reviewUi.API_key_130")}</span>
             <input
               className={inputClass}
               type="password"
               autoComplete="off"
               value={apiKey}
-              placeholder={model.hasApiKey ? t("已保存（留空保持不变）") : t("未保存")}
+              placeholder={model.hasApiKey ? t("Saved (leave blank to keep)") : t("Unsaved")}
               onChange={(event) => setApiKey(event.target.value)}
-              aria-label={t("模型 API 密钥")}
+              aria-label={t("Model API key")}
             />
           </label>
           {currentPreset && currentPreset.models.length > 0 && (
             <div className="flex flex-wrap items-center gap-1 sm:col-span-2">
-              <span className="w-20 shrink-0 text-fg-3">{t("推荐模型")}</span>
+              <span className="w-20 shrink-0 text-fg-3">{t("Recommended models")}</span>
               <div className="flex flex-wrap gap-1">
                 {currentPreset.models.map((m) => (
                   <button
@@ -215,18 +216,18 @@ export function AgentPanel({
           onClick={() => void saveModel()}
           data-testid="task-review-model-save"
         >
-          {t("保存模型配置")}
+          {t("Save model configuration")}
         </button>
         <span role="status" data-testid="task-review-model-status">
           {modelState === "saving"
-            ? t("正在保存…")
+            ? t("Saving…")
             : modelState === "saved"
-              ? t("模型配置已保存")
-              : modelError ?? (model.hasApiKey ? t("密钥已保存") : t("未配置密钥"))}
+              ? t("Model configuration saved")
+              : modelError ?? (model.hasApiKey ? t("Key saved") : t("No key configured"))}
         </span>
         {modelState === "error" && (
           <button type="button" className={wbButton.ghost} onClick={() => void saveModel()}>
-            {t("重试")}
+            {t("Retry")}
           </button>
         )}
       </div>
@@ -234,7 +235,7 @@ export function AgentPanel({
         {grant ? (
           <>
             <span data-testid="task-review-grant" className="text-fg-2">
-              {t("已授权本任务 · 接口 {{endpoint}} · 范围：整个任务", {
+              {t("Task authorized · Endpoint {{endpoint}} · Scope: entire task", {
                 endpoint: grant.endpoint,
               })}
             </span>
@@ -244,17 +245,17 @@ export function AgentPanel({
               onClick={() => runtime.revoke()}
               data-testid="task-review-revoke"
             >
-              {t("撤销授权")}
+              {t("Revoke authorization")}
             </button>
             <button
               type="button"
               className={wbButton.secondary}
               onClick={() => runtime.startPreflight()}
             >
-              {t("立即预审")}
+              {t("Review now")}
             </button>
             <span className="text-fg-3">
-              {t("任务内容更新后自动重新预审，无需再次确认")}
+              {t("Automatically review again when task content changes, without asking again")}
             </span>
           </>
         ) : (
@@ -263,21 +264,21 @@ export function AgentPanel({
               type="button"
               className={wbButton.primary}
               disabled={!agent || !sourceIds.length}
-              title={!sourceIds.length ? t("先导入待审原文") : t("授权内置 Agent 预审本任务")}
+              title={!sourceIds.length ? t("Import source text first") : t("Authorize the built-in Agent to review this task")}
               onClick={() => runtime.authorize(sourceIds)}
               data-testid="task-review-authorize"
             >
-              {t("授权本任务预审")}
+              {t("Authorize task review")}
             </button>
             <span className="text-fg-3">
-              {t("授权只覆盖本任务；未配置模型时仍可全程人工审阅与导出")}
+              {t("Authorization covers only this task. Manual review and export remain available without a model.")}
             </span>
           </>
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2" data-testid="task-review-coverage">
         <span>
-          {t("文本预审范围总 {{total}} · 已分析 {{analyzed}} · 进行中 {{inFlight}} · 失败 {{failed}} · 未分析 {{unanalyzed}}", {
+          {t("Text review coverage: {{total}} total · {{analyzed}} analyzed · {{inFlight}} running · {{failed}} failed · {{unanalyzed}} unanalyzed", {
             total: coverage.total,
             analyzed: coverage.analyzed,
             inFlight: coverage.inFlight,
@@ -287,11 +288,10 @@ export function AgentPanel({
         </span>
         {(runtime.state?.deferredUnitIds?.length ?? 0) > 0 && grant && (
           <button type="button" className={wbButton.secondary} disabled={!agent} data-testid="task-review-continue-analysis" onClick={() => runtime.continueAnalysis()}>
-            继续分析剩余 {runtime.state!.deferredUnitIds!.length} 条（再用一窗预算）
-          </button>
+            {t("Continue analyzing the remaining ")}{runtime.state!.deferredUnitIds!.length} {t(" items (one more budget window)")}</button>
         )}
         {coverage.failed > 0 && (
-          <span className="text-status-error">{t("有失败条目，可重试或人工审阅")}</span>
+          <span className="text-status-error">{t("Some items failed. Retry them or review manually.")}</span>
         )}
       </div>
       {runtime.error && (
@@ -312,7 +312,7 @@ export function AgentPanel({
                 {t(jobLabels[job.status])}
               </span>
               <span className="text-fg-3">
-                {t("条目 {{count}} 个 · 第 {{attempts}} 次尝试", {
+                {t("{{count}} items · Attempt {{attempts}}", {
                   count: job.unitIds.length,
                   attempts: job.attempts,
                 })}
@@ -325,7 +325,7 @@ export function AgentPanel({
                   onClick={() => runtime.cancelJob(job.id)}
                   data-testid="task-review-job-cancel"
                 >
-                  {t("暂停")}
+                  {t("Pause")}
                 </button>
               )}
               {(job.status === "failed" || job.status === "interrupted") && (
@@ -335,7 +335,7 @@ export function AgentPanel({
                   onClick={() => runtime.retryJob(job.id)}
                   data-testid="task-review-job-retry"
                 >
-                  {t("重试")}
+                  {t("Retry")}
                 </button>
               )}
             </li>

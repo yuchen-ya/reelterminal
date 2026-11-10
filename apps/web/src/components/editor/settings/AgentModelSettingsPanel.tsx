@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { t as translate } from "../../../i18n";
 import {
   AlertCircle,
   Bot,
@@ -75,7 +76,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
         const msg = err instanceof Error ? err.message : String(err);
         setFeedback({
           type: "error",
-          message: `${t("agentSettings.saveError", "获取模型配置失败")}: ${msg}`,
+          message: `${translate("Failed to load model configuration")}: ${msg}`,
         });
       } finally {
         if (!cancelled) {
@@ -89,7 +90,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [isDesktop, t]);
+  }, [isDesktop]);
 
   const handleProviderChange = useCallback(
     (newProviderId: string) => {
@@ -149,13 +150,13 @@ export const AgentModelSettingsPanel: React.FC = () => {
       setApiKey("");
       const successMsg = t(
         "agentSettings.clearKeySuccess",
-        "已成功清除已存储的 API 密钥",
+        "Stored API key cleared successfully",
       );
       setFeedback({ type: "success", message: successMsg });
       toast.success(successMsg);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      const errorMsg = t("agentSettings.clearKeyError", "清除密钥失败");
+      const errorMsg = t("agentSettings.clearKeyError", "Failed to clear API key");
       setFeedback({ type: "error", message: `${errorMsg}: ${msg}` });
       toast.error(errorMsg, msg);
     } finally {
@@ -167,7 +168,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
     if (!isDesktop || !window.reelterminal?.taskAgent) {
       const msg = t(
         "agentSettings.desktopRequired",
-        "内置 Agent 模型配置需在桌面版中使用",
+        "Built-in Agent model configuration requires the desktop app",
       );
       setFeedback({ type: "error", message: msg });
       toast.error(msg);
@@ -180,7 +181,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
     const trimmedKey = apiKey.trim();
 
     if (!trimmedEndpoint) {
-      const msg = t("agentSettings.endpointRequired", "请输入 API 接口地址");
+      const msg = t("agentSettings.endpointRequired", "Enter an API endpoint");
       setFeedback({ type: "error", message: msg });
       return;
     }
@@ -188,7 +189,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
     if (!trimmedBg) {
       const msg = t(
         "agentSettings.backgroundModelRequired",
-        "请输入后台预审模型名称",
+        "Enter a background review model name",
       );
       setFeedback({ type: "error", message: msg });
       return;
@@ -197,7 +198,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
     if (!trimmedComp) {
       const msg = t(
         "agentSettings.completionModelRequired",
-        "请输入实时续写模型名称",
+        "Enter a live completion model name",
       );
       setFeedback({ type: "error", message: msg });
       return;
@@ -211,7 +212,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
     if (currentConfig?.hasApiKey && endpointChanged && !trimmedKey) {
       const msg = t(
         "agentSettings.reenterKeyRequired",
-        "更换服务商接口地址后，请重新输入对应的 API 密钥",
+        "Re-enter the API key for the new provider endpoint",
       );
       setFeedback({ type: "error", message: msg });
       return;
@@ -234,13 +235,13 @@ export const AgentModelSettingsPanel: React.FC = () => {
 
       const successMsg = t(
         "agentSettings.saveSuccess",
-        "AI 模型与接口配置已成功保存",
+        "AI model and endpoint configuration saved",
       );
       setFeedback({ type: "success", message: successMsg });
       toast.success(successMsg);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      const errorMsg = t("agentSettings.saveError", "保存配置失败");
+      const errorMsg = t("agentSettings.saveError", "Failed to save configuration");
       setFeedback({ type: "error", message: `${errorMsg}: ${msg}` });
       toast.error(errorMsg, msg);
     } finally {
@@ -255,13 +256,13 @@ export const AgentModelSettingsPanel: React.FC = () => {
         <div className="flex items-center gap-2">
           <Bot size={16} className="text-primary" />
           <Text type="body" color="primary" className="text-sm font-medium">
-            {t("agentSettings.title", "内置 Agent 与 AI 模型配置")}
+            {t("agentSettings.title", "Built-in Agent and AI model configuration")}
           </Text>
         </div>
         <Text type="supporting" color="secondary" className="text-xs">
           {t(
             "agentSettings.description",
-            "配置审阅工作台及智能助手调用的大语言模型服务商、接口地址与加密密钥。",
+            "Configure the language model provider, endpoint and encrypted key used by the review workbench and assistant.",
           )}
         </Text>
       </div>
@@ -271,12 +272,12 @@ export const AgentModelSettingsPanel: React.FC = () => {
           <AlertCircle size={16} className="mt-0.5 shrink-0 text-status-warning" />
           <div className="space-y-0.5">
             <p className="font-semibold text-fg">
-              {t("agentSettings.desktopNoticeTitle", "仅限桌面端运行")}
+              {t("agentSettings.desktopNoticeTitle", "Desktop app required")}
             </p>
             <p className="text-fg-muted">
               {t(
                 "agentSettings.desktopNoticeBody",
-                "内置 Agent 模型与安全密钥配置依赖 ReelTerminal 桌面应用运行时环境 (Electron safeStorage)。",
+                "Built-in Agent models and secure keys require the ReelTerminal desktop runtime (Electron safeStorage).",
               )}
             </p>
           </div>
@@ -289,7 +290,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
             aria-hidden
             className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-accent border-r-transparent"
           />
-          <span>{t("common.loading", "加载配置中...")}</span>
+          <span>{t("common.loading", "Loading configuration...")}</span>
         </div>
       ) : (
         <div className="space-y-4">
@@ -299,14 +300,14 @@ export const AgentModelSettingsPanel: React.FC = () => {
               htmlFor="agent-provider-select"
               className="text-[12px] font-medium text-fg"
             >
-              {t("agentSettings.providerLabel", "服务商预设 (Provider)")}
+              {t("agentSettings.providerLabel", "Provider preset")}
             </label>
             <select
               id="agent-provider-select"
               className="flex h-8 w-full min-w-0 cursor-pointer rounded-[7px] border border-border bg-bg-1 px-2.5 py-1 text-[13px] font-medium text-fg-2 outline-none transition-colors hover:bg-bg-2 focus:border-accent"
               value={provider}
               onChange={(e) => handleProviderChange(e.target.value)}
-              aria-label={t("agentSettings.providerLabel", "服务商预设")}
+              aria-label={t("agentSettings.providerLabel", "Provider presets")}
             >
               {MODEL_PROVIDER_PRESETS.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -317,7 +318,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
             <p className="text-[11px] text-fg-muted">
               {t(
                 "agentSettings.providerDescription",
-                "选择常用的大模型托管服务商，或选择自定义兼容 OpenAI 标准协议的接口。",
+                "Choose a model provider or a custom OpenAI-compatible endpoint.",
               )}
             </p>
           </div>
@@ -328,7 +329,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
               htmlFor="agent-endpoint-input"
               className="text-[12px] font-medium text-fg"
             >
-              {t("agentSettings.endpointLabel", "API 接口地址 (Endpoint)")}
+              {t("agentSettings.endpointLabel", "API endpoint")}
             </label>
             <input
               id="agent-endpoint-input"
@@ -343,7 +344,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
             <p className="text-[11px] text-fg-muted">
               {t(
                 "agentSettings.endpointDescription",
-                "OpenAI 兼容协议基础 URL（本地 Ollama 可使用 http://127.0.0.1:11434/v1，其余远程服务商必须使用 HTTPS）。",
+                "OpenAI-compatible base URL (local Ollama can use http://127.0.0.1:11434/v1; remote providers require HTTPS).",
               )}
             </p>
           </div>
@@ -359,12 +360,12 @@ export const AgentModelSettingsPanel: React.FC = () => {
               >
                 {t(
                   "agentSettings.backgroundModelLabel",
-                  "后台预审模型 (Background Model)",
+                  "Background review model",
                 )}
               </label>
               {availablePresetModels.length > 0 && (
                 <div className="flex items-center gap-1.5 text-[11px] text-fg-muted">
-                  <span>{t("agentSettings.quickSelect", "预设快捷选择")}:</span>
+                  <span>{t("agentSettings.quickSelect", "Preset shortcuts")}:</span>
                   <select
                     className="cursor-pointer rounded border border-border bg-bg-2 px-1.5 py-0.5 text-[11px] text-fg-2 outline-none hover:bg-bg-3"
                     value={
@@ -377,11 +378,11 @@ export const AgentModelSettingsPanel: React.FC = () => {
                     }}
                     aria-label={t(
                       "agentSettings.backgroundModelQuickSelect",
-                      "后台预审模型预设选择",
+                      "Background review model preset",
                     )}
                   >
                     <option value="" disabled>
-                      {t("agentSettings.pickPresetPlaceholder", "选择常用模型...")}
+                      {t("agentSettings.pickPresetPlaceholder", "Choose a model...")}
                     </option>
                     {availablePresetModels.map((m) => (
                       <option key={m} value={m}>
@@ -400,7 +401,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
               onChange={(e) => setBackgroundModel(e.target.value)}
               placeholder={t(
                 "agentSettings.modelPlaceholder",
-                "例如: deepseek-chat 或 gpt-4o",
+                "For example: deepseek-chat or gpt-4o",
               )}
               spellCheck={false}
               autoComplete="off"
@@ -408,7 +409,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
             <p className="text-[11px] text-fg-muted">
               {t(
                 "agentSettings.backgroundModelDescription",
-                "用于审阅工作台中的后台初审、语义检索打分与批量建议生成。",
+                "Used for background review, semantic search scoring and batch suggestions in the review workbench.",
               )}
             </p>
           </div>
@@ -422,12 +423,12 @@ export const AgentModelSettingsPanel: React.FC = () => {
               >
                 {t(
                   "agentSettings.completionModelLabel",
-                  "实时续写模型 (Completion Model)",
+                  "Live completion model",
                 )}
               </label>
               {availablePresetModels.length > 0 && (
                 <div className="flex items-center gap-1.5 text-[11px] text-fg-muted">
-                  <span>{t("agentSettings.quickSelect", "预设快捷选择")}:</span>
+                  <span>{t("agentSettings.quickSelect", "Preset shortcuts")}:</span>
                   <select
                     className="cursor-pointer rounded border border-border bg-bg-2 px-1.5 py-0.5 text-[11px] text-fg-2 outline-none hover:bg-bg-3"
                     value={
@@ -440,11 +441,11 @@ export const AgentModelSettingsPanel: React.FC = () => {
                     }}
                     aria-label={t(
                       "agentSettings.completionModelQuickSelect",
-                      "实时续写模型预设选择",
+                      "Live completion model preset",
                     )}
                   >
                     <option value="" disabled>
-                      {t("agentSettings.pickPresetPlaceholder", "选择常用模型...")}
+                      {t("agentSettings.pickPresetPlaceholder", "Choose a model...")}
                     </option>
                     {availablePresetModels.map((m) => (
                       <option key={m} value={m}>
@@ -463,7 +464,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
               onChange={(e) => setCompletionModel(e.target.value)}
               placeholder={t(
                 "agentSettings.modelPlaceholder",
-                "例如: deepseek-chat 或 gpt-4o-mini",
+                "For example: deepseek-chat or gpt-4o-mini",
               )}
               spellCheck={false}
               autoComplete="off"
@@ -471,7 +472,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
             <p className="text-[11px] text-fg-muted">
               {t(
                 "agentSettings.completionModelDescription",
-                "用于用户输入时的低延迟实时补全与即时文字建议。",
+                "Used for low-latency completion and text suggestions while typing.",
               )}
             </p>
           </div>
@@ -485,14 +486,14 @@ export const AgentModelSettingsPanel: React.FC = () => {
                 htmlFor="agent-api-key-input"
                 className="text-[12px] font-medium text-fg"
               >
-                {t("agentSettings.apiKeyLabel", "API 密钥 (API Key)")}
+                {t("agentSettings.apiKeyLabel", "API key")}
               </label>
               {currentConfig?.hasApiKey && (
                 <span className="inline-flex items-center gap-1 text-[11px] font-medium text-status-success">
                   <ShieldCheck size={13} className="shrink-0" />
                   {t(
                     "agentSettings.keyEncryptedNotice",
-                    "已安全加密存储 (safeStorage)",
+                    "Encrypted in secure storage (safeStorage)",
                   )}
                 </span>
               )}
@@ -511,11 +512,11 @@ export const AgentModelSettingsPanel: React.FC = () => {
                   currentConfig?.hasApiKey
                     ? t(
                         "agentSettings.apiKeyPlaceholderSaved",
-                        "•••••••••••••••• (已保存加密密钥，如需修改请直接输入)",
+                        "•••••••••••••••• (encrypted key saved; type to replace)",
                       )
                     : t(
                         "agentSettings.apiKeyPlaceholderEmpty",
-                        "请输入 API Key (例如 sk-...)",
+                        "Enter an API key (for example sk-...)",
                       )
                 }
                 autoComplete="off"
@@ -528,13 +529,13 @@ export const AgentModelSettingsPanel: React.FC = () => {
                   className="flex h-6 w-6 items-center justify-center rounded text-fg-muted hover:bg-bg-2 hover:text-fg"
                   title={
                     showApiKey
-                      ? t("agentSettings.hideKey", "隐藏密钥")
-                      : t("agentSettings.showKey", "显示密钥")
+                      ? t("agentSettings.hideKey", "Hide key")
+                      : t("agentSettings.showKey", "Show key")
                   }
                   aria-label={
                     showApiKey
-                      ? t("agentSettings.hideKey", "隐藏密钥")
-                      : t("agentSettings.showKey", "显示密钥")
+                      ? t("agentSettings.hideKey", "Hide key")
+                      : t("agentSettings.showKey", "Show key")
                   }
                 >
                   {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -545,11 +546,11 @@ export const AgentModelSettingsPanel: React.FC = () => {
                     onClick={handleClearApiKey}
                     disabled={isClearing || isSaving}
                     className="flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-status-error hover:bg-status-error/10 disabled:opacity-50"
-                    title={t("agentSettings.clearSavedKey", "清除已存密钥")}
-                    aria-label={t("agentSettings.clearSavedKey", "清除已存密钥")}
+                    title={t("agentSettings.clearSavedKey", "Clear saved key")}
+                    aria-label={t("agentSettings.clearSavedKey", "Clear saved key")}
                   >
                     <Trash2 size={12} />
-                    <span>{t("agentSettings.clearKeyButton", "清除")}</span>
+                    <span>{t("agentSettings.clearKeyButton", "Clear")}</span>
                   </button>
                 )}
               </div>
@@ -557,7 +558,7 @@ export const AgentModelSettingsPanel: React.FC = () => {
             <p className="text-[11px] text-fg-muted">
               {t(
                 "agentSettings.apiKeyDescription",
-                "API Key 将使用操作系统的加密钥匙串 (Electron safeStorage) 本地保存，绝不上传云端或明文存储。",
+                "The API key is stored locally using the operating system keychain (Electron safeStorage), never uploaded or stored as plain text.",
               )}
             </p>
           </div>
@@ -587,8 +588,8 @@ export const AgentModelSettingsPanel: React.FC = () => {
             <Button
               label={
                 isSaving
-                  ? t("common.saving", "保存中...")
-                  : t("agentSettings.saveButton", "保存设置")
+                  ? t("common.saving", "Saving...")
+                  : t("agentSettings.saveButton", "Save settings")
               }
               onClick={handleSave}
               variant="primary"

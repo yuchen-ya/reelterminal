@@ -66,7 +66,7 @@ HTML 仍仅文件/链接管理与默认浏览器打开；P7、建模/材质/骨�
 ```powershell
 pnpm --filter @reelterminal/desktop run pack
 # passed；app.asar 最后写入 2026-10-23 23:59:09 +08:00，版本 1.3.0
-$env:REELTERMINAL_E2E_APP_EXECUTABLE='E:\1my_projects\reelterminal\apps\desktop\release\win-unpacked\ReelTerminal.exe'
+$env:REELTERMINAL_E2E_APP_EXECUTABLE='<checkout>\apps\desktop\release\win-unpacked\ReelTerminal.exe'
 pnpm --filter @reelterminal/desktop exec vitest run --config e2e/vitest.config.ts e2e/review-model3d.e2e.ts e2e/review-foundation-ui.e2e.ts e2e/review-foundation-process.e2e.ts e2e/review-foundation-rework.e2e.ts e2e/review-video-a7.e2e.ts
 # 5 files / 6 tests passed，00:00:13 开始，55.74s
 ```
@@ -77,4 +77,4 @@ pnpm --filter @reelterminal/desktop exec vitest run --config e2e/vitest.config.t
 
 ASAR 检查结果 `apps/desktop/.artifacts/model-asar-check.json`：2896 项；无 `.artifacts/e2e/.env/.git/live-endpoint.json`，main/CLI 入口存在。未安装、未替换运行实例。
 
-可运行测试包：`E:\1my_projects\reelterminal\apps\desktop\release\win-unpacked\ReelTerminal.exe`。验收到此结束；实际用户模型外观、不同设备和新版包的人工原生拖出接收仍按上述证据边界保留，不扩大到 HTML/P7 或模型编辑。
+可运行测试包：`<checkout>\apps\desktop\release\win-unpacked\ReelTerminal.exe`。验收到此结束；实际用户模型外观、不同设备和新版包的人工原生拖出接收仍按上述证据边界保留，不扩大到 HTML/P7 或模型编辑。

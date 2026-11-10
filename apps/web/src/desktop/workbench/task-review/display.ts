@@ -1,10 +1,11 @@
+import { t } from "../../../i18n";
 import type { TaskDecisionStatus } from "../../../../../desktop/src/shared/task-review";
 
 /** Shared short verdict labels for decisions (moved out of UnitReviewScene). */
 export const statusLabels: Record<TaskDecisionStatus, string> = {
-  kept: "保留",
-  rework: "返工",
-  discarded: "丢弃",
+  get kept() { return t("Keep"); },
+  get rework() { return t("Rework"); },
+  get discarded() { return t("Discard"); },
 };
 
 /** Display legacy generated originals naturally without renaming their files. */
@@ -18,8 +19,8 @@ import { isTextTaskUnit, type TaskReviewUnit } from "../../../../../desktop/src/
 export function unitTitle(unit: TaskReviewUnit): string {
   if (isTextTaskUnit(unit)) return unit.text;
   if (unit.kind === "region") return unit.label;
-  if (unit.kind === "video-frame") return `视频帧${unit.frameIndex === undefined ? "" : ` #${unit.frameIndex}`} · PTS ${unit.ptsTimeSec.toFixed(3)}s`;
-  return unit.kind === "image" ? "图片" : "视频";
+  if (unit.kind === "video-frame") return t("Video frame{{v0}} · PTS {{v1}}s", { v0: unit.frameIndex === undefined ? "" : ` #${unit.frameIndex}`, v1: unit.ptsTimeSec.toFixed(3) });
+  return unit.kind === "image" ? t("reviewUi.image") : t("Video");
 }
 
 export function sourcePath(root: string, relativePath: string): string {

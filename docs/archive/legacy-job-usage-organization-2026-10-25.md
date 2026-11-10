@@ -93,4 +93,4 @@ The rollback script owns the eight standard index files plus two diagnostic stag
 - `E:\1Data\reelterminal\agent-workspace\jobs\2026-10-25-legacy-job-usage-index\unknown\index.jsonl`
 - `E:\1Data\reelterminal\agent-workspace\jobs\2026-10-25-legacy-job-usage-index\project\usage-index-summary.json`
 - `E:\1Data\reelterminal\agent-workspace\jobs\2026-10-25-legacy-job-usage-index\work\rollback-usage-index.ps1`
-- `E:\1my_projects\reelterminal\scripts\migrations\legacy-job-usage-index.ps1` (defaults to DryRun; apply requires `-Mode Apply`)
+- `<checkout>\scripts\migrations\legacy-job-usage-index.ps1` (defaults to DryRun; apply requires `-Mode Apply`)

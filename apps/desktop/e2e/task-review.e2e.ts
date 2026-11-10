@@ -29,10 +29,12 @@ const SRT = [
 const NOTE = "这是一条尚待人工核对的审阅意见。";
 const SCENE_TEXT = ["X: 角色第一次介绍自己住在海边。", "Y: 角色再次介绍自己住在海边。", "L: 天气晴朗，大家按时出发。", "M: 大家准备好了午餐。", "N: 今天的旅程刚刚开始。"].join("\n");
 
-const snapshotAt = async (root: string): Promise<TaskReviewSnapshot> => ({
-  root,
-  ...JSON.parse(await readFile(path.join(root, ".reelterminal", "task-review.json"), "utf8")),
-});
+// Poll through the store's root lock; independent disk verification follows
+// completed operations below, rather than holding competing Windows readers.
+let snapshotPage: Page;
+const snapshotAt = (root: string): Promise<TaskReviewSnapshot> => snapshotPage.evaluate(
+  root => window.reelterminal.taskReview.open(root), root,
+);
 const globalScene = async (page: Page) => {
   // The scene switch was removed; the launcher tile is the equivalent path.
   await openLauncher(page, "overview");
@@ -61,6 +63,7 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
   try {
     launched = await launchApp({ runDir });
     let page = launched.page;
+    snapshotPage = page;
     evidence.bindPage(page);
     const root = path.join(launched.userDataDir, "review", "tasks", "task-review-acceptance");
     taskRoot = root;
@@ -188,7 +191,7 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     await page.getByTestId("task-review-back").click();
     // unit-status is now the three-pill decide container; "pending" reads as
     // no pill being pressed.
-    expect(await page.getByTestId("task-review-decide-kept").getAttribute("aria-pressed")).toBe("false");
+    await vi.waitFor(async () => expect(await page.getByTestId("task-review-decide-kept").getAttribute("aria-pressed")).toBe("false"));
     await page.getByTestId("task-review-continue").click();
     await vi.waitFor(async () => expect(await page.getByTestId("task-review-unit-text").textContent()).toContain("C:"));
     expect((await snapshotAt(root)).decisions.some(decision => decision.unitId === unitB.id)).toBe(false);
@@ -270,7 +273,7 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     const reviewCallsBeforeUndo = model.requests.filter(request => request.kind === "review").length;
     await page.getByTestId("task-review-undo-decision").click();
     await vi.waitFor(async () => expect(selectTaskDecision(await snapshotAt(root), decisionTarget)).toBeUndefined());
-    expect(await page.getByTestId("task-review-decide-kept").getAttribute("aria-pressed")).toBe("false");
+    await vi.waitFor(async () => expect(await page.getByTestId("task-review-decide-kept").getAttribute("aria-pressed")).toBe("false"));
     expect(await page.getByTestId("task-review-unit-text").textContent()).toContain("B:");
     await page.getByTestId("task-review-redo-decision").click();
     await vi.waitFor(async () => expect(selectTaskDecision(await snapshotAt(root), decisionTarget)?.status).toBe("kept"));
@@ -303,7 +306,7 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     await vi.waitFor(async () => expect((await snapshotAt(root)).drafts.find(draft => draft.unitId === unitB.id)).toMatchObject({
       text: adopted, selectionStart: recoveredSelection.start, selectionEnd: recoveredSelection.end,
     }));
-    launched = await launched.relaunch(); page = launched.page; evidence.bindPage(page);
+    launched = await launched.relaunch(); page = launched.page; snapshotPage = page; evidence.bindPage(page);
     await page.evaluate(() => localStorage.setItem("openreel-locale", "zh-CN"));
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("tab", { name: /Review Workspace|审阅工作台/ }).click();
@@ -350,7 +353,9 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     const criterion = page.getByTestId("task-review-criterion").filter({ hasText: criterionContent });
     await criterion.getByRole("button", { name: "停用", exact: true }).click();
     await vi.waitFor(async () => expect((await snapshotAt(root)).contextHistory!.criteriaActions.at(-1)?.kind).toBe("deactivate"));
-    expect(await criterion.getAttribute("data-active")).toBe("false");
+    // The locked disk read above can finish before React publishes the IPC
+    // result. Require the same UI state within the existing bounded wait.
+    await vi.waitFor(async () => expect(await criterion.getAttribute("data-active")).toBe("false"));
     task = await snapshotAt(root);
     expect(task.contextHistory!.criteriaVersions).toHaveLength(1);
     expect(task.contextHistory!.criteriaVersions[0].id).toBe(rule.id);
@@ -369,7 +374,7 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     await contextPanel.locator(":scope > summary").click();
     await page.getByRole("button", { name: "采用为任务理解", exact: true }).click();
     await vi.waitFor(async () => expect((await snapshotAt(root)).contextHistory!.adoptions).toHaveLength(1));
-    expect(await page.getByTestId("task-review-context-adopted").isVisible()).toBe(true);
+    await vi.waitFor(async () => expect(await page.getByTestId("task-review-context-adopted").isVisible()).toBe(true));
     task = await snapshotAt(root);
     evidence.record("contextCriteria", { rule, actions: task.contextHistory!.criteriaActions, adoptions: task.contextHistory!.adoptions, evidence: reference, onlyAffectedHumanDecisionRechecked: true });
     await evidence.screenshot("context-and-rule-history");
@@ -504,6 +509,10 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
     evidence.record("formalScenesAndOriginalExport", { selectedGroup: [targetFor("L"), targetFor("M")], pending: [targetFor("Y"), targetFor("N")], receipt });
     task = await snapshotAt(root);
     evidence.record("finalPlan", task.planRevisions.at(-1));
+    const durable = JSON.parse(await readFile(path.join(root, ".reelterminal", "task-review.json"), "utf8"));
+    expect(durable.decisions).toEqual(task.decisions);
+    expect(durable.decisionActions).toEqual(task.decisionActions);
+    expect(durable.revision).toBe(task.revision);
     expect(model.errors).toEqual([]);
     evidence.record("evidenceLimits", ["Synthetic SSE only; real LLM quality remains unverified", "Synthetic composition events, not physical OS IME", "Text/subtitles only; image/frame/segmentation review remains a later phase"]);
     evidence.record("requests", model.requests);

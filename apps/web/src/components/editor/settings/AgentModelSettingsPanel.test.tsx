@@ -1,9 +1,34 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentModelSettingsPanel } from "./AgentModelSettingsPanel";
+import i18n from "../../../i18n";
 import type { TaskModelConfig, TaskModelConfigInput } from "../../../../../desktop/src/shared/task-review-runtime-types";
 
 describe("AgentModelSettingsPanel", () => {
+  it("preserves unsaved endpoint, model and key input when switching languages", async () => {
+    const previousLanguage = i18n.language;
+    try {
+      await i18n.changeLanguage("en");
+      render(<AgentModelSettingsPanel />);
+      await waitFor(() => expect(document.getElementById("agent-endpoint-input")).toHaveValue(initialConfig.endpoint));
+      const endpoint = document.getElementById("agent-endpoint-input") as HTMLInputElement;
+      const model = document.getElementById("agent-bg-model-input") as HTMLInputElement;
+      const key = document.getElementById("agent-api-key-input") as HTMLInputElement;
+      fireEvent.change(endpoint, { target: { value: "https://example.invalid/v1" } });
+      fireEvent.change(model, { target: { value: "user-draft-model" } });
+      fireEvent.change(key, { target: { value: "synthetic-test-key" } });
+      await act(async () => { await i18n.changeLanguage("zh-CN"); });
+      expect(screen.getByText("内置 Agent 与 AI 模型配置")).toBeVisible();
+      expect(endpoint).toHaveValue("https://example.invalid/v1");
+      expect(model).toHaveValue("user-draft-model");
+      expect(key).toHaveValue("synthetic-test-key");
+      expect(mockGetModelConfig).toHaveBeenCalledTimes(1);
+      expect(mockConfigureModel).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => { await i18n.changeLanguage(previousLanguage); });
+    }
+  });
+
   const initialConfig: TaskModelConfig = {
     endpoint: "https://api.deepseek.com",
     backgroundModel: "deepseek-chat",

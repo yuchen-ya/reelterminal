@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 import type { JSX, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Copy } from "lucide-react";
@@ -49,9 +50,9 @@ function renderHighlightedText(text: string, evidence?: string): ReactNode {
 }
 
 const pillDetails: Record<TaskDecisionStatus, string> = {
-  kept: "保留原台词不修改（停留在当前页，不会跳走）",
-  rework: "标记为需要返工/采用修订词（停留在当前页）",
-  discarded: "标记为丢弃，导出时自动剔除",
+  get kept() { return t("Keep the original dialogue unchanged (stay on this page)"); },
+  get rework() { return t("Mark for rework / accept revised dialogue (stay on this page)"); },
+  get discarded() { return t("Mark as discarded; automatically exclude from export"); },
 };
 
 const pillActiveClasses: Record<TaskDecisionStatus, string> = {
@@ -129,12 +130,12 @@ export function StageUnitCard({
           className="rounded border border-status-error/50 p-2 text-xs text-status-error"
           data-testid="task-review-stale-source"
         >
-          {t("此场景来自已过期或不可用的原件版本；保留原草稿供参考，请从全局打开当前版本后重新审阅。")}
+          {t("This scene uses a stale or unavailable source version. The old draft is preserved for reference; open the current version from the overview to review again.")}
         </p>
       )}
       {!stale && !analysisKnown && (
         <p className="text-xs text-fg-3" data-testid="task-review-risk-unknown">
-          {t("风险未知：此条目尚未完成当前口径分析，可继续人工审阅。")}
+          {t("Risk unknown: this item has not been analyzed under the current criteria. Manual review is still available.")}
         </p>
       )}
 
@@ -160,7 +161,7 @@ export function StageUnitCard({
                 </span>
               )}
               <span className="shrink-0">
-                {t("行 {{start}}–{{end}}", { start: unit.startLine, end: unit.endLine })}
+                {t("Lines {{start}}–{{end}}", { start: unit.startLine, end: unit.endLine })}
               </span>
               {unit.startMs !== undefined && (
                 <span className="shrink-0 font-mono text-[11px]">
@@ -179,8 +180,8 @@ export function StageUnitCard({
                 onFocus?.();
               }}
               {...bindTip(
-                `聚焦 #${unit.ordinal}`,
-                "把阅读焦点切到这一条；只改变阅读位置，不改变任何裁决",
+                t("Focus #{{v0}}", { v0: unit.ordinal }),
+                t("Move reading focus to this item without changing any decisions"),
               )}
               className="flex min-w-0 items-center gap-2 rounded text-left text-xs text-fg-3 tabular-nums transition-colors hover:text-fg"
             >
@@ -206,7 +207,7 @@ export function StageUnitCard({
               </span>
             )}
             <span className="shrink-0">
-              {t("行 {{start}}–{{end}}", { start: unit.startLine, end: unit.endLine })}
+              {t("Lines {{start}}–{{end}}", { start: unit.startLine, end: unit.endLine })}
             </span>
             {unit.startMs !== undefined && (
               <span className="shrink-0 font-mono text-[11px]">
@@ -224,8 +225,8 @@ export function StageUnitCard({
             type="button"
             onClick={() => onCopyText(decision.replacementText ?? unit.text)}
             {...bindTip(
-              `复制 #${unit.ordinal} 文本`,
-              "复制该条台词到剪贴板",
+              t("Copy text of #{{v0}}", { v0: unit.ordinal }),
+              t("Copy this dialogue item to the clipboard"),
             )}
             className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-fg-3 hover:bg-bg-2 hover:text-fg"
           >
@@ -247,7 +248,7 @@ export function StageUnitCard({
                   aria-pressed={active}
                   onClick={() => onDecide(status)}
                   {...bindTip(
-                    `将 #${unit.ordinal} 设为「${statusLabels[status]}」`,
+                    t("Set #{{v0}} to \"{{v1}}\"", { v0: unit.ordinal, v1: statusLabels[status] }),
                     pillDetails[status],
                   )}
                   className={`cursor-pointer rounded px-1.5 py-0.5 text-[11px] transition-colors ${
@@ -280,8 +281,7 @@ export function StageUnitCard({
           data-testid="task-review-rework-preview"
         >
           <span className="mt-0.5 shrink-0 font-mono text-[11px] font-bold text-amber-300">
-            返工改稿 →
-          </span>
+            {t("Rework draft →")}</span>
           <span>{decision.replacementText}</span>
         </div>
       )}

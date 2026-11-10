@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TaskReviewSnapshot } from "../../../../../desktop/src/shared/task-review";
 import type { TaskReviewController } from "./useTaskReviewController";
@@ -172,7 +173,7 @@ export function useTaskDrafts(
     );
     if (!dirty.length) return;
     const results = await Promise.all(dirty.map(([unitId]) => persist(unitId)));
-    if (results.some(ok => !ok)) throw new Error("部分草稿保存失败，已在界面上保留，可重试");
+    if (results.some(ok => !ok)) throw new Error(t("Some drafts failed to save. They remain in the UI; try again."));
   }, [persist]);
 
   const dirtyCount = Object.values(drafts).filter(

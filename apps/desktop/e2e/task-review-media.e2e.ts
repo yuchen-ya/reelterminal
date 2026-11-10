@@ -14,7 +14,12 @@ import { DESKTOP_DIR } from "./harness/paths";
 import { decodeRgbaPng } from "./harness/repair-acceptance-fixtures";
 import { openDirectoryScene, openGlobalScene } from "./harness/task-review-shell";
 
-const snapshotAt = async (root: string): Promise<TaskReviewSnapshot> => ({ root, ...JSON.parse(await readFile(path.join(root, ".reelterminal", "task-review.json"), "utf8")) });
+let snapshotPage: Page;
+// Coordinate active polling through the store lock. Read durable bytes once
+// after the completed flow below so the test does not compete with rename.
+const snapshotAt = (root: string): Promise<TaskReviewSnapshot> => snapshotPage.evaluate(
+  root => window.reelterminal.taskReview.open(root), root,
+);
 /** Old scene-switch destinations now go through the tool card's launcher tiles. */
 const changeScene = async (page: Page, name: "目录" | "全局") => {
   if (name === "全局") await openGlobalScene(page);
@@ -59,6 +64,7 @@ test("real CPU task media saves explicit regions, exports transparent results an
   try {
     launched = await launchApp({ runDir });
     const page = launched.page;
+    snapshotPage = page;
     evidence.bindPage(page);
     await page.evaluate(() => localStorage.setItem("openreel-locale", "zh-CN"));
     await page.reload({ waitUntil: "domcontentloaded" });
@@ -186,7 +192,11 @@ test("real CPU task media saves explicit regions, exports transparent results an
     await changeScene(page, "全局");
     expect(await page.evaluate(() => (window as unknown as { acceptanceOldMedia: HTMLVideoElement }).acceptanceOldMedia.paused)).toBe(true);
     expect(await page.getByTestId("task-review-media-mask").count()).toBe(0);
-    expect((await snapshotAt(root)).units.filter(unit => unit.kind === "region")).toHaveLength(2);
+    const finalState = await snapshotAt(root);
+    expect(finalState.units.filter(unit => unit.kind === "region")).toHaveLength(2);
+    const durable = JSON.parse(await readFile(path.join(root, ".reelterminal", "task-review.json"), "utf8"));
+    expect(durable.decisions).toEqual(finalState.decisions);
+    expect(durable.decisionActions).toEqual(finalState.decisionActions);
     evidence.record("video", { pts, requestedTime, frame, cancellationObservedWhileRunning: true, originalVideoPausedOnLeave: true });
     evidence.flush({ passed: true, evidenceLimits: ["Healthy real MobileSAM CPU path only; worker-crash recovery not GUI tested", "Public dogs fixture and synthetic VFR; no general segmentation accuracy claim", "No LLM config, credential or network request"] });
   } catch (error) {

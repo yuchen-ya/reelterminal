@@ -575,6 +575,48 @@
       "pattern": "openreel",
       "category": 4,
       "reason": "历史证据文本：审计跟踪文档第 32 行复述既有 openreel 兼容持久化标识的核验结论，改写会歪曲历史审计记录。"
+    },
+    {
+      "files": "apps/desktop/e2e/task-review-recovery.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated harness exercises the existing persisted locale key; it does not rename or modify a user profile."
+    },
+    {
+      "files": "apps/desktop/e2e/task-review-completion-replay.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated harness exercises the existing persisted locale key; it does not rename or modify a user profile."
+    },
+    {
+      "files": "apps/desktop/e2e/task-review-deepseek.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated harness exercises the existing persisted locale key; it does not rename or modify a user profile."
+    },
+    {
+      "files": "apps/desktop/e2e/task-review-media.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated harness exercises the existing persisted locale key; it does not rename or modify a user profile."
+    },
+    {
+      "files": "apps/desktop/e2e/task-review-quality-deepseek.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated harness exercises the existing persisted locale key; it does not rename or modify a user profile."
+    },
+    {
+      "files": "apps/desktop/e2e/task-review.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The isolated harness exercises the existing persisted locale key; it does not rename or modify a user profile."
+    },
+    {
+      "files": "apps/desktop/src/reelctl/client.test.ts",
+      "pattern": "\\.openreel",
+      "category": 5,
+      "reason": "Exercises the supported fallback to an existing legacy endpoint descriptor without printing its credential."
     }
   ]
 }

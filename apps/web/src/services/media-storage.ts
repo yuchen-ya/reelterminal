@@ -85,9 +85,9 @@ async function writeControlledMediaVersion(
   projectId: string,
   mediaId: string,
   blob: Blob,
-  contentHash: string,
+  contentHash: string | undefined,
   nameHint?: string,
-): Promise<{ path: string; created: boolean } | undefined> {
+): Promise<{ path: string; contentHash: string; created: boolean } | undefined> {
   const mediaStore = desktopMediaStore();
   if (!mediaStore) {
     if (typeof window !== "undefined" && window.reelterminal?.platform === "desktop") {
@@ -115,10 +115,10 @@ async function writeControlledMediaVersion(
       reader.releaseLock();
     }
     const result = await mediaStore.commitWrite(sessionId);
-    if (result.contentHash !== contentHash) {
+    if (contentHash !== undefined && result.contentHash !== contentHash) {
       throw new Error("Controlled media storage returned a different content hash");
     }
-    return { path: result.path, created: result.created };
+    return result;
   } catch (error) {
     await mediaStore.abortWrite(sessionId).catch(() => undefined);
     throw error;
@@ -185,46 +185,67 @@ export async function saveMediaBlob(
   nameHint?: string,
   options: { detachSource?: boolean; expectedHash?: string } = {},
 ): Promise<SavedMediaVersion> {
-  const contentHash = await hashMediaBlob(blob);
-  if (options.expectedHash !== undefined && contentHash !== options.expectedHash) throw new Error("Media source bytes changed before import");
-  return withMediaReferenceWrite(async () => {
-    const existing = await storage.loadMedia(mediaId);
-    if (existing) {
-      const existingHash = existing.contentHash ?? await hashMediaBlob(existing.blob);
-      if (existingHash !== contentHash) {
-        throw new Error(`Media version ${mediaId} is immutable and already contains different bytes`);
+  const operation = beginPerfOperation("media_storage.save_blob");
+  try {
+    return await withMediaReferenceWrite(async () => {
+      const existing = await storage.loadMedia(mediaId);
+      const mediaStore = desktopMediaStore();
+      const existingControlled = await mediaStore?.getVersion(mediaId);
+      // New desktop versions already receive a native SHA-256 while their
+      // controlled copy is streamed to disk. Avoid a redundant full-file JS
+      // pass on the renderer thread. Reuse/legacy/browser paths still hash the
+      // incoming Blob so immutable ids cannot silently adopt different bytes.
+      const rendererHashRequired = !!existing || !!existingControlled || !mediaStore;
+      let contentHash = rendererHashRequired ? await hashMediaBlob(blob) : options.expectedHash;
+      if (rendererHashRequired) markPerfOperation(operation, "media_storage.hashed", { native: false });
+      if (contentHash !== undefined && options.expectedHash !== undefined && contentHash !== options.expectedHash) {
+        throw new Error("Media source bytes changed before import");
       }
-    }
+      if (existing) {
+        const existingHash = existing.contentHash ?? await hashMediaBlob(existing.blob);
+        if (existingHash !== contentHash) {
+          throw new Error(`Media version ${mediaId} is immutable and already contains different bytes`);
+        }
+      }
 
-    let controlled: { path: string; created: boolean } | undefined;
-    const existingControlled = await desktopMediaStore()?.getVersion(mediaId);
-    if (existingControlled) {
-      if (existingControlled.contentHash !== contentHash) {
-        throw new Error(`Media version ${mediaId} is immutable and already contains different controlled bytes`);
+      let controlled: { path: string; contentHash: string; created: boolean } | undefined;
+      if (existingControlled) {
+        if (existingControlled.contentHash !== contentHash) {
+          throw new Error(`Media version ${mediaId} is immutable and already contains different controlled bytes`);
+        }
+        controlled = { path: existingControlled.path, contentHash, created: false };
+      } else {
+        controlled = await writeControlledMediaVersion(projectId, mediaId, blob, contentHash, nameHint);
       }
-      controlled = { path: existingControlled.path, created: false };
-    } else {
-      controlled = await writeControlledMediaVersion(projectId, mediaId, blob, contentHash, nameHint);
-    }
-    const record: MediaRecord = {
-      id: mediaId,
-      projectId,
-      projectIds: [...new Set([...(existing?.projectIds ?? (existing ? [existing.projectId] : [])), projectId])],
-      blob,
-      metadata,
-      contentHash,
-      ...(controlled ? { contentUrl: controlled.path } : {}),
-    };
-    await storage.saveMedia(record);
-    const persisted = options.detachSource ? await storage.loadMedia(mediaId) : undefined;
-    if (options.detachSource && !persisted?.blob) throw new Error("The independent media copy was not persisted");
-    return {
-      contentHash,
-      ...(persisted ? { persistedBlob: persisted.blob } : {}),
-      ...(controlled ? { contentUrl: controlled.path } : {}),
-      created: existing === null && (controlled?.created ?? true),
-    };
-  });
+      contentHash ??= controlled?.contentHash;
+      if (!contentHash) throw new Error("Controlled media storage did not return a content hash");
+      if (!rendererHashRequired) markPerfOperation(operation, "media_storage.hashed", { native: true });
+      markPerfOperation(operation, "media_storage.controlled_written");
+      const record: MediaRecord = {
+        id: mediaId,
+        projectId,
+        projectIds: [...new Set([...(existing?.projectIds ?? (existing ? [existing.projectId] : [])), projectId])],
+        blob,
+        metadata,
+        contentHash,
+        ...(controlled ? { contentUrl: controlled.path } : {}),
+      };
+      await storage.saveMedia(record);
+      markPerfOperation(operation, "media_storage.indexeddb_written");
+      const persisted = options.detachSource ? await storage.loadMedia(mediaId) : undefined;
+      if (options.detachSource && !persisted?.blob) throw new Error("The independent media copy was not persisted");
+      endPerfOperation(operation, "ok");
+      return {
+        contentHash,
+        ...(persisted ? { persistedBlob: persisted.blob } : {}),
+        ...(controlled ? { contentUrl: controlled.path } : {}),
+        created: existing === null && (controlled?.created ?? true),
+      };
+    });
+  } catch (error) {
+    failPerfOperation(operation, error);
+    throw error;
+  }
 }
 
 export async function loadMediaBlob(mediaId: string, projectId?: string): Promise<Blob | null> {

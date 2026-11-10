@@ -381,7 +381,9 @@ export function createMediaSlice(
           mediaType = "image";
         }
 
-        if (mediaType === "video" && !thumbnailUrl) {
+        // Large files deliberately skip preview work in quick mode. The
+        // guarded background job below fills thumbnails after durable commit.
+        if (mediaType === "video" && !thumbnailUrl && !isLargeFile) {
           try {
             const thumbs = await mediaBridge.generateThumbnailsForMedia(
               processedMedia.blob ?? file,

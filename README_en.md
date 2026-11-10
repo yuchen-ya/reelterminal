@@ -26,6 +26,12 @@ ReelTerminal connects a timeline, preview canvas and external AI assistant to th
 
 Projects, media caches, editing and rendering run locally. See [external dependencies](docs/EXTERNAL-DEPENDENCIES.md) for model downloads, external pages and optional network services. You choose and configure the AI assistant separately.
 
+## What is new in 1.4.1
+
+- Large videos appear in the media library sooner while thumbnails continue in the background. Saved projects use managed copies and remain playable after the originals move.
+- Review save errors preserve feedback and input. Verify the outcome before explicitly retrying, avoiding duplicate decisions.
+- Improved offline CLI help, parameter validation, and managed-media delivery.
+
 ## Get started
 
 1. Download the Windows x64 installer or portable ZIP from [Releases](https://github.com/yuchen-ya/reelterminal/releases). Extract the entire ZIP before running `ReelTerminal.exe`. Available packages for other platforms are listed on the release page.
@@ -72,5 +78,5 @@ Send bugs and suggestions to [GitHub Issues](https://github.com/yuchen-ya/reelte
 ## License and attribution
 
 - The project's core code is available under the [MIT License](LICENSE).
-- ReelTerminal builds on the MIT-licensed [OpenReel](https://github.com/Augustus-Otu/openreel) project by Augustus Otu and contributors. Original copyright notices are preserved.
+- ReelTerminal builds on the MIT-licensed [OpenReel](https://github.com/Augani/openreel-video) project by Augustus Otu and contributors. Original copyright notices are preserved.
 - Separately licensed components, fonts and model resources are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

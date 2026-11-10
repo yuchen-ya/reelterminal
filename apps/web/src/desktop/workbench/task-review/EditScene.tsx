@@ -15,12 +15,12 @@ export function EditScene({ onBackToReview, ...props }: ComponentProps<typeof Fe
     <div {...scroll} className="min-h-0 flex-1 overflow-y-auto p-4" data-testid="task-review-edit-scene">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
-          <strong>{t("精细编辑 · 条目 #{{no}}", { no: props.unit.ordinal })}</strong>
-          <button type="button" className={wbButton.secondary} onClick={onBackToReview}>{t("返回条目审阅")}</button>
+          <strong>{t("Detailed edit · Item #{{no}}", { no: props.unit.ordinal })}</strong>
+          <button type="button" className={wbButton.secondary} onClick={onBackToReview}>{t("Return to item review")}</button>
         </div>
         <div className="rounded border border-border bg-bg-2 p-3">
-          {props.disabled && <p className="mb-2 text-status-error" role="status">{t("原件版本已过期或不可用；此处保留旧草稿供参考，请审阅当前版本。")}</p>}
-          <p className="mb-1 text-fg-3">{t("原文（只读，不会被建议覆盖）")}</p>
+          {props.disabled && <p className="mb-2 text-status-error" role="status">{t("The source version is stale or unavailable. The old draft is preserved for reference; review the current version.")}</p>}
+          <p className="mb-1 text-fg-3">{t("Source text (read-only; suggestions never replace it)")}</p>
           <p className="whitespace-pre-wrap break-words leading-relaxed" data-testid="task-review-edit-original">{props.unit.text}</p>
         </div>
         <FeedbackEditor {...props} />

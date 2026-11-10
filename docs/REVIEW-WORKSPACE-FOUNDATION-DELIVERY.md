@@ -2,7 +2,7 @@
 
 > 历史设计/验收记录：下文版本、时间、未提交状态及包路径仅描述当时证据。当前 1.3.1 的提交、构建和验证状态见 [RELEASE-1.3.1.md](RELEASE-1.3.1.md)，不据此宣称旧验收已在新包重跑。
 
-2026-10-23。唯一 checkout：`E:\1my_projects\reelterminal`。未提交、推送、发布、安装或修改版本号；所有 GUI 探针使用现有 harness 的隔离 profile 和私有 endpoint。既有未提交内容保持。本文按实际证据更新，不能当成 P0–P6 全部交付声明。
+2026-10-23。唯一 checkout：`<checkout>`。未提交、推送、发布、安装或修改版本号；所有 GUI 探针使用现有 harness 的隔离 profile 和私有 endpoint。既有未提交内容保持。本文按实际证据更新，不能当成 P0–P6 全部交付声明。
 
 当前结论：P0–P6 已列软件实现和本机自动化场景已收口；P4 正式大文件导出和异常路径已有分项证据。A7 在 22:45 刷新的未安装包实测通过，范围为现有无源帧自动映射模式的 VFR/旋转/非零起始审阅与步骤时间映射对比，详见下方记录。development build 的三种 Explorer 实际落盘已通过；当前包的自动化不替代该包的独立 Explorer 接收。包内实际接收/图标主观检查、独立设备 DPI 和数位板压感仍未验证，基础版本整体验收继续保留未勾选。完整状态表见 [执行清单](REVIEW-WORKSPACE-FOUNDATION-TASKS.md)。
 
@@ -229,7 +229,7 @@ VFR 的播放位置不等于当前显示帧的起始 PTS。例如定位 2.650 �
 ```powershell
 pnpm --filter @reelterminal/desktop run pack
 # passed，完整 renderer/main/手册/许可证和 electron-builder --dir；版本未改
-$env:REELTERMINAL_E2E_APP_EXECUTABLE='E:\1my_projects\reelterminal\apps\desktop\release\win-unpacked\ReelTerminal.exe'
+$env:REELTERMINAL_E2E_APP_EXECUTABLE='<checkout>\apps\desktop\release\win-unpacked\ReelTerminal.exe'
 pnpm --filter @reelterminal/desktop exec vitest run --config e2e/vitest.config.ts e2e/review-video-a7.e2e.ts
 # 1 passed / 11.09s，22:47:52；同包 ui/process/rework 三项分别 7.43/6.83/4.95s 通过
 pnpm --filter @reelterminal/core test:run src/actions/workbench-actions.test.ts
@@ -242,7 +242,7 @@ pnpm --filter @reelterminal/desktop typecheck
 
 证据：`apps/desktop/e2e/.artifacts/review-video-a7.json` 与同前缀的 VFR、Rotation-90、Start-time-5、mapped、unmapped 和 terminal PNG；包含完整样本探测/解码签名、三时钟读数、发布/重开和实际对比数据。测试 runtime 为 Electron 44.5.1 / Chromium 152.0.7977.130。harness 正常清理临时媒体/profile，仅保留证据和可复现生成器。
 
-当前可运行包：`E:\1my_projects\reelterminal\apps\desktop\release\win-unpacked\ReelTerminal.exe`（22:45:30，版本仍为 1.3.0，app.asar 22:45:29）。刷新后 ASAR 2,893 项检查无 .artifacts/e2e/.env/.git/endpoint，main/CLI 入口存在；A7 renderer console 无 error/pageerror。未安装或替换用户实例。A7 本轮按现有无源帧自动映射模式验收，不能外推到所有容器/浏览器的时钟换算、真实帧映射接入、设备 DPI 或数位板。
+当前可运行包：`<checkout>\apps\desktop\release\win-unpacked\ReelTerminal.exe`（22:45:30，版本仍为 1.3.0，app.asar 22:45:29）。刷新后 ASAR 2,893 项检查无 .artifacts/e2e/.env/.git/endpoint，main/CLI 入口存在；A7 renderer console 无 error/pageerror。未安装或替换用户实例。A7 本轮按现有无源帧自动映射模式验收，不能外推到所有容器/浏览器的时钟换算、真实帧映射接入、设备 DPI 或数位板。
 
 ## 仍须如实保留的验收边界与下一次人工步骤
 

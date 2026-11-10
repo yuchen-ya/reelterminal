@@ -1,3 +1,4 @@
+import { createTaskReviewTransport } from './task-review-write-transport';
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "electron";
 import { DESKTOP_EXPORT_PORT_MARKER } from "@reelterminal/agent-facade/desktop-protocol";
 import { CHANNELS } from "../shared/channels";
@@ -19,31 +20,33 @@ import type { TaskReviewExportBridge } from "../shared/task-review-export";
 import type { TaskReviewMediaBridge } from "../shared/task-review-media";
 import type { TaskAgentBridge, TaskCompletionEvent } from "../shared/task-review-runtime-types";
 
+const taskWriteInvoke = createTaskReviewTransport((channel, envelope) => ipcRenderer.invoke(channel, envelope));
 const taskReview: TaskReviewBridge = {
-  open: root => ipcRenderer.invoke(CHANNELS.taskReview, { method: "open", input: { root } }),
-  refreshSources: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "refreshSources", input }),
-  setGoal: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "setGoal", input }),
-  importText: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "importText", input }),
-  importFile: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "importFile", input }),
-  decide: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "decide", input }),
-  undoDecision: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "undoDecision", input }),
-  redoDecision: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "redoDecision", input }),
-  saveDraft: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "saveDraft", input }),
-  visit: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "visit", input }),
-  publishAnalysis: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "publishAnalysis", input }),
-  exportSource: input => ipcRenderer.invoke(CHANNELS.taskReview, { method: "exportSource", input }),
+  open: root => taskWriteInvoke(CHANNELS.taskReview, "open", { root }),
+  getDecisionOutcome: input => taskWriteInvoke(CHANNELS.taskReview, "getDecisionOutcome", input),
+  refreshSources: input => taskWriteInvoke(CHANNELS.taskReview, "refreshSources", input),
+  setGoal: input => taskWriteInvoke(CHANNELS.taskReview, "setGoal", input),
+  importText: input => taskWriteInvoke(CHANNELS.taskReview, "importText", input),
+  importFile: input => taskWriteInvoke(CHANNELS.taskReview, "importFile", input),
+  decide: input => taskWriteInvoke(CHANNELS.taskReview, "decide", input),
+  undoDecision: input => taskWriteInvoke(CHANNELS.taskReview, "undoDecision", input),
+  redoDecision: input => taskWriteInvoke(CHANNELS.taskReview, "redoDecision", input),
+  saveDraft: input => taskWriteInvoke(CHANNELS.taskReview, "saveDraft", input),
+  visit: input => taskWriteInvoke(CHANNELS.taskReview, "visit", input),
+  publishAnalysis: input => taskWriteInvoke(CHANNELS.taskReview, "publishAnalysis", input),
+  exportSource: input => taskWriteInvoke(CHANNELS.taskReview, "exportSource", input),
 };
 
 const taskReviewContext: TaskReviewContextBridge = {
-  proposeContext: input => ipcRenderer.invoke(CHANNELS.taskReviewContext, { method: "proposeContext", input }),
-  adoptContext: input => ipcRenderer.invoke(CHANNELS.taskReviewContext, { method: "adoptContext", input }),
-  adoptCriteria: input => ipcRenderer.invoke(CHANNELS.taskReviewContext, { method: "adoptCriteria", input }),
-  setCriterionActive: input => ipcRenderer.invoke(CHANNELS.taskReviewContext, { method: "setCriterionActive", input }),
+  proposeContext: input => taskWriteInvoke(CHANNELS.taskReviewContext, "proposeContext", input),
+  adoptContext: input => taskWriteInvoke(CHANNELS.taskReviewContext, "adoptContext", input),
+  adoptCriteria: input => taskWriteInvoke(CHANNELS.taskReviewContext, "adoptCriteria", input),
+  setCriterionActive: input => taskWriteInvoke(CHANNELS.taskReviewContext, "setCriterionActive", input),
 };
 
 const taskReviewExport: TaskReviewExportBridge = {
-  preview: input => ipcRenderer.invoke(CHANNELS.taskReviewExport, { method: "preview", input }),
-  execute: input => ipcRenderer.invoke(CHANNELS.taskReviewExport, { method: "execute", input }),
+  preview: input => taskWriteInvoke(CHANNELS.taskReviewExport, "preview", input),
+  execute: input => taskWriteInvoke(CHANNELS.taskReviewExport, "execute", input),
 };
 
 // Human local media editing only (import/open/capture/segment/accept). The
@@ -51,12 +54,12 @@ const taskReviewExport: TaskReviewExportBridge = {
 // this bridge forwards inputs verbatim and propagates errors, never faking
 // success for the renderer.
 const taskReviewMedia: TaskReviewMediaBridge = {
-  importFile: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "importFile", input }),
-  open: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "open", input }),
-  captureFrame: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "captureFrame", input }),
-  segment: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "segment", input }),
-  cancel: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "cancel", input }),
-  acceptRegion: input => ipcRenderer.invoke(CHANNELS.taskReviewMedia, { method: "acceptRegion", input }),
+  importFile: input => taskWriteInvoke(CHANNELS.taskReviewMedia, "importFile", input),
+  open: input => taskWriteInvoke(CHANNELS.taskReviewMedia, "open", input),
+  captureFrame: input => taskWriteInvoke(CHANNELS.taskReviewMedia, "captureFrame", input),
+  segment: input => taskWriteInvoke(CHANNELS.taskReviewMedia, "segment", input),
+  cancel: input => taskWriteInvoke(CHANNELS.taskReviewMedia, "cancel", input),
+  acceptRegion: input => taskWriteInvoke(CHANNELS.taskReviewMedia, "acceptRegion", input),
 };
 
 const taskAgent: TaskAgentBridge = {
@@ -275,7 +278,7 @@ const api = {
     fetchUrl: (args: unknown) => ipcRenderer.invoke(CHANNELS.mediaFetchUrl, args),
   },
   mediaStore: {
-    beginWrite: (args: { projectId: string; mediaId: string; expectedHash: string; extension: string }) =>
+    beginWrite: (args: { projectId: string; mediaId: string; expectedHash?: string; extension: string }) =>
       ipcRenderer.invoke(CHANNELS.mediaStoreBeginWrite, args) as Promise<string>,
     writeChunk: (sessionId: string, data: ArrayBuffer | Uint8Array) =>
       ipcRenderer.invoke(CHANNELS.mediaStoreWriteChunk, { sessionId, data }) as Promise<void>,

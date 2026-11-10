@@ -250,7 +250,7 @@ export function FeedbackEditor({
       data-testid="task-review-feedback-editor"
     >
       <label className="flex min-h-0 flex-1 flex-col gap-1">
-        {t("人工反馈（上方输入；自动保存草稿）")}
+        {t("Human feedback (type above; draft saves automatically)")}
         <textarea
           className="min-h-32 max-h-80 flex-1 resize-y rounded border border-border bg-bg-2 p-2 leading-relaxed"
           data-testid={inputTestId}
@@ -292,22 +292,22 @@ export function FeedbackEditor({
       </label>
       {showSuggestions && <section className="flex max-h-64 shrink-0 flex-col gap-1.5 rounded border border-border bg-bg-1 p-2">
         <div className="flex items-center gap-2">
-          <strong>{t("AI 续写候选")}</strong>
+          <strong>{t("AI completion candidates")}</strong>
           <button
             type="button"
             className={wbButton.secondary}
             disabled={!agent || !granted}
             title={
               !agent
-                ? t("内置模型通道尚未接入")
+                ? t("Built-in model connection is unavailable")
                 : !granted
-                  ? t("先在全局场景授权本任务的 AI 预审")
-                  : t("基于当前草稿生成续写候选")
+                  ? t("Authorize AI review for this task in the overview first")
+                  : t("Generate completion candidates from the current draft")
             }
             data-testid="task-review-complete-request"
             onClick={requestCompletion}
           >
-            {t("生成续写候选")}
+            {t("Generate completion")}
           </button>
           {completion?.status === "running" && (
             <button
@@ -315,21 +315,21 @@ export function FeedbackEditor({
               className={wbButton.ghost}
               onClick={() => { cancelRunning(); setCompletion((current) => current ? { ...current, status: "done" } : null); }}
             >
-              {t("停止")}
+              {t("Stop")}
             </button>
           )}
           <span className="min-w-0 flex-1 truncate text-fg-3" role="status" data-testid="task-review-complete-status">
             {completion?.status === "running"
-                ? t("正在生成…")
+                ? t("Generating…")
                 : completion?.status === "error"
                   ? completion.error
                   : completion && completion.text.length > 0 && !adoptable
-                    ? t("草稿或光标已变化，候选失效；请重新生成")
+                    ? t("The draft or cursor changed. Generate new candidates.")
                     : completion
-                      ? t("候选生成完毕，可部分或全部采用")
+                      ? t("Candidates ready. Accept all or part.")
                       : !agent || !granted || !modelAvailable
-                        ? t("未授权或未配置模型时，可全程人工审阅")
-                        : t("输入停顿后协助续写；候选仅在明确采用后插入")}
+                        ? t("Manual review remains available without authorization or a model")
+                        : t("Suggest completions after a typing pause; insert only when explicitly accepted")}
           </span>
         </div>
         {completion && (
@@ -349,7 +349,7 @@ export function FeedbackEditor({
                 data-testid="task-review-adopt-all"
                 onClick={() => insertIntoDraft(completion.text)}
               >
-                {t("全部采用（插入草稿）")}
+                {t("Accept all (insert into draft)")}
               </button>
               <button
                 type="button"
@@ -358,9 +358,9 @@ export function FeedbackEditor({
                 data-testid="task-review-adopt-selection"
                 onClick={adoptSelection}
               >
-                {t("采用选中部分")}
+                {t("Accept selected part")}
               </button>
-              <span className="text-fg-3">{t("采用只插入草稿，不覆盖原文")}</span>
+              <span className="text-fg-3">{t("Acceptance inserts into the draft and never replaces the source")}</span>
             </div>
           </>
         )}

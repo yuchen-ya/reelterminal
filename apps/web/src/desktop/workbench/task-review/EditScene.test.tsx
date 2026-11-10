@@ -1,3 +1,4 @@
+import { useChineseReviewLocale } from "../../../test/review-locale";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
@@ -275,3 +276,5 @@ function expectGenerationOf(agent: ReturnType<typeof createFakeTaskAgentBridge>)
   if (!latest) throw new Error("no completion requested");
   return latest.generationId;
 }
+
+useChineseReviewLocale();

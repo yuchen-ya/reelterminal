@@ -6,8 +6,8 @@
 
 请执行 ReelTerminal AI 素材工作台第二轮修复：还原用户提供的前端构成与交互，并接通已有真实能力。不是另起设计，也不是只修黑屏空态后结束。
 
-仓库：`E:\1my_projects\reelterminal`
-原型只读目录：`C:\Users\Administrator\Downloads\reelterminal-·-ai-素材工作台`
+仓库：`<checkout>`
+原型只读目录：`<prototype-source>`
 
 先阅读仓库 AGENTS.md，然后阅读：
 

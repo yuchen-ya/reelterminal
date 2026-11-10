@@ -1,3 +1,4 @@
+import { useChineseReviewLocale } from "../../../test/review-locale";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TaskAgentBridge } from "../../../../../desktop/src/shared/task-review-runtime-types";
@@ -228,3 +229,5 @@ describe("agent panel", () => {
     await waitFor(() => expect(runtime.revoke).toHaveBeenCalledTimes(1));
   });
 });
+
+useChineseReviewLocale();

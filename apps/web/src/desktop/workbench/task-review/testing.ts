@@ -202,7 +202,7 @@ export function createFakeTaskReviewBridge(
             draft,
             input.entryId,
             `folder-${input.entryId}.txt`,
-            "导入文件内容\n第二行",
+            "Imported file content\nSecond line",
             "txt",
           );
       }),

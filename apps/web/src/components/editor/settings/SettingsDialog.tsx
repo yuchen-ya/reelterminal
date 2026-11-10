@@ -55,7 +55,7 @@ export const SettingsDialog: React.FC = () => {
                 options={[
                   {
                     value: "agent",
-                    label: t("settingsDialog.agent", "内置 Agent"),
+                    label: t("settingsDialog.agent", "Built-in Agent"),
                     icon: <Bot size={14} />,
                   },
                   { value: "models", label: t("audioEnvironment.title") },

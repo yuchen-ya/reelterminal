@@ -55,10 +55,9 @@ export interface ResolvedControlledMediaVersion extends ControlledMediaEntry {
 interface PendingWrite {
   readonly projectId: string;
   readonly mediaId: string;
-  readonly expectedHash: string;
+  readonly expectedHash?: string;
   readonly extension: string;
   readonly temporaryPath: string;
-  readonly destinationPath: string;
   readonly file: FileHandle;
   readonly hash: ReturnType<typeof createHash>;
 }
@@ -182,10 +181,11 @@ export class ControlledMediaStore {
   async beginWrite(args: {
     projectId: string;
     mediaId: string;
-    expectedHash: string;
+    expectedHash?: string;
     extension: string;
   }): Promise<string> {
-    if (!HASH_PATTERN.test(args.expectedHash))
+    assertId(args.mediaId, "media id");
+    if (args.expectedHash !== undefined && !HASH_PATTERN.test(args.expectedHash))
       throw new Error("Invalid SHA-256 hash");
     if (!EXTENSION_PATTERN.test(args.extension))
       throw new Error("Invalid media extension");
@@ -196,17 +196,10 @@ export class ControlledMediaStore {
     await mkdir(directory, { recursive: true });
     const sessionId = randomUUID();
     const temporaryPath = path.join(directory, `${PENDING_PREFIX}${sessionId}`);
-    const destinationPath = this.mediaPath(
-      args.projectId,
-      args.mediaId,
-      args.expectedHash,
-      args.extension,
-    );
     const file = await open(temporaryPath, "wx");
     this.writes.set(sessionId, {
       ...args,
       temporaryPath,
-      destinationPath,
       file,
       hash: createHash("sha256"),
     });
@@ -250,11 +243,14 @@ export class ControlledMediaStore {
       await pending.file.sync();
       await pending.file.close();
       const contentHash = pending.hash.digest("hex");
-      if (contentHash !== pending.expectedHash) {
+      if (pending.expectedHash !== undefined && contentHash !== pending.expectedHash) {
         throw new Error(
           "Controlled-media bytes do not match the declared SHA-256 hash",
         );
       }
+      // The native streaming hasher is authoritative for new imports too.
+      // Publish only after sync, under the name derived from the actual bytes.
+      const destinationPath = this.mediaPath(pending.projectId, pending.mediaId, contentHash, pending.extension);
       return await this.withCommitLock(pending.mediaId, async () => {
         const existingPath = await this.findMediaPathAny(pending.mediaId);
         if (existingPath) {
@@ -272,9 +268,9 @@ export class ControlledMediaStore {
         try {
           // A hard link publishes the complete file atomically and fails if a
           // media id already names another immutable version.
-          await link(pending.temporaryPath, pending.destinationPath);
+          await link(pending.temporaryPath, destinationPath);
           await unlink(pending.temporaryPath);
-          return { path: pending.destinationPath, contentHash, created: true };
+          return { path: destinationPath, contentHash, created: true };
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
           const racedPath = await this.findMediaPathAny(pending.mediaId);

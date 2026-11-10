@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../../i18n";
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import type { TaskReviewSnapshot, TaskDecisionStatus } from "../../../../../desktop/src/shared/task-review";
 import { isCurrentTaskUnit } from "../../../../../desktop/src/shared/task-review";
@@ -28,6 +30,7 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
   onReportError?: (message: string) => void;
   busy: boolean;
 }) {
+  useTranslation();
   const storageKey = `${viewKey(snapshot.root, snapshot.taskId)}:media:${unit.id}`;
   const scroll = useSceneScroll<HTMLDivElement>(`${storageKey}:scroll`);
   const [view, setView] = useState(() => readMediaView(storageKey, {
@@ -78,7 +81,7 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
     const OPEN_TIMEOUT_MS = 30_000;
     const timeoutId = window.setTimeout(() => {
       if (active.current && currentRequest) {
-        setError("画面读取超时，请重新读取画面");
+        setError(t("Frame read timed out. Read the frame again."));
         setPhase("error");
       }
     }, OPEN_TIMEOUT_MS);
@@ -149,7 +152,7 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
       });
       if (!active.current || latestGeneration.current !== generationId) return;
       if (result.generationId !== generationId || result.unitId !== base.unit.id || result.sourceVersionId !== unit.sourceVersionId ||
-        result.width !== base.width || result.height !== base.height || (base.asset && result.pixelRevision !== base.asset.pixelRevision)) throw new Error("候选不属于当前画面，请重试");
+        result.width !== base.width || result.height !== base.height || (base.asset && result.pixelRevision !== base.asset.pixelRevision)) throw new Error(t("This candidate does not belong to the current frame. Try again."));
       setCandidate(result); setPhase("candidate");
     } catch (problem) {
       if (active.current && latestGeneration.current === generationId) {
@@ -176,7 +179,7 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
   const changePrompts = (prompts: TaskMediaPrompts, resetPrior = false) => {
     const limit = opened?.base.promptTokenLimit;
     if (limit !== undefined && promptTokens(prompts) > limit) {
-      setError(`提示上限为 ${limit}，框占 2 个；请撤销部分提示后重试。`);
+      setError(t("Prompt limit: {{v0}}; a box uses 2 tokens. Undo some prompts and try again.", { v0: limit }));
       return;
     }
     cancelCandidate(); setCandidate(null); setError(null); setPhase("idle");
@@ -244,23 +247,23 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
       if (keep) {
         const target = { unitId: result.unitId, sourceVersionId: unit.sourceVersionId, purpose: "review" };
         const saved = result.snapshot.units.find((item) => item.id === target.unitId && item.sourceVersionId === target.sourceVersionId);
-        if (!saved) throw new Error("保存结果没有匹配的新区域");
+        if (!saved) throw new Error(t("The saved result contains no matching new region"));
         const reviewed = { ...snapshot, units: [...snapshot.units, saved] };
         const basis = snapshot.contextHistory ? resolveUnitCriteriaBasis(reviewed, snapshot.contextHistory, target).basis : null;
         // Explicit human approval binds the returned region, never its parent
         // or whichever scene happens to be selected when the save finishes.
         const decision = await operations.decide({ ...target, status: "kept", note: draft?.text ?? "" }, (base) => {
           const current = base.units.find((item) => item.id === target.unitId && item.sourceVersionId === target.sourceVersionId);
-          if (base.taskId !== taskId || base.policyRevision !== snapshot.policyRevision || !current || !isCurrentTaskUnit(base, current)) throw new Error("任务、来源或判断口径已变化，请重新确认新区域");
+          if (base.taskId !== taskId || base.policyRevision !== snapshot.policyRevision || !current || !isCurrentTaskUnit(base, current)) throw new Error(t("The task, source or criteria changed. Confirm the new region again."));
           if (basis ? !base.contextHistory || !isTaskCriteriaBasisCurrent(base, base.contextHistory, basis)
-            : base.contextHistory && resolveUnitCriteriaBasis(base, base.contextHistory, target).basis.criteriaVersionIds.length > 0) throw new Error("新区域的适用口径已变化，请重新确认");
+            : base.contextHistory && resolveUnitCriteriaBasis(base, base.contextHistory, target).basis.criteriaVersionIds.length > 0) throw new Error(t("The criteria applicable to the new region changed. Confirm again."));
         });
         if (!decision.ok) throw new Error(decision.error!);
       }
       if (active.current) onOpenUnit(result.unitId);
     } catch (problem) {
       if (savedUnitId) {
-        const message = `区域已保存，判定未完成（${sourceTitle(source.relativePath)} · ${view.label.trim()}）：${String(problem)}`;
+        const message = t("Region saved, decision incomplete ({{v0}} · {{v1}}): {{v2}}", { v0: sourceTitle(source.relativePath), v1: view.label.trim(), v2: String(problem) });
         onReportError?.(message);
         if (active.current) { setError(message); setPhase("error"); onOpenUnit(savedUnitId); }
         return;
@@ -279,7 +282,7 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
     cancelCandidate();
     setCandidate(null);
     setPhase("error");
-    setError("画面载入失败，请重新读取画面");
+    setError(t("Frame load failed. Read the frame again."));
   };
 
   return (
@@ -287,12 +290,12 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
       <div className="mx-auto flex max-w-7xl flex-col gap-3">
         <header className="flex flex-wrap items-center gap-2">
           <strong title={sourcePath(root, source.relativePath)}>{sourceTitle(source.relativePath)} · {unitTitle(unit)}</strong>
-          <span className="text-fg-3">人工查看 · 本地分割工具</span>
-          <span className="ml-auto text-fg-3" data-testid="task-review-media-status">{decision.status ? statusLabels[decision.status] : "待审"}</span>
+          <span className="text-fg-3">{t("Human review · Local segmentation tool")}</span>
+          <span className="ml-auto text-fg-3" data-testid="task-review-media-status">{decision.status ? statusLabels[decision.status] : t("Pending")}</span>
         </header>
-        {stale && <p className="text-status-error">此画面或区域已过期，保留原草稿供参考；请打开当前版本后再判断。</p>}
+        {stale && <p className="text-status-error">{t("This frame or region is stale. The old draft is preserved for reference; open the current version before deciding.")}</p>}
         {error && <div role="alert" className="flex items-center gap-2 text-status-error" data-testid="task-review-media-error">
-          <span>{error}</span>{phase === "error" && !candidate && <button type="button" className={wbButton.secondary} onClick={() => setLoadAttempt((value) => value + 1)}>重新读取画面</button>}
+          <span>{error}</span>{phase === "error" && !candidate && <button type="button" className={wbButton.secondary} onClick={() => setLoadAttempt((value) => value + 1)}>{t("Read frame again")}</button>}
         </div>}
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
           <section className="flex min-w-0 flex-col gap-2">
@@ -301,9 +304,9 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
                 type="button"
                 className={wbButton.secondary}
                 data-testid="task-review-region-view-toggle"
-                onClick={() => setView((current) => ({ ...current, previewResult: !current.previewResult }))}>{view.previewResult ? "继续修正区域" : "查看透明抠图"}</button>}
+                onClick={() => setView((current) => ({ ...current, previewResult: !current.previewResult }))}>{view.previewResult ? t("Refine region") : t("View transparent cutout")}</button>}
               {!view.previewResult && opened && opened.base.unit.kind !== "video" && <>
-              {([["positive", "目标点"], ["negative", "排除点"], ["box", "框选"]] as const).map(([mode, title]) => <button
+              {([["positive", t("Include point")], ["negative", t("Exclude point")], ["box", t("reviewUi.box")]] as const).map(([mode, title]) => <button
                 key={mode}
                 type="button"
                 className={segmentedItem(view.mode === mode)}
@@ -313,10 +316,10 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
                 type="button"
                 className={wbButton.ghost}
                 disabled={!view.prompts.points.length || stale || phase === "accepting" || view.previewResult}
-                onClick={() => changePrompts({ ...view.prompts, points: view.prompts.points.slice(0, -1) }, true)}>撤销点</button>
-              <button type="button" className={wbButton.ghost} disabled={stale || phase === "accepting" || view.previewResult} onClick={() => changePrompts({ points: [] }, true)}>清空</button>
-              <label className="ml-auto flex items-center gap-1">缩放<input
-                aria-label="画面缩放"
+                onClick={() => changePrompts({ ...view.prompts, points: view.prompts.points.slice(0, -1) }, true)}>{t("Undo point")}</button>
+              <button type="button" className={wbButton.ghost} disabled={stale || phase === "accepting" || view.previewResult} onClick={() => changePrompts({ points: [] }, true)}>{t("Clear")}</button>
+              <label className="ml-auto flex items-center gap-1">{t("Zoom")}<input
+                aria-label={t("Frame zoom")}
                 type="range"
                 min="0.25"
                 max="4"
@@ -330,7 +333,7 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
               className="overflow-auto rounded border border-border bg-black/40"
               style={{ height: candidate && !view.previewResult ? "min(48vh,560px)" : "min(65vh,720px)" }}
               data-testid="task-review-media-viewport">
-              {!opened ? <div className="p-4 text-fg-3"><p>{phase === "error" ? "画面暂不可用" : "正在读取画面…"}</p></div> : opened.base.unit.kind === "video" ? (
+              {!opened ? <div className="p-4 text-fg-3"><p>{phase === "error" ? t("Frame unavailable") : t("Reading frame…")}</p></div> : opened.base.unit.kind === "video" ? (
                 <video
                   ref={video}
                   src={opened.base.url}
@@ -348,7 +351,7 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
                 <div className="p-3" style={{ backgroundImage: "repeating-conic-gradient(#404448 0% 25%, #272b2f 0% 50%)", backgroundSize: "20px 20px" }}>
                   <img
                     src={opened.cutout}
-                    alt={`透明抠图 ${unitTitle(unit)}`}
+                    alt={t("Transparent cutout {{v0}}", { v0: unitTitle(unit) })}
                     className="block max-h-[60vh] max-w-full object-contain"
                     onError={mediaLoadError}
                     data-testid="task-review-region-cutout" />
@@ -393,15 +396,15 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
               className={`${wbButton.primary} self-start`}
               disabled={busy || stale || phase === "capturing"}
               data-testid="task-review-freeze-frame"
-              onClick={() => void capture()}>冻结当前画面并选择区域</button> : view.previewResult ? <p className="text-fg-3">透明 PNG 结果；继续修正可补点或重新框选。</p> : <div className="flex flex-wrap items-center gap-2">
-              <span className="text-fg-3">提示 {promptTokens(view.prompts)}{opened?.base.promptTokenLimit ? `/${opened.base.promptTokenLimit}` : ""} · 框占 2 个</span>
+              onClick={() => void capture()}>{t("Freeze the current frame and select a region")}</button> : view.previewResult ? <p className="text-fg-3">{t("Transparent PNG result; refine it by adding points or drawing a new box.")}</p> : <div className="flex flex-wrap items-center gap-2">
+              <span className="text-fg-3">{t("Prompts ")}{promptTokens(view.prompts)}{opened?.base.promptTokenLimit ? `/${opened.base.promptTokenLimit}` : ""} {t(" · A box uses 2 tokens")}</span>
               <button
                 type="button"
                 className={wbButton.secondary}
                 disabled={!opened || stale || view.previewResult || !promptTokens(view.prompts) || phase === "segmenting"}
-                aria-label="重新计算区域"
+                aria-label={t("Recompute region")}
                 data-testid="task-review-media-segment"
-                onClick={() => void requestMask()}>{phase === "segmenting" ? "正在计算区域…" : "重新计算区域"}</button>
+                onClick={() => void requestMask()}>{phase === "segmenting" ? t("Computing region…") : t("Recompute region")}</button>
               {(phase === "segmenting" || phase === "capturing") && <button
                 type="button"
                 className={wbButton.ghost}
@@ -409,30 +412,30 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
                 onClick={() => {
                   cancelCandidate();
                   setPhase("cancelled");
-                }}>取消</button>}
-              {phase === "cancelled" && <span className="text-fg-3">已取消，提示仍保留</span>}
+                }}>{t("Cancel")}</button>}
+              {phase === "cancelled" && <span className="text-fg-3">{t("Cancelled; prompts are preserved")}</span>}
             </div>}
-            {unit.kind === "video-frame" && <p className="text-fg-3">冻结画面{unit.frameIndex === undefined ? "" : ` #${unit.frameIndex}`} · PTS {unit.ptsTimeSec.toFixed(3)}s</p>}
-            {candidate && !view.previewResult && <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2">区域标签<input
+            {unit.kind === "video-frame" && <p className="text-fg-3">{t("reviewUi.freezeFrame")}{unit.frameIndex === undefined ? "" : ` #${unit.frameIndex}`} {t(" · PTS ")}{unit.ptsTimeSec.toFixed(3)}s</p>}
+            {candidate && !view.previewResult && <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2">{t("Region label")}<input
               className="rounded border border-border bg-bg-2 px-2 py-1"
-              aria-label="区域标签"
+              aria-label={t("Region label")}
               maxLength={200}
               value={view.label}
               onChange={(event) => setView((current) => ({ ...current, label: event.target.value }))} /></label><button
                 type="button"
                 className={wbButton.primary}
-                aria-label="保存并保留此区域"
+                aria-label={t("Save and keep this region")}
                 disabled={busy || stale || phase !== "candidate" || !view.label.trim()}
                 data-testid="task-review-media-accept-keep"
-                onClick={() => void accept(true)}>保存并保留此区域</button>
+                onClick={() => void accept(true)}>{t("Save and keep this region")}</button>
               <button
                 type="button"
                 className={wbButton.secondary}
-                aria-label="仅保存区域"
+                aria-label={t("Save region only")}
                 disabled={busy || stale || phase !== "candidate" || !view.label.trim()}
                 data-testid="task-review-media-accept"
-                onClick={() => void accept(false)}>仅保存区域</button>
-              <span className="basis-full text-fg-3">仅保存不改变判定；保留只作用于这个新区域</span></div>}
+                onClick={() => void accept(false)}>{t("Save region only")}</button>
+              <span className="basis-full text-fg-3">{t("Saving alone does not change the decision; keeping applies only to this new region")}</span></div>}
           </section>
           <section className="flex min-w-0 flex-col gap-3">
             <FeedbackEditor
@@ -447,15 +450,15 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
               disabled={stale}
               policyRevision={snapshot.policyRevision}
               showSuggestions={false} />
-            <p className="text-fg-3" data-testid="task-review-media-decision-scope">{unit.kind === "region" ? `决定仅作用于已接受区域：${unit.label}` : unit.kind === "image" ? "决定作用于整张图片；局部区域需先接受。" : unit.kind === "video-frame" ? "决定作用于这张整帧；局部区域需先接受。" : "决定作用于整个视频；帧和区域分别判定。"}</p>
+            <p className="text-fg-3" data-testid="task-review-media-decision-scope">{unit.kind === "region" ? t("Decision applies only to the accepted region: {{v0}}", { v0: unit.label }) : unit.kind === "image" ? t("Decision applies to the entire image. Accept a region first to decide locally.") : unit.kind === "video-frame" ? t("Decision applies to this entire frame. Accept a region first to decide locally.") : t("Decision applies to the whole video. Frames and regions are decided separately.")}</p>
             {hasUnacceptedRegion && <div className="flex flex-col gap-2 text-fg-3" role="status" data-testid="task-review-media-unaccepted-region">
-              <p>区域提示或候选尚未接受，请先接受区域，再作人工决定。</p>
+              <p>{t("Region prompts or candidates are not accepted yet. Accept the region before making a human decision.")}</p>
               {unit.kind === "region" && <button type="button" className={`${wbButton.ghost} self-start`} onClick={() => {
                 cancelCandidate();
                 refinement.current = crypto.randomUUID();
                 setCandidate(null); setEdit(0); setPhase("idle");
                 setView((current) => ({ ...current, prompts: unit.prompts, label: unit.label }));
-              }}>放弃本次修正</button>}
+              }}>{t("Discard these refinements")}</button>}
             </div>}
             <div className="flex flex-wrap items-center gap-2">{(Object.keys(statusLabels) as TaskDecisionStatus[]).map((status) => <button
               key={status}
@@ -464,8 +467,8 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
               disabled={busy || stale || !opened || hasUnacceptedRegion}
               data-testid={`task-review-decide-${status}`}
               onClick={() => onDecide(status)}>{statusLabels[status]}</button>)}
-              {decision.canUndo && <button type="button" className={wbButton.ghost} disabled={busy || stale} data-testid="task-review-undo-decision" onClick={onUndo}>撤销决定</button>}
-              {decision.canRedo && <button type="button" className={wbButton.ghost} disabled={busy || stale || hasUnacceptedRegion} data-testid="task-review-redo-decision" onClick={onRedo}>重做决定</button>}
+              {decision.canUndo && <button type="button" className={wbButton.ghost} disabled={busy || stale} data-testid="task-review-undo-decision" onClick={onUndo}>{t("Undo decision")}</button>}
+              {decision.canRedo && <button type="button" className={wbButton.ghost} disabled={busy || stale || hasUnacceptedRegion} data-testid="task-review-redo-decision" onClick={onRedo}>{t("Redo decision")}</button>}
             </div>
           </section>
         </div>

@@ -1,27 +1,10 @@
 # Desktop distribution
 
-## Current candidate: 1.4.0
+## Version 1.4.1
 
-The source version is 1.4.0. This candidate targets a Windows x64 installer and
-portable ZIP, with the built-in Agent work timeline, scoped review criteria,
-feedback completion/search, real-folder review/classified export, and local
-MobileSAM image/frame regions. See the [current draft notes](../../docs/RELEASE-NOTES-DRAFT.md).
-The final local candidate is
-`release/windows-1.4.0-20261106-054304-41a11bb9/`. Its selected packaged text/media
-combination, exact-response completion replay, model/worker/runtime/license
-inspection and ZIP integrity checks passed. The earlier candidate is retained as
-failed/superseded after an automatic draft-save/button-disabled race; the new
-package fixes that race and passes the unchanged group decision assertion.
-This is not a release announcement, installer acceptance or a general model
-quality guarantee. See the draft notes and the final output directory's
-provenance/checksums for the precise limits.
-Available downloads are listed on
-[Releases](https://github.com/yuchen-ya/reelterminal/releases). The
-[1.3.11 build scope](../../docs/RELEASE-1.3.11.md) remains a historical record.
-Confirm the source, signing status, checksums and packaged validation for the actual
-release artifacts before publication. See the [upgrade guide](../../docs/WINDOWS-UPGRADE.md)
-before replacing an existing installation. Legacy unsafe uninstallers are blocked;
-a successful one-off attended migration is not general automatic-upgrade support.
+Windows x64 builds provide an installer and a portable ZIP. Updates include faster large-video import, explicit recovery for uncertain review saves, and more consistent CLI/media delivery. Read the [version notes](../../docs/RELEASE-1.4.1.md) for features and limitations. Available platforms and downloads are listed on [Releases](https://github.com/yuchen-ya/reelterminal/releases). Windows builds are unsigned; checksums identify files but are not signatures. Read the [upgrade and backup guide](../../docs/WINDOWS-UPGRADE.md) before replacing an existing installation.
+
+## Preparing a build
 
 A local candidate includes the current working-tree contents, including dirty
 and untracked source files; it is not built from HEAD alone. Freeze source writes
@@ -33,7 +16,7 @@ not rename an older package to a new version. For example:
 pnpm install --frozen-lockfile
 pnpm build:wasm
 node apps/desktop/scripts/prepare-segmentation-resources.mjs --check
-pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.4.0-<date-and-unique-suffix>
+pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.4.1-<date-and-unique-suffix>
 ```
 
 The build generates `dist/performance-build.json` with the source HEAD, dirty
@@ -61,10 +44,7 @@ pnpm --filter @reelterminal/desktop dist
 the current host platform: macOS (arm64 and x64), Windows (x64), or Linux (x64).
 It does not build and sign all three operating systems in one invocation; use
 appropriate build hosts and signing credentials for each release target.
-Keep a positive `dist/**/*` entry in every platform-specific `files` list:
-electron-builder adds a default `**/*` matcher to a negations-only list, which
-silently packages `src/`, `e2e/` evidence and tests into `app.asar`. The app
-asar should contain only `dist/`, `package.json` and production `node_modules`.
+Keep payload includes and exclusions in the shared `files` rules. Do not add platform-specific file matchers that can bypass these exclusions. The app archive should contain only production entries and their required runtime dependencies; development sources, test evidence, local configuration and internal reports do not belong in release payloads.
 `build:wasm` generates the core WASM assets omitted from Git. These commands do not download
 or include FFmpeg or Blender binaries, even when a developer has fetched them
 locally. Install FFmpeg/ffprobe separately and put them on PATH. For desktop
@@ -82,9 +62,7 @@ standard MIT/ISC reference terms accompanying the exact published package
 declaration. The generator verifies that declaration and keeps the reference
 distinct from a package-specific copyright statement. It preserves supplied
 copyright notices and does not invent missing holders or dates. The inventory
-retains the source URLs and review notes; missing materials remain visible. See
-[`LICENSES/RELEASE-READINESS.md`](LICENSES/RELEASE-READINESS.md) for the checked
-items and signing evidence.
+retains the source URLs and review notes; missing materials remain visible. Keep the supplied license texts, source mappings and copyright notices in the release. Signing status is reported separately.
 
 ## MobileSAM segmentation resources
 
@@ -97,6 +75,15 @@ directory (replace the example with the authorized local directory):
 pnpm --filter @reelterminal/desktop prepare:segmentation --source-dir E:\path\to\validated-mobilesam-export
 node apps/desktop/scripts/prepare-segmentation-resources.mjs --check
 ```
+
+For a clean build, `pnpm --filter @reelterminal/desktop fetch:segmentation`
+explicitly retrieves the pinned model archive from the project's model-resource
+release. It verifies the archive size and SHA-256, both ONNX identities, the
+manifest and license notices before staging anything. This download is a build
+step, never an application-startup download. Existing verified staged assets are
+reused. An unavailable or changed resource fails the build; no other model is
+substituted. To use an already downloaded pinned archive, pass
+`--archive <archive.zip>` to that command.
 
 The source directory must contain `mobilesam-encoder-fp32.onnx` (27,969,731
 bytes) and `mobilesam-decoder-dynamic-fp32.onnx` (16,496,929 bytes). Preparation

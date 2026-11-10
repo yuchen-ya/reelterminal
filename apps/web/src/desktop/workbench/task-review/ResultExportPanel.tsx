@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
@@ -52,19 +53,19 @@ const STATUS_ORDER: readonly TaskExportReviewStatus[] = [
 ];
 
 export const exportStatusLabels: Record<TaskExportReviewStatus, string> = {
-  kept: "保留",
-  rework: "返工",
-  discarded: "丢弃",
-  pending: "待审",
-  recheck: "待复核",
+  get kept() { return t("Keep"); },
+  get rework() { return t("Rework"); },
+  get discarded() { return t("Discard"); },
+  get pending() { return t("Pending"); },
+  get recheck() { return t("Needs recheck"); },
 };
 
 const RECEIPT_STATUS_TEXT: Record<TaskOriginalExportRecord["status"], string> = {
-  planned: "未执行",
-  running: "执行中",
-  complete: "全部成功",
-  partial: "部分成功",
-  failed: "全部失败",
+  get planned() { return t("Not run"); },
+  get running() { return t("reviewUi.running"); },
+  get complete() { return t("All succeeded"); },
+  get partial() { return t("Partially succeeded"); },
+  get failed() { return t("All failed"); },
 };
 
 export interface ResultExportFileRow {
@@ -397,11 +398,11 @@ export function ResultExportPanel({
 
   const receiptItemText = (item: TaskOriginalExportItem): string =>
     item.status === "copied"
-      ? t("已复制")
+      ? t("Copied")
       : item.status === "unavailable"
-        ? t("不可复制：{{reason}}", { reason: item.error ?? "" })
-        : t("失败：{{reason}}", { reason: item.error ?? "" });
-  const outputLabels = { original: "原件", frame: "冻结帧", mask: "蒙版", cutout: "透明抠图" };
+        ? t("Cannot copy: {{reason}}", { reason: item.error ?? "" })
+        : t("Failed: {{reason}}", { reason: item.error ?? "" });
+  const outputLabels = { original: t("Original"), frame: t("Frozen frame"), mask: t("Mask"), cutout: t("Transparent cutout") };
   const toggleDerived = (output: TaskDerivedOutput, checked: boolean) => {
     setDerivedOutputs((current) => checked
       ? [...current.filter((item) => item.unitId !== output.unitId || item.kind !== output.kind), output]
@@ -422,11 +423,11 @@ export function ResultExportPanel({
           data-testid="task-result-export-toggle"
           onClick={toggleOpen}
         >
-          {isOpen ? "▾" : "▸"} {t("导出审阅结果（原件 / 抠图 / 帧）")}
+          {isOpen ? "▾" : "▸"} {t("Export review results (originals / cutouts / frames)")}
         </button>
         {lastReceipt && (
           <span className="truncate text-fg-3">
-            {t("最近回执：{{status}}（复制 {{copied}}/{{total}}）", {
+            {t("Latest receipt: {{status}} ({{copied}}/{{total}} copied)", {
               status: t(RECEIPT_STATUS_TEXT[lastReceipt.status]),
               copied: copiedCount(lastReceipt),
               total: lastReceipt.items.length,
@@ -448,12 +449,12 @@ export function ResultExportPanel({
                 className={`${wbButton.ghost} ml-2`}
                 onClick={() => setError(null)}
               >
-                {t("知道了")}
+                {t("Got it")}
               </button>
             </p>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-fg-3">{t("按审阅状态筛选")}</span>
+            <span className="text-fg-3">{t("reviewUi.Filter_by_review_status_331")}</span>
             {STATUS_ORDER.map((status) => (
               <label key={status} className="flex items-center gap-1">
                 <input
@@ -469,18 +470,18 @@ export function ResultExportPanel({
             ))}
             {canonicalStatuses.length === 0 && (
               <span className="text-status-error">
-                {t("至少选择一个状态")}
+                {t("Select at least one status")}
               </span>
             )}
           </div>
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-1.5">
-              <strong>{t("选择要复制的原文件")}</strong>
+              <strong>{t("Select source files to copy")}</strong>
               <button
                 type="button"
                 className={wbButton.ghost}
                 data-testid="task-result-export-select-all"
-                title={t("选中当前筛选下有命中条目的全部文件")}
+                title={t("Select every file with matching items under the current filter")}
                 onClick={() =>
                   setSelectedEntryIds(
                     new Set(
@@ -491,7 +492,7 @@ export function ResultExportPanel({
                   )
                 }
               >
-                {t("全选当前结果")}
+                {t("Select all current results")}
               </button>
               <button
                 type="button"
@@ -503,15 +504,15 @@ export function ResultExportPanel({
                   setDerivedOutputs([]);
                 }}
               >
-                {t("清空")}
+                {t("Clear")}
               </button>
               <span className="text-fg-3">
-                {t("已选 {{count}} 个文件", { count: selectedEntryIds.size })}
+                {t("{{count}} files selected", { count: selectedEntryIds.size })}
               </span>
               {missingSelectedIds.length > 0 && (
                 <span className="text-status-error">
                   {t(
-                    "其中 {{count}} 个文件已不在当前解析结果中，执行时将由服务校验",
+                    "{{count}} selected files are no longer in the parsed results; the service will validate them during execution",
                     { count: missingSelectedIds.length },
                   )}
                 </span>
@@ -532,7 +533,7 @@ export function ResultExportPanel({
                 >
                   <input
                     type="checkbox"
-                    aria-label={t("选择原文件 {{path}}", {
+                    aria-label={t("Select source file {{path}}", {
                       path: row.relativePath,
                     })}
                     checked={selectedEntryIds.has(row.entryId)}
@@ -547,20 +548,20 @@ export function ResultExportPanel({
                     {sourceTitle(row.relativePath)}
                   </span>
                   <span className="shrink-0 text-fg-3">
-                    {distributionSummary(row.distribution) || t("无解析条目")}
+                    {distributionSummary(row.distribution) || t("No parsed items")}
                   </span>
                   {row.mixed ? (
                     <span
                       className="shrink-0 rounded bg-status-warning/15 px-1 py-0.5 text-status-warning"
                       data-testid="task-result-export-mixed"
                       title={t(
-                        "该文件包含不同状态的条目，不会被当作全部通过",
+                        "This file contains items with different statuses and will not be treated as entirely approved",
                       )}
                     >
-                      {t("混合")}
+                      {t("Mixed")}
                     </span>
                   ) : row.allKept ? (
-                    <span className="shrink-0 text-fg-3">{t("全保留")}</span>
+                    <span className="shrink-0 text-fg-3">{t("All kept")}</span>
                   ) : null}
                   <span
                     className={
@@ -569,7 +570,7 @@ export function ResultExportPanel({
                         : "shrink-0 text-fg-3"
                     }
                   >
-                    {t("命中 {{count}}", { count: row.matchedUnitCount })}
+                    {t("{{count}} matches", { count: row.matchedUnitCount })}
                   </span>
                   {row.fileStatus !== "available" && (
                     <span
@@ -577,17 +578,17 @@ export function ResultExportPanel({
                       title={row.fileError}
                     >
                       {row.fileStatus === "missing"
-                        ? t("文件缺失")
-                        : t("无法解析")}
+                        ? t("File missing")
+                        : t("Cannot parse")}
                     </span>
                   )}
                   {selectedEntryIds.has(row.entryId) && (
                     <input
                       className="w-28 rounded border border-border bg-bg-2 px-1 py-0.5"
-                      aria-label={t("分类 {{path}}", {
+                      aria-label={t("Category for {{path}}", {
                         path: row.relativePath,
                       })}
-                      placeholder={t("分类（可选）")}
+                      placeholder={t("Category (optional)")}
                       value={categories[row.entryId] ?? ""}
                       onChange={(event) =>
                         setCategories((current) => ({
@@ -601,14 +602,14 @@ export function ResultExportPanel({
               ))}
               {!rows.length && (
                 <li className="p-3 text-center text-fg-3">
-                  {t("任务中没有已解析的原文件")}
+                  {t("The task has no parsed source files")}
                 </li>
               )}
             </ul>
           </div>
           {(derivedRows.length > 0 || derivedOutputs.length > 0) && <section className="flex flex-col gap-2 border-t border-border pt-2" data-testid="task-result-export-derived">
-            <strong>帧与区域结果 · 已选 {derivedOutputs.length} 项</strong>
-            {derivedOutputs.some((output) => !derivedRows.some((row) => row.unit.id === output.unitId)) && <p className="text-status-warning">部分已选结果不再匹配当前筛选或版本，预览时将重新校验。</p>}
+            <strong>{t("Frame and region results · Selected ")}{derivedOutputs.length} {t(" items")}</strong>
+            {derivedOutputs.some((output) => !derivedRows.some((row) => row.unit.id === output.unitId)) && <p className="text-status-warning">{t("Some selected results no longer match the filter or version and will be revalidated during preview.")}</p>}
             {derivedRows.map(({ unit, status, source }) => <div key={unit.id} className="flex flex-wrap items-center gap-3" data-testid="task-result-export-derived-row" data-unit-id={unit.id}>
               <span className="min-w-0 max-w-80 truncate" title={source.relativePath}>{sourceTitle(source.relativePath)} · {unitTitle(unit)}</span>
               <span className="text-fg-3">{exportStatusLabels[status]}</span>
@@ -617,21 +618,20 @@ export function ResultExportPanel({
                   type="checkbox"
                   data-testid="task-result-export-derived-select"
                   data-output-kind={kind}
-                  aria-label={`导出${outputLabels[kind]} ${unitTitle(unit)}`}
+                  aria-label={t("Export {{v0}} {{v1}}", { v0: outputLabels[kind], v1: unitTitle(unit) })}
                   checked={derivedOutputs.some((output) => output.unitId === unit.id && output.kind === kind)}
                   onChange={(event) => toggleDerived({ unitId: unit.id, kind }, event.target.checked)} />
-                {outputLabels[kind]} PNG
-              </label>)}
+                {outputLabels[kind]} {t(" PNG")}</label>)}
             </div>)}
           </section>}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-fg-3">
-              {t("分类（可选，复制为目的地下的同名子文件夹）")}
+              {t("Category (optional; copy into a subfolder with this name at the destination)")}
             </span>
             <input
               className="w-36 rounded border border-border bg-bg-2 px-1 py-0.5"
-              aria-label={t("统一分类名")}
-              placeholder={t("单个安全文件夹名")}
+              aria-label={t("Shared category name")}
+              placeholder={t("One safe folder name")}
               value={bulkCategory}
               onChange={(event) => setBulkCategory(event.target.value)}
             />
@@ -641,27 +641,27 @@ export function ResultExportPanel({
               data-testid="task-result-export-apply-category"
               disabled={selectedSourceEntries.size === 0}
               title={t(
-                "对已选文件设置同一分类；行内输入可单独覆盖，留空则清除",
+                "Set one category for selected files; override individual rows or leave blank to clear",
               )}
               onClick={applyBulkCategory}
             >
-              {t("应用到所选")}
+              {t("Apply to selected")}
             </button>
             <span className="text-fg-3">
-              {t("复制原件或已生成的结果，不移动或修改源文件")}
+              {t("Copy originals or generated results without moving or modifying source files")}
             </span>
           </div>
           <div
             className="flex items-center gap-2"
             data-testid="task-result-export-destination"
           >
-            <span className="text-fg-3">{t("导出目的地")}</span>
+            <span className="text-fg-3">{t("Export destination")}</span>
             <span
               className="min-w-0 flex-1 truncate"
               title={destination ?? undefined}
               data-testid="task-result-export-destination-path"
             >
-              {destination ?? t("未选择（任务文件夹之外）")}
+              {destination ?? t("Not selected (must be outside the task folder)")}
             </span>
             <button
               type="button"
@@ -670,7 +670,7 @@ export function ResultExportPanel({
               disabled={choosing || executing}
               onClick={() => void chooseDestination()}
             >
-              {choosing ? t("选择中…") : t("选择目录…")}
+              {choosing ? t("Selecting…") : t("Choose directory…")}
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -681,12 +681,12 @@ export function ResultExportPanel({
               disabled={!canPreview}
               onClick={() => void runPreview()}
             >
-              {previewing ? t("正在预览…") : t("预览导出")}
+              {previewing ? t("Previewing…") : t("Preview export")}
             </button>
             {canonicalStatuses.length > 0 &&
               selectedEntryIds.size === 0 && derivedOutputs.length === 0 && (
                 <span className="text-fg-3">
-                  {t("请先勾选至少一个原文件；不会默认导出全部")}
+                  {t("Select at least one source file first; all files are never exported by default")}
                 </span>
               )}
           </div>
@@ -699,7 +699,7 @@ export function ResultExportPanel({
               <div className="flex flex-wrap items-center gap-2">
                 <strong>
                   {t(
-                    "预览：将复制 {{files}} 个文件 · 命中 {{units}} 条 · 不可复制 {{unavailable}} 个",
+                    "Preview: copy {{files}} files · {{units}} matching items · {{unavailable}} unavailable",
                     {
                       files: preview.record.items.length,
                       units: previewMatchedUnits,
@@ -712,7 +712,7 @@ export function ResultExportPanel({
                     className="text-status-error"
                     data-testid="task-result-export-preview-stale"
                   >
-                    {t("导出条件已修改，此预览不再可执行，请重新预览")}
+                    {t("Export conditions changed. Preview again before executing.")}
                   </span>
                 ) : (
                   <button
@@ -722,9 +722,9 @@ export function ResultExportPanel({
                     disabled={previewFinished || executing || previewing || busy}
                     onClick={() => void runExecute()}
                   >
-                    {previewFinished ? t("已执行，修改选择后可重新预览") : executing
-                      ? t("正在导出…")
-                      : t("执行导出（复制 {{count}} 个文件）", {
+                    {previewFinished ? t("Executed. Change your selection to preview again.") : executing
+                      ? t("Exporting…")
+                      : t("Execute export (copy {{count}} files)", {
                         count: preview.record.items.length,
                       })}
                   </button>
@@ -734,7 +734,7 @@ export function ResultExportPanel({
                 className="truncate text-fg-3"
                 title={preview.record.outputDirectory}
               >
-                {t("输出目录：{{path}}", {
+                {t("Output directory: {{path}}", {
                   path: preview.record.outputDirectory,
                 })}
               </span>
@@ -745,7 +745,7 @@ export function ResultExportPanel({
                   data-testid="task-result-export-preview-revision-note"
                 >
                   {t(
-                    "预览后审阅有更新；执行时服务将按最新状态校验，若相关源或判断已变化会要求重新预览",
+                    "Review changed after preview. The service will validate current state and require a new preview if relevant sources or decisions changed.",
                   )}
                 </span>
               )}
@@ -768,7 +768,7 @@ export function ResultExportPanel({
                         : ""}
                     </span>
                     <span className="shrink-0 text-fg-3">
-                      {t("命中 {{count}} 条", {
+                      {t("{{count}} matching items", {
                         count: item.matchedUnitIds.length,
                       })}
                     </span>
@@ -777,11 +777,11 @@ export function ResultExportPanel({
                     </span>
                     {item.mixed ? (
                       <span className="shrink-0 text-status-warning">
-                        {t("混合")}
+                        {t("Mixed")}
                       </span>
                     ) : item.allKept ? (
                       <span className="shrink-0 text-fg-3">
-                        {t("全保留")}
+                        {t("All kept")}
                       </span>
                     ) : null}
                     {item.status === "unavailable" && (
@@ -789,7 +789,7 @@ export function ResultExportPanel({
                         className="shrink-0 text-status-error"
                         title={item.error}
                       >
-                        {t("不可复制：{{reason}}", {
+                        {t("Cannot copy: {{reason}}", {
                           reason: item.error ?? "",
                         })}
                       </span>
@@ -806,12 +806,12 @@ export function ResultExportPanel({
               data-status={lastReceipt.status}
             >
               <div className="flex flex-wrap items-center gap-2">
-                <strong>{t("最近导出回执")}</strong>
+                <strong>{t("Latest export receipt")}</strong>
                 {window.reelterminal?.fs?.revealInFolder && <button
                   type="button"
                   className={wbButton.secondary}
                   data-testid="task-result-export-reveal"
-                  onClick={() => void window.reelterminal!.fs.revealInFolder(lastReceipt.manifestStatus === "written" ? lastReceipt.manifestPath : lastReceipt.outputDirectory).catch((problem) => setError(errorMessage(problem)))}>在文件夹中查看</button>}
+                  onClick={() => void window.reelterminal!.fs.revealInFolder(lastReceipt.manifestStatus === "written" ? lastReceipt.manifestPath : lastReceipt.outputDirectory).catch((problem) => setError(errorMessage(problem)))}>{t("reviewUi.Show_in_folder_374")}</button>}
                 <span
                   className={
                     lastReceipt.status === "complete"
@@ -823,17 +823,17 @@ export function ResultExportPanel({
                   data-testid="task-result-export-receipt-status"
                 >
                   {t(RECEIPT_STATUS_TEXT[lastReceipt.status])}
-                  {t("（复制 {{copied}}/{{total}} 个文件）", {
+                  {t(" ({{copied}}/{{total}} files copied)", {
                     copied: copiedCount(lastReceipt),
                     total: lastReceipt.items.length,
                   })}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-fg-3">
-                  {t("清单：{{path}}", {
+                  {t("Manifest: {{path}}", {
                     path:
                       lastReceipt.manifestStatus === "written"
                         ? lastReceipt.manifestPath
-                        : t("未写入"),
+                        : t("Not written"),
                   })}
                 </span>
               </div>

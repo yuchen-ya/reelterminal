@@ -30,6 +30,10 @@ export function registerTaskReviewIpc(
   ipcMain.handle(CHANNELS.taskReview, async (event, raw) => {
     assertEditorIpcSender(event);
     const request = envelopeSchema.parse(raw);
+    if (request.method === 'getDecisionOutcome') {
+      if (!store.getDecisionOutcome) throw new Error('Decision outcome query unavailable');
+      return store.getDecisionOutcome(taskReviewSchemas.getDecisionOutcome.parse(request.input));
+    }
     let snapshot: TaskReviewSnapshot;
     let refreshedInputsChanged = false;
     switch (request.method) {
@@ -45,7 +49,35 @@ export function registerTaskReviewIpc(
       case "setGoal": snapshot = await store.setGoal(taskReviewSchemas.setGoal.parse(request.input)); break;
       case "importText": snapshot = await store.importText(taskReviewSchemas.importText.parse(request.input)); break;
       case "importFile": snapshot = await store.importFile(taskReviewSchemas.importFile.parse(request.input)); break;
-      case "decide": snapshot = await store.decide(taskReviewSchemas.decide.parse(request.input)); break;
+      case "decide": {
+        const parsed = taskReviewSchemas.decide.safeParse(request.input);
+        if (!parsed.success) {
+          const rawInput = request.input as Record<string, unknown>;
+          const identity = taskReviewSchemas.getDecisionOutcome.parse({ root: rawInput?.root, taskId: rawInput?.taskId, decisionId: rawInput?.decisionId });
+          const current = await store.open(identity.root);
+          if (current.taskId !== identity.taskId || current.decisions.some(item => item.id === identity.decisionId)) throw new Error('Decision identity requires verification');
+          return { ...current, decisionReceipt: { decisionId: identity.decisionId, outcome: 'not-committed', rejection: 'validation' } };
+        }
+        const input = parsed.data;
+        try { snapshot = await store.decide(input); }
+        catch (problem) {
+          if (!input.decisionId || !store.getDecisionOutcome) throw problem;
+          const checked = await store.getDecisionOutcome({ root: input.root, taskId: input.taskId, decisionId: input.decisionId });
+          if (checked.outcome === 'unknown') throw new Error('Decision result requires verification');
+          return { ...checked.snapshot, decisionReceipt: { decisionId: input.decisionId, outcome: checked.outcome } };
+        }
+        let notificationFailed = false, refreshFailed = false;
+        try { await onTaskChanged({ root: snapshot.root, taskId: snapshot.taskId }); }
+        catch { notificationFailed = true; }
+        let latest = snapshot;
+        try { latest = await store.open(snapshot.root); }
+        catch { refreshFailed = true; }
+        if (latest.root !== snapshot.root || latest.taskId !== snapshot.taskId) throw new Error('Review target changed after decision commit');
+        return input.decisionId || notificationFailed || refreshFailed ? { ...latest, decisionReceipt: {
+          decisionId: input.decisionId ?? snapshot.decisions.at(-1)!.id, outcome: 'committed',
+          ...(notificationFailed ? { notificationFailed: true } : {}), ...(refreshFailed ? { refreshFailed: true } : {}),
+        } } : latest;
+      }
       case "undoDecision": snapshot = await store.undoDecision(taskReviewSchemas.undoDecision.parse(request.input)); break;
       case "redoDecision": snapshot = await store.redoDecision(taskReviewSchemas.redoDecision.parse(request.input)); break;
       case "saveDraft": snapshot = await store.saveDraft(taskReviewSchemas.saveDraft.parse(request.input)); break;

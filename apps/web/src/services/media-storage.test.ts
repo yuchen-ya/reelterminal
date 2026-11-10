@@ -132,18 +132,15 @@ describe("immutable media storage", () => {
   });
 
   it("stores generic image bytes with a browser-decodable controlled-file extension", async () => {
-    let expectedHash = "";
-    const beginWrite = vi.fn(async (input: { extension: string; expectedHash: string }) => {
-      expectedHash = input.expectedHash;
-      return "session";
-    });
+    const bytes: Uint8Array[] = [];
+    const beginWrite = vi.fn(async (_input: { extension: string; expectedHash?: string }) => "session");
     const mediaStore = {
       getVersion: vi.fn(async () => null),
       beginWrite,
-      writeChunk: vi.fn(async () => undefined),
+      writeChunk: vi.fn(async (_session: string, chunk: Uint8Array) => { bytes.push(chunk); }),
       commitWrite: vi.fn(async () => ({
         path: "C:/app/controlled-media/project/media.png",
-        contentHash: expectedHash,
+        contentHash: await hashMediaBytes(await new Blob(bytes as BlobPart[]).arrayBuffer()),
         created: true,
       })),
       abortWrite: vi.fn(async () => undefined),
@@ -167,6 +164,49 @@ describe("immutable media storage", () => {
 
     expect(beginWrite).toHaveBeenCalledWith(expect.objectContaining({ extension: "png" }));
     expect(result.contentUrl).toBe("C:/app/controlled-media/project/media.png");
+  });
+
+  it("uses the native streaming hash for new desktop versions without a renderer hash pass", async () => {
+    const blob = new Blob(["streamed immutable video"], { type: "video/mp4" });
+    const contentHash = await hashMediaBlob(blob);
+    const slices = vi.spyOn(blob, "slice").mockImplementation(() => { throw new Error("Redundant renderer hash read"); });
+    const chunks: Uint8Array[] = [];
+    const beginWrite = vi.fn(async () => "session");
+    vi.stubGlobal("window", { reelterminal: { platform: "desktop", mediaStore: {
+      getVersion: vi.fn(async () => null), beginWrite,
+      writeChunk: vi.fn(async (_session: string, chunk: Uint8Array) => { chunks.push(chunk); }),
+      commitWrite: vi.fn(async () => ({ path: "C:/controlled/video.mp4", contentHash, created: true })),
+      abortWrite: vi.fn(),
+    } } });
+    const mediaId = `native-${crypto.randomUUID()}`;
+    const result = await saveMediaBlob("project-native", mediaId, blob, metadata, "video.mp4", { detachSource: true });
+    expect(slices).not.toHaveBeenCalled();
+    expect(beginWrite).toHaveBeenCalledWith(expect.objectContaining({ expectedHash: undefined }));
+    expect(await new Blob(chunks as BlobPart[]).text()).toBe("streamed immutable video");
+    expect(result.contentHash).toBe(contentHash);
+    expect(await result.persistedBlob!.text()).toBe("streamed immutable video");
+    expect((await loadMediaRecord(mediaId))?.contentHash).toBe(contentHash);
+    await expect(saveMediaBlob("project-native", mediaId, new Blob(["changed version"]), metadata, "video.mp4"))
+      .rejects.toThrow(/immutable/);
+    expect(beginWrite).toHaveBeenCalledTimes(1);
+    expect(await (await loadMediaRecord(mediaId))!.blob.text()).toBe("streamed immutable video");
+  });
+
+  it("retains explicit expected-hash verification for a new native import", async () => {
+    const mediaId = `native-expected-${crypto.randomUUID()}`;
+    const expectedHash = "b".repeat(64);
+    const beginWrite = vi.fn(async () => "session");
+    const abortWrite = vi.fn(async () => undefined);
+    vi.stubGlobal("window", { reelterminal: { platform: "desktop", mediaStore: {
+      getVersion: vi.fn(async () => null), beginWrite,
+      writeChunk: vi.fn(async () => undefined),
+      commitWrite: vi.fn(async () => { throw new Error("Controlled-media bytes do not match the declared SHA-256 hash"); }),
+      abortWrite,
+    } } });
+    await expect(saveMediaBlob("project-native", mediaId, new Blob(["different"]), metadata, "video.mp4", { expectedHash })).rejects.toThrow(/SHA-256/);
+    expect(beginWrite).toHaveBeenCalledWith(expect.objectContaining({ expectedHash }));
+    expect(abortWrite).toHaveBeenCalledWith("session");
+    expect(await loadMediaRecord(mediaId)).toBeNull();
   });
 
   it("keeps other projects' controlled files when deleting a shared media id for one project", async () => {

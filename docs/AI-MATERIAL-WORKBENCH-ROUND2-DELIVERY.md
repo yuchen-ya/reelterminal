@@ -17,7 +17,7 @@
 
 ## 2. 原型 → 上一版 → 本轮差异表
 
-原型源码只读目录：`C:/Users/Administrator/Downloads/reelterminal-·-ai-素材工作台/`（下称 P）。
+原型源码只读目录：`<prototype-source>`（下称 P）。
 基准截图均为真实运行的前端（本地静态服务 + Chromium，未启动 Express/Gemini，未调用 `/api/ai/predict`）。
 
 | 区域 | 原型 P | 上一版接入 | 本轮修复 |

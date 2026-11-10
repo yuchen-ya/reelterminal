@@ -1,3 +1,4 @@
+import { useChineseReviewLocale } from "../../../test/review-locale";
 import {
   cleanup,
   fireEvent,
@@ -654,3 +655,5 @@ describe("ResultExportPanel", () => {
     );
   });
 });
+
+useChineseReviewLocale();

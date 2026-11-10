@@ -78,6 +78,10 @@ jobs:
           ffprobe -version | head -1
       - name: Fetch the pinned native export sidecars
         run: pnpm --filter @reelterminal/desktop fetch:ffmpeg
+      - name: Stage the pinned MobileSAM resources
+        run: node apps/desktop/scripts/fetch-segmentation-resources.mjs
+      - name: Verify model resource download failure handling
+        run: node --test apps/desktop/scripts/fetch-segmentation-resources.node-test.mjs
       - name: Verify native export and packaging regressions without skips
         env:
           EXPECT_FFMPEG: "1"
@@ -98,7 +102,7 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
-            pnpm --filter @reelterminal/desktop exec electron-builder --dir --win --x64 --publish never --config.win.signAndEditExecutable=false
+            pnpm --filter @reelterminal/desktop exec electron-builder --dir --win --x64 --publish never --config.win.signExecutable=false
           else
             pnpm --filter @reelterminal/desktop exec electron-builder --dir --mac --"$(node -p process.arch)" --publish never --config.mac.notarize=false
           fi
