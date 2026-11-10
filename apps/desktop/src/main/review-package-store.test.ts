@@ -1,6 +1,6 @@
-import { afterEach, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildWorkbenchIngestActions } from "@reelterminal/core/actions/workbench-actions";
@@ -12,9 +12,29 @@ import { ReviewExportStore } from "./review-export-store";
 import { ReviewPackageStore } from "./review-package-store";
 
 const directories: string[] = [];
-afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
+const outputs: string[] = [];
+const timings: Array<{ stage: string; elapsedMs: number }> = [];
+async function measured<T>(stage: string, work: () => Promise<T>): Promise<T> {
+  const started = performance.now();
+  try { return await work(); }
+  finally { timings.push({ stage, elapsedMs: Math.round(performance.now() - started) }); }
+}
+afterEach(async () => {
+  for (const directory of outputs.splice(0)) {
+    expect(path.dirname(directory)).toBe(portable.directory);
+    expect(path.basename(directory)).toMatch(/^case-/);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+afterAll(async () => {
+  for (const directory of directories.splice(0)) {
+    expect(path.dirname(directory)).toBe(path.resolve(tmpdir()));
+    expect(path.basename(directory)).toMatch(/^reel-review-package-/);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
-async function createPortableNode() {
+async function preparePortableFixture() {
   const directory = await mkdtemp(path.join(tmpdir(), "reel-review-package-")); directories.push(directory);
   const source = path.join(directory, "source.txt"); await writeFile(source, "Exact 👀\r\noriginal");
   const files = new ReviewFileStore(path.join(directory, "review"));
@@ -31,8 +51,19 @@ async function createPortableNode() {
   const exportId = randomUUID();
   await exporter.prepare({ exportId, nodeId, nodeRevision: 1, name: "Package", mode: "node-package", scope: "node", archive: JSON.stringify(archive), entries: [{ resourceId: original.id, fileName: "source.txt" }] });
   expect((await exporter.wait(exportId)).state).toBe("ready");
-  const destination = path.join(directory, "backup"); await mkdir(destination);
-  return { directory, source, files, archive, exporter, exportId, destination, reader: new ReviewPackageStore(files), original };
+  return { directory, source, files, archive, exporter, exportId, original };
+}
+
+// The sealed export is immutable input. Each case still gets its own copied
+// output and inspection session, so tampering cannot affect another case.
+let portable: Awaited<ReturnType<typeof preparePortableFixture>>;
+beforeAll(async () => {
+  portable = await measured('fixture.prepare-sealed-export', preparePortableFixture);
+});
+async function createPortableNode() {
+  const destination = await mkdtemp(path.join(portable.directory, 'case-'));
+  outputs.push(destination);
+  return { ...portable, archive: structuredClone(portable.archive), destination, reader: new ReviewPackageStore(portable.files) };
 }
 
 it("exports and inspects a portable node and restores independent managed bytes", async () => {
@@ -50,22 +81,25 @@ it("exports and inspects a portable node and restores independent managed bytes"
 
 it("backs up populated and empty nodes with groups and rejects stale node revisions", async () => {
   const { source, files, archive, exporter, exportId, destination, reader } = await createPortableNode();
-  const existingCopy = await exporter.copy(exportId, destination);
+  const existingCopy = await measured('backup.copy-existing', () => exporter.copy(exportId, destination));
   const emptyNode = { ...archive.node, id: randomUUID(), archivedAt: 1, trashedAt: 2 };
   const emptyExportId = randomUUID();
-  await exporter.prepare({ exportId: emptyExportId, nodeId: emptyNode.id, nodeRevision: emptyNode.revision, name: emptyNode.name,
-    mode: "node-package", scope: "node", archive: JSON.stringify({ ...archive, node: emptyNode, state: emptyWorkbenchState(), versions: [], resources: [] }), entries: [] });
-  expect((await exporter.wait(emptyExportId)).state).toBe("ready");
+  await measured('backup.prepare-empty-export', async () => {
+    await exporter.prepare({ exportId: emptyExportId, nodeId: emptyNode.id, nodeRevision: emptyNode.revision, name: emptyNode.name,
+      mode: "node-package", scope: "node", archive: JSON.stringify({ ...archive, node: emptyNode, state: emptyWorkbenchState(), versions: [], resources: [] }), entries: [] });
+    expect((await exporter.wait(emptyExportId)).state).toBe("ready");
+  });
   const group = { id: randomUUID(), workspaceId: archive.node.workspaceId, name: "Original group", order: 0 };
   const reloadedExporter = new ReviewExportStore(exporter.root, files);
-  const backup = await reloadedExporter.backup({ workspaceId: archive.node.workspaceId, revision: 4, groups: [group],
-    nodes: [{ exportId, node: archive.node }, { exportId: emptyExportId, node: emptyNode }] }, destination);
+  const backup = await measured('backup.copy-populated-and-empty', () => reloadedExporter.backup({ workspaceId: archive.node.workspaceId, revision: 4, groups: [group],
+    nodes: [{ exportId, node: archive.node }, { exportId: emptyExportId, node: emptyNode }] }, destination));
   const index = JSON.parse(await readFile(path.join(backup.directory, "backup.json"), "utf8"));
   expect(index).toMatchObject({ schemaVersion: 1, groups: [group], nodes: [{ id: archive.node.id, relativePath: "nodes/Package" }, { id: emptyNode.id, relativePath: "nodes/Package (2)", archivedAt: 1, trashedAt: 2 }] });
   expect(await reader.inspect(path.join(backup.directory, ...index.nodes[0].relativePath.split("/")))).toMatchObject({ itemCount: 1, resourceCount: 1 });
   expect(await reader.inspect(path.join(backup.directory, ...index.nodes[1].relativePath.split("/")))).toMatchObject({ itemCount: 0, resourceCount: 0 });
   await expect(exporter.backup({ workspaceId: archive.node.workspaceId, revision: 4, groups: [], nodes: [{ exportId, node: { ...archive.node, revision: 99 } }] }, destination)).rejects.toMatchObject({ reason: "CONFLICT" });
   expect((await readFile(path.join(existingCopy.directory, "source.txt"))).equals(await readFile(source))).toBe(true);
+  process.stdout.write(`REVIEW_PACKAGE_STAGES ${JSON.stringify(timings)}\n`);
 });
 
 it("rejects traversal and tampered package files without changing the source", async () => {

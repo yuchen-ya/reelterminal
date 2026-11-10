@@ -14,7 +14,9 @@ test("task directory retains real file management, imports and previews through 
   await mkdir(output);
   try {
     let page = launched.page;
-    await page.getByRole("tab", { name: /Review Workspace/ }).click();
+    await page.evaluate(() => localStorage.setItem("openreel-locale", "zh-CN"));
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByRole("tab", { name: "审阅工作台", exact: true }).click();
     await page.getByTestId("review-workspace-open").click();
     await page.getByTestId("folder-task-directory").waitFor();
     await page.getByTestId("folder-task-new").click();
@@ -123,7 +125,7 @@ test("task directory retains real file management, imports and previews through 
     await vi.waitFor(async () => expect(await page.getByTestId("folder-review-workspace").locator("pre").textContent()).toBe("New external output"));
     // Closing and reopening retains the real folder rather than a second
     // virtual review copy. Feedback persistence lives in the task-domain spec.
-    await page.getByRole("button", { name: "关闭", exact: true }).click();
+    await page.getByTestId("task-review-workspace").getByRole("button", { name: "关闭", exact: true }).click();
     await launched.app.evaluate(({ dialog }, directory) => {
       dialog.showOpenDialog = async () => ({
         canceled: false,

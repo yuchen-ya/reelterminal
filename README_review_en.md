@@ -73,6 +73,5 @@ Human decisions, drafts and model keys for current folder tasks use desktop-inte
 ## Documentation
 
 - 🎨 [**Free Boards Guide (Chinese)**](docs/HUMAN-BOARDS.zh-CN.md) — 7 media types, Markdown/HTML/web browsing, pixel repair, region PNG freeze, and explicit review-node export.
-- ⚙️ [**Command API · Independent Review Workspace**](docs/COMMAND-API.md#independent-review-workspace) — `review.*` command families, `review.repair.*` / `draft.*` contracts, and `review.frames.capture`.
-- 🧊 [**Review 3D (GLB) Preview Delivery**](docs/REVIEW-3D-PREVIEW-DELIVERY.md) — GLB 2.0 validation bounds, dual-view comparison, and viewpoint observation snapshots.
+- ⚙️ [**Command API · Legacy Batch Protocol Reference**](docs/COMMAND-API.md#independent-review-workspace) — applies to legacy review nodes; it is not the human-decision interface for current folder tasks.
 - 📖 [**Desktop User Guide · Review Workspace**](docs/USER-GUIDE.md#审阅工作台与自由画板) — current folder tasks, human review, save recovery and help.

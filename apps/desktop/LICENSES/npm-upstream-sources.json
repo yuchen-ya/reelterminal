@@ -20,6 +20,30 @@
       "url": "https://raw.githubusercontent.com/facebook/astryx/v0.1.1/LICENSE"
     }
   },
+  "@esbuild/darwin-arm64": {
+    "0.28.2": {
+      "file": "LICENSES/npm-upstream/esbuild-win32-x64-0.28.2.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/npm/esbuild/LICENSE.md",
+      "packageDeclaration": true
+    }
+  },
+  "@esbuild/darwin-x64": {
+    "0.28.2": {
+      "file": "LICENSES/npm-upstream/esbuild-win32-x64-0.28.2.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/npm/esbuild/LICENSE.md",
+      "packageDeclaration": true
+    }
+  },
+  "@esbuild/linux-x64": {
+    "0.28.2": {
+      "file": "LICENSES/npm-upstream/esbuild-win32-x64-0.28.2.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/npm/esbuild/LICENSE.md",
+      "packageDeclaration": true
+    }
+  },
   "@esbuild/win32-x64": {
     "0.28.2": {
       "file": "LICENSES/npm-upstream/esbuild-win32-x64-0.28.2.txt",

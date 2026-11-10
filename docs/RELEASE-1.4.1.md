@@ -20,5 +20,6 @@
 - 本次分发目标为 Windows x64 安装包和便携 ZIP。其他平台请以发布页实际资产为准。
 - Windows 构建未签名，可能显示发布者或 SmartScreen 提示。请从官方发布页下载并核对 `SHA256SUMS.txt`。
 - 升级前请阅读 [Windows 升级与备份指南](WINDOWS-UPGRADE.md)。完整解压 ZIP 后运行 `ReelTerminal.exe`；便携包也可能读取现有数据目录。
+- 审阅任务使用真实文件夹。旧批次任务暂不迁移，也不恢复旧批次标签；升级前保留旧数据的完整备份。
 - 部分视频处理仍需单独安装 FFmpeg/ffprobe。字幕模型及可选 Python/OpenCV 工具按需配置，见 [外部依赖](EXTERNAL-DEPENDENCIES.md)。
 - 模型建议与分割结果均需人工确认；持续的文件占用或权限限制仍可能阻止保存。不要反复提交结果未知的决定。

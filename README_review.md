@@ -73,6 +73,5 @@
 ## 详细文档
 
 - 🎨 [**自由画板使用说明**](docs/HUMAN-BOARDS.zh-CN.md) — 7 类媒介导入、Markdown/HTML/网页浏览、像素修补、区域冻结 PNG 与主动导出快照。
-- ⚙️ [**Command API · 独立审阅工作台规范**](docs/COMMAND-API.md#independent-review-workspace) — `review.*` 命令族、`review.repair.*` / `draft.*` 像素修补协议与 `review.frames.capture` 准确截帧契约。
-- 🧊 [**审阅 3D (GLB) 轻量预览说明**](docs/REVIEW-3D-PREVIEW-DELIVERY.md) — GLB 2.0 准入边界、资源门限、双视图比较与视角截图反馈结构。
+- ⚙️ [**Command API · 旧批次兼容协议参考**](docs/COMMAND-API.md#independent-review-workspace) — 适用于旧审阅节点；不是当前文件夹任务的人工决定接口。
 - 📖 [**桌面端用户手册 · 审阅工作台章节**](docs/USER-GUIDE.md#审阅工作台与自由画板) — 当前文件夹任务、人工审阅、保存恢复和帮助入口。

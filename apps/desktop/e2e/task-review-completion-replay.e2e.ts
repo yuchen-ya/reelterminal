@@ -40,7 +40,8 @@ test.runIf(Boolean(process.env.REELTERMINAL_E2E_APP_EXECUTABLE))("packaged GUI r
         resources: { modelVersion: manifest.modelVersion, models, workerBytes: (await fs.stat(path.join(process.resourcesPath, "app.asar.unpacked", "dist", "main", "segmentation", "worker.js"))).size } };
     });
     evidence.record("application", application);
-    expect(application).toMatchObject({ version: "1.4.0", packaged: true });
+    const expectedVersion = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
+    expect(application).toMatchObject({ version: expectedVersion, packaged: true });
     expect(path.resolve(application.executable).toLowerCase()).toBe(path.resolve(process.env.REELTERMINAL_E2E_APP_EXECUTABLE!).toLowerCase());
     expect(application.resources.workerBytes).toBeGreaterThan(0);
     expect(application.resources.models.every(model => model.actualBytes === model.expectedBytes)).toBe(true);
