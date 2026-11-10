@@ -22,6 +22,12 @@
       "reason": "Isolated test profiles set the existing persisted locale key; no user profile is modified."
     },
     {
+      "files": "apps/desktop/e2e/folder-review.e2e.ts",
+      "pattern": "localStorage\\.setItem\\(\"openreel-locale\", \"zh-CN\"\\)",
+      "category": 4,
+      "reason": "The isolated folder test selects Chinese through the existing persisted locale key. Only this exact setting call is accepted; no user profile or application identifier changes."
+    },
+    {
       "files": "apps/desktop/e2e/review-placement.e2e.ts",
       "pattern": "openreel-locale",
       "category": 4,
