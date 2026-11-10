@@ -69,7 +69,7 @@ const importThreeUnits = async (
   taskReview: ReturnType<typeof createFakeTaskReviewBridge>,
 ) => {
   // Wait until the task snapshot has loaded before navigating scenes.
-  await screen.findByTestId("task-review-progress");
+  await screen.findByTestId("task-review-revision");
   await launchOverview();
   fireEvent.click(screen.getByTestId("task-review-show-import"));
   fireEvent.change(await screen.findByLabelText("原文名称"), {
@@ -123,11 +123,29 @@ function installSceneTask(kind: "compare" | "lowRiskGroup") {
 }
 
 describe("task review workspace", () => {
+  it("waits for the task snapshot before the first browse action while the progress header is already visible", async () => {
+    const { taskReview } = installSceneTask("compare");
+    let finish!: (snapshot: ReturnType<typeof taskReview.snapshotState>) => void;
+    const loading = new Promise<ReturnType<typeof taskReview.snapshotState>>((resolve) => { finish = resolve; });
+    vi.spyOn(taskReview, "open").mockReturnValueOnce(loading);
+    render(<TaskReviewWorkspace root="task-root" />);
+    expect(screen.getByTestId("task-review-progress")).toBeInTheDocument();
+    expect(screen.getByTestId("task-review-continue")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("task-review-continue"));
+    expect(screen.queryByTestId("task-review-agent-scene")).toBeNull();
+    await act(async () => { finish(taskReview.snapshotState()); });
+    await screen.findByTestId("task-review-revision");
+    expect(screen.getByTestId("task-review-continue")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("task-review-continue"));
+    expect(await screen.findByTestId("task-review-agent-scene")).toHaveAttribute("data-scene-id", "working-scene");
+    expect(taskReview.snapshotState().decisions).toHaveLength(0);
+  });
+
   it("starts a compare at its current highest-risk target and restores a later human focus choice on Back", async () => {
     const { taskReview, taskId, sourceVersionId, units } = installSceneTask("compare");
     taskReview.mutateState((state) => state.issues.push({ id: "risk-b", unitId: units[1]!.id, sourceVersionId, policyRevision: 0, purpose: "review", severity: "high", title: "先核对B", evidence: "B", hypothesis: "需核实", options: [], inputSourceVersionIds: [sourceVersionId], criteriaBasis: [{ taskId, unitId: units[1]!.id, sourceVersionId, purpose: "review", policyRevision: 0, criteriaVersionIds: [] }] }));
     render(<TaskReviewWorkspace root="task-root" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
     fireEvent.click(screen.getByTestId("task-review-continue"));
     expect(screen.getAllByTestId("task-review-scene-focus")[1]).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getAllByTestId("task-review-scene-focus")[0]!);
@@ -163,7 +181,7 @@ describe("task review workspace", () => {
   it("opens on a concise overview and makes long forms and export separate explicit work areas", async () => {
     installSceneTask("compare");
     render(<TaskReviewWorkspace root="task-root" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
     await launchOverview();
     expect(screen.getByTestId("task-review-context-brief")).toBeVisible();
     expect(screen.getByTestId("task-review-goal-editor")).not.toBeVisible();
@@ -179,7 +197,7 @@ describe("task review workspace", () => {
   it("reports the end of a round by opening the pending list without erasing items", async () => {
     const { taskReview } = installSceneTask("compare");
     render(<TaskReviewWorkspace root="task-root" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
     // Pure browse advance: four scenes, then the end of the plan round.
     fireEvent.click(screen.getByTestId("task-review-continue"));
     fireEvent.click(screen.getByTestId("task-review-continue"));
@@ -207,7 +225,7 @@ describe("task review workspace", () => {
     });
     Object.defineProperty(window, "reelterminal", { configurable: true, value: { ...window.reelterminal, fs: { showOpenDialog: choose }, taskReviewExport: { preview, execute } } });
     render(<TaskReviewWorkspace root="task-root" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
     openLauncher();
     fireEvent.click(screen.getByTestId("task-review-launcher-export"));
     await screen.findByTestId("task-review-export-scene");
@@ -230,7 +248,7 @@ describe("task review workspace", () => {
   it("keeps the open formal scene and focus stable when a replacement future plan arrives", async () => {
     const { taskReview, scenes } = installSceneTask("compare");
     render(<TaskReviewWorkspace root="task-root" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
     fireEvent.click(screen.getByTestId("task-review-continue"));
     fireEvent.click(screen.getAllByTestId("task-review-scene-focus")[1]!);
     taskReview.mutateState((state) => state.planRevisions.push({ id: "new-future", policyRevision: 0, createdAt: 2, reason: "后续调整", steps: [], scenes: [scenes[2]!] }));
@@ -251,7 +269,7 @@ describe("task review workspace", () => {
     const search = vi.spyOn(taskAgent, "search").mockResolvedValue(result);
     const cancel = vi.spyOn(taskAgent, "cancelSearch");
     render(<TaskReviewWorkspace root="task-root" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
     fireEvent.click(screen.getByTestId("task-review-continue"));
     await launchOverview();
     fireEvent.change(screen.getByLabelText("搜索条目文本"), { target: { value: "关联说法" } });
@@ -274,7 +292,7 @@ describe("task review workspace", () => {
   it("plays the formal compare scene and restores its focus, draft, selection and scroll through global and restart", async () => {
     const { taskReview } = installSceneTask("compare");
     const rendered = render(<TaskReviewWorkspace root="task-root" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
     fireEvent.click(screen.getByTestId("task-review-continue"));
     const scene = await screen.findByTestId("task-review-agent-scene");
     expect(scene).toHaveAttribute("data-scene-kind", "compare");
@@ -296,7 +314,7 @@ describe("task review workspace", () => {
     render(<TaskReviewWorkspace root="task-root" />);
     const recovered = await screen.findByTestId("task-review-unit-note") as HTMLTextAreaElement;
     await waitFor(() => expect(recovered.value).toBe("B的反馈现场"));
-    expect([recovered.selectionStart, restored.selectionEnd]).toEqual([1, 4]);
+    expect([recovered.selectionStart, recovered.selectionEnd]).toEqual([1, 4]);
     fireEvent.click(screen.getByTestId("task-review-continue"));
     await waitFor(() => expect(screen.getByTestId("task-review-unit-text").textContent).toBe("C的原文"));
     expect(taskReview.snapshotState().decisions).toHaveLength(0);
@@ -305,7 +323,7 @@ describe("task review workspace", () => {
   it("only confirms explicitly selected covered group members and skips an already decided future target", async () => {
     const { taskReview, units } = installSceneTask("lowRiskGroup");
     render(<TaskReviewWorkspace root="task-root" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
     await launchOverview();
     fireEvent.click(screen.getAllByTestId("task-review-unit-row").find((node) => node.textContent?.includes("C的原文"))!);
     fireEvent.click(screen.getByTestId("task-review-decide-kept"));
@@ -336,7 +354,7 @@ describe("task review workspace", () => {
       return originalSave(input);
     });
     render(<TaskReviewWorkspace root="task-root" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
     fireEvent.click(screen.getByTestId("task-review-continue"));
     await waitFor(() => expect(screen.getAllByTestId("task-review-group-select")[1]).not.toBeDisabled());
     fireEvent.click(screen.getAllByTestId("task-review-group-select")[0]!);
@@ -363,7 +381,7 @@ describe("task review workspace", () => {
     const { taskReview, taskAgent, units, taskId, sourceVersionId } = installSceneTask("lowRiskGroup");
     taskAgent.setJobs([{ ...fakeJob("coverage", "completed", [units[0]!.id]), taskId, sourceVersionIds: [sourceVersionId], policyRevision: 0 }]);
     render(<TaskReviewWorkspace root="task-root" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
     fireEvent.click(screen.getByTestId("task-review-continue"));
     await waitFor(() => expect(screen.getAllByTestId("task-review-group-select")[0]).not.toBeDisabled());
     expect(screen.getAllByTestId("task-review-group-select")[1]).toBeDisabled();
@@ -388,7 +406,7 @@ describe("task review workspace", () => {
   it("rechecks scene basis after a revision conflict during group confirmation", async () => {
     const { taskReview, units } = installSceneTask("lowRiskGroup");
     render(<TaskReviewWorkspace root="task-root" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
     fireEvent.click(screen.getByTestId("task-review-continue"));
     await waitFor(() => expect(screen.getAllByTestId("task-review-group-select")[1]).not.toBeDisabled());
     fireEvent.click(screen.getAllByTestId("task-review-group-select")[0]!);
@@ -461,7 +479,7 @@ describe("task review workspace", () => {
     render(<TaskReviewWorkspace root="task-root" name="任务A" />);
     // A fresh folder task opens on real file management.
     await screen.findByTestId("folder-review-workspace");
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
 
     await launchOverview();
     fireEvent.click(screen.getByTestId("task-review-show-import"));
@@ -834,7 +852,7 @@ describe("task review workspace", () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
 
     render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
 
     // Header title embodies built-in agent standby
     expect(screen.getByText("内置 Agent · 待命")).toBeVisible();
@@ -883,7 +901,7 @@ describe("task review workspace", () => {
     const preflightSpy = vi.spyOn(taskAgent, "startPreflight");
 
     render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
 
     expect(screen.getByTestId("task-review-agent-ready")).toBeVisible();
     expect(screen.getByTestId("task-review-start-preflight")).toBeVisible();
@@ -906,7 +924,7 @@ describe("task review workspace", () => {
     taskAgent.setJobs([{ ...fakeJob("job-run", "running", ["u1"]), sourceVersionIds: [sourceVersionId], policyRevision: 0 }]);
 
     render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
 
     await screen.findByTestId("task-review-agent-running");
     expect(screen.getAllByText("AI 正在预审编排中…")[0]).toBeVisible();
@@ -952,7 +970,7 @@ describe("task review workspace", () => {
     });
 
     render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
 
     expect(screen.getByText("内置 Agent · 任务理解提案")).toBeVisible();
     expect(screen.getByTestId("task-review-proposal-body")).toBeVisible();
@@ -971,7 +989,7 @@ describe("task review workspace", () => {
     const configureSpy = vi.spyOn(taskAgent, "configureModel");
 
     render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
 
     const settingsBtn = screen.getByTestId("spotlight-model-settings-btn");
     expect(settingsBtn).toBeVisible();
@@ -1024,7 +1042,7 @@ describe("task review workspace", () => {
     installBridges();
 
     render(<TaskReviewWorkspace root="task-root" name="空任务" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
 
     // 1. Click empty state button
     const openBtn = await screen.findByTestId("task-review-open-model-settings-btn");
@@ -1061,7 +1079,7 @@ describe("task review workspace", () => {
     const preflightSpy = vi.spyOn(taskAgent, "startPreflight");
 
     render(<TaskReviewWorkspace root="task-root" name="测试任务" />);
-    await screen.findByTestId("task-review-progress");
+    await screen.findByTestId("task-review-revision");
 
     // Click header gear button to configure
     fireEvent.click(screen.getByTestId("spotlight-model-settings-btn"));
