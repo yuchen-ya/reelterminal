@@ -1,6 +1,6 @@
 /** Real local CPU/ffmpeg media flow; no model adapter, credentials or LLM calls. */
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -13,6 +13,7 @@ import { launchApp, type LaunchedApp } from "./harness/launch";
 import { DESKTOP_DIR } from "./harness/paths";
 import { decodeRgbaPng } from "./harness/repair-acceptance-fixtures";
 import { openDirectoryScene, openGlobalScene } from "./harness/task-review-shell";
+import publicMedia from "./fixtures/public-media.json";
 
 let snapshotPage: Page;
 // Coordinate active polling through the store lock. Read durable bytes once
@@ -55,10 +56,13 @@ const waitCandidate = async (page: Page) => {
 };
 
 test("real CPU task media saves explicit regions, exports transparent results and freezes actual VFR PTS", async () => {
-  const publicFixture = path.join(DESKTOP_DIR, ".cache", "mobilesam-validation-2026-11-07", "native-fixtures", "dogs.rgba");
-  expect(existsSync(publicFixture), "Existing public MobileSAM validation fixture must be present; no download/fake fallback").toBe(true);
+  const publicFixture = path.join(DESKTOP_DIR, ".cache", "e2e-public-fixtures", publicMedia.name);
+  const fixtureBytes = await readFile(publicFixture);
+  expect(fixtureBytes.length).toBe(publicMedia.bytes);
+  expect(createHash("sha256").update(fixtureBytes).digest("hex")).toBe(publicMedia.sha256);
   const runDir = await mkdtemp(path.join(os.tmpdir(), "task-review-media-"));
   const evidence = createEvidence("task-review-media");
+  evidence.record("publicFixture", publicMedia);
   let launched: LaunchedApp | undefined;
   let root: string | undefined;
   try {
@@ -78,7 +82,7 @@ test("real CPU task media saves explicit regions, exports transparent results an
     await page.getByTestId("task-review-workspace").waitFor();
     root = path.join(launched.userDataDir, "review", "tasks", "cpu-media-acceptance");
     const imagePath = path.join(root, "public-dogs.png");
-    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "1072x603", "-i", publicFixture, "-frames:v", "1", imagePath], { windowsHide: true });
+    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-i", publicFixture, "-frames:v", "1", imagePath], { windowsHide: true });
     const videoPath = path.join(root, "synthetic-vfr.mp4");
     execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=10:duration=0.5", "-vf", "settb=1/1000,setpts='if(eq(N,0),0,if(eq(N,1),120,if(eq(N,2),430,if(eq(N,3),470,900))))'", "-frames:v", "5", "-fps_mode", "passthrough", "-enc_time_base", "1:1000", "-c:v", "libx264", "-bf", "0", "-pix_fmt", "yuv420p", "-video_track_timescale", "1000", "-movflags", "+faststart", videoPath], { windowsHide: true });
     const frameProbe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", videoPath], { windowsHide: true }).toString()) as { frames: { best_effort_timestamp_time: string }[] };

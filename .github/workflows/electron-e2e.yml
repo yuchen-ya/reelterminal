@@ -82,6 +82,10 @@ jobs:
         run: node apps/desktop/scripts/fetch-segmentation-resources.mjs
       - name: Verify model resource download failure handling
         run: node --test apps/desktop/scripts/fetch-segmentation-resources.node-test.mjs
+      - name: Stage the pinned public test image from its original author
+        run: node apps/desktop/scripts/fetch-e2e-public-media.mjs
+      - name: Verify public test image failure handling
+        run: node --test apps/desktop/scripts/fetch-e2e-public-media.node-test.mjs
       - name: Verify native export and packaging regressions without skips
         env:
           EXPECT_FFMPEG: "1"
@@ -152,6 +156,7 @@ jobs:
             apps/desktop/e2e/.artifacts/**/*.json
             apps/desktop/e2e/.artifacts/**/*.png
             apps/desktop/e2e/.artifacts/**/*.md
+            !apps/desktop/e2e/.artifacts/**/task-review-media*.png
           include-hidden-files: true
           if-no-files-found: error
           overwrite: true

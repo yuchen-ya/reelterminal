@@ -594,7 +594,10 @@ describe('foreground feedback and search', () => {
   });
 
   it('recalls a deep synonym in a large scope with bounded model input while background work is occupied', async () => {
+    const diagnosticStarted = performance.now();
+    const diagnostic = (phase: string) => process.stdout.write(`large-search-phase ${phase} ${Math.round(performance.now() - diagnosticStarted)}ms\n`);
     const requests: TaskModelRequest[] = [];
+    const backgroundStarted = gate();
     const model: Model = async request => {
       if (request.system.includes('Expand only')) { requests.push(request); return JSON.stringify({ terms: ['思念故乡', '怀念家乡'] }); }
       if (request.system.includes('Find semantic matches')) {
@@ -604,12 +607,18 @@ describe('foreground feedback and search', () => {
         const start = range.start + range.text.indexOf('思念故乡');
         return JSON.stringify({ matches: [{ unitId: range.unitId, sourceVersionId: range.sourceVersionId, reason: '表达想家的同义意思', sourceRefs: [{ unitId: range.unitId, sourceVersionId: range.sourceVersionId, start, end: start + 4, text: '思念故乡' }] }] });
       }
-      await new Promise<void>((_resolve, reject) => request.signal.addEventListener('abort', () => reject(new Error('stopped')), { once: true }));
+      await new Promise<void>((_resolve, reject) => {
+        request.signal.throwIfAborted();
+        request.signal.addEventListener('abort', () => reject(new Error('stopped')), { once: true });
+        backgroundStarted.resolve();
+      });
       return '';
     };
     const lines = Array.from({ length: 170 }, (_, i) => `${i}:普通场景${'描写'.repeat(250)}`); lines[139] = '远行多年，每晚都在思念故乡。';
-    const f = await fixture(lines.join('\n'), model); await authorize(f.runtime, f.target);
+    const f = await fixture(lines.join('\n'), model); diagnostic('fixture'); await authorize(f.runtime, f.target); diagnostic('authorized');
+    await backgroundStarted.promise; diagnostic('background-started');
     const found = await f.runtime.search({ ...f.target, query: '想家' });
+    diagnostic('searched');
     expect(found.matches[0].unitId).toBe(f.snapshot.units[139].id); expect(found.matches[0].sourceRefs?.[0].text).toBe('思念故乡');
     expect(found).toMatchObject({ scopeUnitCount: 170, locallyScannedUnitCount: 170, coverage: 'candidates', truncated: true, cached: false });
     expect(found.searchedUnitCount).toBeLessThanOrEqual(24); expect(found.omittedUnitCount).toBe(170 - found.searchedUnitCount);
@@ -617,8 +626,11 @@ describe('foreground feedback and search', () => {
     expect(requests[1].input.length).toBeLessThan(32000);
     expect(found.modelInputRanges!.reduce((sum, range) => sum + range.text.length, 0)).toBeLessThanOrEqual(24000);
     expect((await f.runtime.search({ ...f.target, query: '想家' })).cached).toBe(true); expect(requests).toHaveLength(2);
-    for (const job of (await f.runtime.getState(f.target)).jobs) await f.runtime.cancelJob({ ...f.target, jobId: job.id });
-    await settled(f.runtime, f.target);
+    diagnostic('cached');
+    // This search contract does not require sixteen separate user cancellations,
+    // each re-reading the large scope. Drain the owner before fixture deletion;
+    // individual job cancellation has its own regression above.
+    await f.runtime.dispose(); diagnostic('disposed');
   });
 
   it('does not cache fabricated citations or cancelled search responses', async () => {

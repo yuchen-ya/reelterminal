@@ -51,6 +51,8 @@ Current review acceptance uses `folder-review.e2e.ts`, `task-review.e2e.ts`, `ta
 
 Set `REELTERMINAL_E2E_APP_EXECUTABLE` to an unpacked executable to use the same isolated profiles against a packaged app. External calls normally use the current build CLI unless a spec explicitly selects the packaged entry.
 
+Before `task-review-media.e2e.ts`, explicitly run `node apps/desktop/scripts/fetch-e2e-public-media.mjs` from the repository root. It fetches the original author's fixed public example JPEG and verifies its pinned byte count and SHA-256; a missing or changed image fails the test without a substitute. The image is a test-only cache, excluded from application/model packages. Its photographer rights are not separately established, so photo-bearing PNG evidence stays local and is excluded from CI uploads; numerical JSON evidence remains uploaded and all generated evidence still receives the privacy check. The recovery spec uses an actual held-reader replacement denial on Windows and an explicit filesystem EPERM injection on POSIX, where replacing an open file is permitted.
+
 The P2 synthetic performance suite is opt-in and remains skipped by ordinary
 E2E runs. Use `test:perf:counts`, `test:perf:quick`, or `test:perf:benchmark`;
 see [P2 runner](../../../docs/performance/p2-runner.md) for strict CLI options,

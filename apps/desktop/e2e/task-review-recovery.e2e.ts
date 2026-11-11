@@ -49,11 +49,14 @@ test('review recovery preserves inputs and exact decisions across real sharing d
       const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Function> })._invokeHandlers;
       if (!(handlers instanceof Map)) throw new Error('Isolated handler fault injection unsupported');
       const original = handlers.get(channel)!;
-      const control = { mode: 'normal', queryFail: false, notifyFail: false, notificationFailures: 0, decisions: 0, lastId: '', renameAttempts: 0 };
+      const control = { mode: 'normal', queryFail: false, denyRename: false, notifyFail: false, notificationFailures: 0, decisions: 0, lastId: '', renameAttempts: 0 };
       (globalThis as any).p0Recovery = control;
       const rename = fs.rename.bind(fs), realpath = fs.realpath.bind(fs);
       fs.rename = async (from, to) => {
-        if (String(to) === destination) control.renameAttempts++;
+        if (String(to) === destination) {
+          control.renameAttempts++;
+          if (control.denyRename) throw Object.assign(new Error('controlled atomic replacement denial'), { code: 'EPERM' });
+        }
         return rename(from, to);
       };
       fs.realpath = async (...args: Parameters<typeof fs.realpath>) => {
@@ -76,12 +79,14 @@ test('review recovery preserves inputs and exact decisions across real sharing d
     const counters = () => launched.app.evaluate(() => ({ ...(globalThis as any).p0Recovery }));
     const disk = async () => JSON.parse(await readFile(destination, 'utf8'));
 
-    // A held native reader produces a real Windows rename denial. A lost IPC
-    // reply makes the UI uncertain, including when the real result was rejection.
+    // A held native reader denies rename on Windows. POSIX permits replacing an
+    // open file, so inject the same filesystem failure there, without bypassing
+    // the actual store/IPC path. Do not claim native POSIX sharing denial.
+    evidence.record('replacementDenial', process.platform === 'win32' ? 'native-held-reader' : 'injected-EPERM');
     const beforeBytes = await readFile(destination, 'utf8');
     const before = await authority();
     const reader = await open(destination, 'r');
-    await control({ mode: 'lose-reply', queryFail: true });
+    await control({ mode: 'lose-reply', queryFail: true, denyRename: process.platform !== 'win32' });
     try {
       await page.getByTestId('task-review-decide-kept').click();
       await page.getByTestId('task-review-reconcile-decision').waitFor();
@@ -108,7 +113,7 @@ test('review recovery preserves inputs and exact decisions across real sharing d
       expect(await readFile(destination, 'utf8')).toBe(beforeBytes);
       expect((await readdir(path.dirname(destination))).filter(name => name.endsWith('.tmp'))).toEqual([]);
       await evidence.screenshot('uncertain-rejected-input-retained');
-    } finally { await reader.close(); }
+    } finally { await reader.close(); await control({ denyRename: false }); }
     await control({ mode: 'normal', queryFail: false });
     await page.getByTestId('task-review-reconcile-decision').click();
     await vi.waitFor(async () => expect(await page.getByTestId('task-review-write-recovery').textContent()).toContain('未提交'));

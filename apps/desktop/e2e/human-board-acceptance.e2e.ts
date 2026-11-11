@@ -571,7 +571,9 @@ test("region PNG preserves source resolution, image crop/rotation/alpha and text
     const at = (x: number, y: number) => [...decoded.pixels.subarray(((y + 16) * decoded.width + x + 16) * 4, ((y + 16) * decoded.width + x + 16) * 4 + 4)];
     const near = (actual: number[], expected: number[]) => actual.forEach((value, index) => expect(Math.abs(value - expected[index])).toBeLessThanOrEqual(2));
     near(at(16, 80), [245, 250, 124, 255]); // cropped yellow quadrant, rotated clockwise over source sky
-    near(at(112, 80), [118, 225, 61, 255]); // cropped green quadrant over source wall
+    // Sample below the text bounds (72..97): (112,80) intersects the TOP glyph
+    // on macOS, so it measured font antialiasing instead of image compositing.
+    near(at(112, 104), [118, 225, 61, 255]); // cropped green quadrant over source wall
     near(at(220, 160), [111, 168, 113, 255]); // source grass untouched by transformed overlay
     let redTextPixels = 0;
     for (let sy = 72; sy < 97; sy++) for (let sx = 72; sx < 124; sx++) {
