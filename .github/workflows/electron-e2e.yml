@@ -134,6 +134,7 @@ jobs:
           e2e/human-board-acceptance.e2e.ts e2e/task-review.e2e.ts \
           e2e/task-review-recovery.e2e.ts e2e/task-review-media.e2e.ts \
           e2e/folder-review.e2e.ts e2e/independent-batch-retirement.e2e.ts \
+          e2e/fullscreen-navigation.e2e.ts \
           e2e/workbench-round2-media.e2e.ts e2e/workbench-round2-visual.e2e.ts \
           e2e/workbench-round3-d1-e.e2e.ts
       - name: Run Electron E2E (flows A+B, cross-cutting, endpoint safety)

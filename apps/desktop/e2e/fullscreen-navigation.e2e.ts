@@ -8,6 +8,13 @@ import { createEvidence } from "./harness/evidence";
 async function invokeNativeMenu(app: ElectronApplication, label: string) {
   // Playwright keyboard input does not invoke OS accelerators. Exercise their
   // installed menu callbacks, without injecting renderer actions or stores.
+  // The real OS menu belongs to the active window. Unlike a user selecting it,
+  // directly calling MenuItem.click does not activate a macOS window/Space.
+  const windowId = await app.evaluate(({ app, BrowserWindow }) => {
+    const win = BrowserWindow.fromId((globalThis as any).fullscreenNavigation.windowId)!;
+    app.focus({ steal: true }); win.focus(); return win.id;
+  });
+  await vi.waitFor(async () => expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getFocusedWindow()?.id)).toBe(windowId), { timeout: 5_000 });
   await app.evaluate(({ Menu }, label) => {
     const item = Menu.getApplicationMenu()!.items
       .flatMap(menu => menu.submenu?.items ?? [])
@@ -24,7 +31,7 @@ test("fullscreen preview yields to project selection and desktop dialogs without
   const evidence = createEvidence("fullscreen-navigation", page);
   const nativeState = () => app.evaluate(({ BrowserWindow }) => {
     const state = (globalThis as any).fullscreenNavigation;
-    return { ...state, isFullScreen: BrowserWindow.fromId(state.windowId)?.isFullScreen() };
+    return { ...state, isFullScreen: BrowserWindow.fromId(state.windowId)?.isFullScreen(), focusedWindowId: BrowserWindow.getFocusedWindow()?.id };
   });
   let passed = false;
   try {
