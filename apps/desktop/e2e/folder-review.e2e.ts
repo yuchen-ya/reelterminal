@@ -5,10 +5,13 @@ import os from "node:os";
 import { launchApp } from "./harness/launch";
 import { ARTIFACTS_DIR } from "./harness/paths";
 import { writeRgbaPng } from "./harness/repair-acceptance-fixtures";
+import { createEvidence } from "./harness/evidence";
 
 test("task directory retains real file management, imports and previews through reopening", async () => {
   const runDir = await mkdtemp(path.join(os.tmpdir(), "folder-review-e2e-"));
   let launched = await launchApp({ runDir });
+  const evidence = createEvidence("folder-review", launched.page);
+  let phase = "create";
   const root = path.join(launched.userDataDir, "review", "tasks", "review-task");
   const output = path.join(launched.runDir, "delivery");
   await mkdir(output);
@@ -26,11 +29,28 @@ test("task directory retains real file management, imports and previews through 
     expect(await creation.textContent()).toContain(root);
     await creation.getByRole("button", { name: "创建" }).click();
     await page.getByTestId("folder-review-workspace").waitFor();
+    phase = "rename-task";
+    const authoritativeSnapshot = () => page.evaluate(
+      (directory) => window.reelterminal.folderReview.open(directory), root,
+    );
+    const initialSnapshot = await authoritativeSnapshot();
     await page.getByRole("button", { name: "重命名任务" }).click();
     const renameTask = page.getByRole("dialog", { name: "重命名任务" });
     await renameTask.getByLabel("任务名称").fill("修改后的任务");
     await renameTask.getByRole("button", { name: "确定" }).click();
-    await vi.waitFor(async () => expect(JSON.parse(await readFile(path.join(root, ".reelterminal", "review-index.json"), "utf8")).name).toBe("修改后的任务"));
+    // Use the store's root lock while the atomic metadata write is in flight.
+    // Direct readFile polling can hold a Windows reader across rename and make
+    // the test itself deny the write. Verify persisted bytes separately once
+    // the authoritative mutation has completed; API state alone is not proof.
+    await vi.waitFor(async () => expect((await authoritativeSnapshot()).name).toBe("修改后的任务"));
+    await vi.waitFor(async () => expect(await page.getByRole("button", { name: "重命名任务" }).isEnabled()).toBe(true));
+    const renamed = await authoritativeSnapshot();
+    const renamedIndex = JSON.parse(await readFile(path.join(root, ".reelterminal", "review-index.json"), "utf8"));
+    expect(renamed.taskId).toBe(initialSnapshot.taskId);
+    expect(renamed.revision).toBeGreaterThan(initialSnapshot.revision);
+    expect(renamedIndex).toMatchObject({ taskId: renamed.taskId, name: "修改后的任务", revision: renamed.revision });
+    evidence.record("rename", { taskId: renamed.taskId, revision: renamed.revision, persistedName: renamedIndex.name });
+    phase = "file-management";
     await mkdir(path.join(root, "Selected"));
     await writeFile(path.join(root, "A.txt"), "Review file A");
     await writeFile(path.join(root, "B.txt"), "Review file B");
@@ -89,7 +109,7 @@ test("task directory retains real file management, imports and previews through 
     await row("Renamed-A.txt").waitFor();
     // Classification acts only on the explicitly selected file.
     await row("Renamed-A.txt").click();
-    await page.getByRole("combobox").last().selectOption("Selected");
+    await page.getByTestId("folder-review-workspace").getByRole("combobox").selectOption("Selected");
     await page.getByRole("button", { name: "移动到", exact: true }).click();
     await vi.waitFor(async () =>
       expect(await readFile(path.join(root, "Selected", "Renamed-A.txt"), "utf8")).toBe(
@@ -146,6 +166,8 @@ test("task directory retains real file management, imports and previews through 
 
     launched = await launched.relaunch();
     page = launched.page;
+    evidence.bindPage(page);
+    phase = "reopen";
     await page.getByRole("tab", { name: /Review Workspace/ }).click();
     await page.getByTestId("folder-review-workspace").waitFor();
     await row("Selected").press("ArrowRight");
@@ -156,13 +178,20 @@ test("task directory retains real file management, imports and previews through 
     );
     await row("Selected/Renamed-A.txt").click();
     await vi.waitFor(async () => expect(await page.getByTestId("folder-review-workspace").locator("pre").textContent()).toBe("A new externally written revision"), { timeout: 10000 });
+    const reopened = await authoritativeSnapshot();
     const index = JSON.parse(await readFile(path.join(root, ".reelterminal", "review-index.json"), "utf8"));
+    expect(reopened.taskId).toBe(renamed.taskId);
+    expect(index).toMatchObject({ taskId: reopened.taskId, name: "修改后的任务", revision: reopened.revision });
     expect(index.entries.every((entry: { review: { status: string } }) => entry.review.status === "pending")).toBe(true);
+    evidence.record("reopened", { taskId: reopened.taskId, revision: reopened.revision, persistedName: index.name, entries: index.entries.length });
     await mkdir(ARTIFACTS_DIR, { recursive: true });
     await page.screenshot({
       path: path.join(ARTIFACTS_DIR, "folder-review.png"),
     });
+    evidence.flush({ passed: true });
   } catch (error) {
+    evidence.record("failure", { phase, message: String(error), alerts: await launched.page.getByRole("alert").allTextContents().catch(() => []) });
+    evidence.flush({ passed: false });
     await mkdir(ARTIFACTS_DIR, { recursive: true });
     await launched.page.screenshot({ path: path.join(ARTIFACTS_DIR, "folder-review--failure.png") });
     throw error;
