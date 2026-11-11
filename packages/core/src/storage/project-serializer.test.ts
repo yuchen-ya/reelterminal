@@ -1,3 +1,5 @@
+import { createEffectFromPreset } from "../effects/particle-presets";
+import { getParticlesAtTime } from "../effects/particle-engine";
 import { describe, expect, it } from "vitest";
 import type { Project } from "../types";
 import type {
@@ -1183,5 +1185,27 @@ describe("imported motion expression preservation", () => {
     expect(evaluateMotionPropertyValueAtTime({ keyframes: loaded.layers[0]!.keyframes,
       expressions: loaded.layers[0]!.expressions, property, localTime: 3, fallback: 5,
       duration: loaded.duration, context: { composition: loaded, layer: loaded.layers[0]! } })).toBe(11);
+  });
+});
+
+describe("persisted project particle overlays", () => {
+  it("round trips the effect configuration and produces the same frame after reload", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const effect = createEffectFromPreset("confetti-celebration", "particles", "clip", 0, 5)!;
+    const project = makeProject({ particleEffects: [effect] });
+    const restored = serializer.importFromJson(serializer.exportToJson(project));
+    expect(restored.particleEffects).toEqual([effect]);
+    expect(getParticlesAtTime(restored.particleEffects![0], 1.25, 1920, 1080))
+      .toEqual(getParticlesAtTime(effect, 1.25, 1920, 1080));
+    expect(serializer.importFromJson(serializer.exportToJson(makeProject())).particleEffects).toBeUndefined();
+  });
+
+  it("rejects malformed imported particle effects before rendering", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const json = JSON.stringify({ version: "1.0.0", project: { ...makeProject(), particleEffects: [{ id: "invalid" }] } });
+    expect(() => serializer.importFromJson(json)).toThrow("Invalid project particle effects");
+    expect(serializer.importFromJsonWithValidation(json)).toMatchObject({
+      project: null, validation: { valid: false, errors: ["Invalid project particle effects"] },
+    });
   });
 });

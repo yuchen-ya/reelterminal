@@ -413,14 +413,16 @@ export class TransitionEngine {
     progress: number,
   ): Promise<void> {
     const ctx = this.getContext();
-    // Draw outgoing frame with decreasing opacity
+    // Add the two weighted, premultiplied inputs. Source-over would attenuate
+    // the outgoing contribution a second time and darken the midpoint.
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = 1 - progress;
     ctx.drawImage(outgoing, 0, 0, this.width, this.height);
 
-    // Draw incoming frame with increasing opacity
     ctx.globalAlpha = progress;
     ctx.drawImage(incoming, 0, 0, this.width, this.height);
-    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   private async renderDipToColor(

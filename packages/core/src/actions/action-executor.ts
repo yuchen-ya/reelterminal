@@ -1454,14 +1454,7 @@ export class ActionExecutor {
       }
 
       case "clip/repointSource": {
-        const params = action.params as {
-          clipId: string;
-          mediaId: string;
-          inPoint: number;
-          outPoint: number;
-          duration: number;
-          supersedesMediaId?: string;
-        };
+        const params = action.params as Extract<ClipAction, { type: "clip/repointSource" }>["params"];
         timeline.tracks = timeline.tracks.map((track: MutableTrack) => ({
           ...track,
           clips: track.clips.map((clip: MutableClip) =>
@@ -1469,6 +1462,7 @@ export class ActionExecutor {
               ? {
                   ...clip,
                   mediaId: params.mediaId,
+                  stabilization: clip.mediaId === params.mediaId ? clip.stabilization : params.stabilization,
                   inPoint: params.inPoint,
                   outPoint: params.outPoint,
                   duration: params.duration,

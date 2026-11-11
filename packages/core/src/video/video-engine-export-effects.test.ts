@@ -196,6 +196,7 @@ const makeProject = (clip: Clip): Project => ({
 
 describe("VideoEngine export frame effects", () => {
   const ctx = {
+    canvas: {} as OffscreenCanvas,
     fillStyle: "",
     globalAlpha: 1,
     globalCompositeOperation: "source-over" as GlobalCompositeOperation,
@@ -272,6 +273,194 @@ describe("VideoEngine export frame effects", () => {
     order.length = 0;
     await engine.renderFrame({ ...project, timeline: { ...project.timeline, tracks: [base, text, graphics] } }, 1);
     expect(order).toEqual(["svg", "text"]);
+  });
+
+  it("renders canonical overlays even when editor singleton state belongs to another project", async () => {
+    const { VideoEngine } = await import("./video-engine");
+    const { titleEngine, TitleEngine } = await import("../text/title-engine");
+    const { graphicsEngine, GraphicsEngine } = await import("../graphics/graphics-engine");
+    const engine = new VideoEngine();
+    Object.assign(engine, { initialized: true, mediabunny: {} });
+    const project = makeProject(makeClip([], {} as ClipColorGrading));
+    const base = { ...project.timeline.tracks[0]!, clips: [] };
+    const text = titleEngine.createTextClip({ trackId: "text", startTime: 0, duration: 2, text: "snapshot" });
+    const shape = graphicsEngine.createShape({ shapeType: "circle", width: 100, height: 100 }, "graphics", 0, 2);
+    const svg = { ...shape, id: "snapshot-svg", type: "svg" as const, svgContent: "<svg/>", viewBox: { minX: 0, minY: 0, width: 100, height: 100 }, preserveAspectRatio: "xMidYMid" as const };
+    const sticker = { ...shape, id: "snapshot-sticker", type: "sticker" as const, imageUrl: "data:image/png;base64," };
+    titleEngine.loadTextClips([{ ...text, text: "another project" }]);
+    graphicsEngine.loadShapeClips([]);
+    const raster = new OffscreenCanvas(640, 360);
+    const renderText = vi.spyOn(TitleEngine.prototype, "renderText").mockReturnValue({ canvas: raster } as any);
+    const renderGraphic = vi.spyOn(GraphicsEngine.prototype, "renderGraphic").mockResolvedValue({ canvas: raster, width: 640, height: 360 });
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => makeBitmap("composite")));
+    const snapshot = {
+      ...project,
+      textClips: [text], shapeClips: [shape], svgClips: [svg], stickerClips: [sticker],
+      timeline: { ...project.timeline, tracks: [{ ...base, id: "text", type: "text" as const }, { ...base, id: "graphics", type: "graphics" as const }] },
+    } as Project;
+    await engine.renderFrame(snapshot, 1, 320, 180);
+    expect(renderText).toHaveBeenCalledWith(text, 320, 180, 1, { width: 640, height: 360 });
+    expect(renderGraphic.mock.calls.map(([clip]) => clip)).toEqual([shape, svg, sticker]);
+    renderText.mockClear(); renderGraphic.mockClear();
+    await engine.renderFrame({ ...snapshot, textClips: undefined, shapeClips: undefined, svgClips: undefined, stickerClips: undefined }, 1);
+    expect(renderText).not.toHaveBeenCalled();
+    expect(renderGraphic).not.toHaveBeenCalled();
+    renderText.mockRestore(); renderGraphic.mockRestore();
+  });
+
+  it("maps host decoding from snapshot speed and freeze state without speed-engine hydration", async () => {
+    const { VideoEngine } = await import("./video-engine");
+    const engine = new VideoEngine();
+    Object.assign(engine, { initialized: true, mediabunny: {} });
+    const clip = { ...makeClip([], {} as ClipColorGrading), inPoint: 2, outPoint: 10, speed: 2 };
+    const decodeSourceFrame = vi.fn(async (_clip: Clip, _media: unknown, _time: number, _width: number, _height: number) => makeBitmap("host-source"));
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => makeBitmap("composite")));
+    await engine.renderFrame(makeProject(clip), 1, 640, 360, { decodeSourceFrame });
+    expect(decodeSourceFrame.mock.calls[0]![2]).toBe(4);
+    const reversed = { ...clip, reversed: true };
+    await engine.renderFrame(makeProject(reversed), 1, 640, 360, { decodeSourceFrame });
+    expect(decodeSourceFrame.mock.calls[1]![2]).toBe(8);
+    const frozen = { ...clip, freezeFrames: [{ id: "freeze", clipId: clip.id, startTime: 0.5, duration: 1, sourceTime: 3 }] };
+    await engine.renderFrame(makeProject(frozen), 1, 640, 360, { decodeSourceFrame });
+    expect(decodeSourceFrame.mock.calls[2]![2]).toBe(5);
+    for (const result of decodeSourceFrame.mock.results) expect((await result.value).close).toHaveBeenCalledOnce();
+  });
+
+  it("serializes shared composition and restores the per-frame rendering mode after failure", async () => {
+    const { VideoEngine } = await import("./video-engine");
+    const engine = new VideoEngine();
+    Object.assign(engine, { initialized: true, mediabunny: {} });
+    const project = makeProject(makeClip([], {} as ClipColorGrading));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const modes: boolean[] = [];
+    const decodeSourceFrame = vi.fn(async () => {
+      modes.push(engine.exportMode);
+      if (modes.length === 1) { await gate; throw new Error("decoder failure"); }
+      return makeBitmap("host-source");
+    });
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => makeBitmap("composite")));
+    const first = engine.renderFrame(project, 1, 640, 360, { decodeSourceFrame, realtime: true });
+    const second = engine.renderFrame(project, 2, 640, 360, { decodeSourceFrame });
+    await vi.waitFor(() => expect(decodeSourceFrame).toHaveBeenCalledOnce());
+    release();
+    await expect(first).rejects.toThrow("decoder failure");
+    await second;
+    expect(modes).toEqual([false, true]);
+    expect(engine.exportMode).toBe(false);
+  });
+
+  it("decodes persisted stabilized ranges at their own source origin and rejects missing derived bytes", async () => {
+    const { VideoEngine } = await import("./video-engine");
+    const engine = new VideoEngine();
+    Object.assign(engine, { initialized: true, mediabunny: {} });
+    const clip = {
+      ...makeClip([], {} as ClipColorGrading),
+      stabilization: { enabled: true, strength: 50, cropMode: "auto" as const,
+        renderedSource: { mediaId: "stabilized", inPoint: 1, outPoint: 3 } },
+    };
+    const project = makeProject(clip);
+    const derived = { ...project.mediaLibrary.items[0]!, id: "stabilized", blob: new Blob(["stabilized"]) };
+    project.mediaLibrary.items.push(derived);
+    const decodeSourceFrame = vi.fn(async (_clip: Clip, _media: unknown, _time: number, _width: number, _height: number) => makeBitmap("source"));
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => makeBitmap("composite")));
+    const frame = await engine.renderFrame(project, 2, 640, 360, { decodeSourceFrame });
+    expect(decodeSourceFrame).toHaveBeenLastCalledWith(clip, derived, 1, 640, 360);
+    expect(frame.decodedClipIds).toEqual([clip.id]);
+    await engine.renderFrame(project, 0.5, 640, 360, { decodeSourceFrame });
+    expect(decodeSourceFrame).toHaveBeenLastCalledWith(clip, project.mediaLibrary.items[0], 0.5, 640, 360);
+    await engine.renderFrame(project, 3, 640, 360, { decodeSourceFrame });
+    expect(decodeSourceFrame).toHaveBeenLastCalledWith(clip, project.mediaLibrary.items[0], 3, 640, 360);
+    await expect(engine.renderFrame({ ...project, mediaLibrary: { items: [project.mediaLibrary.items[0]!] } }, 2, 640, 360, { decodeSourceFrame })).rejects.toThrow("Stabilized media stabilized");
+  });
+
+  it("uses the same optical-flow interpolation for realtime and exact frames on the absolute source grid", async () => {
+    const { VideoEngine } = await import("./video-engine");
+    const { FrameInterpolationEngine } = await import("./frame-interpolation");
+    const initialize = vi.spyOn(FrameInterpolationEngine.prototype, "initialize").mockResolvedValue();
+    const interpolate = vi.spyOn(FrameInterpolationEngine.prototype, "interpolate").mockImplementation(async () => ({ frame: makeBitmap("interpolated"), computeTimeMs: 0, method: "optical-flow" }));
+    const engine = new VideoEngine();
+    Object.assign(engine, { initialized: true, mediabunny: {} });
+    const clip = { ...makeClip([], {} as ClipColorGrading), inPoint: 0.01, speed: 0.5, smoothSlowMo: true };
+    const project = makeProject(clip);
+    const decodeSourceFrame = vi.fn(async (_clip: Clip, _media: unknown, _time: number, _width: number, _height: number) => makeBitmap("sample"));
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => makeBitmap("composite")));
+    const drawn: string[] = [];
+    ctx.drawImage.mockImplementation((source: any) => { if (source.id) drawn.push(source.id); });
+    try {
+      await engine.renderFrame(project, 0.1, 640, 360, { decodeSourceFrame, realtime: true });
+      await engine.renderFrame(project, 0.1, 640, 360, { decodeSourceFrame });
+      expect(decodeSourceFrame.mock.calls.map((call) => call[2])).toEqual([1 / 30, 2 / 30]);
+      expect(interpolate).toHaveBeenCalledTimes(2);
+      expect(interpolate.mock.calls.map((call) => call[2])).toEqual([expect.closeTo(0.8), expect.closeTo(0.8)]);
+      expect(drawn).toEqual(["interpolated", "interpolated"]);
+    } finally {
+      ctx.drawImage.mockReset(); initialize.mockRestore(); interpolate.mockRestore(); engine.dispose();
+    }
+  });
+
+  it("blends transformed video and each transition endpoint against the underlying scene", async () => {
+    const { VideoEngine } = await import("./video-engine");
+    const engine = new VideoEngine();
+    Object.assign(engine, { initialized: true, mediabunny: {} });
+    const clipA = { ...makeClip([], {} as ClipColorGrading), blendMode: "multiply" as const, blendOpacity: 40 };
+    const clipB = { ...clipA, id: "clip-b", blendMode: "screen" as const, blendOpacity: 60 };
+    const project = makeProject(clipA);
+    const calls: Array<[string, string, number]> = [];
+    ctx.drawImage.mockImplementation((source: any) => { if (source.id) calls.push([source.id, ctx.globalCompositeOperation, ctx.globalAlpha]); });
+    const decodeSourceFrame = vi.fn(async (clip: Clip) => makeBitmap(clip.id));
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => makeBitmap("composite")));
+    try {
+      await engine.renderFrame(project, 1, 640, 360, { decodeSourceFrame });
+      expect(calls).toContainEqual([clipA.id, "multiply", 0.4]);
+      calls.length = 0;
+      const transition = { id: "transition", type: "crossfade", duration: 1, clipAId: clipA.id, clipBId: clipB.id, params: {}, easing: "linear" };
+      const internal = engine as any;
+      internal.transitionEngine = {
+        getEngineDimensions: () => ({ width: 640, height: 360 }),
+        isTimeInTransition: () => true,
+        calculateTransitionProgress: () => 0.5,
+        renderTransition: vi.fn(async () => ({ frame: makeBitmap("transition") })),
+      };
+      const track = { ...project.timeline.tracks[0]!, clips: [clipA, clipB], transitions: [transition] };
+      const frame = await engine.renderFrame({ ...project, timeline: { ...project.timeline, tracks: [track] } } as Project, 1, 640, 360, { decodeSourceFrame });
+      expect(calls).toContainEqual([clipA.id, "multiply", 0.4]);
+      expect(calls).toContainEqual([clipB.id, "screen", 0.6]);
+      expect(frame.decodedClipIds).toEqual([clipA.id, clipB.id]);
+    } finally { ctx.drawImage.mockReset(); }
+  });
+
+  it("rejects a frame after unrecoverable effects failure and releases its decoded bitmap", async () => {
+    const { VideoEngine } = await import("./video-engine");
+    const engine = new VideoEngine();
+    Object.assign(engine, { initialized: true, mediabunny: {} });
+    const source = makeBitmap("source");
+    const effect: Effect = { id: "effect", type: "brightness", enabled: true, params: { value: 2 } };
+    const project = makeProject(makeClip([effect], {} as ClipColorGrading));
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mocks.effectsApply.mockRejectedValue(new Error("effect device lost"));
+    try {
+      await expect(engine.renderFrame(project, 1, 640, 360, { decodeSourceFrame: async () => source })).rejects.toThrow("Failed to apply effects");
+      expect(source.close).toHaveBeenCalledOnce();
+    } finally { warning.mockRestore(); }
+  });
+
+  it("releases the frame queue and rendering mode even when export-scope cleanup fails", async () => {
+    const { VideoEngine } = await import("./video-engine");
+    const { getMediaEngine } = await import("../media/mediabunny-engine");
+    const engine = new VideoEngine();
+    Object.assign(engine, { initialized: true, mediabunny: {} });
+    const clip = makeClip([], {} as ClipColorGrading);
+    const project = makeProject(clip);
+    const finish = vi.spyOn(getMediaEngine(), "endExportFrame").mockImplementationOnce(() => { throw new Error("scope cleanup failed"); });
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => makeBitmap("composite")));
+    const decodeSourceFrame = async () => makeBitmap("source");
+    try {
+      await expect(engine.renderFrame(project, 1, 640, 360, { decodeSourceFrame })).rejects.toThrow("scope cleanup failed");
+      const next = await engine.renderFrame(project, 1, 640, 360, { decodeSourceFrame });
+      expect(next.decodedClipIds).toEqual([clip.id]);
+      expect(engine.exportMode).toBe(false);
+    } finally { finish.mockRestore(); }
   });
 
   it("exports active clip effects and every color-grading stage", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Project } from "../types/project";
-import { calculateProjectDuration } from "./project-duration";
+import { calculateProjectDuration, timelineFrameCount, timelineSampleTime } from "./project-duration";
 
 function project(overrides: Partial<Project> = {}): Project {
   return {
@@ -47,4 +47,13 @@ describe("calculateProjectDuration", () => {
 
     expect(calculateProjectDuration(value)).toBe(12);
   });
+});
+
+it("samples the final exported frame at a closed-end seek, including partial final frames", () => {
+  const end = 0.1 + 0.2;
+  expect(timelineFrameCount(end, 30)).toBe(9);
+  expect(timelineSampleTime(end, end, 30)).toBe(8 / 30);
+  expect(timelineSampleTime(0.301, 0.301, 30)).toBe(9 / 30);
+  expect(timelineSampleTime(0.296, 0.301, 30)).toBe(0.296);
+  expect(timelineSampleTime(0, 0, 30)).toBe(0);
 });

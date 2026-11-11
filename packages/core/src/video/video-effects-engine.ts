@@ -95,7 +95,10 @@ export class VideoEffectsEngine {
 
   private _shaderRenderer: MotionShaderRenderer | null = null;
 
-  constructor(config: VideoEffectsConfig) {
+  constructor(
+    config: VideoEffectsConfig,
+    private readonly resolveShader: typeof getMotionShaderDef = getMotionShaderDef,
+  ) {
     this.width = config.width;
     this.height = config.height;
   }
@@ -259,7 +262,7 @@ export class VideoEffectsEngine {
     const params = effect.params as Record<string, unknown>;
     const shaderId = params.shaderId;
     if (typeof shaderId !== "string" || shaderId.length === 0) return null;
-    const def = getMotionShaderDef(shaderId);
+    const def = this.resolveShader(shaderId);
     if (!def || def.category !== "effect") return null;
 
     const resolvedParams: Record<string, number | string> = {};

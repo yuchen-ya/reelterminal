@@ -33,6 +33,7 @@ export class VidstabEngine {
   private loaded = false;
   private loading: Promise<void> | null = null;
   private stabilizedBlobs: Map<string, Blob> = new Map();
+  private pendingJob: Promise<void> = Promise.resolve();
 
   async load(onProgress?: (progress: VidstabProgress) => void): Promise<void> {
     if (this.loaded) return;
@@ -103,7 +104,20 @@ export class VidstabEngine {
     return this.stabilizedBlobs.get(clipId) ?? null;
   }
 
-  async stabilize(
+  stabilize(
+    clipId: string,
+    sourceBlob: Blob,
+    config: StabilizationConfig = DEFAULT_STABILIZATION_CONFIG,
+    onProgress?: (progress: VidstabProgress) => void,
+    trimRange?: { inPoint: number; outPoint: number },
+  ): Promise<Blob> {
+    // Each workspace shares this loaded WASM filesystem and its job filenames.
+    const job = this.pendingJob.then(() => this.stabilizeClip(clipId, sourceBlob, config, onProgress, trimRange));
+    this.pendingJob = job.then(() => undefined, () => undefined);
+    return job;
+  }
+
+  private async stabilizeClip(
     clipId: string,
     sourceBlob: Blob,
     config: StabilizationConfig = DEFAULT_STABILIZATION_CONFIG,

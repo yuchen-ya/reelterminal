@@ -92,7 +92,7 @@ describe("VideoEngine mask compositing", () => {
     const drawImage = vi.fn();
 
     await surface.drawClipFrameToContext(
-      { drawImage } as unknown as OffscreenCanvasRenderingContext2D,
+      { drawImage, save: vi.fn(), restore: vi.fn() } as unknown as OffscreenCanvasRenderingContext2D,
       bitmap("source"),
       transform,
       1,

@@ -554,6 +554,7 @@ export class InverseActionGenerator {
         return this.createInverseAction(action, "clip/repointSource", {
           clipId: action.params.clipId,
           mediaId: clip.mediaId,
+          ...(clip.stabilization ? { stabilization: clip.stabilization } : {}),
           inPoint: clip.inPoint,
           outPoint: clip.outPoint,
           duration: clip.duration,

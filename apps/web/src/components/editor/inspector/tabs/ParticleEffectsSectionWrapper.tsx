@@ -1,62 +1,74 @@
 import React from "react";
 import { ParticleEffectsSection } from "../";
-import {
-  getParticleEngine,
-  type ParticleEffect,
-  type ParticleConfig,
-} from "@reelterminal/core";
+import type { ParticleEffect, ParticleConfig } from "@reelterminal/core";
+import { useProjectStore } from "../../../../stores/project-store";
 
 export const ParticleEffectsSectionWrapper: React.FC<{
   clipId: string;
   clipDuration: number;
   clipStartTime: number;
 }> = ({ clipId, clipDuration, clipStartTime }) => {
-  const [updateTrigger, setUpdateTrigger] = React.useState(0);
-  const particleEngine = React.useMemo(() => getParticleEngine(), []);
+  const project = useProjectStore((state) => state.project);
+  const workspaceId = useProjectStore((state) => state.workspaceId);
+  const effects = (project.particleEffects ?? []).filter(
+    (effect) => effect.clipId === clipId,
+  );
 
-  const effects = React.useMemo(() => {
-    return particleEngine.getEffectsForClip(clipId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clipId, particleEngine, updateTrigger]);
+  const updateEffects = React.useCallback(
+    (update: (effects: ParticleEffect[]) => ParticleEffect[]) => {
+      useProjectStore.setState((state) => {
+        // A stale inspector callback must not edit a newly selected workspace.
+        if (state.readOnlyPreview || state.project.id !== project.id ||
+            state.workspaceId !== workspaceId) {
+          return state;
+        }
+        return {
+          project: {
+            ...state.project,
+            particleEffects: update(state.project.particleEffects ?? []),
+            modifiedAt: Date.now(),
+          },
+        };
+      });
+    },
+    [project.id, workspaceId],
+  );
 
   const handleAddEffect = React.useCallback(
-    (effect: ParticleEffect) => {
-      particleEngine.addEffect(effect);
-      setUpdateTrigger((v) => v + 1);
-    },
-    [particleEngine]
+    (effect: ParticleEffect) => updateEffects((effects) => [...effects, effect]),
+    [updateEffects],
   );
-
   const handleUpdateEffect = React.useCallback(
     (effectId: string, config: Partial<ParticleConfig>) => {
-      particleEngine.updateEffect(effectId, config);
-      setUpdateTrigger((v) => v + 1);
+      updateEffects((effects) => effects.map((effect) =>
+        effect.id === effectId
+          ? { ...effect, config: { ...effect.config, ...config } }
+          : effect,
+      ));
     },
-    [particleEngine]
+    [updateEffects],
   );
-
   const handleRemoveEffect = React.useCallback(
     (effectId: string) => {
-      particleEngine.removeEffect(effectId);
-      setUpdateTrigger((v) => v + 1);
+      updateEffects((effects) => effects.filter((effect) => effect.id !== effectId));
     },
-    [particleEngine]
+    [updateEffects],
   );
-
   const handleToggleEffect = React.useCallback(
     (effectId: string, enabled: boolean) => {
-      particleEngine.toggleEffect(effectId, enabled);
-      setUpdateTrigger((v) => v + 1);
+      updateEffects((effects) => effects.map((effect) =>
+        effect.id === effectId ? { ...effect, enabled } : effect,
+      ));
     },
-    [particleEngine]
+    [updateEffects],
   );
-
   const handleUpdateTiming = React.useCallback(
     (effectId: string, startTime: number, duration: number) => {
-      particleEngine.updateEffectTiming(effectId, startTime, duration);
-      setUpdateTrigger((v) => v + 1);
+      updateEffects((effects) => effects.map((effect) =>
+        effect.id === effectId ? { ...effect, startTime, duration } : effect,
+      ));
     },
-    [particleEngine]
+    [updateEffects],
   );
 
   return (

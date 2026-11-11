@@ -20,8 +20,7 @@ import {
 } from "./types";
 import { VideoEngine, getVideoEngine } from "../video/video-engine";
 import { AudioEngine, getAudioEngine } from "../audio/audio-engine";
-import { titleEngine } from "../text/title-engine";
-import { graphicsEngine } from "../graphics/graphics-engine";
+import { calculateProjectDuration, timelineFrameCount } from "../timeline/project-duration";
 import { UpscalingEngine, getUpscalingEngine } from "../video/upscaling";
 import { getMediaEngine } from "../media/mediabunny-engine";
 import { getWavEncoder } from "../wasm/wav";
@@ -160,8 +159,7 @@ export class ExportEngine {
       fullSettings.quality = 95;
     }
 
-    const { timeline } = project;
-    const timelineDuration = this.calculateTimelineDuration(timeline);
+    const timelineDuration = calculateProjectDuration(project);
 
     if (backend.requiresWebCodecsClamping) {
       const isMemoryIntensiveCodec =
@@ -195,10 +193,6 @@ export class ExportEngine {
       fullSettings.height,
     );
 
-    this.videoEngine?.resetExportState();
-    if (this.videoEngine) {
-      this.videoEngine.exportMode = true;
-    }
 
     if (timelineDuration <= 0) {
       return {
@@ -222,7 +216,7 @@ export class ExportEngine {
       };
     }
 
-    const totalFrames = Math.ceil(timelineDuration * fullSettings.frameRate);
+    const totalFrames = timelineFrameCount(timelineDuration, fullSettings.frameRate);
 
     try {
       if (this.videoEngine) this.videoEngine.exportTiming = timing ?? null;
@@ -283,6 +277,7 @@ export class ExportEngine {
           time,
           fullSettings.width,
           fullSettings.height,
+          { exportMode: true },
         );
         renderMsTotal += performance.now() - renderStart;
         timing?.record("frameRenderIncludingDecode", renderStart);
@@ -347,9 +342,6 @@ export class ExportEngine {
       mediaEngine.clearFrameCache();
       this.videoEngine?.clearVideoElementCache();
       this.videoEngine?.clearCache();
-      if (this.videoEngine) {
-        this.videoEngine.exportMode = false;
-      }
 
       yield this.createProgress(
         "muxing",
@@ -395,9 +387,6 @@ export class ExportEngine {
       this.audioEngine?.clearCache();
       this.videoEngine?.clearVideoElementCache();
       this.videoEngine?.clearCache();
-      if (this.videoEngine) {
-        this.videoEngine.exportMode = false;
-      }
       try {
         getMediaEngine().disposeAllExportDecoders();
         getMediaEngine().clearFrameCache();
@@ -437,8 +426,7 @@ export class ExportEngine {
     this.abortController = new AbortController();
     this.currentExport = { startTime: Date.now(), framesRendered: 0 };
 
-    const { timeline } = project;
-    const timelineDuration = this.calculateTimelineDuration(timeline);
+    const timelineDuration = calculateProjectDuration(project);
 
     if (timelineDuration <= 0) {
       return {
@@ -526,6 +514,7 @@ export class ExportEngine {
         time,
         fullSettings.width,
         fullSettings.height,
+        { exportMode: true },
       );
 
       // Scale if needed (fallback in case render didn't match)
@@ -596,9 +585,8 @@ export class ExportEngine {
   ): AsyncGenerator<ExportProgress, ExportResult> {
     this.ensureInitialized();
 
-    const { timeline } = project;
     const frameRate = project.settings.frameRate;
-    const totalFrames = Math.ceil(timeline.duration * frameRate);
+    const totalFrames = timelineFrameCount(calculateProjectDuration(project), frameRate);
 
     const fullSettings: SequenceExportSettings = {
       ...DEFAULT_IMAGE_SETTINGS,
@@ -933,7 +921,7 @@ export class ExportEngine {
     project: Project,
     settings: VideoExportSettings | AudioExportSettings,
   ): number {
-    const duration = project.timeline.duration;
+    const duration = calculateProjectDuration(project);
 
     if ("codec" in settings) {
       const videoBitrate = settings.bitrate * 1000;
@@ -956,7 +944,7 @@ export class ExportEngine {
     project: Project,
     settings: VideoExportSettings | AudioExportSettings,
   ): number {
-    const duration = project.timeline.duration;
+    const duration = calculateProjectDuration(project);
 
     if ("codec" in settings) {
       const pixelCount = settings.width * settings.height;
@@ -987,7 +975,7 @@ export class ExportEngine {
       return null;
     }
 
-    const timelineDuration = this.calculateTimelineDuration(timeline);
+    const timelineDuration = calculateProjectDuration(project);
     if (timelineDuration <= 0) {
       return null;
     }
@@ -1013,7 +1001,7 @@ export class ExportEngine {
     project: Project,
     backend: EncoderBackend,
   ): Promise<void> {
-    const timelineDuration = this.calculateTimelineDuration(project.timeline);
+    const timelineDuration = calculateProjectDuration(project);
     if (timelineDuration <= 0) {
       return;
     }
@@ -1220,55 +1208,6 @@ export class ExportEngine {
       fileSize,
       averageBitrate: duration > 0 ? (fileSize * 8000) / duration : 0,
     };
-  }
-
-  private calculateTimelineDuration(timeline: Project["timeline"]): number {
-    let maxEndTime = 0;
-    for (const track of timeline.tracks) {
-      for (const clip of track.clips) {
-        const endTime = clip.startTime + clip.duration;
-        if (endTime > maxEndTime) {
-          maxEndTime = endTime;
-        }
-      }
-    }
-    const textClips = titleEngine.getAllTextClips();
-    for (const textClip of textClips) {
-      const endTime = textClip.startTime + textClip.duration;
-      if (endTime > maxEndTime) {
-        maxEndTime = endTime;
-      }
-    }
-    const shapeClips = graphicsEngine.getAllShapeClips();
-    for (const shapeClip of shapeClips) {
-      const endTime = shapeClip.startTime + shapeClip.duration;
-      if (endTime > maxEndTime) {
-        maxEndTime = endTime;
-      }
-    }
-    const svgClips = graphicsEngine.getAllSVGClips();
-    for (const svgClip of svgClips) {
-      const endTime = svgClip.startTime + svgClip.duration;
-      if (endTime > maxEndTime) {
-        maxEndTime = endTime;
-      }
-    }
-    const stickerClips = graphicsEngine.getAllStickerClips();
-    for (const stickerClip of stickerClips) {
-      const endTime = stickerClip.startTime + stickerClip.duration;
-      if (endTime > maxEndTime) {
-        maxEndTime = endTime;
-      }
-    }
-    if (timeline.subtitles) {
-      for (const subtitle of timeline.subtitles) {
-        if (subtitle.endTime > maxEndTime) {
-          maxEndTime = subtitle.endTime;
-        }
-      }
-    }
-
-    return maxEndTime;
   }
 
   private shouldApplyUpscaling(

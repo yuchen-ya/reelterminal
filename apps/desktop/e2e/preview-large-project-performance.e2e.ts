@@ -38,6 +38,7 @@ interface EditResult {
 
 interface EditorContext {
   projectRevision: number;
+  identity: { projectId: string; workspaceId: string };
 }
 
 interface TextOverlay {
@@ -233,6 +234,8 @@ performanceDescribe("preview large-project GUI performance", () => {
       expect(capabilities.ok, JSON.stringify(capabilities)).toBe(true);
       const context = await agent.callCommand<EditorContext>("editor.get_context");
       expect(context.ok, JSON.stringify(context)).toBe(true);
+      const { projectId, workspaceId } = context.value!.identity;
+      const target = { projectId, workspaceId };
       let revision = context.value!.projectRevision;
 
       const trackIds = Array.from(
@@ -240,6 +243,7 @@ performanceDescribe("preview large-project GUI performance", () => {
         (_, index) => `preview-perf-text-${index}`,
       );
       const tracks = await agent.callCommand<EditResult>("edit.apply", {
+        ...target,
         ops: trackIds.map((trackId) => ({
           op: "track.add",
           trackType: "text",
@@ -273,6 +277,7 @@ performanceDescribe("preview large-project GUI performance", () => {
           "edit.apply",
           {
             ops: textOps.slice(offset, offset + EDIT_BATCH_SIZE),
+            ...target,
             expectedRevision: revision,
             idempotencyKey: `preview-perf-text-${offset / EDIT_BATCH_SIZE}-v1`,
           },
@@ -284,7 +289,7 @@ performanceDescribe("preview large-project GUI performance", () => {
 
       const timelineBefore = await agent.callCommand<TimelineView>(
         "timeline.get",
-        {},
+        target,
         { timeoutMs: 60_000 },
       );
       expect(timelineBefore.ok, JSON.stringify(timelineBefore)).toBe(true);
@@ -312,6 +317,14 @@ performanceDescribe("preview large-project GUI performance", () => {
       if (!handleBox) throw new Error("selected text move handle has no box");
 
       const heapAfterBuildBytes = await readHeap(launched.page);
+      // Measure the interactive window after the external CLI has finished
+      // populating it. Chromium can throttle rAF in an occluded renderer.
+      await launched.app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0]!;
+        window.show();
+        window.focus();
+      });
+      await launched.page.bringToFront();
       const startX = handleBox.x + handleBox.width / 2;
       const startY = handleBox.y + handleBox.height / 2;
       const hitTarget = await launched.page.evaluate(
@@ -346,7 +359,7 @@ performanceDescribe("preview large-project GUI performance", () => {
 
       const timelineAfter = await agent.callCommand<TimelineView>(
         "timeline.get",
-        {},
+        target,
         { timeoutMs: 60_000 },
       );
       expect(timelineAfter.ok, JSON.stringify(timelineAfter)).toBe(true);

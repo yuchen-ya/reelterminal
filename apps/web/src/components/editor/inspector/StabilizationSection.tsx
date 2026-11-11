@@ -38,7 +38,7 @@ export const StabilizationSection: React.FC<StabilizationSectionProps> = ({
 
   const vidstabEngine = getVidstabEngine();
   const stabilizationAvailable = vidstabEngine.isLoaded() || Boolean(getVidstabCoreUrl(typeof crossOriginIsolated !== "undefined" && crossOriginIsolated ? "mt" : "st"));
-  const isStabilized = vidstabEngine.hasStabilized(clip.id);
+  const isStabilized = Boolean(stabilization.analyzed && (stabilization.renderedSource || stabilization.profile));
 
   const updateStabilization = useCallback(
     (updates: Partial<typeof stabilization>) => {
@@ -54,6 +54,7 @@ export const StabilizationSection: React.FC<StabilizationSectionProps> = ({
   );
 
   const handleStabilize = useCallback(async () => {
+    const owner = useProjectStore.getState();
     const mediaItem = getMediaItem(clip.mediaId);
     if (!mediaItem?.blob) return;
 
@@ -71,7 +72,7 @@ export const StabilizationSection: React.FC<StabilizationSectionProps> = ({
       setStage("detecting");
       setProgress(0);
 
-      await vidstabEngine.stabilize(
+      const stabilized = await vidstabEngine.stabilize(
         clip.id,
         mediaItem.blob,
         {
@@ -86,12 +87,29 @@ export const StabilizationSection: React.FC<StabilizationSectionProps> = ({
         { inPoint: clip.inPoint, outPoint: clip.outPoint },
       );
 
-      updateStabilization({ enabled: true, analyzed: true });
+      const result = await owner.importMedia(
+        new File([stabilized], `${mediaItem.name}-stabilized.mp4`, { type: "video/mp4" }),
+        {
+          projectId: owner.project.id,
+          workspaceId: owner.workspaceId ?? undefined,
+          expectedRevision: owner.workspaceId ? owner.workspaceRevision : owner.projectRevision,
+          historyGroupLabel: "Stabilize clip",
+          atomicFollowUpActions: (mediaId) => [{
+            id: crypto.randomUUID(), type: "clip/setStabilization", timestamp: Date.now(),
+            params: { clipId: clip.id, stabilization: {
+              enabled: true, analyzed: true, strength: stabilization.strength, cropMode: stabilization.cropMode,
+              renderedSource: { mediaId, inPoint: clip.inPoint, outPoint: clip.outPoint },
+            } },
+          }],
+        },
+      );
+      if (!result.success) throw new Error(result.error?.message ?? "Could not save stabilized video");
     } catch (error) {
       console.error("Stabilization failed:", error);
       setStage(null);
       setError(error instanceof Error ? error.message : "Stabilization failed");
     } finally {
+      vidstabEngine.removeStabilized(clip.id);
       setProcessing(false);
       setStage(null);
     }
@@ -104,7 +122,6 @@ export const StabilizationSection: React.FC<StabilizationSectionProps> = ({
     vidstabEngine,
     stabilization.strength,
     stabilization.cropMode,
-    updateStabilization,
   ]);
 
   const handleToggle = useCallback(
@@ -122,17 +139,18 @@ export const StabilizationSection: React.FC<StabilizationSectionProps> = ({
     (value: number[]) => {
       const strength = value[0];
       if (isStabilized) {
-        vidstabEngine.removeStabilized(clip.id);
         updateStabilization({
           strength,
           analyzed: false,
           enabled: false,
+          renderedSource: undefined,
+          profile: undefined,
         });
         return;
       }
       updateStabilization({ strength });
     },
-    [clip.id, isStabilized, vidstabEngine, updateStabilization],
+    [isStabilized, updateStabilization],
   );
 
   const stageLabel = (() => {

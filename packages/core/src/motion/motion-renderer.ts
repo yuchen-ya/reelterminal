@@ -451,13 +451,14 @@ export interface MotionTextShaderPass {
 export function resolveTextShaderPass(
   layer: MotionTextLayer,
   _localTime: number,
+  resolveShader: typeof getMotionShaderDef = getMotionShaderDef,
 ): MotionTextShaderPass | null {
   const animator = getMotionTextShaderAnimator(layer);
   const shaderId = animator?.shader?.shaderId;
   if (!animator || shaderId === undefined) {
     return null;
   }
-  const def = getMotionShaderDef(shaderId);
+  const def = resolveShader(shaderId);
   if (!def || def.category !== "text") {
     return null;
   }
@@ -479,6 +480,7 @@ export function resolveMotionSupersample(
 }
 
 export class MotionRenderer {
+  constructor(private readonly resolveShader: typeof getMotionShaderDef = getMotionShaderDef) {}
   private canvas: OffscreenCanvas | null = null;
   private ctx: OffscreenCanvasRenderingContext2D | null = null;
   private deviceScale = 1;
@@ -958,7 +960,7 @@ export class MotionRenderer {
 
     for (const effect of getEnabledMotionEffects(layer)) {
       if (effect.type !== "shader") continue;
-      const def = getMotionShaderDef(effect.shaderId);
+      const def = this.resolveShader(effect.shaderId);
       if (!def) continue;
 
       const params: Record<string, number | string> = {};
@@ -2317,7 +2319,7 @@ export class MotionRenderer {
     if (fill.type === "solid") return fill.color ?? "#ffffff";
     if (fill.type === "shader") {
       if (!fill.shader) return fill.color ?? "#888888";
-      const def = getMotionShaderDef(fill.shader.shaderId);
+      const def = this.resolveShader(fill.shader.shaderId);
       const params = def
         ? resolveMotionShaderFillParams(
             layer,
@@ -2357,7 +2359,7 @@ export class MotionRenderer {
     originX = 0,
     originY = 0,
   ): CanvasPattern | null {
-    const def = getMotionShaderDef(shader.shaderId);
+    const def = this.resolveShader(shader.shaderId);
     if (!def) return null;
 
     const renderWidth = Math.max(1, Math.floor(width));
@@ -2812,7 +2814,7 @@ export class MotionRenderer {
   ): string | CanvasGradient | CanvasPattern {
     const fillShader = layer.style.fillShader;
     if (fillShader && blockWidth > 0) {
-      const def = getMotionShaderDef(fillShader.shaderId);
+      const def = this.resolveShader(fillShader.shaderId);
       const params = def
         ? resolveMotionShaderFillParams(
             layer,
@@ -3013,7 +3015,7 @@ export class MotionRenderer {
       composition,
     );
 
-    const shaderPass = resolveTextShaderPass(layer, localTime);
+    const shaderPass = resolveTextShaderPass(layer, localTime, this.resolveShader);
     const shaderProgressByRun = shaderPass
       ? this.buildShaderProgressByRun(shaderPass, runs, localTime)
       : null;

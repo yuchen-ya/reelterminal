@@ -46,4 +46,4 @@ export {
   type FlattenResult,
 } from "./nested-sequence-engine";
 
-export { calculateProjectDuration } from "./project-duration";
+export { calculateProjectDuration, timelineFrameCount, timelineSampleTime } from "./project-duration";

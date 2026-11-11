@@ -5,6 +5,8 @@ export interface RenderedFrame {
   timestamp: number;
   width: number;
   height: number;
+  /** Visual clip IDs successfully composited for this frame. */
+  decodedClipIds?: readonly string[];
 }
 
 

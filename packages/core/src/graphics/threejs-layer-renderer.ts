@@ -1,24 +1,26 @@
 import * as THREE from "three";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
 import { FontLoader, type Font } from "three/examples/jsm/loaders/FontLoader.js";
-import type {
-  TextClip,
-  Transform,
-  ShapeClip,
-  SVGClip,
-  StickerClip,
-} from "@reelterminal/core";
-import type { BlendMode } from "@reelterminal/core";
+import type { TextClip } from "../text/types";
+import type { Transform } from "../types/timeline";
+import type { ShapeClip, SVGClip, StickerClip } from "./types";
+import type { BlendMode } from "../video/types";
+import regularTypeface from "three/examples/fonts/helvetiker_regular.typeface.json";
+import boldTypeface from "three/examples/fonts/helvetiker_bold.typeface.json";
+import type { FontData } from "three/examples/jsm/loaders/FontLoader.js";
 
-// ─── 3D text font cache ──────────────────────────────────────────
-// FontLoader is async but the render pipeline is sync. We resolve the
-// font once per URL, cache the result, and let callers fall back to
-// the 2D canvas pipeline until the font becomes available.
-const FONT_CACHE = new Map<string, Font>();
-const FONT_LOADING = new Map<string, Promise<Font>>();
+const fonts = new Map<boolean, Font>();
 
-const DEFAULT_3D_FONT_URL = "/fonts/helvetiker_regular.typeface.json";
-const DEFAULT_3D_BOLD_FONT_URL = "/fonts/helvetiker_bold.typeface.json";
+/** Orthographic projection of a flat layer tilted around X and Y. */
+export function tiltCanvasLayer(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  rotation: Transform["rotate3d"],
+): void {
+  if (!rotation || (!rotation.x && !rotation.y)) return;
+  const x = rotation.x * Math.PI / 180;
+  const y = rotation.y * Math.PI / 180;
+  ctx.transform(Math.cos(y), -Math.sin(x) * Math.sin(y), 0, Math.cos(x), 0, 0);
+}
 
 /** Darken a #rrggbb / #rgb color toward black by `amount` (0..1).
  *  Used as a sensible default for the extruded "side" face when the
@@ -42,48 +44,16 @@ function darkenHex(hex: string, amount: number): string {
   return `#${dr.toString(16).padStart(2, "0")}${dg.toString(16).padStart(2, "0")}${db.toString(16).padStart(2, "0")}`;
 }
 
-function pick3DFontUrl(textClip: TextClip): string {
-  const fw = textClip.style.fontWeight;
-  const isBold = fw === "bold" || (typeof fw === "number" && fw >= 600);
-  return isBold ? DEFAULT_3D_BOLD_FONT_URL : DEFAULT_3D_FONT_URL;
-}
-
-/**
- * Returns a parsed Font synchronously if it has already been loaded,
- * otherwise undefined. Triggers a background load on miss; the next
- * frame after it resolves will pick it up. The optional onReady
- * callback lets the caller request a re-render.
- */
-export function get3DFont(
-  url: string,
-  onReady?: () => void,
-): Font | undefined {
-  const cached = FONT_CACHE.get(url);
-  if (cached) return cached;
-  if (!FONT_LOADING.has(url)) {
-    const loader = new FontLoader();
-    const promise = new Promise<Font>((resolve, reject) => {
-      loader.load(
-        url,
-        (font) => {
-          FONT_CACHE.set(url, font);
-          FONT_LOADING.delete(url);
-          if (onReady) onReady();
-          resolve(font);
-        },
-        undefined,
-        (err) => {
-          FONT_LOADING.delete(url);
-          reject(err);
-        },
-      );
-    });
-    FONT_LOADING.set(url, promise);
-    promise.catch(() => {
-      /* font load failure is non-fatal — we fall back to 2D */
-    });
+function extrusionFont(clip: TextClip): Font {
+  const weight = clip.style.fontWeight;
+  const bold = weight === "bold" || (typeof weight === "number" && weight >= 600);
+  let font = fonts.get(bold);
+  if (!font) {
+    const data = bold ? boldTypeface : regularTypeface;
+    font = new FontLoader().parse(data as unknown as FontData);
+    fonts.set(bold, font);
   }
-  return undefined;
+  return font;
 }
 
 // Map CSS blend modes to THREE.js blending constants
@@ -154,13 +124,6 @@ export class ThreeJSLayerRenderer {
     const directional = new THREE.DirectionalLight(0xffffff, 0.6);
     directional.position.set(0.5, 1, 1).normalize().multiplyScalar(500);
     this.scene.add(directional);
-  }
-
-  /** Callback the host can register so we can request a re-render
-   *  when a 3D font has finished loading. */
-  private _onFontReady: (() => void) | null = null;
-  setFontReadyCallback(cb: (() => void) | null) {
-    this._onFontReady = cb;
   }
 
   resize(width: number, height: number) {
@@ -280,24 +243,9 @@ export class ThreeJSLayerRenderer {
     _canvasWidth: number,
     _canvasHeight: number,
   ): THREE.Mesh | THREE.Group | null {
-    // 3D extrusion path — only when explicitly enabled AND the font
-    // for the clip's weight is already cached. Otherwise fall through
-    // to the 2D canvas-textured plane so the user still sees
-    // something while the font loads in the background.
     if (textClip.text3d?.enabled) {
-      const fontUrl = pick3DFontUrl(textClip);
-      const font = get3DFont(fontUrl, () => {
-        if (this._onFontReady) this._onFontReady();
-      });
-      if (font) {
-        const mesh = this.buildText3DMesh(
-          textClip,
-          font,
-          _canvasWidth,
-          _canvasHeight,
-        );
-        if (mesh) return mesh;
-      }
+      const mesh = this.buildText3DMesh(textClip, extrusionFont(textClip), _canvasWidth, _canvasHeight);
+      if (mesh) return mesh;
     }
 
     const texture = this.createTextTexture(
@@ -770,23 +718,41 @@ export class ThreeJSLayerRenderer {
     return mesh;
   }
 
+  draw(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    clip: ShapeClip | TextClip,
+    width: number,
+    height: number,
+  ): void {
+    if (width !== this.canvas.width || height !== this.canvas.height) this.resize(width, height);
+    this.clear();
+    const object = "shapeType" in clip
+      ? this.renderShapeClip(clip, width, height)
+      : this.renderTextClip(clip, width, height);
+    if (object) {
+      this.scene.add(object);
+      ctx.drawImage(this.render(), 0, 0, width, height);
+    }
+  }
+
   render(): HTMLCanvasElement {
     this.renderer.render(this.scene, this.camera);
     return this._canvas;
   }
 
   clear() {
-    // Remove all meshes from scene and dispose their geometry/materials to prevent memory leaks
-    while (this.scene.children.length > 0) {
-      const object = this.scene.children[0];
+    for (const object of [...this.scene.children]) {
+      if (object instanceof THREE.Light) continue;
       this.scene.remove(object);
-
-      if (object instanceof THREE.Mesh) {
-        object.geometry.dispose();
-        if (object.material instanceof THREE.Material) {
-          object.material.dispose();
+      object.traverse(child => {
+        if (!(child instanceof THREE.Mesh)) return;
+        child.geometry.dispose();
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of materials) {
+          if (material.map instanceof THREE.Texture) material.map.dispose();
+          material.dispose();
         }
-      }
+      });
     }
     this.renderer.clear();
   }

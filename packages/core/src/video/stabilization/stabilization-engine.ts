@@ -245,55 +245,7 @@ export class StabilizationEngine {
     renderContext?: StabilizationRenderContext,
   ): CorrectionTransform | null {
     const profile = this.profiles.get(clipId);
-    if (!profile || profile.corrections.length === 0) return null;
-
-    const relativeSourceTime = Math.max(
-      0,
-      Math.min(sourceTime - profile.sourceStartTime, profile.duration),
-    );
-
-    const frameIndex = relativeSourceTime / profile.frameInterval;
-    const idx = Math.min(
-      Math.floor(frameIndex),
-      profile.corrections.length - 1,
-    );
-    const nextIdx = Math.min(idx + 1, profile.corrections.length - 1);
-    const frac = frameIndex - idx;
-
-    const curr = profile.corrections[idx];
-    const next = profile.corrections[nextIdx];
-
-    const interpolated = idx === nextIdx
-      ? curr
-      : {
-      dx: curr.dx + (next.dx - curr.dx) * frac,
-      dy: curr.dy + (next.dy - curr.dy) * frac,
-      rotation: curr.rotation + (next.rotation - curr.rotation) * frac,
-      scale: curr.scale + (next.scale - curr.scale) * frac,
-      };
-
-    if (!renderContext) {
-      return interpolated;
-    }
-
-    if (renderContext.sourceWidth <= 0 || renderContext.sourceHeight <= 0) {
-      return interpolated;
-    }
-
-    const fitScale = Math.min(
-      renderContext.canvasWidth / renderContext.sourceWidth,
-      renderContext.canvasHeight / renderContext.sourceHeight,
-    );
-    const renderScaleX =
-      (renderContext.sourceWidth / profile.analysisDimensions.width) * fitScale;
-    const renderScaleY =
-      (renderContext.sourceHeight / profile.analysisDimensions.height) * fitScale;
-
-    return {
-      ...interpolated,
-      dx: interpolated.dx * renderScaleX,
-      dy: interpolated.dy * renderScaleY,
-    };
+    return profile ? correctionAtTime(profile, sourceTime, renderContext) : null;
   }
 
   removeProfile(clipId: string): void {
@@ -303,6 +255,62 @@ export class StabilizationEngine {
   dispose(): void {
     this.profiles.clear();
   }
+}
+
+function correctionAtTime(
+  profile: StabilizationProfile,
+  sourceTime: number,
+  renderContext?: StabilizationRenderContext,
+): CorrectionTransform | null {
+  if (profile.corrections.length === 0) return null;
+
+  const relativeSourceTime = Math.max(
+    0,
+    Math.min(sourceTime - profile.sourceStartTime, profile.duration),
+  );
+
+  const frameIndex = relativeSourceTime / profile.frameInterval;
+  const idx = Math.min(
+    Math.floor(frameIndex),
+    profile.corrections.length - 1,
+  );
+  const nextIdx = Math.min(idx + 1, profile.corrections.length - 1);
+  const frac = frameIndex - idx;
+
+  const curr = profile.corrections[idx];
+  const next = profile.corrections[nextIdx];
+
+  const interpolated = idx === nextIdx
+    ? curr
+    : {
+      dx: curr.dx + (next.dx - curr.dx) * frac,
+      dy: curr.dy + (next.dy - curr.dy) * frac,
+      rotation: curr.rotation + (next.rotation - curr.rotation) * frac,
+      scale: curr.scale + (next.scale - curr.scale) * frac,
+    };
+
+  if (!renderContext) {
+    return interpolated;
+  }
+
+  if (renderContext.sourceWidth <= 0 || renderContext.sourceHeight <= 0) {
+    return interpolated;
+  }
+
+  const fitScale = Math.min(
+    renderContext.canvasWidth / renderContext.sourceWidth,
+    renderContext.canvasHeight / renderContext.sourceHeight,
+  );
+  const renderScaleX =
+    (renderContext.sourceWidth / profile.analysisDimensions.width) * fitScale;
+  const renderScaleY =
+    (renderContext.sourceHeight / profile.analysisDimensions.height) * fitScale;
+
+  return {
+    ...interpolated,
+    dx: interpolated.dx * renderScaleX,
+    dy: interpolated.dy * renderScaleY,
+  };
 }
 
 export function getStabilizedTransform(
@@ -319,16 +327,9 @@ export function getStabilizedTransform(
     return transform;
   }
 
-  const engine = getStabilizationEngine();
-  if (!engine.hasProfile(clip.id) && clip.stabilization.profile) {
-    engine.setProfile(clip.stabilization.profile);
-  }
-
-  const correction = engine.getCorrectionTransform(
-    clip.id,
-    sourceTime,
-    renderContext,
-  );
+  const profile = clip.stabilization.profile;
+  if (!profile) return transform;
+  const correction = correctionAtTime(profile, sourceTime, renderContext);
   if (!correction) {
     return transform;
   }

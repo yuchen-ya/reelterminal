@@ -16,6 +16,8 @@ import { analyzeSyncOffset, resolveSyncOffsetParams, SYNC_OFFSET_ANALYSIS_RATE, 
 import { runVideoCandidateAnalyses, videoCandidatesPreflight, type VideoCandidateBundle } from "./video-candidates";
 import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
 import { probeVideoFacts } from "./media/frame-exact";
+import { timelineSampleTime } from "@reelterminal/core/timeline/project-duration";
+import { timelineRenderMediaIds } from "./render/media-references";
 import { bindBundledTools } from "./plugin-runtime";
 import { withValidatedFacadeCalls } from "./request-validation";
 /**
@@ -2610,11 +2612,7 @@ export class LiveFacadeSession {
       }
       // The exact end of the timeline is past every clip's [start, end)
       // interval; clamp it onto the last rendered frame.
-      const frameRate = project.settings.frameRate;
-      const timeSec =
-        valid.timeSec >= duration
-          ? Math.max(0, duration - 1 / (2 * frameRate))
-          : valid.timeSec;
+      const timeSec = timelineSampleTime(valid.timeSec, duration, project.settings.frameRate);
 
       const payload = { timeSec: valid.timeSec, width, height };
       const receipt = await this.replayLookup<PreviewRenderFrameResult>(
@@ -2772,11 +2770,7 @@ export class LiveFacadeSession {
           `preview.render_comparison: raster size must be even; project settings are ${project.settings.width}x${project.settings.height} — pass explicit even width/height`,
         );
       }
-      const frameRate = project.settings.frameRate;
-      const timeSec =
-        valid.timeSec >= duration
-          ? Math.max(0, duration - 1 / (2 * frameRate))
-          : valid.timeSec;
+      const timeSec = timelineSampleTime(valid.timeSec, duration, project.settings.frameRate);
       const frameBudgetBytes = valid.maxFrameBytes ?? DEFAULT_FRAME_BUDGET_BYTES;
 
       const payload = {
@@ -4802,12 +4796,7 @@ export class LiveFacadeSession {
     project: Project,
     verb: string,
   ): Promise<Record<string, string>> {
-    const referenced = new Set<string>();
-    for (const track of project.timeline.tracks) {
-      for (const clip of track.clips) {
-        referenced.add(clip.mediaId);
-      }
-    }
+    const referenced = timelineRenderMediaIds(project);
     const files: Record<string, string> = {};
     const unavailable: string[] = [];
     const backingErrors: FacadeError[] = [];

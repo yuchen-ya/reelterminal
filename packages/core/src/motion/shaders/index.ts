@@ -37,8 +37,12 @@ function generatedByCategory(category: MotionShaderCategory): readonly MotionSha
   return listGeneratedMotionShaders().filter((def) => def.category === category);
 }
 
-export function getMotionShaderDef(id: string): MotionShaderDef | undefined {
-  return MOTION_SHADER_LIBRARY.find((def) => def.id === id) ?? generatedShaderById(id);
+export function getMotionShaderDef(
+  id: string,
+  generatedDefinitions?: readonly MotionShaderDef[],
+): MotionShaderDef | undefined {
+  return MOTION_SHADER_LIBRARY.find((def) => def.id === id) ??
+    (generatedDefinitions === undefined ? generatedShaderById(id) : generatedDefinitions.find((def) => def.id === id));
 }
 
 export function getMotionShaderEffectDefs(): readonly MotionShaderDef[] {

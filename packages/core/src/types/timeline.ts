@@ -136,6 +136,8 @@ export interface Clip {
     analyzed?: boolean;
     analysisVersion?: number;
     profile?: StabilizationProfile;
+    /** Project-owned vidstab output. Its zero PTS is the original source inPoint. */
+    renderedSource?: { readonly mediaId: string; readonly inPoint: number; readonly outPoint: number };
   };
   readonly emphasisAnimation?: EmphasisAnimation;
   readonly chromaKey?: ChromaKeySettings;

@@ -251,6 +251,8 @@ export type ClipAction =
         duration: number;
         /** Provenance: the media id this one supersedes for this clip. */
         supersedesMediaId?: string;
+        /** Restore source-specific stabilization when undoing a replacement. */
+        stabilization?: Clip["stabilization"];
       };
     }
   | {

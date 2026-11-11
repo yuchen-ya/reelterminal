@@ -475,9 +475,10 @@ export class MotionShaderRenderer {
     gl: WebGL2RenderingContext,
     def: MotionShaderDef,
   ): CompiledProgram | null {
-    if (this.programs.has(def.id)) return this.programs.get(def.id) ?? null;
+    const key = JSON.stringify([def.id, def.vertexShader, def.glsl]);
+    if (this.programs.has(key)) return this.programs.get(key) ?? null;
     const compiled = this.compileProgram(gl, def);
-    this.programs.set(def.id, compiled);
+    this.programs.set(key, compiled);
     return compiled;
   }
 

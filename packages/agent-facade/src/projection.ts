@@ -1,3 +1,4 @@
+import { calculateProjectDuration } from "@reelterminal/core/timeline/project-duration";
 /**
  * Read-only projections of a canonical `Project`. Both session types use the
  * same logic for `project.get_state` and `timeline.get`.
@@ -112,19 +113,7 @@ export function timelineStateView(project: Project, revision: number): TimelineS
   };
 }
 
-/** Max clip end across timeline tracks and text overlays, in seconds. */
+/** Last authored timeline time, including every canonical overlay surface. */
 export function timelineDurationSec(project: Project): number {
-  let maxEnd = 0;
-  for (const track of project.timeline.tracks) {
-    for (const clip of track.clips) {
-      maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
-    }
-  }
-  for (const clip of project.textClips ?? []) {
-    maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
-  }
-  for (const subtitle of project.timeline.subtitles ?? []) {
-    maxEnd = Math.max(maxEnd, subtitle.endTime);
-  }
-  return maxEnd;
+  return calculateProjectDuration(project);
 }

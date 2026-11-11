@@ -331,7 +331,7 @@ describe("ExportEngine", () => {
   describe("file size estimation", () => {
     it("should estimate video file size", () => {
       const project = createMockProject({
-        timeline: createMockTimeline({ duration: 60 }),
+        timeline: createMockTimeline({ duration: 600, tracks: [createMockTrack({ clips: [createMockClip({ duration: 60, outPoint: 60 })] })] }),
       });
 
       const settings = { ...DEFAULT_VIDEO_SETTINGS, bitrate: 8000 };
@@ -343,7 +343,7 @@ describe("ExportEngine", () => {
 
     it("should estimate audio file size for WAV", () => {
       const project = createMockProject({
-        timeline: createMockTimeline({ duration: 60 }),
+        timeline: createMockTimeline({ duration: 600, tracks: [createMockTrack({ clips: [createMockClip({ duration: 60, outPoint: 60 })] })] }),
       });
 
       const settings = { ...DEFAULT_AUDIO_SETTINGS, format: "wav" as const };
@@ -355,7 +355,7 @@ describe("ExportEngine", () => {
 
     it("should estimate audio file size for MP3", () => {
       const project = createMockProject({
-        timeline: createMockTimeline({ duration: 60 }),
+        timeline: createMockTimeline({ duration: 600, tracks: [createMockTrack({ clips: [createMockClip({ duration: 60, outPoint: 60 })] })] }),
       });
 
       const settings = { ...DEFAULT_AUDIO_SETTINGS, bitrate: 320 };
@@ -369,7 +369,7 @@ describe("ExportEngine", () => {
   describe("export time estimation", () => {
     it("should estimate video export time", () => {
       const project = createMockProject({
-        timeline: createMockTimeline({ duration: 60 }),
+        timeline: createMockTimeline({ duration: 600, tracks: [createMockTrack({ clips: [createMockClip({ duration: 60, outPoint: 60 })] })] }),
       });
 
       const settings = DEFAULT_VIDEO_SETTINGS;
@@ -380,7 +380,7 @@ describe("ExportEngine", () => {
 
     it("should estimate longer time for H.265", () => {
       const project = createMockProject({
-        timeline: createMockTimeline({ duration: 60 }),
+        timeline: createMockTimeline({ duration: 600, tracks: [createMockTrack({ clips: [createMockClip({ duration: 60, outPoint: 60 })] })] }),
       });
 
       const h264Settings = {
@@ -400,7 +400,7 @@ describe("ExportEngine", () => {
 
     it("should estimate longer time for 4K", () => {
       const project = createMockProject({
-        timeline: createMockTimeline({ duration: 60 }),
+        timeline: createMockTimeline({ duration: 600, tracks: [createMockTrack({ clips: [createMockClip({ duration: 60, outPoint: 60 })] })] }),
       });
 
       const hd = { ...DEFAULT_VIDEO_SETTINGS, width: 1920, height: 1080 };
@@ -456,6 +456,18 @@ describe("ExportEngine", () => {
       expect(step.value.success).toBe(true);
       expect(mockMediaEngine.initialize).toHaveBeenCalledOnce();
       expect(decoderReady).toBe(true);
+    });
+
+    it("exports the complete canonical subtitle-only range without stale duration or a floating-point extra frame", async () => {
+      const project = createMockProject({
+        timeline: createMockTimeline({ tracks: [], duration: 999, subtitles: [{ id: "caption", text: "only caption", startTime: 0.1, endTime: 0.1 + 0.2 }] }),
+      });
+      await exportEngine.initialize();
+      const generator = exportEngine.exportVideo(project, { frameRate: 10, width: 640, height: 360 }, writableStream);
+      let step = await generator.next();
+      while (!step.done) step = await generator.next();
+      expect(step.value.success).toBe(true);
+      expect(mockRenderFrame.mock.calls.map((call) => call[1])).toEqual([0, 0.1, 0.2]);
     });
 
     it("aggregates frame and encoder timings over an export", async () => {

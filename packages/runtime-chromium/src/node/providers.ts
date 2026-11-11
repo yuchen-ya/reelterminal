@@ -1,3 +1,4 @@
+import { calculateProjectDuration, timelineFrameCount } from "@reelterminal/core/timeline/project-duration";
 /**
  * Facade provider implementations over the Chromium runtime.
  *
@@ -18,7 +19,6 @@
  */
 import { rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Project } from "@reelterminal/core/types/project";
 import type {
   ExportCallbacks,
   ExportProgressEvent,
@@ -195,19 +195,6 @@ type RouteOutcome =
       readonly upscalingRequestedButInactive?: boolean;
     } }
   | { readonly kind: "cancelled" };
-
-function timelineDurationSec(project: Project): number {
-  let maxEnd = 0;
-  for (const track of project.timeline.tracks) {
-    for (const clip of track.clips) {
-      maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
-    }
-  }
-  for (const clip of project.textClips ?? []) {
-    maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
-  }
-  return maxEnd;
-}
 
 export class ChromiumRenderProvider implements RenderProvider {
   readonly id = "chromium-render";
@@ -740,8 +727,8 @@ export class ChromiumExportProvider implements ExportProvider {
       );
     }
     const { width, height, frameRate } = request.settings;
-    const durationSec = timelineDurationSec(request.project);
-    const totalFrames = Math.ceil(durationSec * frameRate);
+    const durationSec = calculateProjectDuration(request.project);
+    const totalFrames = timelineFrameCount(durationSec, frameRate);
     if (totalFrames <= 0) {
       throw new Error("timeline duration is zero — nothing to export");
     }

@@ -286,10 +286,10 @@ describe("VideoEngine image cache lifecycle", () => {
     expect(await renderImage(clip, media, 0, 10, 10)).toBe(oldImage);
     expect(await renderImage(clip, media, 1, 10, 10)).toBe(oldImage);
     expect(decode).toHaveBeenCalledTimes(1);
-    engine.clearCache();
-    expect(oldImage.close).toHaveBeenCalledTimes(1);
     expect(await renderImage(clip, { ...media, blob: newBlob }, 0, 10, 10)).toBe(newImage);
     expect(decode).toHaveBeenLastCalledWith(newBlob);
+    engine.clearCache();
+    expect(oldImage.close).toHaveBeenCalledTimes(1);
     engine.dispose();
     expect(newImage.close).toHaveBeenCalledTimes(1);
   });

@@ -28,6 +28,7 @@ import {
   type MotionShaderCanvas,
 } from "../motion/motion-shader-renderer";
 import { getMotionShaderDef } from "../motion/shaders";
+import { ThreeJSLayerRenderer, tiltCanvasLayer } from "./threejs-layer-renderer";
 
 interface AnimatedGraphicState {
   transform: Transform;
@@ -54,6 +55,7 @@ interface AnimatedGraphicState {
  * ```
  */
 export class GraphicsEngine {
+  private meshRenderer: ThreeJSLayerRenderer | null = null;
   private animationEngine: AnimationEngine;
   private svgCache: Map<string, SVGElement> = new Map();
   private imageCache = new Map<string, { image: Promise<HTMLImageElement>; bytes: number }>();
@@ -73,7 +75,10 @@ export class GraphicsEngine {
    *
    * @param animationEngine - Optional AnimationEngine for handling animations. If not provided, a new one is created.
    */
-  constructor(animationEngine?: AnimationEngine) {
+  constructor(
+    animationEngine?: AnimationEngine,
+    private readonly resolveShader: typeof getMotionShaderDef = getMotionShaderDef,
+  ) {
     this.animationEngine = animationEngine || new AnimationEngine();
   }
 
@@ -446,6 +451,7 @@ export class GraphicsEngine {
     time: number,
     width: number,
     height: number,
+    layoutSize: { width: number; height: number } = { width, height },
   ): Promise<GraphicRenderResult> {
     const canvas =
       typeof OffscreenCanvas !== "undefined"
@@ -469,19 +475,28 @@ export class GraphicsEngine {
       return { canvas, width, height };
     }
 
-    this.applyTransform(ctx, animatedState.transform, width, height);
+    if (graphic.type === "shape" && (graphic as ShapeClip).shapeType.startsWith("mesh-")) {
+      this.meshRenderer ??= new ThreeJSLayerRenderer(width, height);
+      this.meshRenderer.draw(ctx, { ...(graphic as ShapeClip), transform: animatedState.transform }, width, height);
+      return { canvas, width, height };
+    }
+    const scaleX = width / layoutSize.width;
+    const scaleY = height / layoutSize.height;
+    ctx.scale(scaleX, scaleY);
+    this.applyTransform(ctx, animatedState.transform, layoutSize.width, layoutSize.height);
 
     switch (graphic.type) {
       case "shape":
-        this.renderShape(ctx, graphic as ShapeClip, width, height, time);
+        this.renderShape(ctx, graphic as ShapeClip, layoutSize.width, layoutSize.height, time, scaleX, scaleY);
         break;
       case "svg":
         await this.renderSVG(
           ctx,
           graphic as SVGClip,
-          width,
-          height,
+          layoutSize.width,
+          layoutSize.height,
           animatedState,
+          Math.max(scaleX, scaleY),
         );
         break;
       case "sticker":
@@ -499,6 +514,8 @@ export class GraphicsEngine {
     width: number,
     height: number,
     time: number,
+    scaleX: number,
+    scaleY: number,
   ): void {
     const { style, shapeType } = shape;
     const baseSize = Math.min(width, height);
@@ -506,12 +523,13 @@ export class GraphicsEngine {
     const halfSize = shapeSize / 2;
 
     ctx.save();
+    const opacity = ctx.globalAlpha;
 
     if (style.shadow) {
       ctx.shadowColor = style.shadow.color;
-      ctx.shadowBlur = style.shadow.blur;
-      ctx.shadowOffsetX = style.shadow.offsetX;
-      ctx.shadowOffsetY = style.shadow.offsetY;
+      ctx.shadowBlur = style.shadow.blur * Math.sqrt(scaleX * scaleY);
+      ctx.shadowOffsetX = style.shadow.offsetX * scaleX;
+      ctx.shadowOffsetY = style.shadow.offsetY * scaleY;
     }
 
     ctx.beginPath();
@@ -548,6 +566,15 @@ export class GraphicsEngine {
       case "polygon":
         if (shape.points && shape.points.length > 0) {
           this.drawPolygonCentered(ctx, shape.points, shapeSize);
+        } else {
+          for (let side = 0; side < 6; side++) {
+            const angle = side * Math.PI / 3 - Math.PI / 2;
+            const x = halfSize * Math.cos(angle);
+            const y = halfSize * Math.sin(angle);
+            if (side === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.closePath();
         }
         break;
     }
@@ -562,7 +589,7 @@ export class GraphicsEngine {
         );
         if (shaderCanvas) {
           ctx.save();
-          ctx.globalAlpha = style.fill.opacity;
+          ctx.globalAlpha = opacity * style.fill.opacity;
           ctx.clip();
           ctx.drawImage(
             shaderCanvas,
@@ -573,12 +600,12 @@ export class GraphicsEngine {
           );
           ctx.restore();
         } else {
-          ctx.globalAlpha = style.fill.opacity;
+          ctx.globalAlpha = opacity * style.fill.opacity;
           ctx.fillStyle = style.fill.color || "#000000";
           ctx.fill();
         }
       } else {
-        ctx.globalAlpha = style.fill.opacity;
+        ctx.globalAlpha = opacity * style.fill.opacity;
         if (style.fill.type === "gradient" && style.fill.gradient) {
           ctx.fillStyle = this.createGradient(
             ctx,
@@ -594,7 +621,7 @@ export class GraphicsEngine {
     }
 
     if (style.stroke.width > 0) {
-      ctx.globalAlpha = style.stroke.opacity;
+      ctx.globalAlpha = opacity * style.stroke.opacity;
       ctx.strokeStyle = style.stroke.color;
       ctx.lineWidth = style.stroke.width;
       ctx.lineCap = style.stroke.lineCap || "butt";
@@ -615,7 +642,7 @@ export class GraphicsEngine {
     height: number,
     time: number,
   ): MotionShaderCanvas | null {
-    const def = getMotionShaderDef(shader.shaderId);
+    const def = this.resolveShader(shader.shaderId);
     if (!def || def.category !== "fill") return null;
 
     if (!this.shaderRenderer) {
@@ -667,12 +694,13 @@ export class GraphicsEngine {
     width: number,
     height: number,
     animatedState: AnimatedGraphicState,
+    outputScale: number,
   ): Promise<void> {
     const svgAspect = svg.viewBox.width / svg.viewBox.height;
     const scaleX = animatedState.transform.scale.x;
     const scaleY = animatedState.transform.scale.y;
     const maxScale = Math.max(Math.abs(scaleX), Math.abs(scaleY), 1);
-    const rasterScale = Math.ceil(maxScale * 2) / 2;
+    const rasterScale = (Math.ceil(maxScale * 2) / 2) * outputScale;
 
     let renderWidth: number;
     let renderHeight: number;
@@ -691,7 +719,7 @@ export class GraphicsEngine {
     );
 
     if (animatedState.blur > 0) {
-      ctx.filter = `blur(${animatedState.blur}px)`;
+      ctx.filter = `blur(${animatedState.blur * outputScale}px)`;
     }
 
     const drawWidth = renderWidth / rasterScale;
@@ -1675,7 +1703,11 @@ export class GraphicsEngine {
       return graphic.transform;
     }
 
-    const transform = { ...graphic.transform };
+    const transform = {
+      ...graphic.transform,
+      position: { ...graphic.transform.position },
+      scale: { ...graphic.transform.scale },
+    };
 
     const properties = [
       "position.x",
@@ -1714,6 +1746,7 @@ export class GraphicsEngine {
 
     ctx.translate(posX, posY);
     ctx.rotate((transform.rotation * Math.PI) / 180);
+    tiltCanvasLayer(ctx, transform.rotate3d);
     ctx.scale(transform.scale.x, transform.scale.y);
     ctx.globalAlpha = transform.opacity;
   }
@@ -2125,6 +2158,8 @@ export class GraphicsEngine {
     this.animationEngine.clearCache();
     this.shaderRenderer?.dispose();
     this.shaderRenderer = null;
+    this.meshRenderer?.dispose();
+    this.meshRenderer = null;
   }
 
   loadShapeClips(clips: ShapeClip[]): void {

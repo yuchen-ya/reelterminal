@@ -368,6 +368,24 @@ describe("ActionExecutor synchronous draft execution", () => {
 });
 
 describe("ActionExecutor removal undo fidelity", () => {
+  it("replacing a source drops its baked stabilization and undo restores it", async () => {
+    const stabilization = {
+      enabled: true, strength: 50, cropMode: "auto", analyzed: true,
+      renderedSource: { mediaId: "stabilized", inPoint: 0, outPoint: 5 },
+    };
+    const project = makeProjectWithClip({ stabilization });
+    const executor = new ActionExecutor();
+    const clip = () => project.timeline.tracks[0].clips[0];
+    const result = await executor.execute({
+      type: "clip/repointSource", id: "replacement", timestamp: 1,
+      params: { clipId: "c1", mediaId: "new", duration: 5, inPoint: 0, outPoint: 5 },
+    }, project);
+    expect(result.success).toBe(true);
+    expect(clip().stabilization).toBeUndefined();
+    expect((await executor.undo(project)).success).toBe(true);
+    expect(clip().stabilization).toEqual(stabilization);
+  });
+
   it("restores media provenance and optional fields after media/delete undo/redo", async () => {
     const executor = new ActionExecutor();
     const project = makeProject();

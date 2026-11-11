@@ -50,8 +50,9 @@ test("hiding a paused title clears its previously painted pixels", async () => {
       }
       return count;
     });
-    // The empty-project hint is part of the canvas, so compare against the
-    // settled empty frame instead of assuming a solid background.
+    // An unauthored project shows the import hint. A project with a hidden
+    // authored title has real timeline content and renders the solid project
+    // background instead of returning to that empty-project hint.
     await vi.waitFor(async () => expect(await differentPixels()).toBeGreaterThan(100), { timeout: 15_000 });
     const emptyPixels = await differentPixels();
     await page.getByRole("button", { name: "Text", exact: true }).click();
@@ -79,7 +80,7 @@ test("hiding a paused title clears its previously painted pixels", async () => {
     }
     if (!target) throw new Error("Could not find the title track header");
     await target.click();
-    await vi.waitFor(async () => expect(Math.abs(await differentPixels() - emptyPixels)).toBeLessThan(100), { timeout: 15_000 });
+    await vi.waitFor(async () => expect(await differentPixels()).toBeLessThan(100), { timeout: 15_000 });
   } finally {
     await launched.close();
   }

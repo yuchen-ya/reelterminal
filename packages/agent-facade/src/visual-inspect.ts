@@ -1,6 +1,7 @@
 import type { Project } from "@reelterminal/core/types/project";
 import { FacadeError } from "./errors";
 import { timelineDurationSec } from "./projection";
+import { timelineSampleTime } from "@reelterminal/core/timeline/project-duration";
 import type { VisualInspectParams, VisualInspectTimeRange } from "./types";
 
 /** Resource ceilings for one read-only visual.inspect call. */
@@ -80,7 +81,6 @@ export function buildVisualSamplePlan(
     );
   }
   const duration = timelineDurationSec(project);
-  const frameEpsilon = 1 / (2 * project.settings.frameRate);
   let selection: VisualSelection;
 
   if (hasClip) {
@@ -132,11 +132,11 @@ export function buildVisualSamplePlan(
   const start = selection.startSec;
   const end = selection.endSec;
   // Clip end points are exclusive, and a timeline-end range has no next
-  // frame. Keep those samples inside the renderable content by half a frame;
+  // frame. Sample the last output frame start in the selected interval;
   // an interior explicit time range may include its requested endpoint.
   const avoidBoundary = selection.kind === "clip" || end >= duration;
   const safeEnd = avoidBoundary
-    ? Math.max(start, Math.min(end, duration) - frameEpsilon)
+    ? Math.max(start, timelineSampleTime(end, Math.min(end, duration), project.settings.frameRate))
     : end;
   const samples = Array.from({ length: sampleCount }, (_, index) => {
     const fraction = sampleCount === 1 ? 0.5 : index / (sampleCount - 1);

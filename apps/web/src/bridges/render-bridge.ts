@@ -5,6 +5,8 @@ import type {
   Transition,
   Clip,
   Track,
+  Project,
+  FrameRenderOptions,
 } from "@reelterminal/core";
 import {
   VideoEffectsEngine,
@@ -25,6 +27,20 @@ export interface ColorAdjustments {
   shadows?: number;
   midtones?: number;
   highlights?: number;
+}
+
+export interface PreviewRenderRequest extends FrameRenderOptions {
+  project?: Project;
+  width?: number;
+  height?: number;
+  isCurrent?: () => boolean;
+}
+
+class PreviewRenderCancelled extends Error {
+  constructor() {
+    super("Preview frame superseded");
+    this.name = "AbortError";
+  }
 }
 
 export interface RenderStats {
@@ -165,7 +181,10 @@ export class RenderBridge {
    * @param time - Time in seconds to render
    * @returns The rendered frame or null if rendering failed
    */
-  async renderFrame(time: number): Promise<RenderedFrame | null> {
+  async renderFrame(
+    time: number,
+    request: PreviewRenderRequest = {},
+  ): Promise<RenderedFrame | null> {
     if (!this.initialized || !this.videoEngine) {
       return null;
     }
@@ -174,21 +193,42 @@ export class RenderBridge {
 
     let frame: RenderedFrame | null = null;
     try {
-      const project = useProjectStore.getState().project;
+      const {
+        project = useProjectStore.getState().project,
+        width,
+        height,
+        isCurrent,
+        ...options
+      } = request;
+      if (isCurrent && !isCurrent()) return null;
+      if (isCurrent) {
+        const decodeSourceFrame = options.decodeSourceFrame;
+        options.decodeSourceFrame = async (...args) => {
+          if (!isCurrent()) throw new PreviewRenderCancelled();
+          let bitmap: ImageBitmap | null;
+          try {
+            bitmap = await decodeSourceFrame?.(...args) ?? null;
+          } catch (error) {
+            // Workspace teardown can dispose a decoder while its read awaits.
+            if (!isCurrent()) throw new PreviewRenderCancelled();
+            throw error;
+          }
+          if (!isCurrent()) {
+            bitmap?.close();
+            throw new PreviewRenderCancelled();
+          }
+          return bitmap;
+        };
+      }
 
       // Render the frame using VideoEngine
       frame = await this.videoEngine.renderFrame(
         project,
         time,
-        undefined,
-        undefined,
-        { realtime: true },
+        width,
+        height,
+        options,
       );
-
-      // Draw to canvas if available
-      if (this.canvas && this.ctx && frame) {
-        this.drawFrameToCanvas(frame);
-      }
 
       // Update render statistics
       const renderTime = performance.now() - startTime;
@@ -198,6 +238,7 @@ export class RenderBridge {
 
       return frame;
     } catch (error) {
+      if (error instanceof PreviewRenderCancelled) return null;
       this.renderStats.renderErrors++;
       console.error("RenderBridge: Frame render error:", error);
       // Ownership transfers only on the successful return above.
@@ -227,7 +268,14 @@ export class RenderBridge {
     this.pendingRender = requestAnimationFrame(() => {
       this.pendingRender = null;
       this.renderFrame(time)
-        .then((frame) => frame?.image.close())
+        .then((frame) => {
+          if (!frame) return;
+          try {
+            this.presentFrame(frame);
+          } finally {
+            frame.image.close();
+          }
+        })
         .catch((error) => {
           console.error("[RenderBridge] Frame render failed:", error);
         });
@@ -492,7 +540,7 @@ export class RenderBridge {
    *
    * @param frame - The rendered frame to draw
    */
-  private drawFrameToCanvas(frame: RenderedFrame): void {
+  presentFrame(frame: RenderedFrame): void {
     if (!this.canvas || !this.ctx) return;
 
     const { width, height } = this.canvas;

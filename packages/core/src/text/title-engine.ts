@@ -12,6 +12,7 @@ import { DEFAULT_TEXT_STYLE, DEFAULT_TEXT_TRANSFORM } from "./types";
 import { textAnimationEngine } from "./text-animation";
 import { MotionShaderRenderer } from "../motion/motion-shader-renderer";
 import { getMotionShaderDef } from "../motion/shaders";
+import { ThreeJSLayerRenderer, tiltCanvasLayer } from "../graphics/threejs-layer-renderer";
 
 export interface CreateTextClipOptions {
   id?: string;
@@ -44,6 +45,8 @@ export interface UpdateTextClipOptions {
 }
 
 export class TitleEngine {
+  constructor(private readonly resolveShader: typeof getMotionShaderDef = getMotionShaderDef) {}
+  private extrusionRenderer: ThreeJSLayerRenderer | null = null;
   private static readonly TEXT_CACHE_MAX_BYTES = 32 * 1024 * 1024;
   private textClips: Map<string, TextClip> = new Map();
   private textCache = new Map<string, TextRenderResult>();
@@ -247,7 +250,7 @@ export class TitleEngine {
         this.clearTextCache();
         this.fontSnapshot = snapshot;
       }
-      cacheKey = JSON.stringify([clip.text, clip.style, clip.transform, width, height, layoutSize]);
+      cacheKey = JSON.stringify([clip.text, clip.style, clip.transform, clip.text3d, width, height, layoutSize]);
       const cached = this.textCache.get(cacheKey);
       if (cached) {
         this.textCache.delete(cacheKey);
@@ -306,6 +309,21 @@ export class TitleEngine {
 
     const metrics = this.measureText(visibleText, style, layoutSize.width);
 
+    if (clip.text3d?.enabled) {
+      this.extrusionRenderer ??= new ThreeJSLayerRenderer(width, height);
+      const scale = height / layoutSize.height;
+      this.extrusionRenderer.draw(ctx, {
+        ...clip, text: visibleText,
+        style: { ...style, fontSize: style.fontSize * scale },
+        transform: { ...transform, opacity },
+        text3d: {
+          ...clip.text3d, depth: clip.text3d.depth * scale,
+          bevelThickness: clip.text3d.bevelThickness * scale, bevelSize: clip.text3d.bevelSize * scale,
+        },
+      }, width, height);
+      return { canvas, width, height, textMetrics: metrics };
+    }
+
     ctx.save();
 
     // Layout remains in project pixels; glyphs rasterize directly into the
@@ -318,6 +336,7 @@ export class TitleEngine {
 
     ctx.translate(posX, posY);
     ctx.rotate((transform.rotation * Math.PI) / 180);
+    tiltCanvasLayer(ctx, transform.rotate3d);
     ctx.scale(transform.scale.x, transform.scale.y);
     ctx.globalAlpha = opacity;
 
@@ -583,7 +602,7 @@ export class TitleEngine {
     height: number,
   ): void {
     if (!shader) return;
-    const def = getMotionShaderDef(shader.shaderId);
+    const def = this.resolveShader(shader.shaderId);
     if (!def) return;
 
     // Fill and effect shaders (including the Paper collection) render a full
@@ -667,6 +686,8 @@ export class TitleEngine {
     this.fontSnapshot = [];
     this.shaderRenderer?.dispose();
     this.shaderRenderer = null;
+    this.extrusionRenderer?.dispose();
+    this.extrusionRenderer = null;
   }
 
   loadTextClips(clips: TextClip[]): void {

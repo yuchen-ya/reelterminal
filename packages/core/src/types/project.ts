@@ -1,3 +1,4 @@
+import type { ParticleEffect } from "../effects/particle-types";
 import type { MediaProduction } from "./media-production";
 import type { Timeline } from "./timeline";
 import type { TextClip } from "../text/types";
@@ -55,6 +56,8 @@ export interface Project {
   readonly svgClips?: SVGClip[];
   readonly stickerClips?: StickerClip[];
   readonly adjustmentLayers?: AdjustmentLayer[];
+  /** Persisted, project-owned particle overlays. Absent means no effects. */
+  readonly particleEffects?: ParticleEffect[];
   readonly masks?: Mask[];
   readonly multicamGroups?: MultiCamGroup[];
   readonly compoundClips?: CompoundClip[];

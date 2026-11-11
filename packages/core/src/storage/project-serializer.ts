@@ -1,3 +1,4 @@
+import { validParticleEffects } from "../effects/particle-types";
 import { validCollaborationInstructions } from "../types/collaboration-instruction";
 import { validateMediaProduction } from "../types/media-production";
 import { validReviewRange } from "../types/review-range";
@@ -588,7 +589,27 @@ export function normalizeProjectSpeedDurations(project: Project): Project {
   return { ...normalized, timeline: { ...normalized.timeline, duration: calculateProjectDuration(normalized) } };
 }
 
+function renderFieldError(project: Project): string | undefined {
+  if (!validParticleEffects(project.particleEffects)) return "Invalid project particle effects";
+  const tracks = [
+    ...project.timeline.tracks,
+    ...(project.compoundClips ?? []).flatMap(compound => compound.content.tracks),
+  ];
+  for (const track of tracks) {
+    for (const clip of track.clips) {
+      const source = clip.stabilization?.renderedSource;
+      if (source !== undefined && (!source || typeof source.mediaId !== "string" || !source.mediaId.trim() ||
+          !Number.isFinite(source.inPoint) || !Number.isFinite(source.outPoint) ||
+          source.inPoint < 0 || source.outPoint <= source.inPoint)) {
+        return `Invalid stabilized source for clip ${clip.id}`;
+      }
+    }
+  }
+}
+
 export function normalizeProjectStoredFields(project: Project): Project {
+  const renderError = renderFieldError(project);
+  if (renderError) throw new Error(renderError);
   if (!validCollaborationInstructions(project.collaborationInstructions)) throw new Error("Invalid project collaboration instructions");
   for (const requirement of project.requirements?.items ?? []) {
     if (requirement.reviewRange !== undefined && !validReviewRange(requirement.reviewRange)) {
@@ -749,6 +770,11 @@ export class ProjectSerializer {
         return result;
       }
 
+      const renderError = renderFieldError(project);
+      if (renderError) {
+        result.errors.push(renderError);
+        result.valid = false;
+      }
       const mediaIds = new Set(
         project.mediaLibrary.items.map((item: MediaItem) => item.id),
       );

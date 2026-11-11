@@ -9,9 +9,7 @@ import { ExportTiming } from "@reelterminal/core/export/export-timing";
  * ExportEngine + WebCodecsBackend + mediabunny (MP4 muxing).
  *
  * Hydration contract: the canonical serialized Project is the authority.
- * `hydrate()` rebuilds engine-side overlay state (titleEngine.loadTextClips,
- * graphicsEngine.loadSVGClips) from `project.textClips` / `project.svgClips`
- * and re-attaches media as disk-backed File objects
+ * `hydrate()` loads project fonts and re-attaches media as disk-backed File objects
  * (assigned by Playwright to the page's file input — videos are NEVER pushed
  * through evaluate/base64).
  *
@@ -21,13 +19,11 @@ import { ExportTiming } from "@reelterminal/core/export/export-timing";
  * All output bytes flow OUT through these bindings as bounded chunks and are
  * written to disk by the Node host.
  */
-import { getSpeedEngine } from "@reelterminal/core/video/speed-engine";
 import { getVideoEngine } from "@reelterminal/core/video/video-engine";
 import { getExportEngine } from "@reelterminal/core/export/export-engine";
 import { DEFAULT_UPSCALING_SETTINGS } from "@reelterminal/core/export/types";
-import { titleEngine } from "@reelterminal/core/text/title-engine";
-import { graphicsEngine } from "@reelterminal/core/graphics/graphics-engine";
 import type { Project } from "@reelterminal/core/types/project";
+import { registerProjectGeneratedShaders } from "@reelterminal/core/motion/shaders/project-shaders";
 
 declare global {
   interface Window {
@@ -126,6 +122,7 @@ async function hydrate(
 ): Promise<HydrateReport> {
   try {
     const project = JSON.parse(projectJson) as Project;
+    registerProjectGeneratedShaders(project);
     const renderFontsLoaded = await loadProjectRenderFonts(project);
     const input = mediaInput();
     const files = input?.files ? Array.from(input.files) : [];
@@ -145,19 +142,6 @@ async function hydrate(
       }
     });
 
-    // Canonical overlay hydration: project.textClips is the authority; the
-    // render path reads ONLY the titleEngine singleton.
-    titleEngine.loadTextClips(project.textClips ?? []);
-    titleEngine.initialize(project.settings.width, project.settings.height);
-
-    // Same canonical hydration for SVG overlays: the VideoEngine compositor
-    // reads SVG clips ONLY from the graphicsEngine singleton
-    // (getActiveSVGClips), so without this load every preview frame and
-    // export rendered by this headless page silently dropped all SVG
-    // overlays even though they exist in the canonical project.
-    graphicsEngine.loadSVGClips(project.svgClips ?? []);
-
-    getSpeedEngine().loadClips(project.timeline.tracks.flatMap((track) => track.clips));
     const videoEngine = getVideoEngine();
     await videoEngine.initialize();
     // Drop every cached decode: mediaIds repeat across projects, and a stale
@@ -186,6 +170,7 @@ async function hydrate(
     };
   } catch (error) {
     currentProject = null;
+    registerProjectGeneratedShaders({});
     return {
       ok: false,
       mediaAttached: 0,
