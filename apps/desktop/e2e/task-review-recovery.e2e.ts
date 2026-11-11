@@ -100,6 +100,8 @@ test('review recovery preserves inputs and exact decisions across real sharing d
     try {
       await page.getByTestId('task-review-decide-kept').click();
       await page.getByTestId('task-review-reconcile-decision').waitFor();
+      await vi.waitFor(async () => expect((await counters()).completedDecisions).toBe(1));
+      expect((await counters()).renameAttempts).toBeGreaterThan(0);
       expect(await readFile(destination, 'utf8')).toBe(beforeBytes);
       expect((await authority()).revision).toBe(before.revision);
       expect((await counters()).decisions).toBe(1);
