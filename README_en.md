@@ -26,11 +26,12 @@ ReelTerminal connects a timeline, preview canvas and external AI assistant to th
 
 Projects, media caches, editing and rendering run locally. See [external dependencies](docs/EXTERNAL-DEPENDENCIES.md) for model downloads, external pages and optional network services. You choose and configure the AI assistant separately.
 
-## What is new in 1.4.1
+## What is new in 1.4.2
 
-- Large videos appear in the media library sooner while thumbnails continue in the background. Saved projects use managed copies and remain playable after the originals move.
-- Review save errors preserve feedback and input. Verify the outcome before explicitly retrying, avoiding duplicate decisions.
-- Improved offline CLI help, parameter validation, and managed-media delivery.
+- Fix source-frame selection and decoder cache identity to reduce frame timing errors and stale frames after media replacement.
+- Unify timeline rendering across playback, paused previews, CLI stills and exports for more consistent subtitles, overlays and effects.
+- Replace selected timeline subtitles atomically through the CLI, without an intermediate delete-and-add state.
+- Refresh the startup loading animation.
 
 ## Get started
 
