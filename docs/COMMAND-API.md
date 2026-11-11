@@ -1,12 +1,10 @@
 # Command API
 
-The desktop exposes video-project and independent review command catalogs on
-loopback. The GUI owns both stores; an external Agent uses `reelctl` to read or
-edit an explicit target. Review does not require an open video project.
+The desktop exposes video-project commands on loopback. The GUI owns project state; an external Agent uses `reelctl` to read or edit an explicit target. Current folder review is a desktop workflow with no equivalent external Agent decision API. Experimental independent batch review commands are retired.
 
 ## Start and discover on demand
 
-Copy the startup prompt from the intended video workspace or review task. It is
+Copy the startup prompt from the intended video workspace. It is
 one line: `Run now: <installation-generated CLI prefix> start --target <ref>`.
 The reference contains object and runtime identities, never credentials. Do not
 replace it with the active GUI selection or hand-build it from a board ID.
@@ -21,14 +19,14 @@ Use the copied CLI prefix for this discovery sequence:
 ```text
 tools                             # four short domain cards; offline
 tools video                       # video capability cards
-tools review.content              # one capability's tools and workflow
-describe review.ingest            # exact input, permissions and retry contract
+tools video.export                # one capability's tools and workflow
+describe media.inspect            # exact input, permissions and retry contract
 describe edit.apply --op clip.trim --op track.add
-describe review.ingest --detail full  # also include the output schema
-call review.ingest --file review-input.json
+describe media.inspect --detail full  # also include the output schema
+call media.inspect --file media-input.json
 ```
 
-Capability domains are `video`, `review`, `library`, and `system`. Domain cards
+Active capability domains are `video`, `library`, and `system`. The `review` domain labels historical, retired batch contracts and is not a folder-task API. Domain cards
 and package indexes contain no input/output schemas and perform no environment
 probes. Execution checks the required dependency; discovery reports it unprobed.
 Private free boards have no Agent content route and are not review nodes.
@@ -49,8 +47,7 @@ desktop or dependencies. Unknown help paths exit 2 with discovery guidance;
 `valid:false` plans exit 3 through generic, alias and scoped CLI calls. Validation
 does not commit edits.
 
-Video discovery (`video capabilities`) recommends `agent-workspace/video`,
-review discovery recommends `agent-workspace/review`, and ordinary
+Video discovery (`video capabilities`) recommends `agent-workspace/video`, and ordinary
 `capabilities.get` retains the parent recommendation. Default video delivery
 roots include the video partition and parent workspace for old `jobs/` layouts;
 review destinations are excluded. Delivery still requires
@@ -75,264 +72,11 @@ The app-lifetime command service starts read-only. For video projects, use
 read-only** to revoke it. The endpoint token is a credential; clients read it
 privately and must not print or log it.
 
-## Independent Review Workspace
+## Independent Review Workspace (retired)
 
-A task represents an independent goal. Continue all submissions and revisions in
-the explicit task target. Create a new task only when the user explicitly requests
-an independent goal. Do not create tasks for batches, alternatives or retries.
-Parent nodes/groups may organize content by type, batch, stage or any clear tree;
-group order follows the latest modification. Omit absent remarks. Write plans and
-explanations in Markdown with real headings, lists, tables and fenced code.
+Experimental independent batch review is retired in 1.4.1. The desktop no longer offers creation, opening, tab restoration, node export, or the old `review.*` command entry. Historical command definitions may remain discoverable as legacy metadata; runtime discovery marks them unavailable and execution rejects them. They do not operate real folder tasks. Existing stored records and user files are not deleted or migrated automatically.
 
-Use review.ingest for new items in that task. For complete replacement results,
-use review.items.submit with the same target, expectedNodeRevision, requestId and
-results containing itemId, expectedItemVersion and content. Resources must already
-belong to the task or be imported atomically through files. The item ID stays the
-same, its version advances, old content and feedback remain, and the result returns
-to pending review. Optional stepId completes a real running processing step. All
-writes retain revision guards and durable request receipts. Published handoff
-rework may continue using the existing review.apply contract.
-
-Task branch creation is retired: review.branches.create returns UNSUPPORTED.
-Existing historical branches remain readable and can still be compared/adopted
-through the task menu's historical links. No existing task data is merged or
-deleted automatically. Legacy branch submission remains for existing branches;
-new workflows use review.items.submit.
-
-Select **Review Workspace**, create a data node, and use **Copy connection
-instructions** for the current installation. Review editing has its own checkbox;
-video write permission does not grant review write permission. Human GUI edits
-do not require granting an external Agent access.
-
-```powershell
-reelctl tools review
-reelctl tools review.content
-reelctl describe review.ingest
-reelctl call review.ingest --file review-input.json
-```
-
-Use the CLI prefix copied by the installed app in place of `reelctl` above.
-The startup prompt runs only `start --target` with the bound reference.
-The capability package explains the workflow; `describe <command>` (or
-`help <command>`) returns that command's usage and nested field guidance from
-the same declarations used for validation. Read `review context` for identity
-and review permission, and `review capabilities` for allowed media roots before
-creating files. A workspace write grant retains its workspace/runtime scope;
-copying task instructions does not create a separate grant.
-
-`review.context` supplies `{kind:"review", reviewWorkspaceId, instanceId}`.
-Node commands additionally require `nodeId`. Resolve the target explicitly and
-keep it throughout a task. Node writes require `expectedNodeRevision` and a UUID
-`requestId`; directory writes use `expectedWorkspaceRevision`. Revisions are
-monotonic through undo/redo. Replaying an identical durable request returns its
-receipt, while stale instances/revisions or changed request bodies fail with
-`CONFLICT`. Do not substitute a video project ID or infer the node from selection.
-The task target stays fixed when the GUI selection changes. After restart or
-conflict, resolve the intended target again and read its current revision.
-
-For new content, read `schema review.ingest`: the batch name and lineage parent
-carry broader context, while `title` and `agentGuidance.nodeSlotLabel` stay short.
-The shared `groupMode`, `lineage.parentNodeId` and `compareWithItemId` field
-descriptions explain same-screen boards and baseline video comparisons; the
-same guidance is available under `schema review.steps.complete` for new outputs.
-For returned work, read `schema review.apply` and fetch the published handoff
-and exact retained source versions before producing a version-bound rework.
-These instructions guide use; runtime validation still enforces all target,
-permission, revision and content constraints.
-
-Available command families (query their schemas for exact arguments):
-
-- `review.directory.get/apply/history.control`, `review.nodes.list/create` manage
-  node metadata, groups, archive and recycle states separately from item history.
-- `review.ingest/get/changes`, `review.apply`, `review.versions.get` and
-  `review.history.control` share the existing review semantics for four content
-  types. Reads are paged (default 100, maximum 500); an exact item/version read
-  returns its body. File bytes stay outside command JSON. File ingest prepares
-  independent managed originals before committing their references.
-- `review.handoff.get` reads an immutable human-published snapshot. Use the
-  IDs from each `review.changes.entries[].handoffIds` event to discover published,
-  acknowledged, returned or removed snapshots; a removed ID reads `NOT_FOUND`.
-  Fetch each snapshot to inspect its current delivery state and historical flag.
-  Acknowledgement and rework operations use `review.apply`, exact versions and decision revisions.
-  Publishing remains a human GUI action. Migrated/restored handoffs are historical
-  evidence and cannot resume old tasks.
-- `review.steps.start/complete/fail/list` records actual tool runs, exact
-  inputs/outputs, parameters, mappings and failures. Completing a step commits its
-  outputs atomically. External reports remain declared; these commands do not run
-  a model or infer a processing history from a final file.
-- `review.media.inspect` and `review.frames.extract` are shared read-only native
-  operations on an exact node-owned version/resource, guarded by node revision.
-  Frames reuse the existing FFmpeg processor. Outputs go under
-  `agent-workspace/review/jobs/<date>-review-frames-<uuid>/output/`. They do not
-  automatically create review items, feedback or steps. Other project processors
-  are not available for review targets.
-- `review.repair.inspect/apply` operates only on an explicitly targeted review
-  image. Dedicated CLI forms are `reelctl review repair inspect --file crop.json`
-  and `reelctl review repair apply --file batch.json`; `schema` and `help` accept
-  the same three-word names. Both requests require `target` (review workspace,
-  runtime instance and node), `expectedNodeRevision`, `itemId`,
-  `expectedItemVersion`, and an integer `region` rectangle
-  `{ "space":"source-pixels", "x":10, "y":20, "width":80, "height":60 }`.
-  Coordinates are full decoded image pixels, including operation points; a crop
-  pixel maps back by adding `mapping.cropOrigin`, with scale 1.
-  Inspect returns a real managed PNG path, dimensions, intersecting normalized
-  annotations and a `baseline`. Send that baseline on subsequent reads. It is a
-  client conditional-read token, like an ETag, not proof that an Agent viewed or
-  approved an image. State is `initial`, `unchanged`, or `refresh`; unchanged
-  pixels omit `image`, and a different target/item/region or changed image causes
-  a full local crop refresh. No hidden board, full layer stack or history dump is
-  included. Each baseline covers only its stated region.
-  Optional `handoffId` reads region-relevant pixel issues from that explicit
-  immutable published handoff at the current item version. `feedback` contains
-  stable IDs, target geometry, intent and up to 1000 characters per text;
-  `feedbackSource` names the snapshot. Use `limit` (1–500, default 100) and the
-  returned `feedbackCursor` as `cursor` for further pages. Fetch the existing
-  `review.handoff.get` for complete published text. Without `handoffId`, no
-  feedback is returned or other handoff scanned. Draft or edited-but-unpublished
-  feedback never enters this path. The baseline includes the actual returned
-  annotation and published-feedback page, without claiming any visual approval.
-  Apply additionally requires a UUID `requestId` and `operations`:
-  brush `{kind:"brush",color:"#ff0000",size:8,points:[{x:20,y:30,pressure:1}]}`;
-  eraser `{kind:"eraser",size:8,points:[...]}`;
-  clone `{kind:"clone",size:16,source:{x:40,y:30},points:[...],hardness:0.5,opacity:1}`;
-  patch `{kind:"patch",resourceId:"<retained-image-uuid>",x:10,y:20,width:80,height:60,opacity:1}`.
-  Import patch files into the same node using existing `review.ingest.files`.
-  Clone samples the frozen batch-start composite with a soft circular edge.
-  Eraser clears only the separate transparent repair layer; a legacy flattened
-  repair becomes the immutable bottom image for a new layer. The complete batch
-  is validated and rendered before one atomic commit/undo; source media and
-  pixels outside the region remain intact. A no-visible-change batch is rejected.
-  Results include `nodeRevision`, `itemVersion`, exact `changedRegion`, a true
-  composed local `image` PNG path, and `replayed`. Reuse the original request ID
-  and business arguments after an uncertain response; after restart rediscover
-  the runtime target, preserving the workspace/node/item identities. Retries
-  return the retained result without creating a new version or reviving an undo.
-- `review.repair.draft.create/apply/inspect/commit/discard` stages multi-step
-  pixel repairs on an explicitly targeted review image without mutating the
-  saved item version or node revision until `commit`. `create` binds the explicit
-  `target`, `expectedNodeRevision`, `itemId`, `expectedItemVersion` and
-  `requestId`; `apply` appends validated brush/eraser/clone/patch operations to
-  the in-memory draft (guarded by `expectedDraftRevision` and `requestId`) while
-  keeping the formal viewer image untouched; `inspect` renders a real cropped
-  draft-preview PNG and displays a separate unsaved-draft preview in the GUI;
-  `commit` publishes the accumulated draft as a single new item version, one
-  bounded processing record and one undo unit (with durable `requestId` replay
-  across undo and app restarts, and conflict rejection if the base item or node
-  changed); `discard` drops the unsaved draft without touching saved content.
-  Uncommitted drafts are in-memory session state and report `NOT_FOUND` after an
-  app restart. Discover exact schemas with `reelctl tools review.image-repair`
-  and `reelctl describe <verb>`.
-- `reelctl review frames capture --file frame.json` (`review.frames.capture`)
-  explicitly creates a source-linked image in the same review node from a video
-  `itemId`/`expectedItemVersion`. Supply the same target and revision guards,
-  UUID `requestId`, and exact zero-based `frameIndex`. It reuses the FFmpeg
-  decoder behind `review.frames.extract`; the saved processing record and
-  returned `source` retain the original video item/version/resource, actual
-  decode index, source `ptsTimeSec`, and timing classification. `image` reports
-  the actual PNG dimensions after FFmpeg autorotation, which define subsequent
-  repair coordinates. Capture adjacent indices separately to compare neighboring
-  frames; GUI `currentTime` is not source PTS and `seconds * fps` is never used.
-  The result is a normal image for `review.repair.*` and comparison. This first
-  version does not propagate changes across frames or re-encode video. Independent
-  human boards use their own resource/commit path and are not review targets.
-
-The following are complete request-file examples. Replace the example UUIDs and
-revisions with `review.context` and the explicit node's `review.get` results;
-do not use the current GUI selection as a target. Run
-`reelctl review repair inspect --file inspect-region.json` with:
-
-```json
-{
-  "target": {
-    "kind": "review",
-    "reviewWorkspaceId": "11111111-1111-4111-8111-111111111111",
-    "instanceId": "22222222-2222-4222-8222-222222222222",
-    "nodeId": "33333333-3333-4333-8333-333333333333"
-  },
-  "expectedNodeRevision": 1,
-  "itemId": "44444444-4444-4444-8444-444444444444",
-  "expectedItemVersion": 1,
-  "region": { "space": "source-pixels", "x": 10, "y": 20, "width": 80, "height": 60 }
-}
-```
-
-After inspecting that real crop, run
-`reelctl review repair apply --file repair-batch.json` with:
-
-```json
-{
-  "target": {
-    "kind": "review",
-    "reviewWorkspaceId": "11111111-1111-4111-8111-111111111111",
-    "instanceId": "22222222-2222-4222-8222-222222222222",
-    "nodeId": "33333333-3333-4333-8333-333333333333"
-  },
-  "expectedNodeRevision": 1,
-  "itemId": "44444444-4444-4444-8444-444444444444",
-  "expectedItemVersion": 1,
-  "requestId": "55555555-5555-4555-8555-555555555555",
-  "region": { "space": "source-pixels", "x": 10, "y": 20, "width": 80, "height": 60 },
-  "operations": [
-    { "kind": "brush", "color": "#ff0000", "size": 8,
-      "points": [{ "x": 30, "y": 40, "pressure": 1 }, { "x": 50, "y": 40, "pressure": 1 }] }
-  ]
-}
-```
-
-For an existing video item, run
-`reelctl review frames capture --file exact-frame.json` with:
-
-```json
-{
-  "target": {
-    "kind": "review",
-    "reviewWorkspaceId": "11111111-1111-4111-8111-111111111111",
-    "instanceId": "22222222-2222-4222-8222-222222222222",
-    "nodeId": "33333333-3333-4333-8333-333333333333"
-  },
-  "expectedNodeRevision": 2,
-  "itemId": "66666666-6666-4666-8666-666666666666",
-  "expectedItemVersion": 1,
-  "requestId": "77777777-7777-4777-8777-777777777777",
-  "frameIndex": 4
-}
-```
-
-The capture response's new image `itemId` and version become the next repair
-target. Repeat capture with adjacent indices and fresh request IDs to observe
-neighboring frames. Read `reelctl schema review repair apply` for the complete
-operation union, including clone and retained transparent patches.
-
-- `review.export.prepare/status/cancel/copy` freezes `original`, `adopted`,
-  `node-package` or exact-reference `version` exports. Region/time annotations do
-  not crop or trim the exported file. Prepared exports are disposable copies;
-  handing a drag to the OS does not prove a target app received it.
-- `review.package.inspect/restore` validates a complete node package and restores
-  new IDs with references remapped. Missing media/version bodies remain explicit
-  gaps. Historical journals are evidence, not executable undo records. Whole-node
-  backup is available in the GUI; directory metadata is saved but restoration is
-  currently per node.
-- `review.attach` copies an exact human-adopted image/video to an explicitly
-  selected video project/workspace/runtime through canonical media import. Agent
-  use requires both write grants. It adds no timeline clip. A retried import that
-  was subsequently undone returns `present:false` instead of resurrecting it.
-
-Legacy migration and permanent node clearing are explicit human GUI actions.
-Migration copies readable files, retains unavailable markers, and locks the old
-project workbench as a backup. It removes undo groups containing old workbench
-actions and clears the redo branch at the normal new-edit boundary; other project
-undo remains. Interrupted project-pointer saving can be retried without duplicate
-nodes. A source changed by an older application is imported as new batches only
-after another preview/confirmation. Old applications do not enforce this lock.
-Permanent clearing previews references and requires confirmation to delete all
-node history. Other nodes and project copies remain; managed orphan cleanup uses
-the existing 24-hour grace period and a later app startup.
-
-`NOT_FOUND` distinguishes a missing entity or unavailable retained body; native
-file errors additionally report a reason such as `MISSING_FILE` or
-`SOURCE_CHANGED`. Read the error before deciding whether to prepare a new export
-or preview. Permissions, malformed targets and cross-node references never imply
-permission to retry against another target.
+Use the desktop review workspace for real folder tasks. Existing project-scoped `workbench.*` capabilities remain separate and available for their project content. References to independent review below describe historical schemas only, not current supported entry points.
 
 ## CLI
 
@@ -609,7 +353,7 @@ currentItemId, selectedItemIds}` while the workbench page is the active
 desktop page (`null` otherwise).
 
 
-### 审阅 GLB（轻量只读预览）
+### 历史独立批次 GLB 接口（已退役）
 
 独立 `review.ingest` 的正式类型为 `model3d`，内容是
 `{"type":"model3d","resourceId":"<FileResource UUID>"}`；`files` 使用

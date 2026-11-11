@@ -476,6 +476,24 @@ describe("live session host enable/status/disable", () => {
 });
 
 describe("live session host verb dispatch + events", () => {
+  it("does not bind retired batch services and rejects old commands before the renderer can mutate data", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    const original = fixture.deps.installStoreBridge;
+    const reviewContext = vi.fn(); const reviewCommand = vi.fn();
+    const host = createLiveSessionHost({ ...fixture.deps, installStoreBridge: () => ({ ...original(), reviewContext, reviewCommand }) });
+    await host.enable(); cleanups.push(() => void host.disable());
+    expect(await host.callExternal("review.context", {})).toMatchObject({ ok: false, error: { code: "UNSUPPORTED" } });
+    expect(await host.callExternal("review.nodes.create", {
+      target: { reviewWorkspaceId: crypto.randomUUID(), instanceId: crypto.randomUUID() },
+      name: "Retired experiment", expectedWorkspaceRevision: 0, requestId: crypto.randomUUID(),
+    })).toMatchObject({ ok: false, error: { code: "UNSUPPORTED" } });
+    await host.callExternal("capabilities.get", {});
+    expect(fixture.sessions[0].config.reviewContext).toBeUndefined();
+    expect(fixture.sessions[0].config.reviewCommand).toBeUndefined();
+    expect(reviewContext).not.toHaveBeenCalled(); expect(reviewCommand).not.toHaveBeenCalled();
+  });
+
   it("correlates a rejected review invocation with its target, arguments and terminal failure", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));

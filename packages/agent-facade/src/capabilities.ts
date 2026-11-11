@@ -1297,7 +1297,9 @@ export async function buildSessionDescription(
           sessionId: ctx.live.sessionId,
         }
       : {}),
-    notes: request.kind === "review" ? [
+    notes: request.kind === "review" && ctx.live?.unavailableVerbs?.includes("review.context") ? [
+      "Experimental independent batch review is retired in this host. Use folder tasks in the desktop review workspace; these legacy commands do not operate folder tasks. Existing stored batch data is not deleted or migrated.",
+    ] : request.kind === "review" ? [
       "Independent user-level review storage. No video project is created or selected; legacy workbench.* remains project-scoped.",
       "Workflow: run review context to verify workspace/runtime identity and review access, then review capabilities to read mediaImport.mediaRoots and recommendedRoot before creating files. Use schema <command> for command instructions, nested field descriptions and exact parameters; call through review call <command> --file <request-file>.",
       "Resolve the task node through review.nodes.list or review.directory.get, or create one with review.nodes.create when requested. Keep the explicit task target fixed across GUI selection changes. Read review.get before edits; use review.changes, review.handoff.get and review.versions.get for published work and its exact source versions. After restart or conflict, rediscover identity and reread the intended target rather than switching tasks.",

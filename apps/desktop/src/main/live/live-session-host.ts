@@ -356,8 +356,9 @@ export function createLiveSessionHost(
     };
     const config: LiveFacadeConfig = {
       store: bridge.store,
-      ...(bridge.reviewContext ? { reviewContext: bridge.reviewContext } : {}),
-      ...(bridge.reviewCommand ? { reviewCommand: bridge.reviewCommand } : {}),
+      // Independent batch review is retired; leaving these bindings absent uses
+      // the facade's existing unavailable-command discovery and execution gate.
+      // Project-scoped workbench.* retains the normal video store bridge.
       reviewAccess: target => reviewGrant && (!target || (target.reviewWorkspaceId === reviewGrant.reviewWorkspaceId && target.instanceId === reviewGrant.instanceId)) ? reviewGrant.access : "read-only",
       ...(bridge.materialLibrary
         ? { materialLibrary: bridge.materialLibrary }
@@ -530,11 +531,13 @@ export function createLiveSessionHost(
   const host: LiveSessionHost = {
     async resolveStartupTarget(input) {
       const target = agentTargetRequestSchema.parse(input);
+      if (target.kind === "review") throw Object.assign(new Error("Experimental independent batch review is retired; use folder tasks in the desktop workspace."), { code: "UNSUPPORTED" });
       if (!enabled || !bridge?.getStart) throw new Error("The live workspace is not ready");
       const snapshot = await bridge.getStart(target);
       return snapshot.target.kind === "video" ? { ...snapshot.target, hostInstanceId: instanceId } : snapshot.target;
     },
     async startTarget(target) {
+      if (target.kind === "review") return { ok: false, error: { code: "UNSUPPORTED", message: "Experimental independent batch review is retired; use folder tasks in the desktop workspace." } };
       if (!enabled || !bridge?.getStart) return { ok: false, error: { code: "UNSUPPORTED", message: "The live workspace is not ready" } };
       if (target.kind === "video" && target.hostInstanceId !== instanceId) return { ok: false, error: { code: "CONFLICT", message: "Desktop runtime changed; copy a fresh startup prompt for the same project and workspace" } };
       const request: AgentTargetRequest = target.kind === "video"
@@ -708,6 +711,7 @@ export function createLiveSessionHost(
       if (missing) {
         return { ok: false, error: { code: "INVALID_PARAMS", message: `${verb} requires ${missing}` } };
       }
+      if (verb.startsWith("review.")) return { ok: false, error: { code: "UNSUPPORTED", message: "Experimental independent batch review is retired; folder review remains a desktop workflow." } };
       const current = guard ? await getCommandStatus() : null;
       const isReviewCommand = verb.startsWith("review.") || ((verb === "session.describe" || verb === "capabilities.get") && record?.kind === "review");
       if (isReviewCommand && (guard?.expectedProjectId !== undefined || guard?.expectedProjectEpoch !== undefined || record?.projectId !== undefined || record?.workspaceId !== undefined)) {

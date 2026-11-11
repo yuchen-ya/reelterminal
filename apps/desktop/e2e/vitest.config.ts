@@ -22,6 +22,7 @@ export default defineConfig({
     // one Electron app instance and they must never share the single-writer
     // live stack or a port.
     fileParallelism: false,
+    maxWorkers: 2,
     pool: "forks",
     testTimeout: 600_000,
     hookTimeout: 420_000,

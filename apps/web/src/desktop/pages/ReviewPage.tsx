@@ -154,6 +154,9 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
     let cancelled = false;
     setError(null);
     const load = async () => {
+      // The desktop directory now owns real folders and boards only. Existing
+      // independent batch records stay untouched in storage, without an entry.
+      if (!browserDemo) return;
       const native = window.reelterminal?.collabControl;
       if (!browserDemo && !native?.getReviewAccess) throw reviewError("UNSUPPORTED", translate("The independent review service is unavailable"));
       const identity = await getReviewContext();
@@ -425,7 +428,6 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
 
   const adminMenu = browserDemo ? null : (
     <ReviewAdminMenu
-      contextLoaded={!!context && !busy}
       hasProject={hasProject}
       projectName={projectName}
       onImportToBoard={
@@ -433,9 +435,6 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
           ? () => document.querySelector<HTMLInputElement>('[data-testid="human-board-import-files"]')?.click()
           : undefined
       }
-      onOpenMigration={() => setMigrationOpen(true)}
-      onOpenBackup={() => setBackupOpen(true)}
-      onOpenRestore={() => setRestoreOpen(true)}
       onOpenLegacyProject={hasProject ? () => { void navigate(() => { setManagerOpen(false); setLegacy(true); }).catch(report); } : undefined}
       onOpenLegacyMotion={
         hasProject
@@ -838,7 +837,6 @@ export function ReviewPage({ browserDemo = false }: { browserDemo?: boolean }) {
               board={board}
               incoming={boardIncoming}
               onIncomingConsumed={consumeIncoming}
-              onOpenReview={chooseNode}
               onSaved={boardSaved}
               onFlush={registerFlush}
               onLayoutLockChange={setLayoutLocked}

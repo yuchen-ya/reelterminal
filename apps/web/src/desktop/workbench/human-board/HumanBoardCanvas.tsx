@@ -12,7 +12,7 @@ import type { FileResource } from "@reelterminal/core/review/types";
 import type { ModelObservation } from "@reelterminal/core/types/workbench";
 import { humanBoardStorage, type HumanBoard } from "../../../services/human-board/storage";
 import { hydrateBoardFiles, imageSize, importBoardFiles, importBoardImageUrl, prepareBoardHtmlPreview, cancelBoardHtmlPreviews, resourceImage, retainBoardBlob, type BoardImport } from "../../../services/human-board/media";
-import { boardBinding, exportBoardObjectToReview } from "../../../services/human-board/export";
+import { boardBinding } from "../../../services/human-board/export";
 import { dispatchBoardHistory } from "../../../services/human-board/history";
 import { freezeBoardScene, renderBoardRegion, type BoardRegion, type FrozenBoardScene, type MediaCapture } from "../../../services/human-board/render";
 import { boardDocumentBinding, boardTransferInput, resolveDocumentAsset, singleBoardUrl, type BoardDocumentBinding } from "../../../services/human-board/documents";
@@ -31,11 +31,10 @@ const BOARD_MEDIA_LINK_PREFIX = "https://human-board.invalid/";
 
 interface CaptureSession { scene: FrozenBoardScene; state: AppState }
 
-export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingConsumed, onImport, onSaved, onFlush, onOpenReview, onLayoutLockChange, toolbarRight }: {
+export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingConsumed, onImport, onSaved, onFlush, onLayoutLockChange, toolbarRight }: {
   initialBoard: HumanBoard; incoming: BoardIncoming | null; onIncomingConsumed: () => void;
   onImport: () => void; onSaved: () => void;
   onFlush: (callback: () => Promise<void>) => void;
-  onOpenReview: (nodeId: string) => void;
   onLayoutLockChange: (locked: boolean) => void;
   toolbarRight?: React.ReactNode;
 }) {
@@ -53,7 +52,6 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
   const [capture, setCapture] = useState<CaptureSession | null>(null);
   const [output, setOutput] = useState<BoardOutput | null>(null);
   const [repair, setRepair] = useState<ExcalidrawElement | null>(null);
-  const [exportedNodeId, setExportedNodeId] = useState("");
   const [browser, setBrowser] = useState<ExcalidrawElement | null>(null);
   const [documentExport, setDocumentExport] = useState("source");
   useEffect(() => { onLayoutLockChange(busy || !!capture || !!browser); return () => onLayoutLockChange(false); }, [busy, capture, browser, onLayoutLockChange]);
@@ -288,7 +286,7 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
     return undefined;
   };
 
-  return <div ref={host} className="flex h-full min-h-0 flex-col" data-testid="human-board-canvas" data-board-id={initialBoard.id} data-selected-element-id={selected.length === 1 ? selected[0].id : undefined} data-save-state={saveState} data-exported-node-id={exportedNodeId}
+  return <div ref={host} className="flex h-full min-h-0 flex-col" data-testid="human-board-canvas" data-board-id={initialBoard.id} data-selected-element-id={selected.length === 1 ? selected[0].id : undefined} data-save-state={saveState}
     onKeyDown={event => event.stopPropagation()}>
     {/* Single fixed-height (h-10) unified board toolbar keeps scene origin 100% stable across selection changes. */}
     <div data-testid="human-board-toolbar" className="flex h-10 shrink-0 items-center gap-1.5 overflow-x-auto scrollbar-none border-b border-border bg-bg-1 px-3 text-xs">
@@ -352,13 +350,6 @@ export default function HumanBoardCanvas({ initialBoard, incoming, onIncomingCon
               else if (resource && one?.type !== "image" && !selectedDocument) setOutput({ name: resource.originalFileName, resource, image: false });
             }).catch(report).finally(() => setBusy(false));
           }}>{t("Single file: drag out / save")}</button>
-          <button className={wbButton.primary} disabled={!contentSelected || busy} data-testid="human-board-export-review" onClick={() => {
-            const element = one!;
-            setBusy(true);
-            void selectedResource().then(resource => exportBoardObjectToReview(String(element.customData?.name ?? translate("Board content")), element, resource, selectedDocument ? documentExport === "source" ? { text: selectedDocument.source ?? selectedDocument.url ?? "" } : { image: true } : undefined))
-              .then(nodeId => { setExportedNodeId(nodeId); setOutput(null); }).catch(report).finally(() => setBusy(false));
-          }}>{t("Export this item as a review node")}</button>
-          {exportedNodeId && <button className={wbButton.secondary} onClick={() => onOpenReview(exportedNodeId)}>{t("Open exported review node")}</button>}
         </>}
       </div>
       {toolbarRight}

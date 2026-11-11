@@ -45,30 +45,11 @@ Chromium plus ffmpeg/ffprobe. Run specs selectively using the separate
 `e2e/vitest.config.ts`. Test fixture files stay in isolated run directories;
 retained evidence follows the harness evidence policy. Never print descriptors.
 
-The independent review acceptance specs are `review-foundation-{context,service,
-ui,process,attach,migration,rework,scale}.e2e.ts`. They cover no-project identity,
-transactions, four content types, processing comparisons, packages, migration,
-independent project copies and bounded UI pages. `scale` reports warm text-only
-interaction timings and sampled working sets; it is not a media throughput gate.
-Set `REELTERMINAL_E2E_APP_EXECUTABLE` to an unpacked EXE to use the same isolated
-profiles against a packaged app; external calls normally use the current build CLI.
+Experimental independent batch review is retired. Its dedicated `review-*.e2e.ts` specs no longer define supported behavior. Project-scoped `workbench*.e2e.ts` and `legacy-review-history.e2e.ts` remain active.
 
-`review-video-a7.e2e.ts` uses generated VFR, 90-degree display-matrix and nonzero
-start-time MP4s. `harness/review-video-fixtures.ts` records ffprobe timestamps and
-actual autorotated FFmpeg RGB samples; GUI canvas pixels and video-frame-callback
-mediaTime are checked independently. Real pointer seeks/drawing, marker feedback,
-v1 publication/v2 rework, profile reopen, mapped 2x comparison and unmapped
-independent seeking are covered. Evidence is `e2e/.artifacts/review-video-a7*`.
-Legacy `*PtsSec` fields use browser currentTime, not an assumed container PTS;
-this test does not create an automatic source-frame mapping or fake frame index.
+Current review acceptance uses `folder-review.e2e.ts`, `task-review.e2e.ts`, `task-review-recovery.e2e.ts`, and `task-review-media.e2e.ts`. `independent-batch-retirement.e2e.ts` verifies absent legacy entries, rejected CLI writes and exact preservation of an existing synthetic stored record. Board tests retain private content, pixels and real single-file exports; retired node-export assertions are replaced with independent saved-byte checks.
 
-`review-foundation-native-drag.e2e.ts` is opt-in with
-`REELTERMINAL_REVIEW_NATIVE_DRAG=1`. It opens the formal export dialog and an empty
-temporary Explorer destination. A human drags a single file, then multiple files
-and a folder; the test verifies actual received bytes. It never synthesizes a drop
-or equates OS drag initiation with target receipt. In packaged mode it also checks
-the actual packaged CLI through Electron's Node runtime. Preview appearance still
-requires human feedback. No user project/profile is used.
+Set `REELTERMINAL_E2E_APP_EXECUTABLE` to an unpacked executable to use the same isolated profiles against a packaged app. External calls normally use the current build CLI unless a spec explicitly selects the packaged entry.
 
 The P2 synthetic performance suite is opt-in and remains skipped by ordinary
 E2E runs. Use `test:perf:counts`, `test:perf:quick`, or `test:perf:benchmark`;

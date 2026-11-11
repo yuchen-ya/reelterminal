@@ -3,13 +3,11 @@ import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "playwright-core";
-import type { ReviewContext, ReviewNode } from "@reelterminal/core/review/types";
-import type { WorkbenchItem } from "@reelterminal/core/types/workbench";
 import { LEGACY_IDB_MATERIAL_LIBRARY } from "@reelterminal/core/legacy/physical-identifiers";
 import { modelFixture } from "../../../packages/core/src/review/glb-fixtures.test-helper";
 import { launchApp } from "./harness/launch";
 import { openOrCreateBoard, openWorkspaceDirectory } from "./harness/workspace-tabs";
-import { connectExternalAgent, value } from "./harness/cli-client";
+import { connectExternalAgent } from "./harness/cli-client";
 import { createEvidence } from "./harness/evidence";
 import { ARTIFACTS_DIR } from "./harness/paths";
 import { createVideoFixture } from "./harness/workbench-fixtures";
@@ -128,17 +126,10 @@ test("private mixed-media board appends in one scene, exports one frozen contain
     expect(initial.resourceIds).toHaveLength(4);
     expect(initial).not.toHaveProperty("files");
     expect(JSON.stringify(initial)).not.toContain("data:image");
-    const context = value(await agent.callCommand<ReviewContext>("review.context"));
-    expect(value(await agent.callCommand<{ nodes: ReviewNode[] }>("review.nodes.list", { target: context.target })).nodes).toEqual([]);
-    expect(JSON.stringify(context)).not.toContain(privateText);
-    await page.evaluate(async target => window.reelterminal!.collabControl!.setReviewAccess!({ reviewWorkspaceId: target.reviewWorkspaceId, instanceId: target.instanceId, access: "write" }), context.target);
-    const publicNode = value(await agent.callCommand<ReviewNode>("review.nodes.create", { target: context.target, expectedWorkspaceRevision: context.revision, requestId: crypto.randomUUID(), name: "Public decoy for ownership checks" }));
-    const publicTarget = { ...context.target, nodeId: publicNode.id };
-    for (const resourceId of initial.resourceIds) {
-      expect((await agent.callCommand("review.media.inspect", { target: publicTarget, expectedNodeRevision: 0, reference: { resourceId, role: "private-board-attempt" } })).error?.code).toBe("NOT_FOUND");
-    }
-    expect(value(await agent.callCommand<{ entries: unknown[] }>("review.changes", { target: publicTarget, afterSequence: 0 })).entries).toEqual([]);
-    expect((await agent.callCommand("review.get", { target: { ...context.target, nodeId: boardId } })).error?.code).toBe("NOT_FOUND");
+    const retired = await agent.callCommand("review.context");
+    expect(retired).toMatchObject({ ok: false, error: { code: "UNSUPPORTED" } });
+    expect(JSON.stringify(retired)).not.toContain(privateText);
+    expect(await page.getByTestId("human-board-export-review").count()).toBe(0);
     await page.getByTestId("human-board-scene").locator(".excalidraw").focus();
     await page.keyboard.press("Shift+1");
     await saved(page);
@@ -198,22 +189,28 @@ test("private mixed-media board appends in one scene, exports one frozen contain
     evidence.record("modalHistory", { nativeMenuUndoRevertedOnlySecondStroke: true, sourceObjectRemainedLive: true, boardUndoAfterSave: true });
     await page.getByRole("button", { name: "Rotate 90°", exact: true }).click();
     await vi.waitFor(async () => expect((await boards(page))[0].elements.find(element => element.id === image.id)!.angle).toBeCloseTo(Math.PI / 2), { timeout: 20_000 });
-    await page.getByTestId("human-board-export-review").click();
-    let exportedId = "";
-    await vi.waitFor(async () => { exportedId = await page.getByTestId("human-board-canvas").getAttribute("data-exported-node-id") ?? ""; expect(exportedId).not.toBe(""); }, { timeout: 30_000 });
-    const exportTarget = { ...context.target, nodeId: exportedId };
-    const exported = value(await agent.callCommand<{ node: ReviewNode; items: Array<{ id: string }> }>("review.get", { target: exportTarget }));
-    expect(exported.items).toHaveLength(1);
-    const snapshot = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target: exportTarget, itemId: exported.items[0].id })).item;
-    expect(snapshot.type).toBe("image");
-    if (snapshot.content.type !== "image") throw new Error("Single image snapshot has wrong content type");
-    const snapshotResource = await page.evaluate(async id => window.reelterminal!.reviewFiles!.resolve(id, true), snapshot.content.mediaId);
-    if (!snapshotResource.ok) throw new Error(snapshotResource.error.message);
-    const snapshotPixels = decodeRgbaPng(snapshotResource.value.path);
+    const saveOutput = async (label: string) => {
+      const directory = path.join(launched.runDir, "single-file-" + label);
+      await mkdir(directory);
+      await launched.app.evaluate(({ dialog }, directory) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] }); }, directory);
+      await vi.waitFor(async () => expect(await page.getByTestId("human-board-output-save").isEnabled()).toBe(true));
+      await page.getByTestId("human-board-output-save").click();
+      await vi.waitFor(async () => expect(await page.getByTestId("human-board-output").textContent()).toContain("Saved to"));
+      const files = (await readdir(directory, { recursive: true, withFileTypes: true }))
+        .filter(entry => entry.isFile() && entry.name !== "manifest.json")
+        .map(entry => path.relative(directory, path.join(entry.parentPath, entry.name)));
+      expect(files).toHaveLength(1);
+      return path.join(directory, files[0]);
+    };
+    await page.getByTestId("human-board-single-file").click();
+    const snapshotFile = await saveOutput("image");
+    const snapshotBytes = await readFile(snapshotFile);
+    const snapshotPixels = decodeRgbaPng(snapshotFile);
     expect(snapshotPixels).toMatchObject({ width: fixture.height, height: fixture.width });
     await page.getByRole("button", { name: "Rotate 90°", exact: true }).click();
-    expect(value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target: exportTarget, itemId: snapshot.id })).item).toEqual(snapshot);
-    const exports: Array<{ kind: string; nodeId: string; item: WorkbenchItem }> = [];
+    expect((await readFile(snapshotFile)).equals(snapshotBytes)).toBe(true);
+    await page.getByRole("button", { name: "Close output", exact: true }).click();
+    const exports: Array<{ kind: string; bytes: number }> = [];
     for (const kind of ["text", "video", "model3d"]) {
       const element = (await boards(page))[0].elements.find(element => kind === "text" ? element.type === "text" : element.customData?.kind === kind)!;
       const point = await elementPoint(page, element);
@@ -226,21 +223,20 @@ test("private mixed-media board appends in one scene, exports one frozen contain
         expect((await launched.app.evaluate(({ clipboard }) => clipboard.readText())).replace(/\r\n/g, "\n")).toBe(privateText);
         await page.keyboard.press("Escape");
       }
-      const previous = await page.getByTestId("human-board-canvas").getAttribute("data-exported-node-id");
-      await page.getByTestId("human-board-export-review").click();
-      let nodeId = "";
-      await vi.waitFor(async () => { nodeId = await page.getByTestId("human-board-canvas").getAttribute("data-exported-node-id") ?? ""; expect(nodeId).not.toBe(previous); expect(nodeId).not.toBe(""); }, { timeout: 30_000 });
-      const target = { ...context.target, nodeId };
-      const items = value(await agent.callCommand<{ items: Array<{ id: string }> }>("review.get", { target })).items;
-      expect(items).toHaveLength(1);
-      const item = value(await agent.callCommand<{ item: WorkbenchItem }>("review.get", { target, itemId: items[0].id })).item;
-      expect(item.type).toBe(kind);
-      if (kind === "text") expect(item.content).toMatchObject({ versions: [{ text: privateText }] });
-      else expect(item.content).toMatchObject(kind === "video" ? { mediaId: element.customData!.resourceId } : { resourceId: element.customData!.resourceId });
-      exports.push({ kind, nodeId, item });
+      await page.getByTestId("human-board-single-file").click();
+      const savedFile = await saveOutput(kind);
+      const bytes = await readFile(savedFile);
+      if (kind === "text") expect(bytes.toString("utf8")).toBe(privateText);
+      else {
+        const source = await page.evaluate(async id => window.reelterminal!.reviewFiles!.resolve(id, true), element.customData!.resourceId!);
+        if (!source.ok) throw new Error(source.error.message);
+        expect(bytes.equals(await readFile(source.value.path))).toBe(true);
+      }
+      await page.getByRole("button", { name: "Close output", exact: true }).click();
+      exports.push({ kind, bytes: bytes.length });
     }
     evidence.record("mixedBoard", initial);
-    evidence.record("exported", { exported, snapshot, dimensions: { width: snapshotPixels.width, height: snapshotPixels.height } });
+    evidence.record("exportedFile", { bytes: snapshotBytes.length, dimensions: { width: snapshotPixels.width, height: snapshotPixels.height } });
     evidence.record("otherSingleContainerExports", exports);
     await evidence.screenshot("mixed-scene");
     await saved(page);
@@ -259,11 +255,10 @@ test("private mixed-media board appends in one scene, exports one frozen contain
     page.once("dialog", dialog => dialog.accept());
     await page.getByTestId(`human-board-delete-${boardId}`).click();
     await vi.waitFor(async () => expect(await boards(page)).toEqual([]));
-    const shared = await page.evaluate(async id => window.reelterminal!.reviewFiles!.resolve(id, true), snapshot.content.mediaId);
-    expect(shared.ok).toBe(true);
+    expect((await readFile(snapshotFile)).equals(snapshotBytes)).toBe(true);
     await mkdir(ARTIFACTS_DIR, { recursive: true });
-    await copyFile(snapshotResource.value.path, path.join(ARTIFACTS_DIR, "human-board-single-image.png"));
-    evidence.record("reopened", { sameBoard: true, resourceCount: reopenedImages.length, snapshotSurvivesBoardDelete: shared.ok });
+    await copyFile(snapshotFile, path.join(ARTIFACTS_DIR, "human-board-single-image.png"));
+    evidence.record("reopened", { sameBoard: true, resourceCount: reopenedImages.length, savedFileSurvivesBoardDelete: true });
   } finally {
     evidence.record("rendererConsole", launched.output.rendererConsole);
     if (!launched.page.isClosed()) await evidence.screenshot("terminal");

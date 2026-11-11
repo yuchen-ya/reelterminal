@@ -28,6 +28,8 @@ export const useWorkbenchTabsStore = create<WorkbenchTabsState>()(persist((set) 
   activeKey: null,
   recentFolders: [],
   open: (tab) => set(state => {
+    // Independent batch tasks are retired. This does not delete their data.
+    if (tab.kind === "review") return state;
     const key = workbenchTabKey(tab);
     return { tabs: state.tabs.some(row => workbenchTabKey(row) === key)
       ? state.tabs.map(row => workbenchTabKey(row) === key ? tab : row)
@@ -36,7 +38,7 @@ export const useWorkbenchTabsStore = create<WorkbenchTabsState>()(persist((set) 
         ? [tab, ...state.recentFolders.filter(row => row.id !== tab.id)].slice(0, 20)
         : state.recentFolders };
   }),
-  activate: (key) => set(state => state.tabs.some(tab => workbenchTabKey(tab) === key) ? { activeKey: key } : state),
+  activate: (key) => set(state => state.tabs.some(tab => tab.kind !== "review" && workbenchTabKey(tab) === key) ? { activeKey: key } : state),
   close: (key) => set(state => {
     const index = state.tabs.findIndex(tab => workbenchTabKey(tab) === key);
     const tabs = state.tabs.filter(tab => workbenchTabKey(tab) !== key);
@@ -76,7 +78,7 @@ export const useWorkbenchTabsStore = create<WorkbenchTabsState>()(persist((set) 
     const tabs = (saved?.tabs ?? []).filter(tab => tab.kind !== "review");
     const activeKey = tabs.some(tab => workbenchTabKey(tab) === saved?.activeKey)
       ? saved!.activeKey! : null;
-    const recentFolders = saved?.recentFolders ?? tabs.filter(tab => tab.kind === "folder");
+    const recentFolders = (saved?.recentFolders ?? tabs).filter(tab => tab.kind === "folder");
     return { ...current, tabs, activeKey, recentFolders };
   },
 }));

@@ -1,8 +1,7 @@
 import { openOrCreateBoard, openWorkspaceDirectory } from "./harness/workspace-tabs";
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { expect, test, vi } from "vitest";
-import type { ReviewContext, ReviewNode } from "@reelterminal/core/review/types";
+import { expect, test } from "vitest";
 import { CAPABILITY_DEFINITIONS } from "@reelterminal/agent-facade/capability-registry";
 import { EDIT_OP_TYPES, FACADE_VERBS } from "@reelterminal/agent-facade/types";
 import { decodeAgentTarget } from "../src/shared/agent-target";
@@ -37,7 +36,7 @@ test("compact navigation stays bound to explicit GUI targets and local discovery
   const sizes: Record<string, number> = {};
   try {
     const absentEndpoint = path.join(launched.runDir, "deliberately-absent-endpoint.json");
-    for (const args of [["tools"], ["tools", "review"], ["tools", "review.image-repair"], ["describe", "edit.apply", "--op", "clip.trim", "--op", "clip.split"]]) {
+    for (const args of [["tools"], ["tools", "video"], ["tools", "video.export"], ["describe", "edit.apply", "--op", "clip.trim", "--op", "clip.split"]]) {
       const reply = await cli(absentEndpoint, args);
       expect(reply.code).toBe(0);
       expect(reply.result.ok).toBe(true);
@@ -65,68 +64,39 @@ test("compact navigation stays bound to explicit GUI targets and local discovery
     expect(videoStart.bytes).toBeLessThan(1800);
     const beforeReview = await agent.callCommand("project.get_state", videoIdentity);
     await launched.page.getByRole("tab", { name: /Review Workspace|审阅工作台/i }).click();
-    const createNode = async (name: string) => {
-      await openWorkspaceDirectory(launched.page);
-      await launched.page.getByTestId("review-new-task").click();
-      await launched.page.getByLabel(/Task name|任务名称/).fill(name);
-      await launched.page.getByTestId("review-create-node").click();
-      await launched.page.getByTestId("review-node-title").waitFor();
-    };
-    await createNode("Bootstrap task A");
-    const reviewContext = value(await agent.callCommand<ReviewContext>("review.context"));
-    const nodes = value(await agent.callCommand<{ nodes: ReviewNode[] }>("review.nodes.list", { target: reviewContext.target })).nodes;
-    const node = nodes.find(candidate => candidate.name === "Bootstrap task A")!;
-    const reviewTarget = { ...reviewContext.target, nodeId: node.id };
-    await launched.page.getByTestId("review-start-command").click();
-    await vi.waitFor(async () => {
-      const text = await launched.page.evaluate(() => navigator.clipboard.readText());
-      expect(text).toContain(`--target rt1.`);
-      expect(decodeAgentTarget(text.split("--target ")[1])).toEqual(reviewTarget);
-    });
-    const copied = await launched.page.evaluate(() => navigator.clipboard.readText());
-    expect(copied).toBe((await launched.page.evaluate(target => window.reelterminal!.collabControl!.getStartupInfo(target), reviewTarget)).startCommand);
-    const reviewRef = copied.split("--target ")[1];
-    expect(decodeAgentTarget(reviewRef)).toEqual(reviewTarget);
-    const baselineNodes = await agent.callCommand("review.nodes.list", { target: reviewContext.target });
-    const reviewStart = await cli(launched.endpointFile, ["start", "--target", reviewRef]);
-    expect(reviewStart.result).toMatchObject({ ok: true, value: { target: reviewTarget, access: "read-only", revision: 0, name: node.name } });
-    expect(Object.keys(reviewStart.result.value).sort()).toEqual(["access", "binding", "connected", "name", "next", "revision", "target"]);
-    sizes["start review"] = reviewStart.bytes;
-    expect(reviewStart.bytes).toBeLessThan(1800);
-    expect(await agent.callCommand("review.nodes.list", { target: reviewContext.target })).toEqual(baselineNodes);
+    await openWorkspaceDirectory(launched.page);
+    expect(await launched.page.getByTestId("folder-task-directory").count()).toBe(1);
+    expect(await launched.page.getByTestId("review-new-task").count()).toBe(0);
+    const retired = await agent.callCommand("review.context");
+    expect(retired).toMatchObject({ ok: false, error: { code: "UNSUPPORTED" } });
     expect(await agent.callCommand("project.get_state", videoIdentity)).toEqual(beforeReview);
-    await createNode("Bootstrap task B");
-    const bound = await cli(launched.endpointFile, ["start", "--target", reviewRef]);
-    expect(bound.result.value.target).toEqual(reviewTarget);
-    expect(bound.result.value.name).toBe("Bootstrap task A");
-    expect(await launched.page.getByTestId("review-node-title").textContent()).toBe("Bootstrap task B");
     await openOrCreateBoard(launched.page);
     expect((await cli(launched.endpointFile, ["start", "--target", videoRef])).result.value.target).toEqual(videoTarget);
-    expect((await cli(launched.endpointFile, ["start", "--target", reviewRef])).result.value.target).toEqual(reviewTarget);
     expect(await launched.page.locator('[data-testid^="board-tab-"]').first().getAttribute("aria-selected")).toBe("true");
     expect(await launched.page.getByTestId("review-start-command").count()).toBe(0);
     await evidence.screenshot("background-target-on-private-board");
     const fullEdit = await cli(launched.endpointFile, ["schema", "edit.apply"]);
     sizes["schema edit.apply"] = fullEdit.bytes;
     sizes["describe edit.apply --op clip.split"] = (await cli(absentEndpoint, ["describe", "edit.apply", "--op", "clip.split"])).bytes;
-    const session = await cli(launched.endpointFile, ["call", "session.describe", "--kind", "review"]);
+    const session = await cli(launched.endpointFile, ["call", "session.describe", "--kind", "video"]);
     expect(session.result.ok).toBe(true);
-    sizes["call session.describe review"] = session.bytes;
+    sizes["call session.describe video"] = session.bytes;
     expect(sizes["describe edit.apply --op clip.trim --op clip.split"]).toBeLessThan(sizes["schema edit.apply"] / 3);
-    expect(sizes["start review"]).toBeLessThan(sizes["call session.describe review"]);
+    expect(sizes["start video"]).toBeLessThan(sizes["call session.describe video"]);
     await agent.close();
     launched = await launched.relaunch();
     agent = await connectExternalAgent(launched.endpointFile);
     evidence.bindPage(launched.page);
-    await vi.waitFor(async () => expect((await agent.callCommand("review.context")).ok).toBe(true), { timeout: 10_000 });
-    for (const ref of [videoRef, reviewRef]) {
+    await launched.waitForEndpointFile();
+    expect((await cli(launched.endpointFile, ["status"])).code).toBe(0);
+    for (const ref of [videoRef]) {
       const stale = await cli(launched.endpointFile, ["start", "--target", ref]);
       expect(stale.code).toBe(3);
       expect(stale.result).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
     }
     evidence.record("responseBytes", sizes);
     evidence.record("registryCounts", { domains: 4, capabilities: CAPABILITY_DEFINITIONS.length, commands: FACADE_VERBS.length, editOperations: EDIT_OP_TYPES.length });
-    evidence.record("contracts", { localDiscoveryWithoutEndpoint: true, fixedVideoAndReviewTargets: true, readOnly: true, privateBoardStaysSelected: true, staleRuntimeRejected: true });
+    evidence.record("contracts", { localDiscoveryWithoutEndpoint: true, fixedVideoTarget: true, retiredBatchRejected: true, readOnly: true, privateBoardStaysSelected: true, staleRuntimeRejected: true });
   } finally {
     evidence.flush();
     await agent.close();

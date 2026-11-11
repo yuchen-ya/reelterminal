@@ -11,25 +11,17 @@ import {
 import { wbButton } from "../wb-button";
 
 export interface ReviewAdminMenuProps {
-  contextLoaded?: boolean;
   hasProject: boolean;
   projectName?: string;
   onImportToBoard?: () => void;
-  onOpenMigration: () => void;
-  onOpenBackup: () => void;
-  onOpenRestore: () => void;
   onOpenLegacyProject?: () => void;
   onOpenLegacyMotion?: () => void;
 }
 
 export function ReviewAdminMenu({
-  contextLoaded = true,
   hasProject,
   projectName = "",
   onImportToBoard,
-  onOpenMigration,
-  onOpenBackup,
-  onOpenRestore,
   onOpenLegacyProject,
   onOpenLegacyMotion,
 }: ReviewAdminMenuProps): JSX.Element {
@@ -58,27 +50,6 @@ export function ReviewAdminMenu({
             <DropdownMenuSeparator />
           </>
         )}
-        <DropdownMenuItem
-          disabled={!contextLoaded}
-          data-testid="review-migration-open"
-          onSelect={onOpenMigration}
-        >
-          {t("review.migration.title")}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={!contextLoaded}
-          data-testid="review-backup-open"
-          onSelect={onOpenBackup}
-        >
-          {t("review.backup.title")}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={!contextLoaded}
-          data-testid="review-restore-open"
-          onSelect={onOpenRestore}
-        >
-          {t("review.restorePackage.title")}
-        </DropdownMenuItem>
         {hasProject && (
           <>
             <DropdownMenuSeparator />

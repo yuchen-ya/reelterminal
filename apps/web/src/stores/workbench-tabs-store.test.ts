@@ -8,29 +8,31 @@ beforeEach(() => {
 
 it("opens each object once, focuses repeated opens, and closes views independently", () => {
   const store = useWorkbenchTabsStore.getState();
-  store.open({ kind: "review", id: "a", name: "Task A" });
+  store.open({ kind: "folder", id: "a", root: "a", name: "Task A" });
   store.open({ kind: "board", id: "a", name: "Private board" });
-  store.open({ kind: "review", id: "a", name: "Renamed task" });
+  store.open({ kind: "folder", id: "a", root: "a", name: "Renamed task" });
   expect(useWorkbenchTabsStore.getState().tabs.map(tab => tab.name)).toEqual(["Renamed task", "Private board"]);
-  expect(useWorkbenchTabsStore.getState().activeKey).toBe("review:a");
-  store.close("review:a");
+  expect(useWorkbenchTabsStore.getState().activeKey).toBe("folder:a");
+  store.close("folder:a");
   expect(useWorkbenchTabsStore.getState().activeKey).toBe("board:a");
   store.close("board:a");
   expect(useWorkbenchTabsStore.getState()).toMatchObject({ tabs: [], activeKey: null });
-  store.open({ kind: "review", id: "a", name: "Renamed task" });
-  expect(useWorkbenchTabsStore.getState().activeKey).toBe("review:a");
+  store.open({ kind: "folder", id: "a", root: "a", name: "Renamed task" });
+  expect(useWorkbenchTabsStore.getState().activeKey).toBe("folder:a");
 });
 
 it("restores folders and boards while leaving old review tabs behind", async () => {
   const store = useWorkbenchTabsStore.getState();
-  store.open({ kind: "review", id: "a", name: "Task" });
   store.open({ kind: "board", id: "b", name: "Board" });
   store.open({ kind: "folder", id: "C:/task", root: "C:/task", name: "Folder" });
   store.rename("folder:C:/task", "Renamed folder task");
   expect(useWorkbenchTabsStore.getState().recentFolders[0].name).toBe("Renamed folder task");
-  store.move("folder:C:/task", "review:a");
+  store.move("folder:C:/task", "board:b");
   store.activate("board:b");
-  const saved = localStorage.getItem("reelterminal.workbench.tabs")!;
+  const savedState = JSON.parse(localStorage.getItem("reelterminal.workbench.tabs")!);
+  savedState.state.tabs.push({ kind: "review", id: "a", name: "Old experiment" });
+  savedState.state.recentFolders.push({ kind: "review", id: "a", name: "Old experiment" });
+  const saved = JSON.stringify(savedState);
   useWorkbenchTabsStore.setState({ tabs: [], activeKey: null, recentFolders: [] });
   localStorage.setItem("reelterminal.workbench.tabs", saved);
   await useWorkbenchTabsStore.persist.rehydrate();
@@ -43,14 +45,28 @@ it("restores folders and boards while leaving old review tabs behind", async () 
   const store = useWorkbenchTabsStore.getState();
   store.open({ kind: "folder", id: "C:/task", root: "C:/task", name: "Task" });
   store.close("folder:C:/task");
-  store.open({ kind: "review", id: "old", name: "Old task" });
-  const saved = localStorage.getItem("reelterminal.workbench.tabs")!;
+  const savedState = JSON.parse(localStorage.getItem("reelterminal.workbench.tabs")!);
+  savedState.state.tabs = [{ kind: "review", id: "old", name: "Old task" }];
+  savedState.state.activeKey = "review:old";
+  const saved = JSON.stringify(savedState);
   useWorkbenchTabsStore.setState({ tabs: [], activeKey: null, recentFolders: [] });
   localStorage.setItem("reelterminal.workbench.tabs", saved);
   await useWorkbenchTabsStore.persist.rehydrate();
   expect(useWorkbenchTabsStore.getState().activeKey).toBeNull();
   expect(useWorkbenchTabsStore.getState().tabs).toEqual([]);
   expect(useWorkbenchTabsStore.getState().recentFolders.map(tab => tab.root)).toEqual(["C:/task"]);
+});
+
+it("rejects opening and activating retired batch tabs without touching folder or board views", () => {
+  const store = useWorkbenchTabsStore.getState();
+  store.open({ kind: "folder", id: "folder", root: "folder", name: "Current task" });
+  store.open({ kind: "board", id: "board", name: "Private board" });
+  const before = useWorkbenchTabsStore.getState();
+  store.open({ kind: "review", id: "old", name: "Old experiment" });
+  store.activate("review:old");
+  expect(useWorkbenchTabsStore.getState()).toBe(before);
+  expect(useWorkbenchTabsStore.getState().tabs.map(tab => tab.kind)).toEqual(["folder", "board"]);
+  expect(useWorkbenchTabsStore.getState().activeKey).toBe("board:board");
 });
 
 it("removes folder from recent tasks and closes open folder tab cleanly", () => {

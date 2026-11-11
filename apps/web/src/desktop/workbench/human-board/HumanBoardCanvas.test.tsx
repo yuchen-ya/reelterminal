@@ -18,7 +18,7 @@ it("passes current locale to Excalidraw without rehydrating or renaming an exist
   vi.spyOn(navigator, "languages", "get").mockReturnValue(["zh-CN"]);
   await changeAppLanguage("en");
   const board: HumanBoard = { id: "existing", name: "Keep", revision: 3, updatedAt: 1, elements: [], appState: {}, imageFiles: {}, resourceIds: [] };
-  render(<HumanBoardCanvas initialBoard={board} incoming={null} onIncomingConsumed={vi.fn()} onImport={vi.fn()} onSaved={vi.fn()} onFlush={vi.fn()} onOpenReview={vi.fn()} onLayoutLockChange={vi.fn()} />);
+  render(<HumanBoardCanvas initialBoard={board} incoming={null} onIncomingConsumed={vi.fn()} onImport={vi.fn()} onSaved={vi.fn()} onFlush={vi.fn()} onLayoutLockChange={vi.fn()} />);
   const canvas = await screen.findByTestId("excalidraw-locale");
   expect(canvas).toHaveAttribute("data-locale", "en");
   const name = screen.getByRole("textbox", { name: "Board name" });

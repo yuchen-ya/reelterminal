@@ -130,7 +130,7 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     id: "video.legacy-workbench", purpose: "Maintain existing project-scoped workbench data.", targets: ["video-workspace"], legacy: true,
     commands: ["workbench.ingest", "workbench.get", "workbench.changes", "workbench.handoff.get", ...editCommands],
     operations: ["workbench.decide", "workbench.feedback.save", "workbench.handoff.ack", "workbench.rework", "workbench.content.update"],
-    workflow: ["Use only for existing project-scoped workbench content; independent review uses review capabilities.", "Read workbench state and version-bound feedback before applying the required ops."],
+    workflow: ["Use only for existing project-scoped workbench content; folder review is a separate desktop workflow.", "Read workbench state and version-bound feedback before applying the required ops."],
   }),
   capability({
     id: "review.tasks", purpose: "Resolve review workspace identity and organize independent task nodes.", targets: ["review-workspace"],
@@ -204,11 +204,16 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     id: "system.gui-help", purpose: "Search and read the shipped GUI manual without accessing user content.", targets: ["local"], commands: FACADE_VERBS.filter(verb => verb.startsWith("help.")),
     workflow: ["Search or list shipped manual screens.", "Describe the selected screen for its supported actions and limitations."],
   }),
-];
+].map(entry => entry.domain === "review" ? {
+  ...entry,
+  legacy: true,
+  purpose: "Retired experimental independent batch review contract.",
+  workflow: ["Independent batch review is retired in the desktop app. These historical contracts do not operate folder tasks.", "Use real folder tasks in the desktop review workspace; existing stored batch data is not deleted or migrated."],
+} : entry);
 
 const DOMAIN_PURPOSES: Record<CapabilityDomain, string> = {
   video: "Edit and deliver an explicit project workspace.",
-  review: "Work within an explicit independent review task.",
+  review: "Retired experimental batch contracts; not a folder-task API.",
   library: "Manage user materials, fonts and presets.",
   system: "Discover connection state, local environment and GUI help.",
 };
@@ -237,7 +242,7 @@ export interface CommandRegistrationStatus {
 }
 
 function commandStatus(name: FacadeVerb, mode: CommandCatalogMode): CommandRegistrationStatus {
-  if (name === "review.branches.create") return { status: "retired", availability: "unavailable", reason: "Task branch creation is retired; continue in the original task." };
+  if (name.startsWith("review.")) return { status: "retired", availability: "unavailable", reason: "Experimental independent batch review is retired; use desktop folder tasks." };
   if (name === "project.open" && mode === "live") return { status: "unsupported", availability: "unavailable", reason: "Live project-file opening is owned by the GUI." };
   return { status: "registered", availability: "unprobed" };
 }

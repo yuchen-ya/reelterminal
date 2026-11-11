@@ -64,6 +64,18 @@ describe("capability discovery", () => {
       .toContain("mediaRoots");
   });
 
+  it("does not advertise retired batch commands as available or expose them as current folder tools", () => {
+    expect(listCapabilities({ domain: "review" })).toEqual([]);
+    const historical = listCapabilities({ domain: "review", includeLegacy: true });
+    expect(historical.length).toBeGreaterThan(0);
+    for (const capability of historical) {
+      expect(capability.legacy).toBe(true);
+      expect(getCapabilityTools(capability.id).tools.every(tool => tool.status === "retired" && tool.availability === "unavailable")).toBe(true);
+    }
+    expect(describeCommand("review.nodes.create")).toMatchObject({ status: "retired", availability: "unavailable" });
+    expect(describeCommand("workbench.ingest")).toMatchObject({ status: "registered" });
+  });
+
   it("does not probe media runtimes when querying capability metadata or schemas", () => {
     const ffmpegProbe = vi.spyOn(ffmpeg, "resolveToolFfmpeg");
     const openCvProbe = vi.spyOn(openCv, "resolveOpenCvRuntime");

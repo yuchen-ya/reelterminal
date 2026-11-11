@@ -8,11 +8,10 @@ const HumanBoardCanvas = lazy(() => import("./HumanBoardCanvas"));
 export type BoardIncoming = BoardTransferInput;
 
 /** One mounted scene; the workspace owns opening, closing and managing boards. */
-export default function HumanBoardView({ board, incoming, onIncomingConsumed, onOpenReview, onSaved, onFlush, onLayoutLockChange, toolbarRight }: {
+export default function HumanBoardView({ board, incoming, onIncomingConsumed, onSaved, onFlush, onLayoutLockChange, toolbarRight }: {
   board: HumanBoard;
   incoming: BoardIncoming | null;
   onIncomingConsumed: () => void;
-  onOpenReview: (nodeId: string) => void;
   onSaved: () => void;
   onFlush: (callback: () => Promise<void>) => void;
   onLayoutLockChange: (locked: boolean) => void;
@@ -31,7 +30,7 @@ export default function HumanBoardView({ board, incoming, onIncomingConsumed, on
     }} />
     <Suspense fallback={<div className="p-8 text-sm">{t("Loading the board…")}</div>}>
       <HumanBoardCanvas key={board.id} initialBoard={initialBoard} incoming={incoming ?? importedFiles} onIncomingConsumed={() => incoming ? onIncomingConsumed() : setImportedFiles(null)}
-        onImport={() => filesInput.current?.click()} onSaved={onSaved} onFlush={onFlush} onOpenReview={onOpenReview} onLayoutLockChange={onLayoutLockChange} toolbarRight={toolbarRight} />
+        onImport={() => filesInput.current?.click()} onSaved={onSaved} onFlush={onFlush} onLayoutLockChange={onLayoutLockChange} toolbarRight={toolbarRight} />
     </Suspense>
   </div>;
 }
