@@ -64,6 +64,31 @@ it('does not guess non-commit when a request never reached the server and no com
   expect((await f.store.open(f.root)).decisions).toHaveLength(0);
 });
 
+it('keeps a still-running decision blocked through an early unknown query, then verifies its exact completed commit', async () => {
+  const f = await fixture();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const original = f.invoke.getMockImplementation()!;
+  f.invoke.mockImplementation(async (channel, envelope) => {
+    if (envelope.method === 'decide') await held;
+    return original(channel, envelope);
+  });
+  const pending = f.transport(CHANNELS.taskReview, 'decide', f.input);
+  const rejected = expect(pending).rejects.toThrow('待核对');
+  const query = { root: f.root, taskId: f.state.taskId, decisionId: f.input.decisionId };
+  try {
+    await expect(f.transport(CHANNELS.taskReview, 'getDecisionOutcome', query)).rejects.toThrow('仍无法确认');
+    await expect(f.transport(CHANNELS.taskReview, 'setGoal', { ...f.input, goal: 'must remain blocked' })).rejects.toThrow('暂停');
+    expect((await f.store.open(f.root)).decisions).toHaveLength(0);
+  } finally { release(); }
+  await rejected;
+  const checked = await f.transport(CHANNELS.taskReview, 'getDecisionOutcome', query);
+  expect(checked.outcome).toBe('committed');
+  expect(f.invoke.mock.calls.filter(([, envelope]) => envelope.method === 'decide')).toHaveLength(1);
+  const durable = JSON.parse(await fs.readFile(path.join(f.root, '.reelterminal/task-review.json'), 'utf8'));
+  expect(durable.decisions).toHaveLength(1); expect(durable.decisionActions).toHaveLength(1);
+});
+
 it.skipIf(process.platform !== 'win32')('known pre-commit denial safely releases the transport for one explicit retry with a fresh ID', async () => {
   const f = await fixture(); f.control.drop = false;
   const file = path.join(f.root, '.reelterminal/task-review.json');

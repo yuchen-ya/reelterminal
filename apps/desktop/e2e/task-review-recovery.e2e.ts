@@ -49,7 +49,7 @@ test('review recovery preserves inputs and exact decisions across real sharing d
       const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Function> })._invokeHandlers;
       if (!(handlers instanceof Map)) throw new Error('Isolated handler fault injection unsupported');
       const original = handlers.get(channel)!;
-      const control = { mode: 'normal', queryFail: false, denyRename: false, notifyFail: false, notificationFailures: 0, decisions: 0, lastId: '', renameAttempts: 0 };
+      const control = { mode: 'normal', queryFail: false, denyRename: false, holdDecision: false, held: false, completedDecisions: 0, notifyFail: false, notificationFailures: 0, decisions: 0, lastId: '', renameAttempts: 0 };
       (globalThis as any).p0Recovery = control;
       const rename = fs.rename.bind(fs), realpath = fs.realpath.bind(fs);
       fs.rename = async (from, to) => {
@@ -69,10 +69,20 @@ test('review recovery preserves inputs and exact decisions across real sharing d
       ipcMain.removeHandler(channel);
       ipcMain.handle(channel, async (event, envelope) => {
         if (envelope.method === 'getDecisionOutcome' && control.queryFail) throw new Error('controlled outcome query denial');
-        if (envelope.method === 'decide') { control.decisions++; control.lastId = envelope.input.decisionId; }
-        const result = await original(event, envelope);
-        if (envelope.method === 'decide' && control.mode === 'lose-reply') throw new Error('controlled response loss');
-        return result;
+        if (envelope.method !== 'decide') return original(event, envelope);
+        control.decisions++; control.lastId = envelope.input.decisionId;
+        try {
+          if (control.holdDecision) {
+            await new Promise<void>(resolve => {
+              (globalThis as any).releaseRecoveryDecision = resolve;
+              control.held = true;
+            });
+            control.held = false;
+          }
+          const result = await original(event, envelope);
+          if (control.mode === 'lose-reply') throw new Error('controlled response loss');
+          return result;
+        } finally { control.completedDecisions++; }
       });
     }, { root, destination, channel: CHANNELS.taskReview });
     const control = async (values: Record<string, unknown>) => launched.app.evaluate((_electron, values) => Object.assign((globalThis as any).p0Recovery, values), values);
@@ -150,8 +160,30 @@ test('review recovery preserves inputs and exact decisions across real sharing d
     await openNoteTab(page);
     await note.fill('lost committed response');
     await vi.waitFor(async () => expect((await authority()).drafts[0]?.text).toBe('lost committed response'));
-    await control({ mode: 'lose-reply', queryFail: true });
-    await page.getByTestId('task-review-decide-kept').click();
+    const completedBefore = (await counters()).completedDecisions;
+    await control({ mode: 'lose-reply', queryFail: false, holdDecision: true });
+    try {
+      await page.getByTestId('task-review-decide-kept').click();
+      await vi.waitFor(async () => expect((await counters()).held).toBe(true));
+      // The banner/button exists during ordinary in-flight saving, before IPC
+      // completes. It cannot serve as a disk-commit or lost-response signal.
+      await page.getByTestId('task-review-reconcile-decision').waitFor();
+      const saving = await disk();
+      expect(saving.decisions).toHaveLength(2); expect(saving.decisionActions).toHaveLength(2);
+      const decisionId = (await counters()).lastId;
+      const earlyQuery = await page.evaluate(async ({ root, decisionId }) => {
+        const api = window.reelterminal.taskReview, state = await api.open(root);
+        try { await api.getDecisionOutcome({ root: state.root, taskId: state.taskId, decisionId }); return 'unexpected verified outcome'; }
+        catch (error) { return String(error); }
+      }, { root, decisionId });
+      expect(earlyQuery).toContain('仍无法确认');
+      evidence.record('queryWhileDecisionHeld', { decisions: saving.decisions.length, actions: saving.decisionActions.length, remainedUnknown: true });
+    } finally {
+      await control({ queryFail: true, holdDecision: false });
+      await launched.app.evaluate(() => (globalThis as any).releaseRecoveryDecision?.());
+    }
+    await vi.waitFor(async () => expect((await counters()).completedDecisions).toBe(completedBefore + 1));
+    await vi.waitFor(async () => expect(await page.getByTestId('task-review-write-recovery').textContent()).toContain('结果待核对'));
     await page.getByTestId('task-review-reconcile-decision').waitFor();
     const lost = await disk(); expect(lost.decisions).toHaveLength(3); expect(lost.decisionActions).toHaveLength(3);
     await note.fill('input typed after saved reply was lost');
@@ -178,6 +210,8 @@ test('review recovery preserves inputs and exact decisions across real sharing d
     evidence.record('reopened', { revision: reopened.revision, decisions: reopened.decisions.length, actions: reopened.decisionActions.length });
     evidence.flush({ passed: true });
   } catch (error) {
+    evidence.record('failureControl', await launched.app.evaluate(() => (globalThis as any).p0Recovery ?? null).catch(() => null));
+    evidence.record('failureRecovery', await page.getByTestId('task-review-write-recovery').textContent().catch(() => null));
     await evidence.screenshot('failure').catch(() => {});
     evidence.flush({ passed: false, failure: error instanceof Error ? error.message : String(error), rendererConsole: launched.output.rendererConsole });
     throw error;

@@ -59,6 +59,27 @@ async function mounted(f: Awaited<ReturnType<typeof wire>>) {
   return hook;
 }
 
+it('does not mistake an in-flight recovery banner for a finished request or unlock from unknown evidence', async () => {
+  const f = await wire(); const hook = await mounted(f);
+  let release!: () => void;
+  f.control.defer = new Promise<void>(resolve => { release = resolve; });
+  let pending!: ReturnType<typeof hook.result.current.decide>;
+  act(() => { pending = hook.result.current.decide(f.input); });
+  try {
+    await waitFor(() => expect(f.bridge.decide).toHaveBeenCalledTimes(1));
+    expect(hook.result.current.recovery?.outcome).toBe('unknown');
+    expect(hook.result.current.busy).toBe(true);
+    await act(async () => { expect((await hook.result.current.reconcileDecision()).ok).toBe(false); });
+    expect(hook.result.current.writesBlocked).toBe(true);
+    expect(f.base.snapshotState().decisions).toHaveLength(0);
+  } finally { await act(async () => { release(); await pending; }); }
+  await act(async () => { expect((await hook.result.current.reconcileDecision()).ok).toBe(true); });
+  expect(hook.result.current.recovery?.outcome).toBe('committed');
+  expect(f.bridge.decide).toHaveBeenCalledTimes(1);
+  expect(f.base.snapshotState().decisions).toHaveLength(1);
+  expect(f.base.snapshotState().decisionActions).toHaveLength(1);
+});
+
 it('blocks queued and new programmatic writes at the actual controller entry after an unknown decision result', async () => {
   const f = await wire(); const hook = await mounted(f);
   let queued: any[] = [];
