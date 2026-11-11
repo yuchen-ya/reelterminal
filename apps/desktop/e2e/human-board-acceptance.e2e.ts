@@ -189,12 +189,18 @@ test("private mixed-media board appends in one scene, exports one frozen contain
     evidence.record("modalHistory", { nativeMenuUndoRevertedOnlySecondStroke: true, sourceObjectRemainedLive: true, boardUndoAfterSave: true });
     await page.getByRole("button", { name: "Rotate 90°", exact: true }).click();
     await vi.waitFor(async () => expect((await boards(page))[0].elements.find(element => element.id === image.id)!.angle).toBeCloseTo(Math.PI / 2), { timeout: 20_000 });
+    const saveReadiness: Array<{ kind: string; actionabilityMs: number }> = [];
     const saveOutput = async (label: string) => {
+      const started = performance.now();
       const directory = path.join(launched.runDir, "single-file-" + label);
       await mkdir(directory);
       await launched.app.evaluate(({ dialog }, directory) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] }); }, directory);
-      await vi.waitFor(async () => expect(await page.getByTestId("human-board-output-save").isEnabled()).toBe(true));
+      // Native snapshot preparation is asynchronous. Exercise the user action:
+      // Playwright waits for the button to be actionable, rather than imposing
+      // vi.waitFor's unrelated one-second assertion deadline on file preparation.
       await page.getByTestId("human-board-output-save").click();
+      saveReadiness.push({ kind: label, actionabilityMs: Math.round(performance.now() - started) });
+      evidence.record("saveReadiness", saveReadiness);
       await vi.waitFor(async () => expect(await page.getByTestId("human-board-output").textContent()).toContain("Saved to"));
       const files = (await readdir(directory, { recursive: true, withFileTypes: true }))
         .filter(entry => entry.isFile() && entry.name !== "manifest.json")

@@ -363,7 +363,14 @@ describe("Chromium render and export", () => {
     expect(visual.value.frames.every((frame) => frame.sourceRevision === 3)).toBe(true);
     expect(visual.value.frames[0]?.timeSec).toBe(0);
     expect(visual.value.frames[1]?.timeSec).toBe(2.5);
-    expect(visual.value.frames[2]?.timeSec).toBeCloseTo(5 - 1 / 60, 6);
+    // This fixture is 5 seconds at 30 fps: frame starts are 0/30 through
+    // 149/30. Assert that public contract independently of the sampling helper.
+    expect(visual.value.frames[2]?.timeSec).toBeCloseTo(149 / 30, 6);
+    for (const frame of visual.value.frames) {
+      const bytes = await readFile(frame.artifact.path);
+      expect(bytes.subarray(0, 4)).toEqual(PNG_MAGIC);
+      expect(bytes.length).toBe(frame.artifact.sizeBytes);
+    }
     expect(visual.value.contactSheet?.format).toBe("png");
     if (!visual.value.contactSheet) return;
     const contactSheetBytes = await readFile(visual.value.contactSheet.path);
