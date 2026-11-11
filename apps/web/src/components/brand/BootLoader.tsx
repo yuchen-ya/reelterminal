@@ -3,8 +3,9 @@ import type { JSX } from "react";
 import "./boot-loader.css";
 
 /**
- * Branded startup loader: the ReelTerminal mark's timeline tracks are laid
- * down by a playhead while the terminal bar blinks like a cursor.
+ * Branded startup loader: a playhead sweeps in the ReelTerminal mark's
+ * timeline tracks, then settles and swells into the terminal bar (the same
+ * element), which blinks like a cursor before the loop restarts.
  * Markup mirrors the pre-JS splash in index.html (keep the two in sync).
  */
 export function BootLoader({
@@ -33,7 +34,6 @@ export function BootLoader({
         >
           <rect className="rt-boot__track rt-boot__track--a" x="13.75" y="20.625" width="27.125" height="5.6875" rx="2.84375" fill="#34D399" />
           <rect className="rt-boot__track rt-boot__track--b" x="21.25" y="33.1875" width="19.9375" height="5.6875" rx="2.84375" fill="#167A5B" />
-          <rect className="rt-boot__playhead" x="14.4" y="17.6" width="1.1" height="24.4" rx="0.55" fill="#A7F3D0" />
           <rect className="rt-boot__cursor" x="45" y="16.875" width="5.375" height="25.8125" rx="2.6875" fill="#A7F3D0" />
         </svg>
       </div>

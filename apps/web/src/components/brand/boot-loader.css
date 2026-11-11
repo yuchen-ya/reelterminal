@@ -1,14 +1,16 @@
 /* ReelTerminal startup loader.
    Pure CSS/SVG so the same markup works as the pre-JS splash in index.html
    and as the React <BootLoader /> while the editor bootstraps.
-   The mark's two timeline tracks are laid down by a playhead while the
-   terminal bar blinks like a cursor; a thin shimmer reads as progress. */
+   A thin playhead sweeps across and wipes in the mark's two timeline tracks,
+   then comes to rest and swells into the logo's terminal bar, which blinks
+   like a cursor before the loop fades and restarts. A thin shimmer reads as
+   progress. One element plays both roles: its resting geometry is the bar. */
 .rt-boot {
   --rt-boot-bg: var(--bg, #1b1b20);
   --rt-boot-fg: var(--fg, #e9eaee);
   --rt-boot-muted: var(--fg-muted, #80838c);
   --rt-boot-accent: var(--accent, #34d399);
-  --rt-boot-cycle: 2.6s;
+  --rt-boot-cycle: 3.2s;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -60,26 +62,22 @@
 }
 
 .rt-boot__track,
-.rt-boot__cursor,
-.rt-boot__playhead {
+.rt-boot__cursor {
   transform-box: fill-box;
 }
 
 .rt-boot__track {
   transform-origin: left center;
-  animation: var(--rt-boot-cycle) cubic-bezier(0.65, 0, 0.35, 1) infinite both;
+  animation: var(--rt-boot-cycle) linear infinite both;
 }
 
 .rt-boot__track--a { animation-name: rt-boot-track-a; }
 .rt-boot__track--b { animation-name: rt-boot-track-b; }
 
-.rt-boot__playhead {
-  animation: rt-boot-playhead var(--rt-boot-cycle) cubic-bezier(0.65, 0, 0.35, 1) infinite both;
-}
-
+/* Starts as the playhead (thin, far left) and ends as the terminal bar. */
 .rt-boot__cursor {
-  transform-origin: center bottom;
-  animation: rt-boot-cursor 1.05s steps(1, end) infinite;
+  transform-origin: center;
+  animation: rt-boot-cursor var(--rt-boot-cycle) linear infinite both;
 }
 
 .rt-boot__wordmark {
@@ -133,30 +131,37 @@
   white-space: nowrap;
 }
 
+/* Track edges follow the playhead: its centre travels x 14.95 -> 47.69
+   linearly over 0-45%, reaching track A's end (x 40.9) at ~35.6% and
+   track B's start/end (x 21.25 / 41.2) at ~8.7% / ~36.1%. */
 @keyframes rt-boot-track-a {
   0% { transform: scaleX(0); opacity: 1; }
-  42% { transform: scaleX(1); opacity: 1; }
-  84% { transform: scaleX(1); opacity: 1; }
-  100% { transform: scaleX(1); opacity: 0; }
+  35.6% { transform: scaleX(1); opacity: 1; }
+  86% { transform: scaleX(1); opacity: 1; }
+  98%, 100% { transform: scaleX(1); opacity: 0; }
 }
 
 @keyframes rt-boot-track-b {
-  0%, 16% { transform: scaleX(0); opacity: 1; }
-  58% { transform: scaleX(1); opacity: 1; }
-  84% { transform: scaleX(1); opacity: 1; }
-  100% { transform: scaleX(1); opacity: 0; }
-}
-
-@keyframes rt-boot-playhead {
-  0% { transform: translateX(0); opacity: 0; }
-  6% { opacity: 0.9; }
-  58% { transform: translateX(29px); opacity: 0.9; }
-  68%, 100% { transform: translateX(29px); opacity: 0; }
+  0%, 8.7% { transform: scaleX(0); opacity: 1; }
+  36.1% { transform: scaleX(1); opacity: 1; }
+  86% { transform: scaleX(1); opacity: 1; }
+  98%, 100% { transform: scaleX(1); opacity: 0; }
 }
 
 @keyframes rt-boot-cursor {
-  0% { opacity: 1; }
-  50% { opacity: 0.28; }
+  0% { transform: translateX(-32.74px) scaleX(0.2); opacity: 0; }
+  4% { transform: translateX(-29.83px) scaleX(0.2); opacity: 1; }
+  45% {
+    transform: translateX(0) scaleX(0.2);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  56% { transform: translateX(0) scaleX(1); opacity: 1; }
+  64% { opacity: 1; }
+  66%, 72% { opacity: 0.3; }
+  74% { opacity: 1; }
+  86% { transform: translateX(0) scaleX(1); opacity: 1; }
+  98%, 100% { transform: translateX(0) scaleX(1); opacity: 0; }
 }
 
 @keyframes rt-boot-glow {
@@ -172,12 +177,10 @@
 @media (prefers-reduced-motion: reduce) {
   .rt-boot__stage::before,
   .rt-boot__track,
-  .rt-boot__playhead,
   .rt-boot__cursor,
   .rt-boot__bar > span {
     animation: none;
   }
-  .rt-boot__playhead { opacity: 0; }
   .rt-boot__bar > span {
     left: 29%;
     opacity: 0.7;

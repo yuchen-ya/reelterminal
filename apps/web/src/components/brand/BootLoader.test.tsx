@@ -9,7 +9,9 @@ describe("BootLoader", () => {
     const status = screen.getByRole("status");
     expect(status.className).toContain("rt-boot");
     expect(status.className).not.toContain("rt-boot--standalone");
-    expect(container.querySelectorAll("svg rect").length).toBe(4);
+    expect(container.querySelectorAll("svg rect").length).toBe(3);
+    // The sweeping playhead and the terminal bar are one element.
+    expect(container.querySelector(".rt-boot__playhead")).toBeNull();
     expect(container.querySelector(".rt-boot__cursor")).not.toBeNull();
     expect(screen.getByText("Loading editor…")).toBeTruthy();
     expect(container.querySelector(".animate-spin")).toBeNull();
