@@ -1105,6 +1105,8 @@ export type TimelineQueryField =
   | "inPoint"
   | "outPoint"
   | "text"
+  | "captionSource"
+  | "captionSourceClipId"
   | "volume"
   | "speed"
   | "reversed"
@@ -1348,6 +1350,7 @@ export const EDIT_OP_TYPES = [
   "track.update",
   "subtitle.importSrt",
   "subtitle.importTranscript",
+  "subtitle.remove",
   "clip.setColorGrade",
   "clip.setKeyframes",
   "clip.applyReframe",
@@ -1772,6 +1775,13 @@ export interface SubtitleImportSrtOp {
   readonly op: "subtitle.importSrt";
   /** Inline SRT text, capped at 256 KiB and 500 cues. */
   readonly srtContent: string;
+}
+
+/** Remove exact timeline.query IDs of one kind in a single edit batch. */
+export interface SubtitleRemoveOp {
+  readonly op: "subtitle.remove";
+  readonly entityType: "subtitle" | "text";
+  readonly ids: readonly string[];
 }
 
 /**
@@ -2291,6 +2301,7 @@ export type EditOp =
   | RequirementUpdateOp
   | SubtitleImportSrtOp
   | SubtitleImportTranscriptOp
+  | SubtitleRemoveOp
   | ClipSetColorGradeOp
   | ClipSetKeyframesOp
   | ClipApplyReframeOp

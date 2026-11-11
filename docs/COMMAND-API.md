@@ -47,6 +47,35 @@ desktop or dependencies. Unknown help paths exit 2 with discovery guidance;
 `valid:false` plans exit 3 through generic, alias and scoped CLI calls. Validation
 does not commit edits.
 
+### Replace subtitles in the current workspace
+
+Use `reelctl tools video.subtitles` to discover the operations. Both SRT and
+transcript imports append. To revise one scene, query `timeline.query` with
+the target `projectId`, `workspaceId`, `timeRange`, `entityTypes: ["subtitle","text"]`
+and `fields: ["text","captionSource","captionSourceClipId"]`. Follow
+`nextCursor` through the final page. The range returns overlapping cues.
+Removing an ID removes its entire cue, including any portion outside the range.
+
+Use the query revision as `expectedRevision` for `edit.validate` and `edit.apply`.
+For example, the following `ops` replace two selected old cues with one revised cue.
+Substitute the actual IDs and the new SRT content.
+
+```json
+[
+  { "op": "subtitle.remove", "entityType": "subtitle", "ids": ["native-cue-id"] },
+  { "op": "subtitle.remove", "entityType": "text", "ids": ["gui-caption-id"] },
+  { "op": "subtitle.importSrt", "srtContent": "1\n00:00:01,000 --> 00:00:02,000\nRevised line" }
+]
+```
+
+Omit empty groups. Each removal accepts up to 256 IDs, so larger selections can
+use several operations in the same batch. For a transcript, use
+`subtitle.importTranscript` as the final operation. For deletion alone, omit the
+import. A single desktop undo restores the selection and its previous order.
+Text removal through `subtitle.remove` requires caption-source metadata and an
+unlocked track. For an untagged manually authored cue, inspect its text and
+timing before targeting its exact ID with `text.delete`.
+
 Video discovery (`video capabilities`) recommends `agent-workspace/video`, and ordinary
 `capabilities.get` retains the parent recommendation. Default video delivery
 roots include the video partition and parent workspace for old `jobs/` layouts;

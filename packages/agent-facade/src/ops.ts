@@ -19,6 +19,7 @@ import { EASING_TYPES } from "@reelterminal/core/types/timeline";
 import { TransitionEngine } from "@reelterminal/core/video/transition-engine";
 import { splitPieceClipId } from "@reelterminal/core/actions/action-executor";
 import type { TextClip } from "@reelterminal/core/text/types";
+import { TEXT_CLIPS_PER_ACTION } from "@reelterminal/core/text/types";
 import { parseSRT } from "@reelterminal/core/text/subtitle-engine";
 import {
   DEFAULT_GRAPHIC_TRANSFORM,
@@ -86,6 +87,7 @@ import {
   type TransitionRemoveOp,
   type TransitionUpdateOp,
   type SubtitleImportSrtOp,
+  type SubtitleRemoveOp,
   type ClipSetColorGradeOp,
   type ClipSetKeyframesOp,
   type ClipApplyReframeOp,
@@ -1381,6 +1383,28 @@ export const WORK_ASSET_INSTANTIATE_SCHEMA: ObjectSchema = {
     describe:
       "a finite number >= 0 (timeline seconds; defaults to the timeline end; multi assets: the anchor time T0 the relative member layout starts from)",
     emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+};
+
+export const SUBTITLE_REMOVE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "subtitle.remove",
+    describe: '"subtitle.remove"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "subtitle.remove" } },
+  },
+  entityType: {
+    check: oneOf(["subtitle", "text"]),
+    describe: "timeline.query entityType: subtitle for native cues, text for caption-source-tagged text clips",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: ["subtitle", "text"] } },
+  },
+  ids: {
+    check: (value) => Array.isArray(value) && value.length > 0 && value.length <= TEXT_CLIPS_PER_ACTION &&
+      value.every(isNonEmptyString) && new Set(value).size === value.length,
+    describe: `1–${TEXT_CLIPS_PER_ACTION} distinct existing IDs of the specified kind; combine with a subtitle import in the same batch to replace them`,
+    required: true,
+    emits: { kind: "array", minItems: 1, maxItems: TEXT_CLIPS_PER_ACTION, items: { kind: "leaf", schema: { type: "string", minLength: 1 } } },
   },
 };
 
@@ -2970,6 +2994,8 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         WORK_ASSET_INSTANTIATE_SCHEMA,
         label,
       );
+    case "subtitle.remove":
+      return validateObject<SubtitleRemoveOp>(raw, SUBTITLE_REMOVE_SCHEMA, label);
     case "subtitle.importSrt": {
       const op = validateObject<SubtitleImportSrtOp>(
         raw,
@@ -4956,6 +4982,34 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       return [...batch.actions];
     }
 
+    case "subtitle.remove": {
+      const ids = new Set(op.ids);
+      if (op.entityType === "subtitle") {
+        const subtitles = draft.timeline.subtitles ?? [];
+        const existing = new Set(subtitles.map(cue => cue.id));
+        for (const id of ids) {
+          if (!existing.has(id)) {
+            throw new FacadeError("NOT_FOUND", `subtitle.remove: subtitle "${id}" not found`, { id });
+          }
+        }
+        return [makeAction("subtitle/setAll", { subtitles: subtitles.filter(cue => !ids.has(cue.id)) })];
+      }
+      const clips = new Map((draft.textClips ?? []).map(clip => [clip.id, clip]));
+      const lockedTracks = new Set(draft.timeline.tracks.filter(track => track.locked).map(track => track.id));
+      for (const id of ids) {
+        const clip = clips.get(id);
+        if (!clip) {
+          throw new FacadeError("NOT_FOUND", `subtitle.remove: text clip "${id}" not found`, { id });
+        }
+        if (!isNonEmptyString(clip.metadata?.captionSource) && !isNonEmptyString(clip.metadata?.captionSourceClipId)) {
+          throw invalidParams(`subtitle.remove: text clip "${id}" has no caption source; inspect it and use text.delete only if explicitly intended`, { id });
+        }
+        if (lockedTracks.has(clip.trackId)) {
+          throw new FacadeError("CONFLICT", `subtitle.remove: track "${clip.trackId}" is locked`, { id, trackId: clip.trackId });
+        }
+      }
+      return [makeAction("text/removeMany", { clipIds: op.ids })];
+    }
     case "subtitle.importSrt": {
       const parsed = parseSRT(op.srtContent);
       if (!parsed.success || parsed.subtitles.length === 0 || parsed.errors.length > 0) {

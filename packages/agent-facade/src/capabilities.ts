@@ -15,6 +15,7 @@ import {
 import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
 import { COLOR_POLICY as COLOR_POLICY_DISCLOSURE } from "./color-policy";
 import { PLUGIN_TOOLS } from "./plugins";
+import { listCapabilities } from "./capability-registry";
 import { MAX_TIMELINE_SOURCE_MAP_POINTS } from "./timeline-source-map";
 import { AUDIO_SPEED_CAPABILITIES } from "@reelterminal/core/audio/audio-speed-renderer";
 /**
@@ -928,7 +929,7 @@ export async function buildCapabilities(
     professionalEditing: {
       subtitles: {
         available: true,
-        details: { ops: ["subtitle.importSrt", "subtitle.importTranscript"], maxSrtBytes: 262144, maxCues: 500 },
+        details: { ops: listCapabilities({ capability: "video.subtitles" })[0]!.operations, maxSrtBytes: 262144, maxCues: 500 },
       },
       trackControls: {
         available: true,

@@ -9,6 +9,8 @@ import type {
   MotionShaderParamValue,
 } from "../graphics/types";
 
+export const TEXT_CLIPS_PER_ACTION = 256;
+
 export interface TextClip {
   readonly id: string;
   readonly trackId: string;

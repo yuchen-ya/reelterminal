@@ -73,9 +73,13 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     workflow: ["Read the affected timeline and overlay state.", "Validate/apply the selected overlay ops, then inspect a rendered frame."],
   }),
   capability({
-    id: "video.subtitles", purpose: "Import SRT subtitles or a real transcript into the timeline.", targets: ["video-workspace"], commands: [...editCommands],
-    operations: ["subtitle.importSrt", "subtitle.importTranscript"],
-    workflow: ["Read the target track and actual subtitle/transcript source.", "Describe the import op, validate and commit the batch; inspect timing and rendered text."],
+    id: "video.subtitles", purpose: "Import, remove or replace selected subtitles in the current workspace.", targets: ["video-workspace"], commands: ["timeline.query", ...editCommands],
+    operations: ["subtitle.importSrt", "subtitle.importTranscript", "subtitle.remove"],
+    workflow: [
+      "Page timeline.query for entityTypes subtitle and text over the intended time range; request text, captionSource and captionSourceClipId. Check boundary-crossing cues. A title on a Captions track alone is not evidence of its source.",
+      "Imports append. To replace, use subtitle.remove with the selected IDs grouped by entityType, then subtitle.importSrt or subtitle.importTranscript in the same edit batch. For deletion alone omit the import.",
+      "Validate and apply to the same projectId/workspaceId and expectedRevision, then query the result. Untagged manual text can be edited separately with text.delete after identifying it.",
+    ],
   }),
   capability({
     id: "video.audio", purpose: "Process source audio and edit clip volume, fades, ducking and analysis-based cuts.", targets: ["video-workspace"],

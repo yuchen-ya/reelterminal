@@ -193,4 +193,35 @@ describe("bounded state efficiency and recovery verbs", () => {
     expect(queried.ok).toBe(true);
     if (queried.ok) expect(queried.value.items[0]?.data.text).toBe("World");
   });
+
+  it("replaces selected cues atomically and rejects stale, invalid and missing selections", async () => {
+    const facade = createAgentFacade();
+    await facade["project.create"]({ name: "Revision of scene one" });
+    const imported = await facade["edit.apply"]({ ops: [{
+      op: "subtitle.importSrt",
+      srtContent: "1\n00:00:00,000 --> 00:00:01,000\nOld scene\n\n2\n00:00:02,000 --> 00:00:03,000\nNext scene",
+    }] });
+    if (!imported.ok) throw new Error(imported.error.message);
+    const [old, keep] = imported.value.applied[0]!.createdIds;
+    const remove = { op: "subtitle.remove", entityType: "subtitle", ids: [old!] } as const;
+    const insert = { op: "subtitle.importSrt", srtContent: "1\n00:00:00,250 --> 00:00:01,500\nRevised scene" } as const;
+    const request = { ops: [remove, insert], expectedRevision: imported.value.revision, idempotencyKey: "replace-first-scene" };
+    const before = await facade["timeline.get"]();
+    for (const ids of [[], [old!, old!], [old!, "missing"]]) {
+      expect(await facade["edit.apply"]({ ops: [insert, { ...remove, ids }] })).toMatchObject({ ok: false });
+    }
+    expect(await facade["edit.apply"]({ ops: [remove, { ...insert, srtContent: "bad" }] })).toMatchObject({ ok: false });
+    expect(await facade["edit.apply"]({ ...request, expectedRevision: 0 })).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+    expect(await facade["edit.validate"]({ ops: request.ops, expectedRevision: request.expectedRevision })).toMatchObject({ ok: true, value: { valid: true } });
+    expect(await facade["timeline.get"]()).toEqual(before);
+    const committed = await facade["edit.apply"](request);
+    if (!committed.ok) throw new Error(committed.error.message);
+    expect(await facade["edit.apply"](request)).toMatchObject({ ok: true, value: { replayed: true, applied: committed.value.applied } });
+    const newId = committed.value.applied[1]!.createdIds[0]!;
+    expect(await facade["timeline.get"]()).toMatchObject({ ok: true, value: { subtitles: [
+      { id: keep, text: "Next scene" }, { id: newId, text: "Revised scene", startTime: 0.25 },
+    ] } });
+    expect(await facade["edit.apply"]({ ops: [{ ...remove, ids: [keep!, newId] }] })).toMatchObject({ ok: true });
+    expect(await facade["timeline.get"]()).toMatchObject({ ok: true, value: { subtitles: [] } });
+  });
 });

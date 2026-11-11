@@ -1,6 +1,6 @@
 import "../../test/install-local-storage-mock";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Project } from "@reelterminal/core";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { useProjectStore } from "../../stores/project-store";
@@ -99,7 +99,7 @@ function seedVideoClipWithMedia(): Project {
       ],
     },
   };
-  useProjectStore.setState({ project: seeded });
+  useProjectStore.getState().loadProject(seeded);
   useUIStore.getState().select({ type: "clip", id: clipId, trackId });
   return seeded;
 }
@@ -121,7 +121,20 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("InspectorPanel cloud transcription failure presentation", () => {
+describe("InspectorPanel cloud transcription", () => {
+  it("persists caption provenance on generated text clips", async () => {
+    stubs.core.initializeTranscriptionService.mockReturnValue({
+      transcribeClip: async () => [{ id: "cue", text: "Scene one", startTime: 0, endTime: 2 }],
+    });
+    seedVideoClipWithMedia();
+    const { container } = render(<InspectorPanel />);
+    openAutoCaptionsSection(container);
+    fireEvent.click(screen.getByRole("button", { name: "Generate Captions (Cloud)" }));
+    await waitFor(() => expect(useProjectStore.getState().project.textClips).toContainEqual(
+      expect.objectContaining({ text: "Scene one", metadata: { captionSource: "cloud-transcription" } }),
+    ));
+  });
+
   it("renders a categorized failure title and keeps the raw error message as the detail line", async () => {
     stubs.core.initializeTranscriptionService.mockReturnValue({
       transcribeClip: async () => {

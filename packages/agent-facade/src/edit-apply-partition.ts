@@ -1,4 +1,5 @@
 import type { LiveCreatedIds } from "./live-store";
+import { parseSRT } from "@reelterminal/core/text/subtitle-engine";
 import type { EditOp, OpApplied } from "./types";
 
 /** Ops that create exactly one entity each, in action order. */
@@ -11,6 +12,7 @@ const CREATING_OPS: ReadonlySet<EditOp["op"]> = new Set([
   "svg.create",
   "transition.add",
   "subtitle.importSrt",
+  "subtitle.importTranscript",
   // Instantiation creates one clip plus its own implicit lane when the
   // translator prepends a track/add — or, for kind "multi" assets, the whole
   // member expansion (several lanes + several clips, all pinned to the op).
@@ -50,6 +52,12 @@ export function partitionCreatedIds(
     "transition.add": "transitions",
   } as const;
   const usedTracks = new Set<string>();
+  // Each import kind occurs at most once per batch. Only mixed imports
+  // need a boundary in the store's ordered list (also used for durable replay).
+  const srt = ops.find(op => op.op === "subtitle.importSrt");
+  const mixedSrtCount = srt && ops.some(op => op.op === "subtitle.importTranscript")
+    ? parseSRT(srt.srtContent).subtitles.length
+    : undefined;
   const cursors = {
     tracks: 0,
     clips: 0,
@@ -100,9 +108,12 @@ export function partitionCreatedIds(
       const id = svgClips[cursors.svgClips];
       cursors.svgClips += 1;
       if (id !== undefined) ids.push(id);
-    } else if (op.op === "subtitle.importSrt") {
-      ids.push(...createdIds.subtitles.slice(cursors.subtitles));
-      cursors.subtitles = createdIds.subtitles.length;
+    } else if (op.op === "subtitle.importSrt" || op.op === "subtitle.importTranscript") {
+      const total = createdIds.subtitles.length;
+      const count = mixedSrtCount === undefined ? total
+        : op.op === "subtitle.importSrt" ? mixedSrtCount : total - mixedSrtCount;
+      ids.push(...createdIds.subtitles.slice(cursors.subtitles, cursors.subtitles + count));
+      cursors.subtitles += count;
     } else if (op.op === "workAsset.instantiate") {
       // Same implicit-lane convention as text.create/svg.create, generalized
       // to multi assets: every track/add the translator emitted is pinned for

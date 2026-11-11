@@ -694,7 +694,7 @@ export const InspectorPanel: React.FC = () => {
         addSubtitle({
           ...subtitle,
           animationStyle: defaultAnimationStyle,
-        });
+        }, { captionSource: "cloud-transcription" });
       }
 
       setTranscriptionProgress({

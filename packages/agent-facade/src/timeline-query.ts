@@ -133,6 +133,8 @@ function allCandidates(project: Project): Candidate[] {
       data: {
         trackId: text.trackId,
         text: text.text,
+        captionSource: typeof text.metadata?.captionSource === "string" ? text.metadata.captionSource : null,
+        captionSourceClipId: typeof text.metadata?.captionSourceClipId === "string" ? text.metadata.captionSourceClipId : null,
         startTime: text.startTime,
         duration: text.duration,
         style: text.style,
@@ -456,6 +458,8 @@ export const TIMELINE_QUERY_FIELDS: readonly TimelineQueryField[] = [
   "inPoint",
   "outPoint",
   "text",
+  "captionSource",
+  "captionSourceClipId",
   "volume",
   "speed",
   "reversed",

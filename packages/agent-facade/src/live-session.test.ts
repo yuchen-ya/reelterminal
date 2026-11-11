@@ -3234,11 +3234,17 @@ describe("live local audio analysis parity", () => {
       ] });
       if (!seeded.ok) throw new Error(seeded.error.message);
       const clipId = seeded.value.applied[1]!.createdIds[0]!;
-      const applied = await facade["edit.apply"]({ ops: [{ op: "subtitle.importTranscript", recordId, clipId }] });
+      const applied = await facade["edit.apply"]({ ops: [
+        { op: "subtitle.importTranscript", recordId, clipId },
+        { op: "subtitle.importSrt", srtContent: "1\n00:00:05,000 --> 00:00:06,000\nClosing cue" },
+      ] });
       if (!applied.ok) throw new Error(applied.error.message);
       const timeline = await facade["timeline.get"]();
       if (!timeline.ok) throw new Error(timeline.error.message);
-      expect(timeline.value.subtitles.length).toBe(summary.speechTranscript.segmentCount);
+      const cues = timeline.value.subtitles;
+      expect(cues.length).toBe(summary.speechTranscript.segmentCount + 1);
+      expect(applied.value.applied[0]!.createdIds).toEqual(cues.slice(0, -1).map(cue => cue.id));
+      expect(applied.value.applied[1]!.createdIds).toEqual([cues.at(-1)!.id]);
     } finally {
       setSpeechVadModelFactoryForTests(null);
       setSpeechTranscriptModelForTests(null);

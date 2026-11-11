@@ -1,4 +1,5 @@
 import type { Project } from "../../types/project";
+import { TEXT_CLIPS_PER_ACTION } from "../../text/types";
 import type { Action, ValidationResult } from "../../types/actions";
 import { validateSvgContent } from "../../graphics/svg-validation";
 import { registerActionHandler } from "../registry";
@@ -189,7 +190,6 @@ const OVERLAY_DEFS: ReadonlyArray<{ prefix: string; field: OverlayField }> = [
 
 // Subtitle imports use bounded payloads inside the ordinary atomic action
 // batch. Keep the 256-action guard and the retained history capacity intact.
-const TEXT_CLIPS_PER_ACTION = 256;
 registerActionHandler({
   type: "text/createMany",
   synchronous: true,
