@@ -47,6 +47,32 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Use official Ubuntu APT mirrors
+        shell: bash
+        run: |
+          # Ubuntu 24.04 runner images use Deb822 sources and an Azure-first mirror list.
+          # Change only known Ubuntu mirror URIs; retain suites, components and Signed-By.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('/etc/apt/sources.list.d/ubuntu.sources')
+          text = path.read_text()
+          mirrors = {'mirror+file:/etc/apt/apt-mirrors.txt',
+                     'http://azure.archive.ubuntu.com/ubuntu',
+                     'https://azure.archive.ubuntu.com/ubuntu'}
+          def official_mirrors(match):
+              stanza = match.group(0)
+              suites = re.search(r'^Suites:[ \t]*(.*)$', stanza, re.MULTILINE)
+              security = suites and suites[1].split() and all(
+                  suite.endswith('-security') for suite in suites[1].split())
+              uri = 'https://security.ubuntu.com/ubuntu/' if security else 'https://archive.ubuntu.com/ubuntu/'
+              return re.sub(r'^(URIs:[ \t]*)(.*)$', lambda line: line[1] + re.sub(
+                  r'\S+', lambda token: uri if token[0].rstrip('/') in mirrors else token[0], line[2]),
+                  stanza, flags=re.MULTILINE)
+          path.write_text(re.sub(r'(?:[^\n]+\n?)+', official_mirrors, text))
+          PY
+
       - name: Install Chromium for Playwright
         run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install --with-deps chromium
       - name: Install ffmpeg
@@ -133,6 +159,33 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Use official Ubuntu APT mirrors
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          # Ubuntu 24.04 runner images use Deb822 sources and an Azure-first mirror list.
+          # Change only known Ubuntu mirror URIs; retain suites, components and Signed-By.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('/etc/apt/sources.list.d/ubuntu.sources')
+          text = path.read_text()
+          mirrors = {'mirror+file:/etc/apt/apt-mirrors.txt',
+                     'http://azure.archive.ubuntu.com/ubuntu',
+                     'https://azure.archive.ubuntu.com/ubuntu'}
+          def official_mirrors(match):
+              stanza = match.group(0)
+              suites = re.search(r'^Suites:[ \t]*(.*)$', stanza, re.MULTILINE)
+              security = suites and suites[1].split() and all(
+                  suite.endswith('-security') for suite in suites[1].split())
+              uri = 'https://security.ubuntu.com/ubuntu/' if security else 'https://archive.ubuntu.com/ubuntu/'
+              return re.sub(r'^(URIs:[ \t]*)(.*)$', lambda line: line[1] + re.sub(
+                  r'\S+', lambda token: uri if token[0].rstrip('/') in mirrors else token[0], line[2]),
+                  stanza, flags=re.MULTILINE)
+          path.write_text(re.sub(r'(?:[^\n]+\n?)+', official_mirrors, text))
+          PY
+
       - name: Install Chromium for Playwright (Linux)
         if: runner.os == 'Linux'
         run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install --with-deps chromium
