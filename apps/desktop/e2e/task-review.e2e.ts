@@ -474,9 +474,12 @@ test("task review imports, preserves a pending interrupted scene, streams feedba
       evidence.record("groupInputTimeline", await page.evaluate(() => (window as unknown as { taskGroupTimeline: unknown[] }).taskGroupTimeline));
     }
 
+    // The final group automatically opens overview after its reply reaches the
+    // renderer. Persisted decisions above do not establish that transition has
+    // completed; wait for its UI result before interacting with the remounted card.
+    await page.getByTestId("task-review-global-scene").waitFor();
     // Native dialog selection is deterministic, but all export planning,
     // validation, file copying and receipt persistence use production code.
-    await globalScene(page);
     await page.getByTestId("task-result-export-toggle").click();
     const sceneSource = (await snapshotAt(root)).sources.find(source => source.id === sceneUnits.get("L")!.sourceVersionId)!;
     const originalBytes = await readFile(path.join(root, sceneSource.relativePath));

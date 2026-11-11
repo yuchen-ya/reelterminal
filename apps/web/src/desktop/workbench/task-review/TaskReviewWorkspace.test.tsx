@@ -409,6 +409,53 @@ describe("task review workspace", () => {
     expect(taskReview.snapshotState().decisions.map((decision) => decision.unitId)).toEqual([units[2]!.id, units[0]!.id]);
   });
 
+  it.each([false, true])("final group persistence precedes scene completion; launcher opened early: %s", async (openEarly) => {
+    const { taskReview, units } = installSceneTask("lowRiskGroup");
+    taskReview.mutateState((state) => {
+      state.planRevisions[0]!.scenes = state.planRevisions[0]!.scenes!.slice(0, 1);
+    });
+    let releaseReply!: () => void;
+    const reply = new Promise<void>((resolve) => { releaseReply = resolve; });
+    const original = taskReview.decide.bind(taskReview);
+    vi.spyOn(taskReview, "decide").mockImplementation(async (input) => {
+      const result = await original(input);
+      await reply;
+      return result;
+    });
+    render(<TaskReviewWorkspace root="task-root" />);
+    await screen.findByTestId("task-review-revision");
+    fireEvent.click(screen.getByTestId("task-review-continue"));
+    await waitFor(() => expect(screen.getAllByTestId("task-review-group-select")[0]).toBeEnabled());
+    fireEvent.click(screen.getAllByTestId("task-review-group-select")[0]!);
+    fireEvent.click(screen.getByTestId("task-review-group-keep-continue"));
+    await waitFor(() => expect(taskReview.snapshotState().decisions).toHaveLength(1));
+    expect(taskReview.snapshotState().decisions[0]).toMatchObject({ unitId: units[0]!.id, status: "kept" });
+    // A disk/bridge snapshot is not a renderer transition completion signal.
+    expect(screen.queryByTestId("task-review-global-scene")).toBeNull();
+    const oldFlip = screen.getByTestId("spotlight-flip-btn");
+    if (openEarly) fireEvent.click(oldFlip);
+    else fireEvent.pointerDown(oldFlip);
+    await act(async () => { releaseReply(); });
+    expect(await screen.findByTestId("task-review-global-scene")).toBeVisible();
+    const newFlip = screen.getByTestId("spotlight-flip-btn");
+    expect(oldFlip.isConnected).toBe(false);
+    expect(newFlip).not.toBe(oldFlip);
+    if (openEarly) {
+      // A completed click is preserved across the normal scene remount.
+      expect(screen.getByTestId("task-review-launcher-overview")).toBeVisible();
+    } else {
+      // A stale pre-transition element cannot activate the new card.
+      fireEvent.pointerUp(oldFlip);
+      fireEvent.click(oldFlip);
+      expect(screen.queryByTestId("task-review-launcher-overview")).toBeNull();
+      fireEvent.click(newFlip);
+      expect(screen.getByTestId("task-review-launcher-overview")).toBeVisible();
+    }
+    fireEvent.click(screen.getByTestId("task-review-launcher-overview"));
+    expect(screen.getByTestId("task-review-global-scene")).toBeVisible();
+    expect(taskReview.snapshotState().decisions).toHaveLength(1);
+  });
+
   it("accepts a group confirmation while autosave is in flight and queues decisions after the draft", async () => {
     const { taskReview, units } = installSceneTask("lowRiskGroup");
     taskReview.mutateState((state) => {
