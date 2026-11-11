@@ -185,7 +185,7 @@ export function GlobalScene({
     const result = await onSetGoal(goalDraft);
     if (result.ok) {
       setGoalState("saved");
-      setPanel("overview");
+      setPanel((current) => current === "goal" ? "overview" : current);
       setGoalError(null);
     } else {
       setGoalState("error");
@@ -229,7 +229,7 @@ export function GlobalScene({
     const result = await onImportText(paste);
     if (result.ok) {
       setPaste({ name: "", format: paste.format, text: "" });
-      setPanel("overview");
+      setPanel((current) => current === "import" ? "overview" : current);
       setActionError(null);
     } else setActionError(result.error);
   };

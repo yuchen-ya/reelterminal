@@ -123,6 +123,77 @@ function installSceneTask(kind: "compare" | "lowRiskGroup") {
 }
 
 describe("task review workspace", () => {
+  it.each([false, true])("goal save completion preserves later navigation: %s", async (navigate) => {
+    const { taskReview } = installBridges();
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const original = taskReview.setGoal.bind(taskReview);
+    const save = vi.spyOn(taskReview, "setGoal").mockImplementation(async (input) => {
+      await pending;
+      return original(input);
+    });
+    render(<TaskReviewWorkspace root="task-root" />);
+    await screen.findByTestId("task-review-revision");
+    await launchOverview();
+    fireEvent.click(screen.getByTestId("task-review-show-goal"));
+    fireEvent.change(screen.getByRole("textbox", { name: "任务目标口径" }), { target: { value: "Saved goal" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存目标口径" }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    if (navigate) {
+      fireEvent.click(screen.getByTestId("task-review-show-import"));
+      fireEvent.change(screen.getByLabelText("原文名称"), { target: { value: "Pending source" } });
+      fireEvent.change(screen.getByLabelText("粘贴文本内容"), { target: { value: "Unsaved source draft" } });
+      expect(screen.getByTestId("task-review-import-editor")).toBeVisible();
+    }
+    await act(async () => { finish(); });
+    await waitFor(() => expect(taskReview.snapshotState().goal).toBe("Saved goal"));
+    expect(screen.getByTestId("task-review-goal-editor")).not.toBeVisible();
+    expect(screen.getByTestId("task-review-show-goal")).toHaveAttribute("aria-expanded", "false");
+    if (navigate) {
+      expect(screen.getByTestId("task-review-import-editor")).toBeVisible();
+      expect(screen.getByTestId("task-review-show-import")).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByLabelText("原文名称")).toHaveValue("Pending source");
+      expect(screen.getByLabelText("粘贴文本内容")).toHaveValue("Unsaved source draft");
+    } else expect(screen.getByTestId("task-review-import-editor")).not.toBeVisible();
+  });
+
+  it.each([false, true])("text import completion preserves later navigation: %s", async (navigate) => {
+    const { taskReview } = installBridges();
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const original = taskReview.importText.bind(taskReview);
+    const save = vi.spyOn(taskReview, "importText").mockImplementation(async (input) => {
+      await pending;
+      return original(input);
+    });
+    render(<TaskReviewWorkspace root="task-root" />);
+    await screen.findByTestId("task-review-revision");
+    await launchOverview();
+    fireEvent.click(screen.getByTestId("task-review-show-import"));
+    fireEvent.change(screen.getByLabelText("原文名称"), { target: { value: "Saved source" } });
+    fireEvent.change(screen.getByLabelText("粘贴文本内容"), { target: { value: "Imported line" } });
+    fireEvent.click(screen.getByTestId("task-review-import-text"));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    if (navigate) {
+      fireEvent.click(screen.getByTestId("task-review-show-goal"));
+      fireEvent.change(screen.getByRole("textbox", { name: "任务目标口径" }), { target: { value: "Unsaved goal draft" } });
+      expect(screen.getByTestId("task-review-goal-editor")).toBeVisible();
+    }
+    await act(async () => { finish(); });
+    await waitFor(() => expect(taskReview.snapshotState().units).toHaveLength(1));
+    expect(taskReview.snapshotState().units[0]).toMatchObject({ text: "Imported line" });
+    expect(screen.getByTestId("task-review-import-editor")).not.toBeVisible();
+    expect(screen.getByTestId("task-review-show-import")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByLabelText("原文名称")).toHaveValue("");
+    expect(screen.getByLabelText("粘贴文本内容")).toHaveValue("");
+    if (navigate) {
+      expect(screen.getByTestId("task-review-goal-editor")).toBeVisible();
+      expect(screen.getByTestId("task-review-show-goal")).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("textbox", { name: "任务目标口径" })).toHaveValue("Unsaved goal draft");
+      expect(taskReview.snapshotState().goal).not.toBe("Unsaved goal draft");
+    } else expect(screen.getByTestId("task-review-goal-editor")).not.toBeVisible();
+  });
+
   it("waits for the task snapshot before the first browse action while the progress header is already visible", async () => {
     const { taskReview } = installSceneTask("compare");
     let finish!: (snapshot: ReturnType<typeof taskReview.snapshotState>) => void;
