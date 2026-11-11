@@ -94,6 +94,10 @@ export class ExportFrameDecoder {
     this.width = width;
   }
 
+  matchesSource(file: Blob, width?: number): boolean {
+    return this.file === file && this.width === width;
+  }
+
   async initialize(): Promise<boolean> {
     if (this.initialized) return true;
 
@@ -261,6 +265,8 @@ export class ExportFrameDecoder {
 }
 
 export class MediaBunnyEngine {
+  private readonly sourceIds = new WeakMap<Blob, number>();
+  private nextSourceId = 0;
   private initialized = false;
   private mediabunny: typeof import("mediabunny") | null = null;
   private frameCache: Map<string, FrameCacheEntry> = new Map();
@@ -303,9 +309,7 @@ export class MediaBunnyEngine {
     this.ensureInitialized();
 
     const existing = this.exportDecoders.get(mediaId);
-    if (existing) {
-      return existing;
-    }
+    if (existing?.matchesSource(file, width)) return existing;
 
     const decoder = new ExportFrameDecoder(this.mediabunny!, file, width);
     let success: boolean;
@@ -322,12 +326,14 @@ export class MediaBunnyEngine {
       return null;
     }
 
+    this.exportDecoders.get(mediaId)?.dispose();
     this.exportDecoders.set(mediaId, decoder);
     return decoder;
   }
 
-  getExportDecoder(mediaId: string): ExportFrameDecoder | null {
-    return this.exportDecoders.get(mediaId) || null;
+  getExportDecoder(mediaId: string, file?: Blob, width?: number): ExportFrameDecoder | null {
+    const decoder = this.exportDecoders.get(mediaId);
+    return decoder && (!file || decoder.matchesSource(file, width)) ? decoder : null;
   }
 
   disposeExportDecoder(mediaId: string): void {
@@ -702,14 +708,18 @@ export class MediaBunnyEngine {
   ): Promise<VideoFrameResult | null> {
     this.ensureInitialized();
     const { CanvasSink } = this.mediabunny!;
-    const fileName = "name" in file ? file.name : "blob";
-    const cacheKey = `${fileName}-${file.size}-${timestamp}-${width || "auto"}`;
+    let id = this.sourceIds.get(file);
+    if (id === undefined) {
+      id = this.nextSourceId++;
+      this.sourceIds.set(file, id);
+    }
+    const cacheKey = `${id}:${timestamp}:${width || "auto"}`;
     const cached = this.frameCache.get(cacheKey);
     if (cached) {
       cached.lastAccessed = Date.now();
       return {
         timestamp: cached.timestamp,
-        duration: 0, // Cached frames might not have duration stored, or we can add it to cache
+        duration: cached.duration,
         canvas: cached.image,
         width: cached.width,
         height: cached.height,
@@ -771,6 +781,7 @@ export class MediaBunnyEngine {
 
       this.frameCache.set(cacheKey, {
         timestamp: result.timestamp,
+        duration: result.duration,
         image: clone,
         width: clone.width,
         height: clone.height,

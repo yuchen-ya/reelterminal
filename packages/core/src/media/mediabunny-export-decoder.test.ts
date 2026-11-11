@@ -251,9 +251,13 @@ describe("MediaBunnyEngine.createExportDecoder", () => {
 
     const engine = new MediaBunnyEngine();
     await engine.initialize();
-    const decoder = await engine.createExportDecoder("m2", new Blob(["ok"]));
+    const file = new Blob(["ok"]);
+    const decoder = await engine.createExportDecoder("m2", file, 320);
     expect(decoder).not.toBeNull();
     expect(engine.getExportDecoder("m2")).toBe(decoder);
+    expect(engine.getExportDecoder("m2", file, 320)).toBe(decoder);
+    expect(engine.getExportDecoder("m2", file, 640)).toBeNull();
+    expect(engine.getExportDecoder("m2", new Blob(["no"]), 320)).toBeNull();
     expect(inputDispose).not.toHaveBeenCalled();
     engine.disposeExportDecoder("m2");
     expect(inputDispose).toHaveBeenCalledTimes(1);

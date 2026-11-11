@@ -87,6 +87,7 @@ export const AUDIO_QUALITY_PRESETS = {
 
 export interface FrameCacheEntry {
   timestamp: number;
+  duration: number;
   image: ImageBitmap | OffscreenCanvas;
   width: number;
   height: number;

@@ -236,8 +236,7 @@ export async function ffprobeJson(
 const MAX_FRAME_BYTES = 512 * 1024 * 1024;
 
 /**
- * Extract one frame as raw RGBA bytes. Seeking is accurate (decode-then-seek)
- * so the extracted frame is the frame AT timeSec, not the nearest keyframe.
+ * Extract the decoded frame covering timeSec, including between VFR timestamps.
  * The frame streams to a temp file (NOT stdout), so arbitrarily large rasters
  * never hit a stdio cap; the byte count is validated exactly.
  *
@@ -273,13 +272,15 @@ export async function extractFrameRgba(
   const tempDir = await mkdtemp(join(tmpdir(), "oframe-"));
   const rawPath = join(tempDir, "frame.rgba");
   try {
-    const args = [
-      "-v", "error",
-      "-i", inputPath,
-      "-ss", String(timeSec),
-      "-frames:v", "1",
+    const args = ["-v", "error", "-i", inputPath, "-map", "0:v:0", "-frames:v", "1"];
+    // Place the sample at t=0. Rounding presentation times up onto the output
+    // grid makes fps emit the last input at/before zero; output-side -ss would
+    // pick the next frame. No nominal source rate or whole-file index needed.
+    const filters = [
+      "settb=AVTB",
+      `setpts=PTS-${Math.round(timeSec * 1_000_000)}`,
+      "fps=1:start_time=0:round=up",
     ];
-    const filters: string[] = [];
     if (options.colorMatrix && options.scale) {
       filters.push(
         `scale=w=${options.scale.width}:h=${options.scale.height}:in_color_matrix=${options.colorMatrix}`,
@@ -289,7 +290,7 @@ export async function extractFrameRgba(
     } else if (options.scale) {
       filters.push(`scale=${options.scale.width}:${options.scale.height}`);
     }
-    if (filters.length > 0) args.push("-vf", filters.join(","));
+    args.push("-vf", filters.join(","));
     args.push("-f", "rawvideo", "-pix_fmt", "rgba", rawPath);
     await runProcess(ffmpegPath, args, options);
     const raw = await readFile(rawPath);

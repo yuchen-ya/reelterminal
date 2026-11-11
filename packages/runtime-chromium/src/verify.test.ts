@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { writeTinyMp4 } from "@reelterminal/agent-facade/media/fixtures/tiny-mp4";
 import { FfmpegArtifactVerifier } from "./node/verify";
-import { extractFrameRgba, resolveFfmpegBinaries } from "./node/ffmpeg";
+import { extractFrameRgba, resolveFfmpegBinaries, runProcess } from "./node/ffmpeg";
 import { writeTinyVp9Mp4 } from "./media/tiny-vp9-mp4";
 
 describe("FfmpegArtifactVerifier", () => {
@@ -196,6 +196,22 @@ describe("FfmpegArtifactVerifier", () => {
     await expect(
       extractFrameRgba(binaries.ffmpeg, mp4, 999, 320, 180),
     ).rejects.toThrow();
+  });
+
+  it("samples the displayed frame inside VFR holds, including at cuts and near EOF", async () => {
+    const binaries = await resolveFfmpegBinaries();
+    if (!binaries) throw new Error("ffmpeg required for this test");
+    const video = path.join(workDir, "held-frame.mkv");
+    await runProcess(binaries.ffmpeg, [
+      "-v", "error", "-f", "lavfi", "-i", "color=red:s=16x16:r=4:d=0.75",
+      "-vf", "drawbox=c=blue:t=fill:enable='eq(n,1)',drawbox=c=lime:t=fill:enable='eq(n,2)',setpts='if(eq(N,2),4,N)'",
+      "-fps_mode", "vfr", "-c:v", "ffv1", video,
+    ]);
+    for (const [time, channel] of [[0.249, 0], [0.25, 2], [0.999, 2], [1, 1], [1.249, 1]] as const) {
+      const rgba = await extractFrameRgba(binaries.ffmpeg, video, time, 16, 16);
+      expect(rgba[channel], `dominant RGB channel at ${time}s`).toBeGreaterThan(240);
+    }
+    await expect(extractFrameRgba(binaries.ffmpeg, video, 1.25, 16, 16)).rejects.toThrow();
   });
 
   it("extractFrameRgba handles 4K frames larger than 16 MiB", async () => {
