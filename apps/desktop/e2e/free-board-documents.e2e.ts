@@ -155,7 +155,7 @@ test("free board preserves rich Markdown source, managed relative assets and edi
     const sourceDirectory = path.join(launched.runDir, "markdown-source-export");
     await mkdir(sourceDirectory);
     await launched.app.evaluate(({ dialog }, directory) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] }); }, sourceDirectory);
-    await vi.waitFor(async () => expect(await page.getByTestId("human-board-output-save").isEnabled()).toBe(true));
+    // Native snapshot preparation is asynchronous; the real click waits for actionability.
     await page.getByTestId("human-board-output-save").click();
     await vi.waitFor(async () => expect(await page.getByTestId("human-board-output").textContent()).toContain("Saved to"));
     const sourceFiles = await (await import("node:fs/promises")).readdir(sourceDirectory, { recursive: true, withFileTypes: true });
