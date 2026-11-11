@@ -14,9 +14,25 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alfa+Slab+One&family=Anton&family=Archivo+Black&family=Bangers&family=Bebas+Neue&family=Black+Ops+One&family=Bungee&family=Caveat:wght@400;700&family=Cinzel:wght@400;700;900&family=Comfortaa:wght@300;400;700&family=Concert+One&family=Creepster&family=Dancing+Script:wght@400;700&family=DM+Sans:wght@400;500;700&family=DM+Serif+Display&family=Fredoka+One&family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&family=Great+Vibes&family=Inter:wght@300;400;500;600;700;800;900&family=Lato:wght@300;400;700;900&family=Lexend:wght@300;400;500;600;700&family=Lobster&family=Lora:wght@400;500;600;700&family=Merriweather:wght@300;400;700;900&family=Montserrat:wght@300;400;500;600;700;800;900&family=Nunito:wght@300;400;600;700;800&family=Open+Sans:wght@300;400;600;700;800&family=Oswald:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800;900&family=Press+Start+2P&family=Quicksand:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600;700;800&family=Righteous&family=Roboto:wght@300;400;500;700;900&family=Roboto+Condensed:wght@300;400;700&family=Roboto+Mono:wght@300;400;500;700&family=Roboto+Slab:wght@300;400;500;700&family=Rock+Salt&family=Rubik:wght@300;400;500;600;700;800&family=Sacramento&family=Satisfy&family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Staatliches&family=Teko:wght@300;400;500;600;700&family=Titan+One&family=Ubuntu:wght@300;400;500;700&family=Work+Sans:wght@300;400;500;600;700;800&family=Yellowtail&family=Zilla+Slab:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <title>ReelTerminal — AI Video Finishing Editor</title>
+    <link rel="stylesheet" href="/src/components/brand/boot-loader.css" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Pre-JS startup splash; React replaces it on first render. Mirrors BootLoader.tsx. -->
+      <div class="rt-boot rt-boot--standalone" role="status" aria-live="polite">
+        <div class="rt-boot__stage" aria-hidden="true">
+          <svg class="rt-boot__mark" viewBox="12 9.75 40 40" width="64" height="64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect class="rt-boot__track rt-boot__track--a" x="13.75" y="20.625" width="27.125" height="5.6875" rx="2.84375" fill="#34D399" />
+            <rect class="rt-boot__track rt-boot__track--b" x="21.25" y="33.1875" width="19.9375" height="5.6875" rx="2.84375" fill="#167A5B" />
+            <rect class="rt-boot__playhead" x="14.4" y="17.6" width="1.1" height="24.4" rx="0.55" fill="#A7F3D0" />
+            <rect class="rt-boot__cursor" x="45" y="16.875" width="5.375" height="25.8125" rx="2.6875" fill="#A7F3D0" />
+          </svg>
+        </div>
+        <div class="rt-boot__wordmark" aria-hidden="true">Reel<span>Terminal</span></div>
+        <div class="rt-boot__bar" aria-hidden="true"><span></span></div>
+        <span class="rt-boot__sr">ReelTerminal</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

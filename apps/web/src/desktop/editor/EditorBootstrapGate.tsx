@@ -2,7 +2,7 @@ import type { JSX } from "react";
 import type React from "react";
 import { useTranslation } from "react-i18next";
 
-import { ReelTerminalMark } from "@/components/brand/ReelTerminalMark";
+import { BootLoader } from "@/components/brand/BootLoader";
 import { useDesktopEditorBootstrap } from "./useDesktopEditorBootstrap";
 
 export function EditorBootstrapGate({
@@ -21,15 +21,7 @@ export function EditorBootstrapGate({
   }
   if (!ready) {
     return (
-      <div className="grid h-full place-items-center bg-bg">
-        <div className="flex flex-col items-center gap-4">
-          <ReelTerminalMark
-            size={48}
-            className="animate-spin text-accent"
-          />
-          <span className="text-sm text-fg-muted">{t("desktop.editor.loading")}</span>
-        </div>
-      </div>
+      <BootLoader message={t("desktop.editor.loading")} />
     );
   }
   return <>{children}</>;

@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { BootLoader } from "./components/brand/BootLoader";
 import "./i18n";
 import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
@@ -58,7 +59,7 @@ const root = document.getElementById("root")!;
 
 async function renderApplication(): Promise<void> {
   const application: React.ReactNode = isDesktop ? (
-        <React.Suspense fallback={<div className="h-screen w-screen bg-bg" />}>
+        <React.Suspense fallback={<BootLoader standalone />}>
           <DesktopApp />
         </React.Suspense>
       ) : (

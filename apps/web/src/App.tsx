@@ -10,7 +10,7 @@ import { useProjectStore } from "./stores/project-store";
 import { useRouter } from "./hooks/use-router";
 import { useProjectRecovery } from "./hooks/useProjectRecovery";
 import { SOCIAL_MEDIA_PRESETS, type SocialMediaCategory } from "@reelterminal/core";
-import { ToolcraftText as Text } from "@reelterminal/ui";
+import { BootLoader } from "./components/brand/BootLoader";
 
 const EditorInterface = lazy(() =>
   import("./components/editor/EditorInterface").then((m) => ({
@@ -29,9 +29,8 @@ const ScriptViewDialog = lazy(() =>
 );
 
 const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
-  <div className="h-screen w-screen bg-background flex flex-col items-center justify-center">
-    <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
-    <Text type="supporting" color="secondary" className="text-sm text-text-secondary">{message}</Text>
+  <div className="h-screen w-screen">
+    <BootLoader message={message} />
   </div>
 );
 

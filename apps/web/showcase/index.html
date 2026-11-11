@@ -6,9 +6,25 @@
     <meta name="robots" content="noindex" />
     <link rel="stylesheet" href="./fonts/google-fonts.css" />
     <title>ReelTerminal · 自由体验</title>
+    <link rel="stylesheet" href="../src/components/brand/boot-loader.css" />
   </head>
   <body class="reelterminal-desktop">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Pre-JS startup splash; React replaces it on first render. Mirrors BootLoader.tsx. -->
+      <div class="rt-boot rt-boot--standalone" role="status" aria-live="polite">
+        <div class="rt-boot__stage" aria-hidden="true">
+          <svg class="rt-boot__mark" viewBox="12 9.75 40 40" width="64" height="64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect class="rt-boot__track rt-boot__track--a" x="13.75" y="20.625" width="27.125" height="5.6875" rx="2.84375" fill="#34D399" />
+            <rect class="rt-boot__track rt-boot__track--b" x="21.25" y="33.1875" width="19.9375" height="5.6875" rx="2.84375" fill="#167A5B" />
+            <rect class="rt-boot__playhead" x="14.4" y="17.6" width="1.1" height="24.4" rx="0.55" fill="#A7F3D0" />
+            <rect class="rt-boot__cursor" x="45" y="16.875" width="5.375" height="25.8125" rx="2.6875" fill="#A7F3D0" />
+          </svg>
+        </div>
+        <div class="rt-boot__wordmark" aria-hidden="true">Reel<span>Terminal</span></div>
+        <div class="rt-boot__bar" aria-hidden="true"><span></span></div>
+        <span class="rt-boot__sr">ReelTerminal</span>
+      </div>
+    </div>
     <script type="module" src="../src/showcase/main.tsx"></script>
   </body>
 </html>
