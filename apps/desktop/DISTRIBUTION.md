@@ -47,8 +47,10 @@ appropriate build hosts and signing credentials for each release target.
 Keep payload includes and exclusions in the shared `files` rules. Do not add platform-specific file matchers that can bypass these exclusions. The app archive should contain only production entries and their required runtime dependencies; development sources, test evidence, local configuration and internal reports do not belong in release payloads.
 `build:wasm` generates the core WASM assets omitted from Git. These commands do not download
 or include FFmpeg or Blender binaries, even when a developer has fetched them
-locally. Install FFmpeg/ffprobe separately and put them on PATH. For desktop
-media processing, `REELTERMINAL_FFMPEG_PATH` can select an explicit executable;
+locally. These exclusions concern the external command-line tools; Electron's own
+codec library remains part of the framework and is covered by its Chromium notices.
+Install FFmpeg/ffprobe separately and put them on PATH. For desktop media
+processing, `REELTERMINAL_FFMPEG_PATH` can select an explicit executable;
 Agent runtime verification also supports `REELTERMINAL_FFPROBE_PATH`.
 Configure an installed Blender with `REELTERMINAL_BLENDER_PATH` for rigging.
 

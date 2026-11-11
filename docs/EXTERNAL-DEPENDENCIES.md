@@ -83,7 +83,8 @@ they do not invent a copyright attribution.
 SenseVoice transcription, anonymous speaker grouping and Demucs separation are implemented as optional local tools, not bundled environments. Their setup and model-download permissions are described above. Qwen/SenseVoice desktop captions are distinct from the sentence-level Agent speechTranscript API. DeepFilterNet and other unimplemented backends must not be presented as available.
 
 Removed sample footage and retired private mirrors are not default release
-dependencies. Native FFmpeg and Blender executables are not bundled. The
-`licenses/` directory includes the relevant terms and source references for
+dependencies. Native FFmpeg and Blender executables are not bundled. Electron
+still includes its internal codec library and Chromium notices. The `licenses/`
+directory includes the relevant terms and source references for
 FFmpeg.wasm, optional external tools and bundled native convenience sidecars.
 Users remain responsible for the rights to their own media and optional tools.

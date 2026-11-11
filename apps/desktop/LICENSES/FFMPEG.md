@@ -1,7 +1,9 @@
 # FFmpeg
 
-Default desktop packages exclude FFmpeg binaries. Users install FFmpeg/ffprobe
-separately. The development-only fetch command downloads prebuilt FFmpeg for
+Default desktop packages exclude external FFmpeg/ffprobe executables. Users install these tools
+separately. Electron's internal codec library (such as `ffmpeg.dll` on Windows)
+remains part of the framework; its notices are in `LICENSES.chromium.html`.
+The development-only fetch command downloads prebuilt FFmpeg for
 local use as an external process. The pinned binary sources and
 SHA-256 digests are listed in [`../resources/bin/MANIFEST.json`](../resources/bin/MANIFEST.json)
 and verified by `scripts/fetch-ffmpeg.mjs`.

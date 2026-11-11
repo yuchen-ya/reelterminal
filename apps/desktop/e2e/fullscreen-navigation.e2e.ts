@@ -22,7 +22,25 @@ test("fullscreen preview yields to project selection and desktop dialogs without
   const agent = await connectExternalAgent(launched.endpointFile);
   const { page, app } = launched;
   const evidence = createEvidence("fullscreen-navigation", page);
+  const nativeState = () => app.evaluate(({ BrowserWindow }) => {
+    const state = (globalThis as any).fullscreenNavigation;
+    return { ...state, isFullScreen: BrowserWindow.fromId(state.windowId)?.isFullScreen() };
+  });
+  let passed = false;
   try {
+    await app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      const state = { windowId: win.id, platform: process.platform, entered: 0, left: 0, htmlEntered: 0, htmlLeft: 0, events: [] as string[] };
+      (globalThis as any).fullscreenNavigation = state;
+      for (const [event, counter] of [['enter-full-screen', 'entered'], ['leave-full-screen', 'left'], ['enter-html-full-screen', 'htmlEntered'], ['leave-html-full-screen', 'htmlLeft']] as const) {
+        win.on(event, () => { state[counter]++; state.events.push(event); });
+      }
+    });
+    await page.evaluate(() => {
+      const events: Array<{ id: string; fullscreen: boolean }> = [];
+      (window as any).fullscreenNavigationMenuEvents = events;
+      window.reelterminal.onMenuAction(id => events.push({ id, fullscreen: !!document.fullscreenElement }));
+    });
     await createProjectViaUI(page);
     const identity = async () => {
       const context = value(await agent.callCommand<{
@@ -33,18 +51,33 @@ test("fullscreen preview yields to project selection and desktop dialogs without
     };
     const original = await identity();
     const editor = (await page.getByTestId("desktop-workspace").elementHandle())!;
+    let beforeEnter = await nativeState();
     const enterFullscreen = async () => {
+      beforeEnter = await nativeState();
       await page.getByRole("button", { name: "Full Screen", exact: true }).click();
       await vi.waitFor(async () => {
         expect(await page.evaluate(() => document.fullscreenElement?.getAttribute("data-tour"))).toBe("preview");
-        expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFullScreen())).toBe(true);
-      });
+        const state = await nativeState();
+        expect(state.isFullScreen).toBe(true);
+        // macOS native fullscreen is asynchronous. A true flag alone does not
+        // establish that the Space transition finished before invoking a menu.
+        // https://www.electronjs.org/docs/latest/api/browser-window#winisfullscreen
+        if (state.platform === 'darwin') {
+          expect(state.entered).toBeGreaterThan(beforeEnter.entered);
+          expect(state.htmlEntered).toBeGreaterThan(beforeEnter.htmlEntered);
+        }
+      }, { timeout: 5_000 });
     };
     const assertExited = async () => {
       await vi.waitFor(async () => {
         expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
-        expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFullScreen())).toBe(false);
-      });
+        const state = await nativeState();
+        expect(state.isFullScreen).toBe(false);
+        if (state.platform === 'darwin') {
+          expect(state.left).toBeGreaterThan(beforeEnter.left);
+          expect(state.htmlLeft).toBeGreaterThan(beforeEnter.htmlLeft);
+        }
+      }, { timeout: 5_000 });
     };
 
     await enterFullscreen();
@@ -82,8 +115,16 @@ test("fullscreen preview yields to project selection and desktop dialogs without
     await page.getByRole("button", { name: "Exit Full Screen", exact: true }).click();
     await assertExited();
     await evidence.screenshot("returned-editor");
+    passed = true;
+  } catch (error) {
+    evidence.record('failure', error instanceof Error ? error.message : String(error));
+    await evidence.screenshot('failure').catch(() => {});
+    throw error;
   } finally {
-    evidence.flush();
+    evidence.record('nativeFullscreen', await nativeState().catch(() => ({ unavailable: true })));
+    evidence.record('menuEvents', await page.evaluate(() => (window as any).fullscreenNavigationMenuEvents).catch(() => []));
+    evidence.record('rendererConsole', launched.output.rendererConsole.slice(-20));
+    evidence.flush({ passed });
     await agent.close();
     await launched.close();
   }
