@@ -45,6 +45,18 @@ test("trimmed and split video preserves source ranges, undo, reopen and exported
     const sourceColor = JSON.parse(execFileSync(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_space,color_range,color_primaries,color_transfer", "-of", "json", source], { encoding: "utf8", windowsHide: true })).streams[0];
     expect(sourceColor).toMatchObject({ color_space: "bt709", color_range: "tv", color_primaries: "bt709", color_transfer: "bt709" });
     evidence.record("sourceColor", sourceColor);
+    await copyFile(source, path.join(ARTIFACTS_DIR, "video-edit-release-source.mp4"));
+    evidence.record("fixtureToolVersion", execFileSync(ffmpeg, ["-version"], { encoding: "utf8", windowsHide: true }).split(/\r?\n/)[0]);
+    evidence.record("sourceDecodedSamples", [15, 75, 135].map(frame => {
+      const rgb = execFileSync(ffmpeg, ["-v", "error", "-i", source, "-vf", `select=eq(n\\,${frame}),format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "pipe:1"], { windowsHide: true, timeout: 30000, maxBuffer: 320 * 180 * 3 + 1024 });
+      expect(rgb.length).toBe(320 * 180 * 3);
+      return { frame, rgb: [...rgb.subarray((90 * 320 + 160) * 3, (90 * 320 + 160) * 3 + 3)] };
+    }));
+    evidence.record("colourEnvironment", await launched.app.evaluate(({ app, screen, BrowserWindow }) => ({
+      profile: app.commandLine.getSwitchValue("force-color-profile"),
+      display: screen.getDisplayMatching(BrowserWindow.getAllWindows()[0].getBounds()).colorSpace,
+      gpu: app.getGPUFeatureStatus(),
+    })));
     const media = await call<{ mediaId: string }>("media.import", { ...target, path: source, expectedRevision: (await state()).revision });
     const seeded = await edit([
       { op: "track.add", trackType: "video", trackId: "release-cut-video" },
@@ -83,12 +95,19 @@ test("trimmed and split video preserves source ranges, undo, reopen and exported
       { time: 2.5, rgb: [0, 0, 0] }, { time: 3.5, rgb: [0, 255, 0] }, { time: 4.5, rgb: [0, 0, 255] },
     ];
     const near = (actual: number[], expected: number[]) => expected.forEach((v, n) => expect(Math.abs(actual[n]! - v)).toBeLessThanOrEqual(12));
+    const previewSamples: Array<{ time: number; expected: number[]; actual: number[] }> = [];
+    evidence.record("previewSamples", previewSamples);
     for (const sample of samples) {
       await call("editor.control", { ...target, action: "seek", timeSeconds: sample.time });
-      await vi.waitFor(async () => near(await canvas.evaluate(node => {
-        const c = node as HTMLCanvasElement;
-        return [...c.getContext("2d")!.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data].slice(0, 3);
-      }), sample.rgb), { timeout: 10000 });
+      const observation = { time: sample.time, expected: sample.rgb, actual: [] as number[] };
+      previewSamples.push(observation);
+      await vi.waitFor(async () => {
+        observation.actual = await canvas.evaluate(node => {
+          const c = node as HTMLCanvasElement;
+          return [...c.getContext("2d")!.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data].slice(0, 3);
+        });
+        near(observation.actual, sample.rgb);
+      }, { timeout: 10000 });
     }
     await evidence.screenshot("reopened-blue-source-frame");
     const output = path.join(launched.runDir, "cut-result.mp4");
@@ -116,6 +135,7 @@ test("trimmed and split video preserves source ranges, undo, reopen and exported
     evidence.record("result", { clips: expected, savedAndReopened: true, historyUndoRedoVerified: true, previewAndExportSamples: samples, frames: 150, duration: 5, exportedBytes: (await stat(output)).size, fullyDecoded: true });
     evidence.flush({ passed: true, limitations: ["Clip trim/split/move use the real command contract; preview and export use the GUI", "Synthetic video-only fixture; audio is covered separately"] });
   } catch (error) {
+    if (!launched.page.isClosed()) await evidence.screenshot("failure").catch(() => undefined);
     evidence.flush({ passed: false, error: error instanceof Error ? error.message : String(error) });
     throw error;
   } finally {

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isTextTaskSource, isTextTaskUnit } from '../shared/task-review';
 import type { TaskAgentTarget, TaskCompletionEvent, TaskSearchScope } from '../shared/task-review-runtime-types';
 import type { TaskBatchModelResponse } from './task-review-context-model';
@@ -356,41 +356,61 @@ describe('production multi-unit runtime', () => {
     expect(retryModel).toHaveBeenCalledTimes(3); expect(state.jobs[0]).toMatchObject({ status: 'failed', attempts: 3, reservedOutputTokens: 18000 }); await expect(retry.runtime.retryJob({ ...retry.target, jobId: state.jobs[0].id })).rejects.toThrow('budget');
   });
 
-  it('keeps missing/unknown coverage out of analyzed counts and enforces a stable total batch budget', async () => {
-    const started = performance.now(); let reads = 0, readMs = 0;
-    const phase = (stage: string) => process.stdout.write(`TASK_BATCH_BUDGET_STAGE ${JSON.stringify({ stage, elapsedMs: Math.round(performance.now() - started), reads, readMs: Math.round(readMs) })}\n`);
+  it('keeps missing/unknown coverage out of analyzed counts', async () => {
     const unknown = await fixture('未知项\n已分析项', async (request) => { const result = response(request); result.coverage[0].status = 'unknown'; result.coverage[0].reason = '缺少前场语境'; return JSON.stringify(result); });
     await authorize(unknown.runtime, unknown.target); const state = await settled(unknown.runtime, unknown.target);
     expect(state.jobs[0].completedUnitIds).toEqual([unknown.snapshot.units[1].id]);
     const plan = (await unknown.store.open(unknown.root)).planRevisions.at(-1)!;
     expect(plan.steps.find((step) => step.unitId === unknown.snapshot.units[0].id)?.reason).toContain('风险未知'); expect(plan.scenes?.some((scene) => scene.kind === 'lowRiskGroup')).toBe(false);
-    phase('unknown-coverage');
-    const model = vi.fn<Model>(clean); const bounded = await fixture(Array.from({ length: 140 }, (_, i) => `条目${i}`).join('\n'), model);
-    const open = bounded.store.open.bind(bounded.store);
-    vi.spyOn(bounded.store, 'open').mockImplementation(async root => { const began = performance.now(); reads++; try { return await open(root); } finally { readMs += performance.now() - began; } });
-    phase('bounded-prepared');
-    await authorize(bounded.runtime, bounded.target); phase('authorized');
-    // Full getState validates/projects the growing plan. Poll the controlled
-    // model boundary cheaply until the last batch starts, then still require
-    // the real public state to settle and verify all coverage/budget invariants.
-    await vi.waitFor(() => expect(model.mock.calls.length).toBeGreaterThanOrEqual(16), { timeout: 15000 });
-    const full = await settled(bounded.runtime, bounded.target, 15000); phase('initial-settled');
-    expect(model).toHaveBeenCalledTimes(16); expect(full.deferredUnitIds).toHaveLength(12); expect(full.jobs.flatMap((job) => job.completedUnitIds)).toHaveLength(128);
-    let snapshot = await bounded.store.open(bounded.root); const unit = snapshot.units[0];
-    await bounded.store.decide({ ...bounded.target, expectedRevision: snapshot.revision, unitId: unit.id, sourceVersionId: unit.sourceVersionId, purpose: 'review', status: 'kept', note: '普通判断不自动续费' });
-    await bounded.runtime.onTaskChanged(bounded.target); await bounded.runtime.getState(bounded.target);
-    const repeated = await bounded.runtime.startPreflight(bounded.target);
-    expect(repeated.jobs.map(job => job.id)).toEqual(full.jobs.map(job => job.id)); expect(model).toHaveBeenCalledTimes(16);
-    phase('stable-preflight');
-    await bounded.runtime.continueAnalysis(bounded.target);
-    await vi.waitFor(() => expect(model.mock.calls.length).toBeGreaterThanOrEqual(18), { timeout: 15000 });
-    const continued = await settled(bounded.runtime, bounded.target, 15000); phase('continued-settled');
-    expect(model).toHaveBeenCalledTimes(18); expect(continued.deferredUnitIds).toEqual([]); expect(continued.remainingUnitCount).toBe(0);
-    expect(new Set(continued.jobs.flatMap(job => job.completedUnitIds)).size).toBe(140);
-    const complete = await bounded.runtime.continueAnalysis(bounded.target);
-    expect(complete.jobs.map(job => job.id)).toEqual(continued.jobs.map(job => job.id)); expect(model).toHaveBeenCalledTimes(18);
-    phase('done');
   }, 20000);
+
+  describe('stable total batch budget', () => {
+    let model = vi.fn<Model>(clean);
+    let bounded: Awaited<ReturnType<typeof fixture>>;
+    let full: Awaited<ReturnType<typeof settled>>;
+    let started = 0, reads = 0, readMs = 0;
+    const phase = (stage: string) => process.stdout.write(
+      'TASK_BATCH_BUDGET_STAGE ' + JSON.stringify({ stage, elapsedMs: Math.round(performance.now() - started), reads, readMs: Math.round(readMs) }) + String.fromCharCode(10));
+    // Real 140-unit/16-job preparation is a separately bounded fixture phase.
+    // Combining it, unrelated unknown-coverage setup and explicit continuation
+    // in one 20s test cancelled the body while it still owned filesystem work.
+    // Keep the original 20s ceiling for BOTH hook and assertions, and share one
+    // 15s deadline per wait phase rather than stacking two independent waits.
+    // Global afterEach still drains this real runtime before removing its roots.
+    beforeEach(async () => {
+      started = performance.now(); reads = 0; readMs = 0;
+      model = vi.fn<Model>(clean); bounded = await fixture(Array.from({ length: 140 }, (_, i) => `条目${i}`).join('\n'), model);
+      const open = bounded.store.open.bind(bounded.store);
+      vi.spyOn(bounded.store, 'open').mockImplementation(async root => { const began = performance.now(); reads++; try { return await open(root); } finally { readMs += performance.now() - began; } });
+      phase('bounded-prepared');
+      await authorize(bounded.runtime, bounded.target); phase('authorized');
+      const initialDeadline = Date.now() + 15000;
+      // Full getState validates/projects the growing plan. Poll the controlled
+      // model boundary cheaply until the last batch starts, then still require
+      // the real public state to settle and verify all coverage/budget invariants.
+      await vi.waitFor(() => expect(model.mock.calls.length).toBeGreaterThanOrEqual(16), { timeout: 15000 });
+      full = await settled(bounded.runtime, bounded.target, Math.max(1, initialDeadline - Date.now())); phase('initial-settled');
+    }, 20000);
+
+    it('does not expand on ordinary edits and only explicit continuation completes all units', async () => {
+      expect(model).toHaveBeenCalledTimes(16); expect(full.deferredUnitIds).toHaveLength(12); expect(full.jobs.flatMap((job) => job.completedUnitIds)).toHaveLength(128);
+      let snapshot = await bounded.store.open(bounded.root); const unit = snapshot.units[0];
+      await bounded.store.decide({ ...bounded.target, expectedRevision: snapshot.revision, unitId: unit.id, sourceVersionId: unit.sourceVersionId, purpose: 'review', status: 'kept', note: '普通判断不自动续费' });
+      await bounded.runtime.onTaskChanged(bounded.target); await bounded.runtime.getState(bounded.target);
+      const repeated = await bounded.runtime.startPreflight(bounded.target);
+      expect(repeated.jobs.map(job => job.id)).toEqual(full.jobs.map(job => job.id)); expect(model).toHaveBeenCalledTimes(16);
+      phase('stable-preflight');
+      const continuationDeadline = Date.now() + 15000;
+      await bounded.runtime.continueAnalysis(bounded.target);
+      await vi.waitFor(() => expect(model.mock.calls.length).toBeGreaterThanOrEqual(18), { timeout: Math.max(1, continuationDeadline - Date.now()) });
+      const continued = await settled(bounded.runtime, bounded.target, Math.max(1, continuationDeadline - Date.now())); phase('continued-settled');
+      expect(model).toHaveBeenCalledTimes(18); expect(continued.deferredUnitIds).toEqual([]); expect(continued.remainingUnitCount).toBe(0);
+      expect(new Set(continued.jobs.flatMap(job => job.completedUnitIds)).size).toBe(140);
+      const complete = await bounded.runtime.continueAnalysis(bounded.target);
+      expect(complete.jobs.map(job => job.id)).toEqual(continued.jobs.map(job => job.id)); expect(model).toHaveBeenCalledTimes(18);
+      phase('done');
+    }, 20000);
+  });
 
   it('limits background concurrency across tasks while foreground completion remains independent', async () => {
     const phase = async <T>(stage: string, work: () => Promise<T>) => {
