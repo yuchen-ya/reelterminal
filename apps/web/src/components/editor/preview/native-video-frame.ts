@@ -1,3 +1,5 @@
+import { colorSafeVideoBitmap } from "@reelterminal/core/media/accurate-video-frame";
+
 /** Capture the pixels and PTS from the same presented native video frame. */
 export function captureNativeVideoFrame(
   video: HTMLVideoElement,
@@ -13,7 +15,7 @@ export function captureNativeVideoFrame(
       clearTimeout(timeout);
       // Capture immediately inside rVFC; reading currentTime later cannot tell
       // which decoded frame supplied the pixels.
-      createImageBitmap(video).then(image => resolve({ image, mediaTime: metadata.mediaTime }), reject);
+      colorSafeVideoBitmap(video, metadata.mediaTime).then(image => resolve({ image, mediaTime: metadata.mediaTime }), reject);
     });
   });
 }

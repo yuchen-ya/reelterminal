@@ -4,8 +4,7 @@ This document states what ReelTerminal actually does to color at every stage —
 import, decode, compositing, preview, export, verification — and what it
 supports, assumes, and refuses. It is the contract behind the `color` block in
 `technicalQuality` analysis results and the matrix-aware `verify.artifact`
-comparison options. Everything below was verified empirically against the
-shipping Chromium (regression: `packages/runtime-chromium/src/color-pipeline.test.ts`).
+comparison options.
 
 ## Working space
 
@@ -37,6 +36,22 @@ shipping Chromium (regression: `packages/runtime-chromium/src/color-pipeline.tes
   "decode assumes BT.709" note; `unverifiable` means ffprobe was unavailable
   and **no color-correctness claim is made**.
 
+## Software rendering
+
+Some CPU YUV-to-RGB implementations approximate the limited-range BT.709 blue
+coefficient, shifting saturated colors even when source tags are complete.
+ReelTerminal checks the effective conversion with a fixed synthetic pixel when
+video decoding is used. Where needed, supported 8-bit YUV frames use the precise
+BT.709 matrix before preview, thumbnail or export compositing. The conversion
+respects source range and retains visible geometry, alpha, primaries and
+transfer metadata; RGB clipping happens after the matrix, including for source
+headroom and footroom. Resulting RGB frames are marked full range.
+Accurate native conversion keeps its existing path. This correction requires
+additional CPU work and does not guarantee real-time high-resolution playback.
+
+It does not infer missing source metadata, preserve HDR/10-bit color or change
+the untagged-input policy above.
+
 ## Export
 
 Two honest routes, both tagged; pixels and tags always move together — a
@@ -45,7 +60,7 @@ metadata re-label is never used to "fix" a pixel conversion.
 - **WebCodecs route (default `chromium-webcodecs`)**: Chromium's WebCodecs
   H.264 encoder converts the sRGB RGBA canvas frames with the **BT.601
   matrix** and tags the stream `smpte170m` + limited range (VUI and MP4
-  `colr`). This was verified directly: `VideoEncoderConfig.colorSpace` is
+  `colr`). `VideoEncoderConfig.colorSpace` is
   **ignored** by this Chromium (`isConfigSupported` strips it), so the
   conversion matrix cannot be changed through the WebCodecs API. Re-tagging
   those bytes as BT.709 would lie about the pixels, so the tag stays
@@ -74,9 +89,8 @@ Pixel comparisons must never be computed across a guessed matrix:
   comparisons. Every comparison check records which decode matrix was used.
 - `verify.artifact`'s probe report exposes the container color tags of the
   artifact (`probe.color`).
-- The regression suite decodes the same export through the correct and a
-  wrong matrix and asserts the wrong one measurably diverges — matrix-blind
-  similarity checks cannot creep back in unnoticed.
+- When checking color, compare against a correctly decoded reference.
+  Agreement under one shared guessed matrix does not establish accuracy.
 
 ## Practical guidance for agents
 
@@ -91,10 +105,9 @@ Pixel comparisons must never be computed across a guessed matrix:
 3. Do not conclude "no color difference" from a comparison that decoded both
    sides through one assumed matrix.
 
-## Tolerances used by the regression suite
+## Expected output differences
 
-One encode hop (yuv420 chroma subsampling + CRF 18) on the deterministic
-bar/skin-tone pattern: mean |Δ| ≤ 8 (0–255 RGB) per hop; import→preview→export
-→re-import across two hops ≤ 10. The BT.601↔BT.709 matrix error on the same
-pattern is ≥ 4 mean |Δ| and must exceed the correct-matrix error by > 2 —
-an order of separation that keeps honest encodes green and matrix bugs red.
+Chroma subsampling and lossy compression can change individual RGB values even
+with correct metadata. Use a correctly decoded reference and check both
+representative colors and the final appearance. Matching tags alone do not
+prove matching pixel interpretation.

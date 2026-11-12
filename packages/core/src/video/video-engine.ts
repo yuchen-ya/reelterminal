@@ -35,6 +35,7 @@ import { TransitionEngine } from "./transition-engine";
 import { MaskEngine, type Mask } from "./mask-engine";
 import type { Transition } from "../types/timeline";
 import { getMediaEngine } from "../media/mediabunny-engine";
+import { accurate709Frame, needsAccurate709Conversion } from "../media/accurate-video-frame";
 import type {
   RenderedFrame,
   BlendMode,
@@ -651,7 +652,16 @@ export class VideoEngine {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.clearRect(0, 0, decodeWidth, decodeHeight);
-    ctx.drawImage(video, 0, 0, decodeWidth, decodeHeight);
+    if (needsAccurate709Conversion()) {
+      const frame = new VideoFrame(video, { timestamp: Math.round(time * 1e6) });
+      let accurate: VideoFrame | null = null;
+      try {
+        accurate = await accurate709Frame(frame);
+        ctx.drawImage(accurate ?? frame, 0, 0, decodeWidth, decodeHeight);
+      } finally { accurate?.close(); frame.close(); }
+    } else {
+      ctx.drawImage(video, 0, 0, decodeWidth, decodeHeight);
+    }
 
     return createImageBitmap(this.decodeCanvas);
   }

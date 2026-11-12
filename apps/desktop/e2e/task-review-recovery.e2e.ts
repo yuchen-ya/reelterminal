@@ -37,10 +37,27 @@ test('review recovery preserves inputs and exact decisions across real sharing d
     await page.getByTestId('task-review-unit-row').filter({ hasText: 'A:' }).click();
     await openNoteTab(page);
     const note = page.getByTestId('task-review-unit-note');
-    await note.fill('persistent human note');
-    await note.press('Home'); await note.press('Shift+ArrowRight');
-    await vi.waitFor(async () => expect((await authority()).drafts[0]?.text).toBe('persistent human note'));
     const destination = path.join(root, '.reelterminal', 'task-review.json');
+    const saveStatus = page.getByTestId('task-review-save-status');
+    const assertSavedDraft = async (text: string) => {
+      // Autosave debounces text AND cursor changes by 600ms. Repeated authority
+      // opens under vi.waitFor's default 1s deadline compete for the same root
+      // lock and can expire before the UI has acknowledged a real save.
+      // Observe that acknowledgement first (the existing page timeout applies),
+      // then independently verify the exact persisted bytes, without hot reads.
+      await saveStatus.waitFor({ state: 'hidden' });
+      expect(await note.inputValue()).toBe(text);
+      const current = await authority();
+      const draft = current.drafts.find(entry => entry.unitId === state.units[0].id);
+      expect(draft?.text).toBe(text);
+      const stored = JSON.parse(await readFile(destination, 'utf8'));
+      expect(stored.drafts).toEqual(current.drafts);
+      evidence.record(`savedDraft-${text.length}`, { revision: current.revision, textLength: text.length, selectionStart: draft!.selectionStart, selectionEnd: draft!.selectionEnd, independentlyRead: true });
+    };
+    await note.fill('persistent human note');
+    await saveStatus.waitFor({ state: 'visible' });
+    await note.press('Home'); await note.press('Shift+ArrowRight');
+    await assertSavedDraft('persistent human note');
 
     // Faults are attached only to this isolated process. Original handlers still
     // execute sender checks, schemas, root locks, CAS and actual atomic writes.
@@ -161,7 +178,8 @@ test('review recovery preserves inputs and exact decisions across real sharing d
     await page.getByTestId('task-review-unit-row').filter({ hasText: 'A:' }).click();
     await openNoteTab(page);
     await note.fill('lost committed response');
-    await vi.waitFor(async () => expect((await authority()).drafts[0]?.text).toBe('lost committed response'));
+    await saveStatus.waitFor({ state: 'visible' });
+    await assertSavedDraft('lost committed response');
     const completedBefore = (await counters()).completedDecisions;
     await control({ mode: 'lose-reply', queryFail: false, holdDecision: true });
     try {
@@ -214,6 +232,10 @@ test('review recovery preserves inputs and exact decisions across real sharing d
   } catch (error) {
     evidence.record('failureControl', await launched.app.evaluate(() => (globalThis as any).p0Recovery ?? null).catch(() => null));
     evidence.record('failureRecovery', await page.getByTestId('task-review-write-recovery').textContent().catch(() => null));
+    evidence.record('failureDraft', {
+      inputLength: await page.getByTestId('task-review-unit-note').inputValue().then(text => text.length, () => null),
+      saveStatus: await page.getByTestId('task-review-save-status').textContent({ timeout: 1000 }).catch(() => null),
+    });
     await evidence.screenshot('failure').catch(() => {});
     evidence.flush({ passed: false, failure: error instanceof Error ? error.message : String(error), rendererConsole: launched.output.rendererConsole });
     throw error;

@@ -11,10 +11,15 @@ import { ARTIFACTS_DIR } from "./harness/paths";
 type Clip = { id: string; startTime: number; duration: number; inPoint: number; outPoint: number };
 type State = { revision: number; project: { name: string; timeline: { duration: number; tracks: Array<{ clips: Clip[] }> } } };
 
-test("trimmed and split video preserves source ranges, undo, reopen and exported frame order", async () => {
-  let launched = await launchApp();
+test.each([
+  { mode: "native", chromiumArgs: [] as string[] },
+  { mode: "software", chromiumArgs: ["--disable-gpu", "--disable-accelerated-video-decode", "--force-color-profile=srgb"] },
+])("$mode: trimmed and split video preserves source ranges, undo, reopen and exported frame order", async ({ mode, chromiumArgs }) => {
+  let launched = await launchApp({ chromiumArgs });
   let agent: ExternalAgent | undefined;
-  const evidence = createEvidence("video-edit-release", launched.page);
+  const evidenceName = `video-edit-release-${mode}`;
+  const evidence = createEvidence(evidenceName, launched.page);
+  evidence.record("renderMode", mode);
   const call = async <T,>(name: string, args = {}): Promise<T> => {
     const response = await agent!.callCommand<T>(name, args);
     if (!response.ok) throw new Error(`${name}: ${response.error?.code}: ${response.error?.message}`);
@@ -45,18 +50,20 @@ test("trimmed and split video preserves source ranges, undo, reopen and exported
     const sourceColor = JSON.parse(execFileSync(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_space,color_range,color_primaries,color_transfer", "-of", "json", source], { encoding: "utf8", windowsHide: true })).streams[0];
     expect(sourceColor).toMatchObject({ color_space: "bt709", color_range: "tv", color_primaries: "bt709", color_transfer: "bt709" });
     evidence.record("sourceColor", sourceColor);
-    await copyFile(source, path.join(ARTIFACTS_DIR, "video-edit-release-source.mp4"));
+    await copyFile(source, path.join(ARTIFACTS_DIR, `${evidenceName}-source.mp4`));
     evidence.record("fixtureToolVersion", execFileSync(ffmpeg, ["-version"], { encoding: "utf8", windowsHide: true }).split(/\r?\n/)[0]);
     evidence.record("sourceDecodedSamples", [15, 75, 135].map(frame => {
       const rgb = execFileSync(ffmpeg, ["-v", "error", "-i", source, "-vf", `select=eq(n\\,${frame}),format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "pipe:1"], { windowsHide: true, timeout: 30000, maxBuffer: 320 * 180 * 3 + 1024 });
       expect(rgb.length).toBe(320 * 180 * 3);
       return { frame, rgb: [...rgb.subarray((90 * 320 + 160) * 3, (90 * 320 + 160) * 3 + 3)] };
     }));
-    evidence.record("colourEnvironment", await launched.app.evaluate(({ app, screen, BrowserWindow }) => ({
+    const colourEnvironment = await launched.app.evaluate(({ app, screen, BrowserWindow }) => ({
       profile: app.commandLine.getSwitchValue("force-color-profile"),
       display: screen.getDisplayMatching(BrowserWindow.getAllWindows()[0].getBounds()).colorSpace,
       gpu: app.getGPUFeatureStatus(),
-    })));
+    }));
+    evidence.record("colourEnvironment", colourEnvironment);
+    if (mode === "software") expect(colourEnvironment.gpu.gpu_compositing).toBe("disabled_software");
     const media = await call<{ mediaId: string }>("media.import", { ...target, path: source, expectedRevision: (await state()).revision });
     const seeded = await edit([
       { op: "track.add", trackType: "video", trackId: "release-cut-video" },
@@ -122,7 +129,7 @@ test("trimmed and split video preserves source ranges, undo, reopen and exported
     expect(Number(probe.streams[0].nb_frames)).toBe(150);
     expect(Number(probe.streams[0].duration)).toBeCloseTo(5, 2);
     execFileSync(ffmpeg, ["-v", "error", "-xerror", "-i", output, "-f", "null", "-"], { windowsHide: true, timeout: 30000 });
-    await copyFile(output, path.join(ARTIFACTS_DIR, "video-edit-release-export.mp4"));
+    await copyFile(output, path.join(ARTIFACTS_DIR, `${evidenceName}-export.mp4`));
     const decodedSamples: Array<{ time: number; expected: number[]; actual: number[] }> = [];
     for (const sample of samples) {
       const pixel = execFileSync(ffmpeg, ["-v", "error", "-i", output, "-vf", `select=eq(n\\,${Math.round(sample.time * 30)}),scale=1:1,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { windowsHide: true, timeout: 30000 });

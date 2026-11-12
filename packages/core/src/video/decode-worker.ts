@@ -1,4 +1,6 @@
-import { Input, ALL_FORMATS, BlobSource, CanvasSink } from "mediabunny";
+import { Input, ALL_FORMATS, BlobSource } from "mediabunny";
+import * as mediabunny from "mediabunny";
+import { colorSafeCanvasSink, type VideoCanvasSink } from "../media/accurate-video-frame";
 
 export interface DecodeRequest {
   type: "decode";
@@ -33,7 +35,7 @@ const scope = globalThis as unknown as {
   onmessage: (event: MessageEvent<DecodeRequest | { type: "init" }>) => void;
   postMessage(response: WorkerResponse, transfer?: Transferable[]): void;
 };
-const resourceCache = new Map<string, { input: Input; sink: CanvasSink }>();
+const resourceCache = new Map<string, { input: Input; sink: VideoCanvasSink }>();
 
 async function getOrCreateResources(request: DecodeRequest) {
   const { clipId, blob, width, height } = request;
@@ -50,7 +52,7 @@ async function getOrCreateResources(request: DecodeRequest) {
     }
     const resource = {
       input,
-      sink: new CanvasSink(videoTrack, { width, height, fit: "contain" }),
+      sink: colorSafeCanvasSink(mediabunny, videoTrack, { width, height, fit: "contain" }),
     };
     resourceCache.set(cacheKey, resource);
     return resource;

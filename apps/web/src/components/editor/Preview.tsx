@@ -14,6 +14,7 @@ import { canCommitHistoryFrame } from "./preview/history-frame-readiness";
 import { SelectionTransformOverlay } from "./preview/SelectionTransformOverlay";
 import { collectNativePlaybackImageClips } from "./preview/native-playback-image-clips";
 import { captureNativeVideoFrame } from "./preview/native-video-frame";
+import { colorSafeCanvasSink, colorSafeVideoBitmap } from "@reelterminal/core/media/accurate-video-frame";
 import { hasMatchingNativeFrameRate, playbackFrameTime } from "./preview/playback-frame-time";
 import { scrubVideoCacheKey, scrubVideoCacheLimit } from "./preview/scrub-video-cache";
 import { computeLetterboxGeometry } from "./preview/overlay-geometry";
@@ -1247,7 +1248,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         }
         if (isStaleRequest()) return null;
 
-        const frame = await createImageBitmap(video);
+        const frame = await colorSafeVideoBitmap(video);
         if (isStaleRequest()) {
           frame.close();
           return null;
@@ -2260,7 +2261,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
       try {
         const mediabunny = await import("mediabunny");
-        const { Input, ALL_FORMATS, BlobSource, CanvasSink } = mediabunny;
+        const { Input, ALL_FORMATS, BlobSource } = mediabunny;
 
         const input = new Input({
           source: new BlobSource(mediaItem.blob),
@@ -2279,7 +2280,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           return null;
         }
 
-        const sink = new CanvasSink(videoTrack, {
+        const sink = colorSafeCanvasSink(mediabunny, videoTrack, {
           poolSize: 3,
         });
 

@@ -7,6 +7,7 @@ import type {
   VideoFrameResult,
   FrameCacheEntry,
 } from "./types";
+import { colorSafeCanvasSink, type VideoCanvasSink } from "./accurate-video-frame";
 
 import type {
   InputVideoTrack,
@@ -72,7 +73,7 @@ type MediaBunnyInput = {
 
 export class ExportFrameDecoder {
   private input: MediaBunnyInput | null = null;
-  private sink: InstanceType<typeof import("mediabunny").CanvasSink> | null = null;
+  private sink: VideoCanvasSink | null = null;
   private mediabunny: typeof import("mediabunny");
   private file: File | Blob;
   private width?: number;
@@ -101,7 +102,7 @@ export class ExportFrameDecoder {
   async initialize(): Promise<boolean> {
     if (this.initialized) return true;
 
-    const { Input, ALL_FORMATS, BlobSource, CanvasSink } = this.mediabunny;
+    const { Input, ALL_FORMATS, BlobSource } = this.mediabunny;
 
     this.input = new Input({
       source: new BlobSource(this.file),
@@ -128,7 +129,7 @@ export class ExportFrameDecoder {
       sinkOptions.fit = "contain";
     }
 
-    this.sink = new CanvasSink(videoTrack, sinkOptions);
+    this.sink = colorSafeCanvasSink(this.mediabunny, videoTrack, sinkOptions);
     this.initialized = true;
     return true;
   }
@@ -558,7 +559,6 @@ export class MediaBunnyEngine {
     width: number = 320,
   ): Promise<ThumbnailResult[]> {
     this.ensureInitialized();
-    const { CanvasSink } = this.mediabunny!;
     const input = await this.createInput(file);
 
     try {
@@ -574,7 +574,7 @@ export class MediaBunnyEngine {
       const aspectRatio = videoTrack.displayHeight / videoTrack.displayWidth;
       const height = Math.round(width * aspectRatio);
 
-      const sink = new CanvasSink(videoTrack, {
+      const sink = colorSafeCanvasSink(this.mediabunny!, videoTrack, {
         width,
         height,
         fit: "contain" as const,
@@ -635,7 +635,6 @@ export class MediaBunnyEngine {
     interval: number = 1,
   ): Promise<ThumbnailResult[]> {
     this.ensureInitialized();
-    const { CanvasSink } = this.mediabunny!;
     const input = await this.createInput(file);
 
     try {
@@ -652,7 +651,7 @@ export class MediaBunnyEngine {
       const height = Math.round(thumbnailWidth * aspectRatio);
       const count = Math.max(1, Math.ceil(duration / interval));
 
-      const sink = new CanvasSink(videoTrack, {
+      const sink = colorSafeCanvasSink(this.mediabunny!, videoTrack, {
         width: thumbnailWidth,
         height,
         fit: "cover" as const,
@@ -707,7 +706,6 @@ export class MediaBunnyEngine {
     width?: number,
   ): Promise<VideoFrameResult | null> {
     this.ensureInitialized();
-    const { CanvasSink } = this.mediabunny!;
     let id = this.sourceIds.get(file);
     if (id === undefined) {
       id = this.nextSourceId++;
@@ -747,7 +745,7 @@ export class MediaBunnyEngine {
         sinkOptions.fit = "contain";
       }
 
-      const sink = new CanvasSink(videoTrack, sinkOptions);
+      const sink = colorSafeCanvasSink(this.mediabunny!, videoTrack, sinkOptions);
       const result = await sink.getCanvas(timestamp);
 
       if (!result) {
@@ -1239,7 +1237,6 @@ export class MediaBunnyEngine {
     signal?: AbortSignal,
   ): Promise<Blob[]> {
     this.ensureInitialized();
-    const { CanvasSink } = this.mediabunny!;
     const input = await this.createInput(file);
 
     try {
@@ -1260,7 +1257,7 @@ export class MediaBunnyEngine {
         (_, i) => startTime + i / frameRate,
       );
 
-      const sink = new CanvasSink(videoTrack, {
+      const sink = colorSafeCanvasSink(this.mediabunny!, videoTrack, {
         fit: "contain",
         poolSize: 5,
       });

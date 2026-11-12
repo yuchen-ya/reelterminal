@@ -12,6 +12,8 @@
  * plus a canvas, mirroring media-bridge's thumbnail path.
  */
 
+import { colorSafeVideoBitmap, needsAccurate709Conversion } from "@reelterminal/core/media/accurate-video-frame";
+
 /** Hard cap on frames extracted for one analysis pass. */
 export const MAX_ANALYSIS_FRAMES = 300;
 
@@ -195,7 +197,13 @@ export const createVideoFrameGrabber: FrameGrabberFactory = async (blob) => {
         video.currentTime = time;
         await waitForEvent("seeked");
       }
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (needsAccurate709Conversion()) {
+        const frame = await colorSafeVideoBitmap(video, time);
+        try { ctx.drawImage(frame, 0, 0, canvas.width, canvas.height); }
+        finally { frame.close(); }
+      } else {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
       return createImageBitmap(canvas);
     },
     dispose() {

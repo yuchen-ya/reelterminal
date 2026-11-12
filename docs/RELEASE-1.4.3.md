@@ -19,12 +19,23 @@
 
 视频色彩仍限 SDR 8-bit。缺少完整色彩标记的素材，预览与导出可能出现色差；交付前应一起规范化素材像素与色彩标记并检查输出。暂不支持保持 HDR/10-bit 色彩，见 [色彩说明](COLOR.md)。
 
+## 视频编辑
+
+- 修正软件渲染下，带完整 BT.709 标记的 SDR 视频饱和色偏差，覆盖预览、缩略图和导出。
+- 从导出界面返回目录时关闭残留遮罩，避免遮挡视频预览。
+
+软件渲染需要额外的 CPU 运算，高分辨率视频不保证实时播放。
+
 ## Changes
 
 - Add an image-first review grid with natural filename sorting, filtering, search, explicit selection and Shift ranges.
 - Save up to 1,000 selected decisions together, with batch undo/redo and conflict checks that preserve newer state.
 - Keep recent-note reuse separate from decision confirmation and load visible thumbnails without generating preprocessing copies for every original.
 - Inspect original pixels on demand and continue through individual images.
+- Correct saturated colors in fully tagged BT.709 SDR video when using software rendering, including previews, thumbnails and exports.
+- Close the export overlay when returning to the file directory so it no longer obscures the preview.
+
+Software rendering requires additional CPU work; high-resolution playback may not be real time.
 
 Video color remains SDR and 8-bit. Sources without complete color tags can differ between preview and export; normalize source pixels and color tags together and check the output before delivery. HDR/10-bit color preservation is not supported. See [color guidance](COLOR.md).
 
