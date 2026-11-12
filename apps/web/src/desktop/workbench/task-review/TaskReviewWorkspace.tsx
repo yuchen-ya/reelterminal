@@ -1,5 +1,6 @@
 import { t } from "../../../i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
@@ -16,6 +17,7 @@ import {
   Sparkles,
   Upload,
   X,
+  ZoomIn,
 } from "lucide-react";
 import type {
   TaskDecisionStatus,
@@ -34,6 +36,7 @@ import { EditScene } from "./EditScene";
 import { FeedbackEditor } from "./FeedbackEditor";
 import { GlobalScene } from "./GlobalScene";
 import { MediaScene } from "./MediaScene";
+import { isImageDominantTask, MediaOverview, type MediaOverviewToolRequest } from "./MediaOverview";
 import { ResultExportPanel } from "./ResultExportPanel";
 import { SpotlightCard, type SpotlightLauncherItem, type SpotlightPrimaryAction, type SpotlightStepDot } from "./spotlight-card";
 import { MODEL_PROVIDER_PRESETS, detectProviderPreset, getProviderPreset } from "./model-presets";
@@ -228,6 +231,7 @@ export function TaskReviewWorkspace({
   );
   const [actionError, setActionError] = useState<string | null>(null);
   const seeded = useRef(false);
+  const mediaOverviewAutoTask = useRef<string | null>(null);
   const [viewReady, setViewReady] = useState(false);
   const touched = useRef(false);
   const navigationSequence = useRef(0);
@@ -288,7 +292,12 @@ export function TaskReviewWorkspace({
     if (!touched.current) {
       const recovered = readTimeline(viewKey(root, snapshot.taskId));
       const valid = recovered?.visited.every((ref) => snapshot.units.some((unit) => unit.id === ref.unitId && unit.sourceVersionId === ref.sourceVersionId));
-      setTimelineState(valid ? recovered! : initialTimeline(snapshot.history));
+      setTimelineState((() => {
+        const base = valid ? recovered! : initialTimeline(snapshot.history);
+        const openMediaOverview = Boolean(mediaBridge && isImageDominantTask(snapshot));
+        if (openMediaOverview) mediaOverviewAutoTask.current = snapshot.taskId;
+        return openMediaOverview ? { ...base, overlay: "global" } : base;
+      })());
     }
     setViewReady(true);
   }, [snapshot]);
@@ -330,9 +339,24 @@ export function TaskReviewWorkspace({
   const { tipNode, bindTip } = useHoverTip();
   const [timelineDrawerOpen, setTimelineDrawerOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [textOverview, setTextOverview] = useState(false);
+  const [mediaToolRequest, setMediaToolRequest] = useState<MediaOverviewToolRequest | null>(null);
+
+  // An initially empty task can discover its first images through pollSources.
+  // Enter the useful grid once, but never take over a scene or export the user
+  // deliberately opened before that discovery completed.
+  useEffect(() => {
+    if (!snapshot || !viewReady || !mediaBridge || mediaOverviewAutoTask.current === snapshot.taskId) return;
+    if (touched.current || exportOpen || timeline.position !== null) {
+      mediaOverviewAutoTask.current = snapshot.taskId;
+      return;
+    }
+    if (!isImageDominantTask(snapshot)) return;
+    mediaOverviewAutoTask.current = snapshot.taskId;
+    setTimelineState((current) => ({ ...current, overlay: "global" }));
+  }, [snapshot, viewReady, exportOpen, timeline.position, mediaBridge]);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
-  const [spotlightActive, setSpotlightActive] = useState(true);
   const [cardFace, setCardFace] = useState<"tool" | "launcher">("tool");
   const [forceCompletion, setForceCompletion] = useState(false);
   const [bottomTrackCollapsed, setBottomTrackCollapsed] = useState(true);
@@ -420,6 +444,9 @@ export function TaskReviewWorkspace({
   ), [snapshot, currentIds]);
   const planList = snapshot ? planScenes(snapshot) : [];
   const directoryActive = scene.kind === "directory";
+  const imageDominant = Boolean(mediaBridge && snapshot && isImageDominantTask(snapshot));
+  const mediaOverviewActive = imageDominant && timeline.overlay === "global" && !textOverview && !exportOpen;
+  const hasInspectableMedia = Boolean(snapshot?.units.some((candidate) => !isTextTaskUnit(candidate) && candidate.kind !== "video" && isCurrentTaskUnit(snapshot, candidate)));
   const allDecided = Boolean(stats && stats.total > 0 && stats.pending === 0);
   const completedView = allDecided || forceCompletion;
   const busy = controller.busy || savingGroup;
@@ -865,7 +892,7 @@ export function TaskReviewWorkspace({
 
   const buildStartupPrompt = useCallback(() => {
     const title = name ?? root;
-    return t("# ReelTerminal external Agent review collaboration instructions\n- Task: {{v0}}\n- Task root: {{v1}}\n\nYou are collaborating on a ReelTerminal review task using reelctl or MCP tools.\nFollow these steps:\n1. Check task state and originals:\n   reelctl task-review status --root \"{{v2}}\"\n2. View existing items or import dialogue:\n   reelctl task-review import --root \"{{v3}}\" <dialogue-file-path>\n3. Review or generate suggestions according to the review criteria.\n", { v0: title, v1: root, v2: root, v3: root });
+    return t("# ReelTerminal external Agent review collaboration instructions\n- Task: {{v0}}\n- Task directory: {{v1}}\n\nUse the task directory as the collaboration boundary. Put supported source files in this directory; ReelTerminal refreshes and registers them automatically in the workbench. Do not edit .reelterminal metadata or invent task-review CLI/MCP commands. Built-in preflight is text-only; images require human review.\n", { v0: title, v1: root });
   }, [name, root, t]);
 
   const handleQuickImport = useCallback(async () => {
@@ -999,8 +1026,12 @@ export function TaskReviewWorkspace({
     ? t("Model and API key")
     : cardFace === "launcher"
     ? t("Workbench")
-    : completedView && stats
+    : completedView && stats && (!mediaOverviewActive || forceCompletion)
       ? t("{{decided}}/{{total}} completed", { decided: stats.decided, total: stats.total })
+      : mediaOverviewActive
+        ? t("Image review tools")
+      : imageDominant && !unit
+        ? t("Image review tools")
       : agentScene
         ? agentScene.suggestion.checkIntent
         : unit
@@ -1026,8 +1057,24 @@ export function TaskReviewWorkspace({
   };
   const openGlobal = () => {
     setCardFace("tool");
+    setTextOverview(false);
     setExportOpen(false);
     setTimeline((state) => openTemporary(state, "global"));
+  };
+  const openTaskSettings = () => {
+    openGlobal();
+    setTextOverview(true);
+  };
+  const requestMediaTool = (action: MediaOverviewToolRequest["action"]) => {
+    setCardFace("tool");
+    setTextOverview(false);
+    setExportOpen(false);
+    setTimeline((state) => openTemporary(state, "global"));
+    setMediaToolRequest((current) => ({
+      sequence: (current?.sequence ?? 0) + 1,
+      action,
+      ...(focusedUnitRow && !isTextTaskUnit(focusedUnitRow) ? { unitId: focusedUnitRow.id } : {}),
+    }));
   };
 
   const launcherItems: SpotlightLauncherItem[] = [
@@ -1040,6 +1087,10 @@ export function TaskReviewWorkspace({
     { id: "export", label: t("Export"), tip: t("Open originals and result export"), icon: Download,
       active: exportOpen, testId: "task-review-launcher-export",
       onClick: () => { setCardFace("tool"); setExportOpen(true); } },
+    ...(imageDominant ? [
+      { id: "magnifier", label: t("Magnifier"), tip: hasInspectableMedia ? t("Inspect an image at original pixel scale without opening segmentation") : t("No inspectable image is ready"), icon: ZoomIn,
+        active: false, testId: "task-review-launcher-magnifier", onClick: () => requestMediaTool("inspect") },
+    ] satisfies SpotlightLauncherItem[] : []),
     { id: "agent", label: t("Model and Agent"), tip: t("Configure the built-in Agent model connection and API key"), icon: Bot,
       active: cardModelSettingsOpen, testId: "task-review-launcher-agent",
       onClick: () => {
@@ -1049,12 +1100,12 @@ export function TaskReviewWorkspace({
     { id: "copy", label: t("Copy"), tip: t("Copy the current item, rework instructions or approved subtitles"), icon: Copy,
       active: copyModalOpen, testId: "task-review-launcher-copy", onClick: () => setCopyModalOpen(true) },
     { id: "import", label: t("Import"), tip: t("Import new source text in the overview"), icon: Upload,
-      active: false, testId: "task-review-launcher-import", onClick: openGlobal },
+      active: false, testId: "task-review-launcher-import", onClick: imageDominant ? openTaskSettings : openGlobal },
     { id: "files", label: t("Original"), tip: t("View original files in the task folder"), icon: FileText,
       active: !exportOpen && timeline.overlay === "directory", testId: "task-review-launcher-files",
-      onClick: () => { setCardFace("tool"); setTimeline((state) => openTemporary(state, "directory")); } },
+      onClick: () => { setCardFace("tool"); setExportOpen(false); setTimeline((state) => openTemporary(state, "directory")); } },
     { id: "criteria", label: t("Criteria"), tip: t("Manage task understanding and review criteria in the overview"), icon: CheckCircle2,
-      active: false, testId: "task-review-launcher-criteria", onClick: openGlobal },
+      active: false, testId: "task-review-launcher-criteria", onClick: imageDominant ? openTaskSettings : openGlobal },
   ];
 
   const stepDots: SpotlightStepDot[] = snapshot && !cardModelSettingsOpen && !directoryActive ? planList.map((suggestion) => ({
@@ -1069,7 +1120,7 @@ export function TaskReviewWorkspace({
   })) : [];
 
   const primaryAction: SpotlightPrimaryAction | null = (() => {
-    if (!snapshot || !stats || scene.kind === "edit" || completedView) return null;
+    if (!snapshot || !stats || scene.kind === "edit" || (completedView && !cardModelSettingsOpen)) return null;
     const shouldStartPreflightAfterSave =
       (coverage?.unanalyzed ?? 0) > 0 && !isAuthorized && (snapshot?.units.length ?? 0) > 0;
     if (cardModelSettingsOpen) {
@@ -1142,6 +1193,7 @@ export function TaskReviewWorkspace({
         onClick: () => void keepUndecidedAndContinue(),
       };
     }
+    if (unit && !isTextTaskUnit(unit)) return null;
       return {
         label: t("Keep and continue"),
         testId: "task-review-keep-continue",
@@ -1151,7 +1203,7 @@ export function TaskReviewWorkspace({
         onClick: () => void decideAndContinue("kept"),
       };
     }
-    if (snapshot.units.length > 0) {
+    if (snapshot.units.some(isTextTaskUnit)) {
       if (isProposalPendingAdoption) {
         return {
           label: t("Adopt and continue review"),
@@ -1224,7 +1276,7 @@ export function TaskReviewWorkspace({
           <span className="text-[10px] text-fg-3">{t("Rework")}</span>
         </div>
         <div className="rounded-lg bg-[#101216] py-2">
-          <span className="block font-mono text-sm font-bold text-rose-400">{stats.discarded}</span>
+          <span className="block font-mono text-sm font-bold text-zinc-400">{stats.discarded}</span>
           <span className="text-[10px] text-fg-3">{t("Discard")}</span>
         </div>
       </div>
@@ -1237,7 +1289,7 @@ export function TaskReviewWorkspace({
           className="flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-xs font-bold text-accent-fg hover:brightness-110"
         >
           <Download className="h-4 w-4" />
-          {t("Export ({{count}})", { count: subtitleRows.length })}
+          {imageDominant ? t("Export") : t("Export ({{count}})", { count: subtitleRows.length })}
         </button>
         <button
           type="button"
@@ -1328,7 +1380,7 @@ export function TaskReviewWorkspace({
                       ? "bg-accent/15 text-accent"
                       : member.decision.status === "rework"
                         ? "bg-amber-500/20 text-amber-300"
-                        : "bg-rose-500/20 text-rose-300"
+                        : "bg-zinc-500/20 text-zinc-300"
                   }`}>
                     {t("Selected: {{status}}", { status: t(statusLabels[member.decision.status]) })}
                   </span>
@@ -1493,11 +1545,17 @@ export function TaskReviewWorkspace({
     </div>
   );
 
-  const mediaToolBody = unit && !isTextTaskUnit(unit) && (
-    <div className="flex flex-col gap-2">
-      {hint(t("Annotate, capture frames and select regions on the left stage; MediaScene provides the full media tools."))}
+  const mediaContextTools = (
+    <div className="flex flex-col gap-2" data-testid="task-review-media-context-tools">
+      <div className="grid grid-cols-3 gap-1.5">
+        <button type="button" className={wbButton.secondary} onClick={openGlobal} data-testid="task-review-context-overview"><Layers className="h-3.5 w-3.5" />{t("Overview")}</button>
+        <button type="button" className={wbButton.secondary} onClick={() => { setCardFace("tool"); setExportOpen(true); }} data-testid="task-review-context-export"><Download className="h-3.5 w-3.5" />{t("Export")}</button>
+        <button type="button" className={wbButton.secondary} disabled={!hasInspectableMedia} onClick={() => requestMediaTool("inspect")} data-testid="task-review-context-magnifier"><ZoomIn className="h-3.5 w-3.5" />{t("Magnifier")}</button>
+      </div>
     </div>
   );
+
+  const mediaToolBody = unit && !isTextTaskUnit(unit) && mediaContextTools;
 
   const emptyAgentBody = (
     <div className="flex flex-col gap-3" data-testid="task-review-empty-agent-state">
@@ -1856,6 +1914,7 @@ export function TaskReviewWorkspace({
     if (agentScene && agentScene.suggestion.kind === "compare") return compareToolBody;
     if (unit && isTextTaskUnit(unit)) return textToolBody;
     if (unit) return mediaToolBody;
+    if (imageDominant && timeline.overlay === "global" && !textOverview) return mediaContextTools;
 
     if (snapshot.units.length === 0) {
       return emptyAgentBody;
@@ -1879,18 +1938,16 @@ export function TaskReviewWorkspace({
     return hint(t("Select an item from the plan or item dock on the left to start reviewing."));
   })();
 
-  const spotlightCardNode = snapshot && stats ? (
+  const renderSpotlightCard = (body: ReactNode) => (
     <SpotlightCard
       headerTitle={cardHeaderTitle}
       face={cardFace}
       onFlipFace={setCardFace}
       launcherItems={launcherItems}
-      toolBody={toolBody}
-      showCompletionToggle={!allDecided}
+      toolBody={body}
+      showCompletionToggle={!allDecided && !mediaOverviewActive}
       completionActive={forceCompletion}
       onToggleCompletion={() => setForceCompletion((value) => !value)}
-      spotlightActive={spotlightActive}
-      onToggleSpotlight={() => setSpotlightActive((value) => !value)}
       onOpenModelSettings={() => {
         setCardFace("tool");
         setCardModelSettingsOpen((prev) => !prev);
@@ -1905,8 +1962,14 @@ export function TaskReviewWorkspace({
       footerStatus={footerStatus}
       stepDots={stepDots}
       primaryAction={primaryAction}
+      showFooter={!mediaOverviewActive || cardModelSettingsOpen}
     />
-  ) : null;
+  );
+
+  const spotlightCardNode = snapshot && stats ? renderSpotlightCard(toolBody) : null;
+  const renderMediaToolCard = (body: ReactNode) => renderSpotlightCard(
+    cardModelSettingsOpen ? modelSettingsCardBody : forceCompletion ? completionHub : body,
+  );
 
   // ---- Stage content. ----
   const agentScroll = useSceneScroll<HTMLDivElement>(
@@ -2215,7 +2278,7 @@ export function TaskReviewWorkspace({
             const dotClass =
               decision.status === "kept" ? "bg-accent"
                 : decision.status === "rework" ? "bg-amber-400"
-                  : decision.status === "discarded" ? "bg-rose-500"
+                  : decision.status === "discarded" ? "bg-zinc-500"
                     : issueCount > 0 ? "bg-rose-400 ring-2 ring-rose-400/30"
                       : !known ? "bg-amber-300" : "bg-white/20";
             const isFocus = workFocus?.unitId === candidate.id;
@@ -2403,6 +2466,24 @@ export function TaskReviewWorkspace({
           {toast}
         </div>
       )}
+      {(errorCount > 0 || dirtyCount > 0) && (
+        <div className="fixed bottom-3 left-1/2 z-[75] -translate-x-1/2 rounded-md border border-border bg-bg-1 px-3 py-1.5 shadow-xl" role="status" data-testid="task-review-save-status">
+          {errorCount > 0 ? (
+            <button
+              type="button"
+              className={wbButton.danger}
+              title={t("Retry saving unsuccessful drafts")}
+              data-testid="task-review-draft-retry"
+              onClick={() => {
+                for (const [unitId, entry] of Object.entries(draftMap))
+                  if (entry.status === "error") void retryDraft(unitId);
+              }}
+            >
+              {t("Draft not saved. Click to retry.")}
+            </button>
+          ) : <span className="text-fg-3">{t("Saving draft…")}</span>}
+        </div>
+      )}
 
       {/* Top bar: neutral browse arrows, progress pill and utility entries. */}
       <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-1 px-3">
@@ -2505,24 +2586,6 @@ export function TaskReviewWorkspace({
           >
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
-          {errorCount > 0 ? (
-            <button
-              type="button"
-              className={wbButton.danger}
-              title={t("Retry saving unsuccessful drafts")}
-              data-testid="task-review-draft-retry"
-              onClick={() => {
-                for (const [unitId, entry] of Object.entries(draftMap))
-                  if (entry.status === "error") void retryDraft(unitId);
-              }}
-            >
-              {t("Draft not saved. Click to retry.")}
-            </button>
-          ) : dirtyCount > 0 ? (
-            <span className="shrink-0 text-fg-3" role="status">
-              {t("Saving draft…")}
-            </span>
-          ) : null}
           {onClose && (
             <button type="button" className={`${wbButton.ghost} px-2`} onClick={onClose}>
               {t("Close")}
@@ -2533,8 +2596,9 @@ export function TaskReviewWorkspace({
 
       {timelineDrawer}
 
+      <div className="fixed right-3 top-12 z-[80] flex w-[min(36rem,calc(100vw-1.5rem))] flex-col gap-2" data-testid="task-review-fixed-status-area">
       {controller.recovery && (
-        <div role="status" data-testid="task-review-write-recovery" className="border-b border-border p-2 text-status-warning">
+        <div role="status" data-testid="task-review-write-recovery" className="rounded-lg border border-border bg-bg-1 p-2 text-status-warning shadow-xl">
           <span>{t(controller.recovery.message)}</span>
           {controller.writesBlocked && <button type="button" data-testid="task-review-reconcile-decision"
             onClick={() => void controller.reconcileDecision().then(result => setActionError(result.ok ? null : result.error))}>
@@ -2545,7 +2609,7 @@ export function TaskReviewWorkspace({
       {(controller.openError || actionError) && (
         <div
           role="alert"
-          className="flex flex-wrap items-center gap-2 border-b border-border p-2 text-status-error"
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-status-error/50 bg-bg-1 p-2 text-status-error shadow-xl"
           data-testid="task-review-error"
         >
           <span className="min-w-0 flex-1">{controller.openError ?? actionError}</span>
@@ -2566,11 +2630,12 @@ export function TaskReviewWorkspace({
         </div>
       )}
       {controller.sourceRefresh.error && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-bg-2 px-3 py-1.5 text-fg-2" role="status" data-testid="task-review-source-refresh-error">
+        <div className="flex shrink-0 items-center gap-2 rounded-lg border border-border bg-bg-2 px-3 py-1.5 text-fg-2 shadow-xl" role="status" data-testid="task-review-source-refresh-error">
           <span className="min-w-0 flex-1">{t("Source refresh failed:")}{controller.sourceRefresh.error}。{controller.sourceRefresh.lastSuccess ? t("Last successful refresh: {{v0}}", { v0: new Date(controller.sourceRefresh.lastSuccess).toLocaleTimeString() }) : t("No successful refresh yet")}{t("; showing the last retrieved content.")}</span>
           <button type="button" className={wbButton.ghost} onClick={() => void pollSources()}>{t("Retry refresh")}</button>
         </div>
       )}
+      </div>
 
       {/* Export overlay: the original-file export panel plus the tool card. */}
       {exportOpen && snapshot && (
@@ -2605,37 +2670,57 @@ export function TaskReviewWorkspace({
       {/* Global overview overlay plus the tool card. */}
       {!exportOpen && timeline.overlay === "global" && snapshot && (
         <div className="flex min-h-0 flex-1 items-start gap-3.5 p-3.5">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <GlobalScene
+          {mediaOverviewActive ? (
+            <MediaOverview
               snapshot={snapshot}
               busy={controller.busy}
-              agent={agent}
-              agentRuntime={agentRuntime}
-              onSetGoal={controller.setGoal}
-              onImportText={controller.importText}
-              onImportFile={controller.importFile}
-              onRefreshSources={controller.refreshSources}
-              onExport={controller.exportSource}
-              exportAvailable={exportBridge !== null}
-              onPreviewOriginalExport={controller.previewOriginalExport}
-              onExecuteOriginalExport={controller.executeOriginalExport}
-              onChooseExportDestination={async () => {
-                if (!window.reelterminal?.fs) throw new Error(t("Directory picker connection is unavailable"));
-                return window.reelterminal.fs.showOpenDialog({ directory: true, filters: [] });
-              }}
+              operations={controller}
               onOpenUnit={openUnitById}
-              onOpenScene={openPlannedScene}
-              nextScene={nextTarget?.suggestion ?? null}
-              pendingRequest={pendingRequest}
-              activeSourceVersionId={workFocus?.sourceVersionId}
-              activeTargets={workingScene?.targets ?? (workFocus ? [{ unitId: workFocus.unitId, sourceVersionId: workFocus.sourceVersionId }] : [])}
-              onBatchDecide={(unitIds, status) => void batchDecide(unitIds, status)}
-              contextAvailable={contextBridge !== null}
-              onAdoptContext={controller.adoptContext}
-              onSetCriterionActive={controller.setCriterionActive}
+              onOpenExport={() => { setCardFace("tool"); setExportOpen(true); }}
+              onOpenTextOverview={openTaskSettings}
+              toolRequest={mediaToolRequest}
+              renderToolCard={renderMediaToolCard}
+              onSelectionIntent={() => {
+                setCardFace("tool");
+                setForceCompletion(false);
+                setCardModelSettingsOpen(false);
+              }}
             />
-          </div>
-          {spotlightCardNode}
+          ) : (
+            <>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <GlobalScene
+                  snapshot={snapshot}
+                  busy={controller.busy}
+                  agent={agent}
+                  agentRuntime={agentRuntime}
+                  onSetGoal={controller.setGoal}
+                  onImportText={controller.importText}
+                  onImportFile={controller.importFile}
+                  onRefreshSources={controller.refreshSources}
+                  onExport={controller.exportSource}
+                  exportAvailable={exportBridge !== null}
+                  onPreviewOriginalExport={controller.previewOriginalExport}
+                  onExecuteOriginalExport={controller.executeOriginalExport}
+                  onChooseExportDestination={async () => {
+                    if (!window.reelterminal?.fs) throw new Error(t("Directory picker connection is unavailable"));
+                    return window.reelterminal.fs.showOpenDialog({ directory: true, filters: [] });
+                  }}
+                  onOpenUnit={openUnitById}
+                  onOpenScene={openPlannedScene}
+                  nextScene={nextTarget?.suggestion ?? null}
+                  pendingRequest={pendingRequest}
+                  activeSourceVersionId={workFocus?.sourceVersionId}
+                  activeTargets={workingScene?.targets ?? (workFocus ? [{ unitId: workFocus.unitId, sourceVersionId: workFocus.sourceVersionId }] : [])}
+                  onBatchDecide={(unitIds, status) => void batchDecide(unitIds, status)}
+                  contextAvailable={contextBridge !== null}
+                  onAdoptContext={controller.adoptContext}
+                  onSetCriterionActive={controller.setCriterionActive}
+                />
+              </div>
+              {spotlightCardNode}
+            </>
+          )}
         </div>
       )}
 
@@ -2669,19 +2754,11 @@ export function TaskReviewWorkspace({
           className="relative flex min-h-0 flex-1 divide-x divide-border overflow-hidden bg-border"
           data-testid="task-review-active-scene"
         >
-          {spotlightActive && unit && (
-            <div
-              className="pointer-events-none absolute inset-0 z-20 bg-black/20 transition-opacity backdrop-blur-[0.5px]"
-              aria-hidden="true"
-            />
-          )}
           {leftDock}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col divide-y divide-border overflow-hidden bg-bg">
             <div className="flex min-h-0 flex-1 items-start gap-3.5 overflow-hidden p-3.5">
               <main
-                className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl p-1 transition-all ${
-                  spotlightActive ? "relative z-30 shadow-[0_0_24px_var(--accent-glow)] ring-2 ring-accent" : ""
-                }`}
+                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/60 p-1"
               >
                 {stage}
               </main>

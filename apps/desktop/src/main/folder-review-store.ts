@@ -416,6 +416,10 @@ export class FolderReviewStore {
   async open(root: string): Promise<FolderReviewSnapshot> {
     return this.scan(root);
   }
+  /** Read task identity/index without walking every original; discovery uses scan. */
+  async readSnapshot(root: string): Promise<FolderReviewSnapshot> {
+    return this.locked(root, async canonical => snapshot(canonical, await this.load(canonical)));
+  }
   async scan(root: string): Promise<FolderReviewSnapshot> {
     return this.locked(root, async (canonical) => {
       const index = await this.load(canonical);

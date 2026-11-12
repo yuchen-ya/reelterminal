@@ -1,6 +1,6 @@
 import { t } from "../../../i18n";
 import { taskReviewSchemas } from '../../../../../desktop/src/shared/task-review-schema';
-import { taskWriteRecovery, type DecisionIntent } from '../../../../../desktop/src/shared/task-write-recovery';
+import { taskDecisionIntentMatches, taskWriteRecovery, type DecisionIntent } from '../../../../../desktop/src/shared/task-write-recovery';
 import type { TaskDecisionReply } from '../../../../../desktop/src/shared/task-review-bridge';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -20,6 +20,7 @@ export interface MutationResult {
   ok: boolean;
   snapshot: TaskReviewSnapshot | null;
   error: string | null;
+  batchId?: string;
 }
 
 const failed = (problem: unknown): MutationResult => ({
@@ -53,7 +54,7 @@ export function useTaskReviewController(
   const [sourceRefresh, setSourceRefresh] = useState<{ error: string | null; lastSuccess: number | null }>({ error: null, lastSuccess: null });
   const lastSourceSuccess = useRef<number | null>(null);
   const snapshotRef = useRef<TaskReviewSnapshot | null>(null);
-  const scope = useMemo(() => ({ barrier: taskWriteRecovery(root, bridge), chain: { current: Promise.resolve() as Promise<unknown> }, active: true }), [root, bridge]);
+  const scope = useMemo(() => ({ barrier: taskWriteRecovery(root, bridge), chain: { current: Promise.resolve() as Promise<unknown> }, active: true, foreground: 0, polling: false }), [root, bridge]);
   const scopeRef = useRef(scope);
   if (scopeRef.current !== scope || !scope.active) { scopeRef.current.active = false; scopeRef.current = scope; snapshotRef.current = null; }
   const chain = scope.chain;
@@ -137,9 +138,10 @@ export function useTaskReviewController(
 
   const call = useCallback((method: BridgeMethod, input: Record<string, unknown>, checkCurrent?: (snapshot: TaskReviewSnapshot) => void): Promise<MutationResult> => {
     try { guard(true); } catch (problem) { return Promise.resolve(failed(problem)); }
+    scope.foreground++;
     const task = chain.current.then(async (): Promise<MutationResult> => {
       let intent: DecisionIntent | null = null;
-      const blocksInteraction = method !== 'saveDraft';
+      const blocksInteraction = method !== 'saveDraft' && method !== 'visit';
       try {
         guard();
         if (blocksInteraction) setBusy(true);
@@ -148,26 +150,39 @@ export function useTaskReviewController(
         let current = snapshotRef.current ?? await bridge.open(root);
         scope.barrier.bind(current);
         if (!snapshotRef.current) apply(current);
-        const decisionId = method === 'decide' ? crypto.randomUUID() : undefined;
-        if (decisionId && current.decisions.some(item => item.id === decisionId)) throw new Error('Decision identity collision');
+        const isBatch = method === 'decideBatch';
+        const isDecision = method === 'decide' || isBatch;
+        const decisionId = isDecision ? crypto.randomUUID() : undefined;
+        if (decisionId && (current.decisions.some(item => item.id === decisionId) || current.decisionBatches?.some(item => item.id === decisionId))) throw new Error('Decision identity collision');
+        const batchTargets = isBatch ? taskReviewSchemas.decideBatch.shape.targets.parse(
+          (input.targets as { unitId: string; sourceVersionId: string }[]).map(target => ({ ...target, decisionId: crypto.randomUUID() })),
+        ) : undefined;
         const invoke = (base: TaskReviewSnapshot) => {
           guard();
           checkCurrent?.(base);
+          let decisionInput: Record<string, unknown> = {};
           if (decisionId) {
             const purpose = taskReviewSchemas.decide.shape.purpose.parse(input.purpose);
             const status = taskReviewSchemas.decide.shape.status.parse(input.status);
             const note = taskReviewSchemas.decide.shape.note.parse(input.note);
-            const replacementText = taskReviewSchemas.decide.shape.replacementText.parse(input.replacementText);
-            intent = { decisionId, unitId: String(input.unitId), sourceVersionId: String(input.sourceVersionId), purpose, status, note, ...(replacementText !== undefined ? { replacementText } : {}), revision: base.revision };
+            if (batchTargets) {
+              const members = batchTargets.map(target => ({ decisionId: target.decisionId, unitId: target.unitId, sourceVersionId: target.sourceVersionId, purpose, status, note, revision: base.revision }));
+              intent = { ...members[0], decisionId, batch: members };
+              decisionInput = { batchId: decisionId, targets: batchTargets, purpose, status, note };
+            } else {
+              const replacementText = taskReviewSchemas.decide.shape.replacementText.parse(input.replacementText);
+              intent = { decisionId, unitId: String(input.unitId), sourceVersionId: String(input.sourceVersionId), purpose, status, note, ...(replacementText !== undefined ? { replacementText } : {}), revision: base.revision };
+              decisionInput = { decisionId, purpose, status, note, ...(replacementText !== undefined ? { replacementText } : {}) };
+            }
             scope.barrier.begin(intent); publishRecovery();
           }
-          return invokeMethod({ root: base.root, taskId: base.taskId, expectedRevision: base.revision, ...input, ...(decisionId ? { decisionId, purpose: intent!.purpose, status: intent!.status, note: intent!.note, replacementText: intent!.replacementText } : {}) });
+          return invokeMethod({ root: base.root, taskId: base.taskId, expectedRevision: base.revision, ...input, ...decisionInput });
         };
         let next: TaskReviewSnapshot;
         try { next = await invoke(current); }
         catch (problem) {
           // A decision is never replayed automatically, including on stale CAS.
-          if (method === 'decide') {
+          if (isDecision || method === 'undoDecisionBatch' || method === 'redoDecisionBatch') {
             if (isRevisionConflict(problem)) {
               const observed = await bridge.open(root);
               if (scopeRef.current !== scope || !scope.active || epoch !== scope.barrier.epoch) throw new Error(t("The previous task reply was ignored."));
@@ -193,23 +208,25 @@ export function useTaskReviewController(
             checkCurrent?.(next);
             return failed(new Error(t("This decision was not committed. Your input is preserved; retry explicitly.")));
           }
-          const record = next.decisions.find(item => item.id === issued.decisionId);
-          if (!record || record.unitId !== issued.unitId || record.sourceVersionId !== issued.sourceVersionId || record.purpose !== issued.purpose || record.status !== issued.status || record.note !== issued.note || record.replacementText !== issued.replacementText || !next.decisionActions.some(item => item.kind === 'decide' && item.decisionId === issued.decisionId)) throw new Error('Committed receipt lacks this exact decision');
+          if (!taskDecisionIntentMatches(next, issued)) throw new Error('Committed receipt lacks this exact decision');
           scope.barrier.complete(issued.decisionId);
           if (receipt.notificationFailed || receipt.refreshFailed) {
             scope.barrier.state = { outcome: 'committed', decisionId: issued.decisionId, message: "This decision was saved. Follow-up refresh did not finish; do not submit it again." };
             publishRecovery();
           }
         }
-        if (intent && !receipt) scope.barrier.complete((intent as DecisionIntent).decisionId);
+        if (intent && !receipt) {
+          if ((intent as DecisionIntent).batch) throw new Error('Batch decision response requires exact verification');
+          scope.barrier.complete((intent as DecisionIntent).decisionId);
+        }
         publishRecovery(); apply(next);
-        return { ok: true, snapshot: next, error: null };
+        return { ok: true, snapshot: next, error: null, ...(isBatch ? { batchId: decisionId } : {}) };
       } catch (problem) {
         if (intent && scope.barrier.pending?.decisionId === (intent as DecisionIntent).decisionId && scope.barrier.epoch === epoch) { scope.barrier.uncertain(intent); publishRecovery(); }
         return failed(problem);
       } finally { if (blocksInteraction && scopeRef.current === scope) setBusy(false); }
     });
-    chain.current = task.then(() => undefined, () => undefined);
+    chain.current = task.then(() => { scope.foreground--; }, () => { scope.foreground--; });
     return task;
   }, [apply, bridge, resolveMethod, root, scope, guard, publishRecovery]);
 
@@ -237,6 +254,15 @@ export function useTaskReviewController(
     }, checkCurrent?: (snapshot: TaskReviewSnapshot) => void) => call("decide", input, checkCurrent),
     [call],
   );
+  const decideBatch = useCallback((input: {
+    targets: { unitId: string; sourceVersionId: string }[];
+    purpose: string;
+    status: TaskDecisionStatus;
+    note: string;
+    pendingOnly?: boolean;
+  }) => call('decideBatch', { ...input, targets: input.targets.map(target => ({ ...target })) }), [call]);
+  const undoDecisionBatch = useCallback((batchId: string) => call('undoDecisionBatch', { batchId }), [call]);
+  const redoDecisionBatch = useCallback((batchId: string) => call('redoDecisionBatch', { batchId }), [call]);
   const undoDecision = useCallback(
     (input: {
       unitId: string;
@@ -280,6 +306,8 @@ export function useTaskReviewController(
    * and last-success time. Stable successful refreshes do not re-render.
    */
   const pollSources = useCallback(async (): Promise<void> => {
+    if (scope.polling || scope.foreground > 0 || scope.barrier.blocked) return;
+    scope.polling = true;
     const task = chain.current.then(async () => {
       try { guard(); } catch { return; }
       const base = snapshotRef.current;
@@ -306,9 +334,9 @@ export function useTaskReviewController(
         sourceFailed(errorMessage(problem));
       }
     });
-    chain.current = task.then(() => undefined, () => undefined);
+    chain.current = task.then(() => { scope.polling = false; }, () => { scope.polling = false; });
     await task;
-  }, [apply, bridge, root, sourceFailed, sourceSucceeded, guard]);
+  }, [apply, bridge, root, sourceFailed, sourceSucceeded, guard, scope]);
   const saveDraft = useCallback(
     (draft: Omit<TaskDraft, "updatedAt">) => call("saveDraft", { draft }),
     [call],
@@ -328,6 +356,7 @@ export function useTaskReviewController(
   exportBridgeRef.current = exportBridge;
   const queueResult = useCallback(<Result extends { snapshot: TaskReviewSnapshot },>(operation: (base: TaskReviewSnapshot) => Promise<Result>) => {
     try { guard(true); } catch (problem) { return Promise.reject(problem); }
+    scope.foreground++;
     const task = chain.current.then(async () => {
       guard();
       setBusy(true);
@@ -350,7 +379,7 @@ export function useTaskReviewController(
         return result;
       } finally { if (scopeRef.current === scope) setBusy(false); }
     });
-    chain.current = task.then(() => undefined, () => undefined);
+    chain.current = task.then(() => { scope.foreground--; }, () => { scope.foreground--; });
     return task;
   }, [apply, bridge, root, guard, scope]);
   const previewOriginalExport = useCallback((input: TaskExportPreviewInput) => queueResult(async (base) => {
@@ -378,13 +407,19 @@ export function useTaskReviewController(
   const importMedia = useCallback((entryId: string) => queueResult(async (base) => ({
     snapshot: await requireMedia().importFile({ root, taskId: base.taskId, expectedRevision: base.revision, entryId }),
   })).then((result) => result.snapshot), [queueResult, requireMedia, root]);
-  const openMedia = useCallback(async (target: TaskMediaTarget) => {
-    const result = await requireMedia().open(target);
-    guard();
+  const openMedia = useCallback((target: TaskMediaTarget) => queueResult(async (base) => {
+    if (target.root !== root || target.taskId !== base.taskId) throw new Error(t('The media review target changed.'));
+    return requireMedia().open(target);
+  }), [queueResult, requireMedia, root]);
+  const thumbnailMedia = useCallback(async (target: TaskMediaTarget) => {
+    const channel = mediaRef.current;
     const current = snapshotRef.current;
-    if (current?.taskId === result.snapshot.taskId && result.snapshot.revision >= current.revision) apply(result.snapshot);
+    if (scopeRef.current !== scope || !scope.active || target.root !== root || target.taskId !== current?.taskId) throw new Error(t('The media review target changed.'));
+    if (!channel?.thumbnail) throw new Error(t('The media preview channel is unavailable.'));
+    const result = await channel.thumbnail(target);
+    if (scopeRef.current !== scope || !scope.active || snapshotRef.current?.taskId !== target.taskId) throw new Error(t('The media review target changed.'));
     return result;
-  }, [apply, requireMedia, guard]);
+  }, [root, scope]);
   const captureMediaFrame = useCallback((input: Omit<Parameters<TaskReviewMediaBridge["captureFrame"]>[0], "root" | "taskId" | "expectedRevision">) => queueResult((base) =>
     requireMedia().captureFrame({ ...input, root, taskId: base.taskId, expectedRevision: base.revision }),
   ), [queueResult, requireMedia, root]);
@@ -438,6 +473,9 @@ export function useTaskReviewController(
     importText,
     importFile,
     decide,
+    decideBatch,
+    undoDecisionBatch,
+    redoDecisionBatch,
     undoDecision,
     redoDecision,
     refreshSources,
@@ -447,7 +485,7 @@ export function useTaskReviewController(
     exportSource,
     previewOriginalExport,
     executeOriginalExport,
-    importMedia, openMedia, captureMediaFrame, acceptMediaRegion, segmentMedia, cancelMedia,
+    importMedia, openMedia, thumbnailMedia, captureMediaFrame, acceptMediaRegion, segmentMedia, cancelMedia,
     adoptContext,
     adoptCriteria,
     setCriterionActive,

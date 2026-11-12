@@ -28,6 +28,12 @@
       "reason": "The isolated folder test selects Chinese through the existing persisted locale key. Only this exact setting call is accepted; no user profile or application identifier changes."
     },
     {
+      "files": "apps/desktop/e2e/task-review-overview.e2e.ts",
+      "pattern": "localStorage\\.setItem\\('openreel-locale', 'zh-CN'\\)",
+      "category": 4,
+      "reason": "The isolated image-overview test selects Chinese with the application's existing persisted locale key. Only this exact setting call is accepted; no user profile or product naming is changed."
+    },
+    {
       "files": "apps/desktop/e2e/harness/performance/driver.ts",
       "pattern": "openreel-locale|openreel-onboarding-complete|openreel-db",
       "category": 4,

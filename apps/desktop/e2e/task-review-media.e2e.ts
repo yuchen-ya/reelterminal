@@ -12,7 +12,7 @@ import { createEvidence } from "./harness/evidence";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { DESKTOP_DIR } from "./harness/paths";
 import { decodeRgbaPng } from "./harness/repair-acceptance-fixtures";
-import { openDirectoryScene, openGlobalScene } from "./harness/task-review-shell";
+import { openDirectoryScene, openLauncher } from "./harness/task-review-shell";
 import publicMedia from "./fixtures/public-media.json";
 
 let snapshotPage: Page;
@@ -23,7 +23,12 @@ const snapshotAt = (root: string): Promise<TaskReviewSnapshot> => snapshotPage.e
 );
 /** Old scene-switch destinations now go through the tool card's launcher tiles. */
 const changeScene = async (page: Page, name: "目录" | "全局") => {
-  if (name === "全局") await openGlobalScene(page);
+  if (name === "全局") {
+    await openLauncher(page, "overview");
+    // Image-first tasks use the image overview; the text overview helper stays
+    // strict for text tasks in its own acceptance flows.
+    await page.getByTestId("task-review-media-overview").waitFor();
+  }
   else await openDirectoryScene(page);
 };
 const point = async (page: Page, x: number, y: number) => {
@@ -132,7 +137,8 @@ test("real CPU task media saves explicit regions, exports transparent results an
     await page.getByTestId("task-review-region-cutout").waitFor();
     await evidence.screenshot("explicit-new-region-kept-transparent-preview");
     await changeScene(page, "全局");
-    await page.getByTestId("task-result-export-toggle").click();
+    await page.getByTestId("task-review-media-open-export").click();
+    await page.getByTestId("task-review-export-scene").waitFor();
     const derived = page.locator(`[data-testid="task-result-export-derived-row"][data-unit-id="${accepted.id}"]`);
     await derived.locator('[data-output-kind="cutout"]').check();
     await derived.locator('[data-output-kind="mask"]').check();
@@ -184,7 +190,7 @@ test("real CPU task media saves explicit regions, exports transparent results an
     await point(page, 0.5, 0.5);
     await page.getByTestId("task-review-media-cancel").waitFor({ timeout: 10000 });
     await changeScene(page, "全局");
-    await page.getByTestId("task-review-global-scene").waitFor();
+    await page.getByTestId("task-review-media-overview").waitFor();
     await changeScene(page, "目录");
     await row("synthetic-vfr.mp4").dblclick();
     await video.waitFor();
@@ -204,7 +210,16 @@ test("real CPU task media saves explicit regions, exports transparent results an
     evidence.record("video", { pts, requestedTime, frame, cancellationObservedWhileRunning: true, originalVideoPausedOnLeave: true });
     evidence.flush({ passed: true, evidenceLimits: ["Healthy real MobileSAM CPU path only; worker-crash recovery not GUI tested", "Public dogs fixture and synthetic VFR; no general segmentation accuracy claim", "No LLM config, credential or network request"] });
   } catch (error) {
-    if (launched) { if (root) evidence.record("failureSnapshot", await snapshotAt(root)); await evidence.screenshot("failure"); }
+    // Evidence collection must never replace the assertion/operation that failed.
+    // A renderer capture can fail independently and is recorded separately.
+    if (launched) {
+      if (root) {
+        try { evidence.record("failureSnapshot", await snapshotAt(root)); }
+        catch (diagnosticError) { evidence.record("failureSnapshotError", String(diagnosticError)); }
+      }
+      try { await evidence.screenshot("failure"); }
+      catch (diagnosticError) { evidence.record("failureScreenshotError", String(diagnosticError)); }
+    }
     evidence.flush({ passed: false, failure: error instanceof Error ? error.message : String(error) });
     throw error;
   } finally { await launched?.close(); }

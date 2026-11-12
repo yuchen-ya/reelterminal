@@ -13,7 +13,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  Focus,
   GripHorizontal,
   LayoutGrid,
   RotateCcw,
@@ -79,8 +78,6 @@ export function SpotlightCard({
   showCompletionToggle,
   completionActive,
   onToggleCompletion,
-  spotlightActive,
-  onToggleSpotlight,
   onOpenModelSettings,
   modelSettingsActive,
   modelConfigured,
@@ -89,6 +86,7 @@ export function SpotlightCard({
   footerStatus,
   stepDots,
   primaryAction,
+  showFooter = true,
 }: {
   /** 头部标题（如 "#2 林深" / "工作台" / "已完成 8/8"） */
   headerTitle: string;
@@ -104,9 +102,9 @@ export function SpotlightCard({
   /** 该切换按钮的激活态 */
   completionActive: boolean;
   onToggleCompletion: () => void;
-  /** 启动盘底部「聚光」压暗开关状态 */
-  spotlightActive: boolean;
-  onToggleSpotlight: () => void;
+  /** Deprecated display-only compatibility props; dimming/blur is no longer rendered. */
+  spotlightActive?: boolean;
+  onToggleSpotlight?: () => void;
   /** 头部模型与 API 密钥设置切换 */
   onOpenModelSettings?: () => void;
   modelSettingsActive?: boolean;
@@ -120,6 +118,8 @@ export function SpotlightCard({
   stepDots: readonly SpotlightStepDot[];
   /** 全场唯一绿色主按钮（null 则不渲染，如完成态） */
   primaryAction: SpotlightPrimaryAction | null;
+  /** 图片总览等自足工具卡可隐藏场景导航 footer；模型设置仍保留。 */
+  showFooter?: boolean;
 }): JSX.Element {
   useTranslation();
   const { tipNode, bindTip } = useHoverTip();
@@ -365,25 +365,6 @@ export function SpotlightCard({
                 );
               })}
             </div>
-
-            <div className="flex items-center justify-between rounded-lg bg-[#101216] px-2.5 py-1.5 text-[11px] text-fg-3">
-              <button
-                type="button"
-                onClick={() => onToggleSpotlight()}
-                {...bindTip(
-                  t("Dim spotlight background"),
-                  spotlightActive
-                    ? t("Enabled: dim the surrounding background to focus on the center stage")
-                    : t("Click to dim the spotlight background"),
-                )}
-                className={`inline-flex items-center gap-1 cursor-pointer ${
-                  spotlightActive ? "text-accent" : "text-fg-3"
-                }`}
-                data-testid="spotlight-focus-toggle"
-              >
-                <Focus className="h-3 w-3" />
-                {t("reviewUi.spotlight")}</button>
-            </div>
           </div>
         ) : (
           /* CARD FACE CONTENT SLOT：改词/批注/成组清单等由宿主渲染 */
@@ -392,7 +373,7 @@ export function SpotlightCard({
       </div>
 
       {/* CARD FOOTER: Left = Current Unit In-Place Status | Right = Smart Scene Advance CTA */}
-      <div className="flex min-w-0 items-center justify-between gap-1.5 rounded-b-xl border-t border-white/10 bg-[#1c2028] px-3 py-2">
+      {showFooter && <div className="flex min-w-0 items-center justify-between gap-1.5 rounded-b-xl border-t border-white/10 bg-[#1c2028] px-3 py-2">
         <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
           <button
             type="button"
@@ -454,7 +435,7 @@ export function SpotlightCard({
             </button>
           )}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -122,6 +122,29 @@ function installSceneTask(kind: "compare" | "lowRiskGroup") {
   return { ...bridges, units, scenes, taskId, sourceVersionId };
 }
 
+function installTaskMediaChannel() {
+  const thumbnail = vi.fn(async (target: { unitId: string }) => ({ url: `app://media/${target.unitId}`, width: 400, height: 200 }));
+  Object.defineProperty(window, "reelterminal", {
+    configurable: true,
+    value: { ...window.reelterminal, taskReviewMedia: { thumbnail } },
+  });
+  return { thumbnail };
+}
+
+function discoverExternalImages(taskReview: ReturnType<typeof createFakeTaskReviewBridge>, count = 12) {
+  taskReview.mutateState((state) => {
+    for (let index = 0; index < count; index++) {
+      const sourceVersionId = crypto.randomUUID();
+      const entryId = crypto.randomUUID();
+      const relativePath = `image-${index + 1}.png`;
+      state.sources.push({ id: sourceVersionId, entryId, relativePath, hash: `image-hash-${index}`, createdAt: index + 1, kind: "image", mime: "image/png", width: 400, height: 200, durationSec: 0 });
+      state.sourceFiles.push({ entryId, relativePath, currentVersionId: sourceVersionId, size: 100, mtimeMs: 1, status: "available" });
+      state.units.push({ id: crypto.randomUUID(), sourceVersionId, ordinal: 1, kind: "image" });
+    }
+    state.revision++;
+  });
+}
+
 describe("task review workspace", () => {
   it.each([false, true])("goal save completion preserves later navigation: %s", async (navigate) => {
     const { taskReview } = installBridges();
@@ -245,7 +268,7 @@ describe("task review workspace", () => {
       state.units.push({ id: "image-unit", sourceVersionId: "image-source", ordinal: 1, kind: "image" });
     });
     await act(async () => { finish(taskReview.snapshotState()); });
-    expect(screen.getByTestId("task-review-global-scene")).toBeVisible();
+    expect(screen.getByTestId("task-review-media-overview")).toBeVisible();
     expect(open).not.toHaveBeenCalled();
     expect(screen.queryByTestId("task-review-media-scene")).toBeNull();
   });
@@ -921,6 +944,92 @@ describe("task review workspace", () => {
     expect(folderReview.refresh.mock.calls.length).toBe(folderRefreshBefore);
   });
 
+  it("opens the image overview when an initially empty task discovers its first images", async () => {
+    const { taskReview } = installBridges();
+    installTaskMediaChannel();
+    vi.useFakeTimers();
+    render(<TaskReviewWorkspace root="task-root" name="任务A" />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByTestId("task-review-revision")).toBeVisible();
+    expect(screen.queryByTestId("task-review-media-overview")).toBeNull();
+
+    discoverExternalImages(taskReview, 12);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+
+    expect(screen.getByTestId("task-review-media-overview")).toBeVisible();
+    expect(screen.getAllByTestId("task-review-media-card")).toHaveLength(12);
+    fireEvent.click(screen.getByTestId("task-review-media-open-export"));
+    expect(screen.getByTestId("task-review-export-scene")).toBeVisible();
+  });
+
+  it("keeps image selection actions in the real card after completion and launcher views", async () => {
+    const { taskReview } = installBridges();
+    installTaskMediaChannel();
+    discoverExternalImages(taskReview, 2);
+    taskReview.mutateState((state) => {
+      for (const unit of state.units) {
+        const id = crypto.randomUUID();
+        state.decisions.push({ id, unitId: unit.id, sourceVersionId: unit.sourceVersionId, policyRevision: 0, purpose: "review", status: "kept", note: "", createdAt: 1 });
+        state.decisionActions.push({ id: crypto.randomUUID(), kind: "decide", decisionId: id, createdAt: 1 });
+      }
+      state.revision++;
+    });
+    render(<TaskReviewWorkspace root="task-root" name="任务A" />);
+    await screen.findByTestId("task-review-media-overview");
+    expect(screen.getByTestId("task-review-progress")).toHaveTextContent("2/2");
+    expect(screen.getByTestId("task-review-media-default-tools")).toBeVisible();
+    expect(screen.queryByTestId("spotlight-completion-hub")).toBeNull();
+    expect(screen.queryByTestId("spotlight-completion-toggle")).toBeNull();
+    expect(screen.queryByTestId("spotlight-back-btn")).toBeNull();
+    expect(screen.queryByTestId("spotlight-step-dot-working-scene")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("spotlight-model-settings-btn"));
+    expect(screen.getByTestId("task-review-agent-unconfigured")).toBeVisible();
+    expect(screen.getByTestId("spotlight-back-btn")).toBeVisible();
+    expect(screen.getByRole("button", { name: "保存模型配置" })).toBeVisible();
+    fireEvent.click(screen.getByTestId("spotlight-model-settings-btn"));
+    openLauncher();
+    expect(screen.getByTestId("task-review-launcher-magnifier")).toBeVisible();
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择图片 image-1.png" }));
+    const card = screen.getByTestId("agent-spotlight-card");
+    expect(within(card).getByTestId("task-review-media-batch-kept")).toBeEnabled();
+    expect(within(card).getByTestId("task-review-media-batch-discarded")).toBeEnabled();
+    expect(within(card).getByTestId("task-review-media-batch-rework")).toBeEnabled();
+    expect(within(card).queryByTestId("task-review-media-batch-note")).toBeNull();
+    expect(screen.queryByTestId("task-review-launcher-magnifier")).toBeNull();
+    expect(screen.queryByTestId("spotlight-completion-hub")).toBeNull();
+    expect(screen.queryByTestId("spotlight-completion-toggle")).toBeNull();
+    expect(screen.queryByTestId("spotlight-back-btn")).toBeNull();
+    expect(screen.queryByTestId("spotlight-step-dot-working-scene")).toBeNull();
+    openLauncher();
+    fireEvent.click(screen.getByTestId("task-review-launcher-criteria"));
+    expect(screen.getByTestId("task-review-global-scene")).toBeVisible();
+    expect(screen.getByTestId("task-review-show-import")).toBeVisible();
+  });
+
+  it.each(["detail", "export"] as const)("does not take over an open %s when images are discovered later", async (scene) => {
+    const { taskReview } = installSceneTask("compare");
+    installTaskMediaChannel();
+    vi.useFakeTimers();
+    render(<TaskReviewWorkspace root="task-root" name="任务A" />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByTestId("task-review-revision")).toBeVisible();
+    if (scene === "detail") {
+      fireEvent.click(screen.getByTestId("task-review-continue"));
+      expect(screen.getByTestId("task-review-agent-scene")).toBeVisible();
+    } else {
+      openLauncher();
+      fireEvent.click(screen.getByTestId("task-review-launcher-export"));
+      expect(screen.getByTestId("task-review-export-scene")).toBeVisible();
+    }
+
+    discoverExternalImages(taskReview, 12);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+
+    expect(screen.queryByTestId("task-review-media-overview")).toBeNull();
+    expect(screen.getByTestId(scene === "detail" ? "task-review-agent-scene" : "task-review-export-scene")).toBeVisible();
+  });
+
   it("copy centre writes real snapshot content to the clipboard and confirms with a toast", async () => {
     const { taskReview } = installBridges();
     render(<TaskReviewWorkspace root="task-root" name="任务A" />);
@@ -989,8 +1098,11 @@ describe("task review workspace", () => {
     // Copy startup prompt writes prompt to clipboard
     fireEvent.click(screen.getByTestId("task-review-copy-startup-prompt"));
     await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("reelctl task-review")),
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("工作台会自动刷新并登记")),
     );
+    const startupPrompt = writeText.mock.calls.at(-1)![0] as string;
+    expect(startupPrompt).toContain("task-root");
+    expect(startupPrompt).not.toMatch(/reelctl\s+task-review\s+(status|import)/);
     await screen.findByTestId("task-review-toast");
 
     // Quick inline import right in the card
@@ -1225,6 +1337,22 @@ describe("task review workspace", () => {
     await waitFor(() => expect(authorizeSpy).toHaveBeenCalled());
     expect(preflightSpy).toHaveBeenCalled();
   });
+});
+
+
+it("closes the export overlay before opening original files", async () => {
+  const { taskReview } = installBridges();
+  installTaskMediaChannel();
+  discoverExternalImages(taskReview, 2);
+  render(<TaskReviewWorkspace root="task-root" />);
+  await screen.findByTestId("task-review-media-overview");
+  fireEvent.click(screen.getByTestId("task-review-media-open-export"));
+  expect(screen.getByTestId("task-review-export-scene")).toBeVisible();
+  openLauncher();
+  fireEvent.click(screen.getByTestId("task-review-launcher-files"));
+  expect(screen.queryByTestId("task-review-export-scene")).toBeNull();
+  expect(screen.getByTestId("task-review-directory-host")).toBeVisible();
+  expect(screen.getByTestId("task-review-directory-host").className).not.toContain("hidden");
 });
 
 useChineseReviewLocale();

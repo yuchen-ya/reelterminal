@@ -10,7 +10,25 @@ export interface DecisionIntent {
   note: string;
   replacementText?: string;
   revision: number;
+  /** Exact member intents; the outer decisionId identifies the atomic batch. */
+  batch?: DecisionIntent[];
 }
+
+export function taskDecisionIntentMatches(snapshot: TaskReviewSnapshot, intent: DecisionIntent): boolean {
+  const members = intent.batch ?? [intent];
+  if (intent.batch) {
+    const batch = snapshot.decisionBatches?.find(batch => batch.id === intent.decisionId);
+    const expected = new Set(members.map(member => member.decisionId));
+    if (!batch || batch.decisionIds.length !== expected.size || batch.decisionIds.some(id => !expected.has(id))) return false;
+  }
+  const decisions = new Map(snapshot.decisions.map(decision => [decision.id, decision]));
+  const actions = new Set(snapshot.decisionActions.filter(action => action.kind === 'decide').map(action => action.decisionId));
+  return members.every(member => {
+    const decision = decisions.get(member.decisionId);
+    return actions.has(member.decisionId) && decision?.unitId === member.unitId && decision.sourceVersionId === member.sourceVersionId && decision.purpose === member.purpose && decision.status === member.status && decision.note === member.note && decision.replacementText === member.replacementText;
+  });
+}
+
 export interface RecoveryState {
   outcome: 'unknown' | 'committed' | 'not-committed';
   decisionId: string;
@@ -60,11 +78,10 @@ export class TaskWriteRecovery {
     if (!intent || result.decisionId !== intent.decisionId) throw new Error('核对的决定身份不匹配');
     this.bind(result.snapshot);
     if (result.snapshot.revision < intent.revision) throw new Error('核对结果早于本次决定');
-    const decision = result.snapshot.decisions.find(item => item.id === intent.decisionId);
-    const action = result.snapshot.decisionActions.some(item => item.kind === 'decide' && item.decisionId === intent.decisionId);
-    const sameTarget = decision?.unitId === intent.unitId && decision?.sourceVersionId === intent.sourceVersionId && decision?.purpose === intent.purpose && decision?.status === intent.status && decision?.note === intent.note && decision?.replacementText === intent.replacementText;
-    if (result.outcome === 'committed' && (!decision || !action || !sameTarget)) throw new Error('缺少本次决定的精确记录，仍暂停写入');
-    if (result.outcome === 'not-committed' && (decision || action)) throw new Error('未提交回执与决定记录冲突');
+    const ids = new Set((intent.batch ?? [intent]).map(member => member.decisionId));
+    const recorded = result.snapshot.decisions.some(item => ids.has(item.id)) || result.snapshot.decisionActions.some(item => ids.has(item.decisionId)) || result.snapshot.decisionBatches?.some(batch => batch.id === intent.decisionId);
+    if (result.outcome === 'committed' && !taskDecisionIntentMatches(result.snapshot, intent)) throw new Error('缺少本次决定的精确记录，仍暂停写入');
+    if (result.outcome === 'not-committed' && recorded) throw new Error('未提交回执与决定记录冲突');
     if (result.outcome === 'unknown') throw new Error('仍无法确认本次决定；revision变化不代表提交成功');
     this.epoch++;
     this.blocked = false;

@@ -2,7 +2,7 @@ import { CHANNELS } from '../shared/channels';
 import { taskReviewSchemas } from '../shared/task-review-schema';
 import type { TaskReviewSnapshot } from '../shared/task-review';
 import type { TaskDecisionOutcome, TaskDecisionReply } from '../shared/task-review-bridge';
-import { TaskWriteRecovery } from '../shared/task-write-recovery';
+import { TaskWriteRecovery, type DecisionIntent } from '../shared/task-write-recovery';
 
 /** Protect the public preload entry too; a disabled React button is not authority. */
 export function createTaskReviewTransport(invoke: (channel: string, envelope: { method: string; input: unknown }) => Promise<any>) {
@@ -16,21 +16,30 @@ export function createTaskReviewTransport(invoke: (channel: string, envelope: { 
       if (barrier?.pending) barrier.resolve(result);
       return result;
     }
-    if (channel === CHANNELS.taskReviewMedia && method === 'cancel') {
-      if (barrier?.taskId && raw.taskId !== barrier.taskId) throw new Error('取消目标已变化');
+    if (channel === CHANNELS.taskReviewMedia && (method === 'cancel' || method === 'thumbnail')) {
+      if (barrier?.taskId && raw.taskId !== barrier.taskId) throw new Error('媒体目标已变化');
       return invoke(channel, { method, input: raw });
     }
     barrier?.guard(barrier.epoch);
-    if (channel !== CHANNELS.taskReview || method !== 'decide') return invoke(channel, { method, input: raw });
+    const batch = method === 'decideBatch';
+    if (channel !== CHANNELS.taskReview || (!batch && method !== 'decide')) return invoke(channel, { method, input: raw });
     if (typeof root !== 'string' || typeof raw.taskId !== 'string') throw new Error('Invalid decision target');
-    const decisionId = raw.decisionId ?? globalThis.crypto.randomUUID();
+    const decisionId = (batch ? raw.batchId : raw.decisionId) ?? globalThis.crypto.randomUUID();
     taskReviewSchemas.getDecisionOutcome.parse({ root, taskId: raw.taskId, decisionId });
-    const parsed = taskReviewSchemas.decide.safeParse({ ...raw, decisionId });
-    const input: Record<string, any> = parsed.success ? parsed.data : { ...raw, decisionId };
+    const payload = batch ? { ...raw, batchId: decisionId } : { ...raw, decisionId };
+    const parsed = batch ? taskReviewSchemas.decideBatch.safeParse(payload) : taskReviewSchemas.decide.safeParse(payload);
+    const input: Record<string, any> = parsed.success ? parsed.data : payload;
+    const members: DecisionIntent[] | undefined = batch ? taskReviewSchemas.decideBatch.shape.targets.parse(input.targets).map(target => ({
+      decisionId: target.decisionId, unitId: target.unitId, sourceVersionId: target.sourceVersionId,
+      purpose: input.purpose, status: input.status, note: input.note, revision: input.expectedRevision,
+    })) : undefined;
     const gate = barrier ?? new TaskWriteRecovery(root);
     roots.set(root, gate);
     gate.bind({ root, taskId: raw.taskId } as TaskReviewSnapshot);
-    gate.begin({ decisionId, unitId: input.unitId, sourceVersionId: input.sourceVersionId, purpose: input.purpose, status: input.status, note: input.note, replacementText: input.replacementText, revision: input.expectedRevision });
+    gate.begin(members ? { ...members[0], decisionId, batch: members } : {
+      decisionId, unitId: input.unitId, sourceVersionId: input.sourceVersionId, purpose: input.purpose,
+      status: input.status, note: input.note, replacementText: input.replacementText, revision: input.expectedRevision,
+    });
     try {
       const reply = await invoke(channel, { method, input }) as TaskDecisionReply;
       const receipt = reply.decisionReceipt;

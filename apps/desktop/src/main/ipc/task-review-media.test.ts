@@ -46,6 +46,22 @@ function stubService(overrides: Partial<TaskReviewMediaBridge> = {}) {
   return { bridge, fixtures: { open, candidate, capture, accept } };
 }
 
+it("serves strictly target-bound previews without notifications or media preparation", async () => {
+  const thumbnail = vi.fn(async () => ({ url: `app://reelterminal/task-media/${taskId}/source-${target.sourceVersionId}`, width: 8, height: 6 }));
+  const { bridge } = stubService({ thumbnail });
+  const changed = vi.fn(async () => {});
+  const read = vi.fn(async () => snapshot);
+  registerTaskReviewMediaIpc(bridge, changed, read);
+  expect(await invoke('thumbnail', target)).toMatchObject({ width: 8, height: 6 });
+  expect(thumbnail).toHaveBeenCalledExactlyOnceWith(target);
+  expect(bridge.open).not.toHaveBeenCalled();
+  expect(changed).not.toHaveBeenCalled();
+  expect(read).not.toHaveBeenCalled();
+  await expect(invoke('thumbnail', { ...target, absolutePath: 'C:/other/image.png' })).rejects.toThrow();
+  await expect(invoke('thumbnail', target, { sender: {} as typeof state.editor, senderFrame: state.editor.mainFrame })).rejects.toThrow('main editor frame');
+  expect(thumbnail).toHaveBeenCalledTimes(1);
+});
+
 it("rejects foreign senders before touching the service", async () => {
   const { bridge } = stubService();
   registerTaskReviewMediaIpc(bridge, async () => {}, async () => snapshot);

@@ -10,11 +10,21 @@ export interface TaskReviewContextBridge {
 
 export interface TaskDecisionOutcome {
   snapshot: TaskReviewSnapshot;
+  /** A single decision ID, or a batch ID whose outcome covers every member. */
   decisionId: string;
   outcome: 'committed' | 'not-committed' | 'unknown';
 }
 export type TaskDecisionReply = TaskReviewSnapshot & {
   decisionReceipt?: { decisionId: string; outcome: 'committed' | 'not-committed'; notificationFailed?: boolean; refreshFailed?: boolean; rejection?: 'validation' };
+};
+
+export type TaskBatchDecisionInput = TaskCommit & {
+  batchId: string;
+  targets: (TaskUnitTarget & { decisionId: string })[];
+  purpose: string;
+  status: TaskDecisionStatus;
+  note: string;
+  pendingOnly?: boolean;
 };
 
 export interface TaskReviewBridge {
@@ -25,6 +35,9 @@ export interface TaskReviewBridge {
   importText(input: TaskCommit & { name: string; text: string; format: TaskTextFormat }): Promise<TaskReviewSnapshot>;
   importFile(input: TaskCommit & { entryId: string }): Promise<TaskReviewSnapshot>;
   decide(input: TaskCommit & TaskUnitTarget & { purpose: string; status: TaskDecisionStatus; note: string; replacementText?: string; decisionId?: string }): Promise<TaskDecisionReply>;
+  decideBatch?(input: TaskBatchDecisionInput): Promise<TaskDecisionReply>;
+  undoDecisionBatch?(input: TaskCommit & { batchId: string }): Promise<TaskReviewSnapshot>;
+  redoDecisionBatch?(input: TaskCommit & { batchId: string }): Promise<TaskReviewSnapshot>;
   undoDecision(input: TaskDecisionHistoryInput): Promise<TaskReviewSnapshot>;
   redoDecision(input: TaskDecisionHistoryInput): Promise<TaskReviewSnapshot>;
   saveDraft(input: TaskCommit & { draft: Omit<TaskDraft, 'updatedAt'> }): Promise<TaskReviewSnapshot>;

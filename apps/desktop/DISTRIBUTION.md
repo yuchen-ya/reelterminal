@@ -1,5 +1,9 @@
 # Desktop distribution
 
+## Version 1.4.3
+
+Image-first review adds a grid and explicit batch decisions inside real folder tasks. See the [version notes](../../docs/RELEASE-1.4.3.md) for selection, note reuse, undo/redo and limitations. Use the actual assets on [Releases](https://github.com/yuchen-ya/reelterminal/releases) for available downloads. Windows x64 builds remain unsigned.
+
 ## Version 1.4.2
 
 Windows x64 builds provide an installer and a portable ZIP. Updates improve source-frame selection, timeline rendering consistency and atomic CLI subtitle replacement, with a refreshed startup animation. Read the [version notes](../../docs/RELEASE-1.4.2.md) for features and limitations. Available platforms and downloads are listed on [Releases](https://github.com/yuchen-ya/reelterminal/releases). Windows builds are unsigned; checksums identify files but are not signatures. Read the [upgrade and backup guide](../../docs/WINDOWS-UPGRADE.md) before replacing an existing installation.
@@ -16,7 +20,7 @@ not rename an older package to a new version. For example:
 pnpm install --frozen-lockfile
 pnpm build:wasm
 node apps/desktop/scripts/prepare-segmentation-resources.mjs --check
-pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.4.2-<date-and-unique-suffix>
+pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.4.3-<date-and-unique-suffix>
 ```
 
 The build generates `dist/performance-build.json` with the source HEAD, dirty

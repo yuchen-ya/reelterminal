@@ -183,6 +183,19 @@ export class TaskReviewMediaService implements TaskReviewMediaBridge {
     } finally { await fs.rm(decoded.artifactDirectory, { recursive: true, force: true }); }
   }
 
+  async thumbnail(input: TaskMediaTarget) {
+    const args = taskReviewMediaSchemas.thumbnail.parse(input);
+    const snapshot = await this.snapshot(args);
+    const { source, unit } = this.target(snapshot, args);
+    await this.stamp(snapshot, source);
+    if (unit.kind === 'image') return { url: url(snapshot.taskId, `source-${source.id}`), width: source.width, height: source.height };
+    if (unit.kind !== 'region' && unit.kind !== 'video-frame') throw new Error('Open the video to inspect it or capture a frame');
+    const assetId = unit.kind === 'region' ? unit.cutoutAssetId : unit.assetId;
+    const asset = snapshot.mediaAssets?.find(asset => asset.id === assetId && asset.status === 'ready' && asset.unitId === unit.id && asset.sourceVersionId === source.id);
+    if (!asset) throw new Error('Registered media preview is unavailable');
+    return { url: url(snapshot.taskId, asset.id), width: asset.width, height: asset.height };
+  }
+
   async open(input: TaskMediaTarget): Promise<Awaited<ReturnType<TaskReviewMediaBridge['open']>>> {
     const args = taskReviewMediaSchemas.open.parse(input);
     const operation = this.begin('open', args, randomUUID());

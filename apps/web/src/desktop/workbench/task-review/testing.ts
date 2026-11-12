@@ -231,6 +231,51 @@ export function createFakeTaskReviewBridge(
           createdAt: Date.now(),
         });
       }),
+    decideBatch: async (input) => ({
+      ...commit(input, "decideBatch", (draft) => {
+        const decisionIds: string[] = [];
+        const targets = input.pendingOnly ? input.targets.filter((target) => !selectTaskDecisionHistory(draft, { ...target, purpose: input.purpose }).current) : input.targets;
+        for (const target of targets) {
+          draft.decisions.push({
+            id: target.decisionId,
+            unitId: target.unitId,
+            sourceVersionId: target.sourceVersionId,
+            policyRevision: draft.policyRevision,
+            purpose: input.purpose,
+            status: input.status,
+            note: input.note,
+            createdAt: Date.now(),
+          });
+          draft.decisionActions.push({ id: `action-${draft.decisionActions.length + 1}`, kind: "decide", decisionId: target.decisionId, createdAt: Date.now() });
+          decisionIds.push(target.decisionId);
+        }
+        draft.decisionBatches ??= [];
+        draft.decisionBatches.push({ id: input.batchId, decisionIds });
+      }),
+      decisionReceipt: { decisionId: input.batchId, outcome: "committed" as const },
+    }),
+    undoDecisionBatch: async (input) => commit(input, "undoDecisionBatch", (draft) => {
+      const batch = draft.decisionBatches?.find((item) => item.id === input.batchId);
+      if (!batch) throw new Error("Decision batch not found");
+      for (const decisionId of batch.decisionIds) {
+        const decision = draft.decisions.find((item) => item.id === decisionId);
+        if (!decision) throw new Error("Decision batch member not found");
+        const history = selectTaskDecisionHistory(draft, { unitId: decision.unitId, sourceVersionId: decision.sourceVersionId, purpose: decision.purpose });
+        if (history.undo?.id !== decisionId) throw new Error("Decision batch is not eligible for undo");
+        draft.decisionActions.push({ id: `action-${draft.decisionActions.length + 1}`, kind: "undo", decisionId, createdAt: Date.now() });
+      }
+    }),
+    redoDecisionBatch: async (input) => commit(input, "redoDecisionBatch", (draft) => {
+      const batch = draft.decisionBatches?.find((item) => item.id === input.batchId);
+      if (!batch) throw new Error("Decision batch not found");
+      for (const decisionId of batch.decisionIds) {
+        const decision = draft.decisions.find((item) => item.id === decisionId);
+        if (!decision) throw new Error("Decision batch member not found");
+        const history = selectTaskDecisionHistory(draft, { unitId: decision.unitId, sourceVersionId: decision.sourceVersionId, purpose: decision.purpose });
+        if (history.redo?.id !== decisionId) throw new Error("Decision batch is not eligible for redo");
+        draft.decisionActions.push({ id: `action-${draft.decisionActions.length + 1}`, kind: "redo", decisionId, createdAt: Date.now() });
+      }
+    }),
     undoDecision: async (input) => changeDecisionHistory("undo", input),
     redoDecision: async (input) => changeDecisionHistory("redo", input),
     saveDraft: async (input) =>

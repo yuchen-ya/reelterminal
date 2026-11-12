@@ -31,6 +31,8 @@ Real task folders and free boards share sortable tabs. Open an existing folder, 
 
 ## Review Tasks
 
+- **Image overview and explicit batch decisions:** image-first tasks support filtering, filename search, natural sorting, multiple selection and Shift ranges. Keep, rework or discard the explicit selection, or confirm keeping the remaining pending images. Each save supports up to 1,000 items and is never silently split. Batch undo and redo preserve newer decisions and criteria changes rather than overwriting them.
+- **On-demand inspection and note reuse:** thumbnails load near the visible grid; open the inspector to zoom into original pixels. Reusing a recent note only fills a draft and still requires an explicit decision. These batch actions belong to current folder tasks and do not restore the retired standalone batch entry.
 - **Separate file management and review:** inspect, organize, move and copy files in the directory. Enter the task workbench to review units against a goal; copying a file does not approve its content.
 - **Human decisions:** inspect text, images, video frames or regions and record keep, discard, rework and notes. Decisions and drafts live in the task folder's .reelterminal directory. Discarding does not delete originals.
 - **Goal and criteria:** set a task goal and inspect source relationships and current analysis. Model suggestions do not replace human judgment; adopting or deactivating scoped criteria requires an explicit action.

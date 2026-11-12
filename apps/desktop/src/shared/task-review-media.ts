@@ -31,7 +31,9 @@ export interface TaskMediaTarget { root: string; taskId: string; sourceVersionId
 export interface TaskMediaOpenResult { snapshot: TaskReviewSnapshot; source: TaskMediaSourceVersion; unit: TaskMediaUnit; url: string; width: number; height: number; asset?: TaskMediaAsset; maskUrl?: string; maskAsset?: TaskMediaAsset; cutoutUrl?: string; promptTokenLimit?: number; historical?: boolean }
 export interface TaskRegionCandidate { generationId: string; sourceVersionId: string; unitId: string; assetId: string; url: string; width: number; height: number; pixelRevision: string; modelVersion: string; predictedIou: number }
 export interface TaskMediaCaptureResult { snapshot: TaskReviewSnapshot; unitId: string; assetId: string; frameIndex?: number; ptsTimeSec: number; timeBase: string | null }
+export interface TaskMediaThumbnail { url: string; width: number; height: number }
 export interface TaskReviewMediaBridge {
+  thumbnail?(input: TaskMediaTarget): Promise<TaskMediaThumbnail>;
   importFile(input: TaskCommit & { entryId: string; generationId?: string }): Promise<TaskReviewSnapshot>;
   open(input: TaskMediaTarget): Promise<TaskMediaOpenResult>;
   captureFrame(input: TaskCommit & TaskMediaTarget & { generationId: string; selection: { timeSec: number } | { frameIndex: number } }): Promise<TaskMediaCaptureResult>;
@@ -56,6 +58,7 @@ const generation = { generationId: z.string().min(1).max(200) };
 export const taskReviewMediaSchemas = {
   importFile: z.object({ root: z.string().min(1), taskId: id, ...revision, entryId: id, generationId: z.string().min(1).max(200).optional() }).strict(),
   open: z.object(target).strict(),
+  thumbnail: z.object(target).strict(),
   captureFrame: z.object({ ...target, ...revision, ...generation, selection: z.union([z.object({ timeSec: z.number().finite().nonnegative() }).strict(), z.object({ frameIndex: z.number().int().nonnegative().safe() }).strict()]) }).strict(),
   segment: z.object({ ...target, ...generation, refinementId: z.string().min(1).max(200), prompts: taskMediaPromptsSchema }).strict(),
   cancel: z.object({ root: z.string().min(1), taskId: id, ...generation }).strict(),

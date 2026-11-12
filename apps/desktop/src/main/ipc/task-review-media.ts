@@ -15,9 +15,10 @@ const envelopeSchema = z.object({
  * Agent authority: every payload is revalidated against the shared strict
  * schemas, so the renderer can never hand over raw pixels, arbitrary disk
  * paths or a forged human decision. Only methods that changed the task
- * snapshot (importFile/captureFrame/acceptRegion) notify the runtime;
- * open is read-only and segment/cancel only stage or drop an in-memory
- * candidate, so they never re-run model analysis.
+ * review inputs (importFile/captureFrame/acceptRegion) notify the runtime.
+ * thumbnail reads registered pixels without preparing assets; open may cache
+ * normalized pixels, while segment/cancel only stage or drop candidates.
+ * These operations never re-run model analysis.
  */
 export function registerTaskReviewMediaIpc(
   service: TaskReviewMediaBridge,
@@ -40,6 +41,9 @@ export function registerTaskReviewMediaIpc(
         const snapshot = await service.importFile(taskReviewMediaSchemas.importFile.parse(request.input));
         return changedSnapshot(snapshot);
       }
+      case "thumbnail":
+        if (!service.thumbnail) throw new Error('Read-only media previews are unavailable');
+        return service.thumbnail(taskReviewMediaSchemas.thumbnail.parse(request.input));
       case "open":
         return service.open(taskReviewMediaSchemas.open.parse(request.input));
       case "captureFrame": {

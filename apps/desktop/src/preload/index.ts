@@ -29,6 +29,9 @@ const taskReview: TaskReviewBridge = {
   importText: input => taskWriteInvoke(CHANNELS.taskReview, "importText", input),
   importFile: input => taskWriteInvoke(CHANNELS.taskReview, "importFile", input),
   decide: input => taskWriteInvoke(CHANNELS.taskReview, "decide", input),
+  decideBatch: input => taskWriteInvoke(CHANNELS.taskReview, "decideBatch", input),
+  undoDecisionBatch: input => taskWriteInvoke(CHANNELS.taskReview, "undoDecisionBatch", input),
+  redoDecisionBatch: input => taskWriteInvoke(CHANNELS.taskReview, "redoDecisionBatch", input),
   undoDecision: input => taskWriteInvoke(CHANNELS.taskReview, "undoDecision", input),
   redoDecision: input => taskWriteInvoke(CHANNELS.taskReview, "redoDecision", input),
   saveDraft: input => taskWriteInvoke(CHANNELS.taskReview, "saveDraft", input),
@@ -54,6 +57,7 @@ const taskReviewExport: TaskReviewExportBridge = {
 // this bridge forwards inputs verbatim and propagates errors, never faking
 // success for the renderer.
 const taskReviewMedia: TaskReviewMediaBridge = {
+  thumbnail: input => taskWriteInvoke(CHANNELS.taskReviewMedia, "thumbnail", input),
   importFile: input => taskWriteInvoke(CHANNELS.taskReviewMedia, "importFile", input),
   open: input => taskWriteInvoke(CHANNELS.taskReviewMedia, "open", input),
   captureFrame: input => taskWriteInvoke(CHANNELS.taskReviewMedia, "captureFrame", input),

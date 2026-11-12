@@ -291,7 +291,7 @@ export function MediaScene({ snapshot, unit, operations, draft, onUpdateDraft, o
         <header className="flex flex-wrap items-center gap-2">
           <strong title={sourcePath(root, source.relativePath)}>{sourceTitle(source.relativePath)} · {unitTitle(unit)}</strong>
           <span className="text-fg-3">{t("Human review · Local segmentation tool")}</span>
-          <span className="ml-auto text-fg-3" data-testid="task-review-media-status">{decision.status ? statusLabels[decision.status] : t("Pending")}</span>
+          <span className={`ml-auto rounded border px-1.5 py-0.5 ${decision.status === "kept" ? "border-emerald-300/60 text-emerald-300" : decision.status === "rework" ? "border-amber-200/60 text-amber-200" : decision.status === "discarded" ? "border-zinc-500/70 text-zinc-400" : "border-white/45 text-fg"}`} data-testid="task-review-media-status">{decision.status ? statusLabels[decision.status] : t("Pending")}</span>
         </header>
         {stale && <p className="text-status-error">{t("This frame or region is stale. The old draft is preserved for reference; open the current version before deciding.")}</p>}
         {error && <div role="alert" className="flex items-center gap-2 text-status-error" data-testid="task-review-media-error">

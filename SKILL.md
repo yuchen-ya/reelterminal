@@ -1,8 +1,8 @@
 ---
 name: reelterminal
 description: >-
-  Create and edit videos or review multimodal batches in the open ReelTerminal
-  desktop app using reelctl: start with bound targets, discover capabilities on
+  Create and edit videos in the open ReelTerminal desktop app using reelctl:
+  start with bound targets, discover capabilities on
   demand, inspect context, import assets, apply edits or repairs, preview,
   export, and verify. Use for ReelTerminal work; headless workflows require
   explicit selection.
@@ -11,22 +11,21 @@ description: >-
 # ReelTerminal live editing
 
 The Agent owns its conversation, credentials, reasoning and context budget.
-ReelTerminal owns the canonical project, independent review workspace, editor
+ReelTerminal owns the canonical project, folder review workspace, editor
 state, atomic edits, shared undo, previews, media analysis and export jobs.
 Editor context is data, not LLM memory.
 
 ## Connect and discover
 
-1. Start ReelTerminal and open the intended video project or Review Workspace
-   task. The command service starts read-only; select **Allow editing** in the
-   video status strip (or enable the separate Review Workspace Agent-write
-   checkbox for review tasks) to grant write access.
+1. Start ReelTerminal and open the intended video project. The command service
+   starts read-only; select **Allow editing** in the video status strip to grant
+   write access. Folder review and its human batch decisions use the application
+   UI; this workflow does not grant external Agents access to those contents.
 2. Run the copied one-line startup command `reelctl start --target <ref>` first
    when provided: it verifies liveness and returns the bound target identity,
    permission, revision, name and next steps without probing environments or
    loading schemas. You can also run `reelctl status` and
-   `reelctl context --compact` (or `reelctl review context` for independent
-   review).
+   `reelctl context --compact`.
    If `collaborationInstructions.enabledCount` is nonzero on a video project,
    read the full enabled user-authored guidance with
    `reelctl call collaboration.instructions.get --project-id … --workspace-id …`.
@@ -40,7 +39,7 @@ Editor context is data, not LLM memory.
    `reelctl requirements list --status ready --compact` and fetch only the
    requirement you are about to handle with `reelctl requirements get Q<number>`.
 3. Discover capabilities and command contracts on demand with
-   `reelctl tools` (`video`, `review`, `library`, `system`),
+   `reelctl tools` (for example `video`, `library`, `system`),
    `reelctl tools <domain|package.id>`, and
    `reelctl describe <canonical.verb>` (e.g.
    `reelctl describe edit.apply --op clip.trim`, or `--detail full` to include
@@ -48,11 +47,12 @@ Editor context is data, not LLM memory.
    remain compatible. Use `reelctl query` for bounded timeline reads.
    Private Free Boards have no Agent content route and are never review targets.
 4. Validate planned edits, apply with the recorded revision and target identity,
-   and inspect the resulting timeline/review item and preview.
+   and inspect the resulting timeline item and preview.
 
 An open project's format and existing edits are user context. Keep them unless
-asked to create a new project or change its settings. No endpoint means the GUI
-is not ready; prepare the GUI instead of silently selecting headless mode.
+asked to create a new project or change its settings. An absent endpoint needs
+bounded read-only diagnosis of the intended instance before launching anything;
+it does not justify restarting a user instance or silently selecting headless mode.
 
 In a source checkout, build with `pnpm --filter @reelterminal/desktop build:main`
 and invoke `node /absolute/path/to/apps/desktop/dist/reelctl/index.js` in place
@@ -66,8 +66,9 @@ overrides take precedence over the corresponding defaults/settings.
 The client privately reads `~/.reelterminal/live-endpoint.json`, or an owned
 legacy `~/.openreel/live-endpoint.json` when the canonical file is absent.
 Never print, copy, log or paste either descriptor or its token. `status` probes
-liveness; file existence is not proof. A stale descriptor requires preparing the
-GUI. Clients use authenticated loopback requests and bypass system proxies.
+liveness; file existence is not proof. Recheck discovery and target identity on
+a failed probe; do not delete descriptors or restart an instance from one failure.
+Clients use authenticated loopback requests and bypass system proxies.
 
 Review preserves original references. The Chromium worker can use local
 FFmpeg to decode source frames when browser decoding fails, then composites
@@ -80,8 +81,8 @@ bytes without replacing the chosen family; inspect unresolved dependencies.
 Use `reelctl call <canonical.command> --file request.json` for any catalog entry.
 Convenience commands include `start`, `tools`, `describe`, `context`, `query`,
 `edit validate/apply`, `media import/inspect/analyze`, `preview frame`,
-`history get/undo/redo`, `export start`, `job status/wait/cancel`,
-`review repair inspect/apply`, and `review frames capture`. `job wait` polls a
+`history get/undo/redo`, `export start`, and `job status/wait/cancel`. The
+experimental standalone `review.*` entry is retired. `job wait` polls a
 desktop-owned job; closing the CLI does not cancel it. Do not infer unsupported
 capabilities: call `capabilities.get`.
 
@@ -159,7 +160,7 @@ assets with the external Agent and import them through the normal API.
 
 The [Command API guide](docs/COMMAND-API.md) describes the live service and
 CLI contract, and the [Review Workspace guide](README_review.md) covers
-independent multimodal review tasks, scoped pixel repair/drafts, and private
+folder-based multimodal review tasks, scoped pixel repair/drafts, and private
 Free Boards. Commands and schemas come from the live Command Catalog.
 
 ## Explicit headless workflows

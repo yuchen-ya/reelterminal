@@ -51,7 +51,7 @@ export class TaskReviewStore implements TaskReviewBridge, TaskReviewContextBridg
 
   private async load(root: string): Promise<State> {
     // This also validates the metadata directory and retains the real-folder task identity.
-    const folder = await this.folders.open(root);
+    const folder = await this.folders.readSnapshot(root);
     if (!(await this.checkMetadataFile(root))) {
       const initial: State = { taskId: folder.taskId, revision: 0, policyRevision: 0, goal: '', contextHistory: createTaskContextHistory(folder.taskId), goalHistory: [], goalHistoryIncomplete: false, sources: [], sourceFiles: [], units: [], decisions: [], decisionActions: [], drafts: [], issues: [], planRevisions: [], history: [], artifacts: [] };
       await this.save(root, initial);
@@ -85,6 +85,16 @@ export class TaskReviewStore implements TaskReviewBridge, TaskReviewContextBridg
     const decisionIds = new Set(state.decisions.map(decision => decision.id));
     const recordedDecisionIds = state.decisionActions.filter(action => action.kind === 'decide').map(action => action.decisionId);
     if (decisionIds.size !== state.decisions.length || new Set(recordedDecisionIds).size !== recordedDecisionIds.length || recordedDecisionIds.length !== decisionIds.size || state.decisionActions.some(action => !decisionIds.has(action.decisionId))) throw new Error('Invalid decision history identities');
+    const batchIds = new Set<string>();
+    const batchedDecisions = new Set<string>();
+    for (const batch of state.decisionBatches ?? []) {
+      if (batchIds.has(batch.id) || decisionIds.has(batch.id)) throw new Error('Invalid decision batch identity');
+      batchIds.add(batch.id);
+      for (const decisionId of batch.decisionIds) {
+        if (!decisionIds.has(decisionId) || batchedDecisions.has(decisionId)) throw new Error('Invalid decision batch membership');
+        batchedDecisions.add(decisionId);
+      }
+    }
     for (const artifact of state.artifacts) {
       if (!sources.has(artifact.sourceVersionId) || artifact.unitIds.some(id => units.get(id)?.sourceVersionId !== artifact.sourceVersionId))
         throw new Error('Invalid task artifact identities');
@@ -138,7 +148,15 @@ export class TaskReviewStore implements TaskReviewBridge, TaskReviewContextBridg
     return unit;
   }
 
-  private async currentSource(state: State, root: string, id: string): Promise<TaskSourceVersion> {
+  private async mediaSourcePaths(state: State, root: string, sourceIds: string[]): Promise<Map<string, string>> {
+    const ids = new Set(sourceIds);
+    const entries = [...new Set(state.sources.filter(source => ids.has(source.id) && !isTextTaskSource(source)).map(source => source.entryId))];
+    if (!entries.length) return new Map();
+    const paths = await this.folders.resolvePaths(root, entries);
+    if (paths.length !== entries.length) throw new Error('Invalid media source paths');
+    return new Map(entries.map((entryId, index) => [entryId, paths[index]]));
+  }
+  private async currentSource(state: State, root: string, id: string, mediaPaths?: Map<string, string>): Promise<TaskSourceVersion> {
     const source = state.sources.find(source => source.id === id);
     if (!source) throw new Error('Source version not found');
     const latest = state.sources.filter(candidate => candidate.entryId === source.entryId).at(-1);
@@ -149,9 +167,9 @@ export class TaskReviewStore implements TaskReviewBridge, TaskReviewContextBridg
       const read = await this.folders.readTextFile(root, source.entryId);
       if (read.hash !== source.hash) throw new Error('Source changed; import its new version before reviewing');
     } else {
-      const [absolute] = await this.folders.resolvePaths(root, [source.entryId]);
+      const absolute = mediaPaths?.get(source.entryId) ?? (await this.folders.resolvePaths(root, [source.entryId]))[0];
       const facts = await fs.lstat(absolute);
-      if (facts.size !== file.size || facts.mtimeMs !== file.mtimeMs || (file.ctimeMs !== undefined && facts.ctimeMs !== file.ctimeMs)) throw new Error('Source changed; refresh its media version before reviewing');
+      if (!facts.isFile() || facts.isSymbolicLink() || facts.size !== file.size || facts.mtimeMs !== file.mtimeMs || (file.ctimeMs !== undefined && facts.ctimeMs !== file.ctimeMs)) throw new Error('Source changed; refresh its media version before reviewing');
     }
     return source;
   }
@@ -422,15 +440,18 @@ export class TaskReviewStore implements TaskReviewBridge, TaskReviewContextBridg
       if (args.replacementText !== undefined && !args.replacementText.trim()) throw new Error('Replacement text must not be empty');
       if (args.replacementText !== undefined && !isTextTaskUnit(unit)) throw new Error('Media units cannot receive replacement text');
       const id = args.decisionId ?? randomUUID();
-      if (state.decisions.some(item => item.id === id)) throw new Error('Decision identity already exists; query its outcome');
+      if (state.decisions.some(item => item.id === id) || state.decisionBatches?.some(item => item.id === id)) throw new Error('Decision identity already exists; query its outcome');
       const criteriaBasis = resolveUnitCriteriaBasis({ root, ...state }, state.contextHistory, args).basis;
       state.decisions.push({ id, unitId: args.unitId, sourceVersionId: args.sourceVersionId, policyRevision: state.policyRevision, purpose: args.purpose, status: args.status, note: args.note, ...(args.replacementText !== undefined ? { replacementText: args.replacementText } : {}), createdAt: Date.now(), criteriaBasis });
       state.decisionActions.push({ id: randomUUID(), kind: 'decide', decisionId: id, createdAt: Date.now() });
     });
     if (!args.decisionId) return perform();
-    const key = args.taskId + ':' + args.decisionId;
+    return this.trackDecision(args, args.decisionId, perform);
+  }
+  private trackDecision(target: { root: string; taskId: string }, decisionId: string, perform: () => Promise<TaskReviewSnapshot>): Promise<TaskReviewSnapshot> {
+    const key = target.taskId + ':' + decisionId;
     if (TaskReviewStore.decisionRequests.has(key)) throw new Error('Decision request already tracked; query its outcome');
-    const entry = { root: args.root, done: Promise.resolve(), completed: false };
+    const entry = { root: target.root, done: Promise.resolve(), completed: false };
     TaskReviewStore.decisionRequests.set(key, entry);
     const result = perform();
     entry.done = result.then(() => undefined, () => undefined).then(() => {
@@ -442,13 +463,76 @@ export class TaskReviewStore implements TaskReviewBridge, TaskReviewContextBridg
     });
     return result;
   }
+  async decideBatch(input: Input<'decideBatch'>): Promise<TaskReviewSnapshot> {
+    const args = taskReviewSchemas.decideBatch.parse(input);
+    return this.trackDecision(args, args.batchId, () => this.commit(args, async (state, root) => {
+      const ids = new Set(state.decisions.map(item => item.id));
+      for (const batch of state.decisionBatches ?? []) ids.add(batch.id);
+      if (ids.has(args.batchId)) throw new Error('Decision batch identity already exists; query its outcome');
+      ids.add(args.batchId);
+      const units = new Set<string>();
+      for (const target of args.targets) {
+        if (units.has(target.unitId)) throw new Error('Duplicate batch target');
+        if (ids.has(target.decisionId)) throw new Error('Duplicate batch decision identity');
+        units.add(target.unitId); ids.add(target.decisionId);
+      }
+      const snapshot = { root, ...state };
+      const mediaPaths = await this.mediaSourcePaths(state, root, args.targets.map(target => target.sourceVersionId));
+      const checkedSources = new Set<string>();
+      const decisions = [];
+      for (const target of args.targets) {
+        const unit = this.unit(state, target);
+        if (!isCurrentTaskUnit(snapshot, unit)) throw new Error('Review unit has been replaced by a newer media result');
+        if (!checkedSources.has(target.sourceVersionId)) {
+          await this.currentSource(state, root, target.sourceVersionId, mediaPaths);
+          checkedSources.add(target.sourceVersionId);
+        }
+        const reference = { unitId: target.unitId, sourceVersionId: target.sourceVersionId, purpose: args.purpose };
+        if (args.pendingOnly && selectTaskDecision(snapshot, reference)) throw new Error('A batch target already has a decision; refresh the pending selection');
+        decisions.push({ id: target.decisionId, ...reference, policyRevision: state.policyRevision, status: args.status, note: args.note, createdAt: Date.now(), criteriaBasis: resolveUnitCriteriaBasis(snapshot, state.contextHistory, reference).basis });
+      }
+      state.decisions.push(...decisions);
+      state.decisionActions.push(...decisions.map(decision => ({ id: randomUUID(), kind: 'decide' as const, decisionId: decision.id, createdAt: Date.now() })));
+      (state.decisionBatches ??= []).push({ id: args.batchId, decisionIds: decisions.map(decision => decision.id) });
+    }));
+  }
+  async undoDecisionBatch(input: Input<'undoDecisionBatch'>): Promise<TaskReviewSnapshot> {
+    return this.changeDecisionBatchHistory('undo', taskReviewSchemas.undoDecisionBatch.parse(input));
+  }
+  async redoDecisionBatch(input: Input<'redoDecisionBatch'>): Promise<TaskReviewSnapshot> {
+    return this.changeDecisionBatchHistory('redo', taskReviewSchemas.redoDecisionBatch.parse(input));
+  }
+  private async changeDecisionBatchHistory(kind: 'undo' | 'redo', args: Input<'undoDecisionBatch'>): Promise<TaskReviewSnapshot> {
+    return this.commit(args, async (state, root) => {
+      const batch = state.decisionBatches?.find(batch => batch.id === args.batchId);
+      if (!batch) throw new Error('Decision batch not found');
+      const snapshot = { root, ...state };
+      const decisions = new Map(state.decisions.map(decision => [decision.id, decision]));
+      const mediaPaths = await this.mediaSourcePaths(state, root, batch.decisionIds.map(id => decisions.get(id)!.sourceVersionId));
+      const checkedSources = new Set<string>();
+      for (const decisionId of batch.decisionIds) {
+        const decision = decisions.get(decisionId)!;
+        if (decision.policyRevision !== state.policyRevision) throw new Error('Decision policy is no longer current');
+        if (!checkedSources.has(decision.sourceVersionId)) {
+          await this.currentSource(state, root, decision.sourceVersionId, mediaPaths);
+          checkedSources.add(decision.sourceVersionId);
+        }
+        if (selectTaskDecisionHistory(snapshot, decision)[kind]?.id !== decisionId) throw new Error(`Decision batch is not available for ${kind}`);
+      }
+      state.decisionActions.push(...batch.decisionIds.map(decisionId => ({ id: randomUUID(), kind, decisionId, createdAt: Date.now() })));
+    });
+  }
   async getDecisionOutcome(input: { root: string; taskId: string; decisionId: string }) {
     const args = taskReviewSchemas.getDecisionOutcome.parse(input);
     const entry = TaskReviewStore.decisionRequests.get(args.taskId + ':' + args.decisionId);
     if (entry?.root === args.root) await entry.done;
     const snapshot = await this.open(args.root);
     if (snapshot.taskId !== args.taskId) throw new Error('Task identity changed');
-    const present = snapshot.decisions.some(item => item.id === args.decisionId) && snapshot.decisionActions.some(item => item.kind === 'decide' && item.decisionId === args.decisionId);
+    const batch = snapshot.decisionBatches?.find(batch => batch.id === args.decisionId);
+    const expectedIds = batch?.decisionIds ?? [args.decisionId];
+    const decisions = new Set(snapshot.decisions.map(item => item.id));
+    const actions = new Set(snapshot.decisionActions.filter(item => item.kind === 'decide').map(item => item.decisionId));
+    const present = expectedIds.every(id => decisions.has(id) && actions.has(id));
     const outcome: 'committed' | 'not-committed' | 'unknown' = present ? 'committed' : entry?.root === args.root && entry.completed ? 'not-committed' : 'unknown';
     return { snapshot, decisionId: args.decisionId, outcome };
   }
@@ -489,7 +573,8 @@ export class TaskReviewStore implements TaskReviewBridge, TaskReviewContextBridg
     return this.commit(args, async (state, root) => {
       if (state.policyRevision !== args.expectedPolicyRevision) throw new Error('Task policy changed during analysis');
       const scope = new Set(args.sourceVersionIds);
-      for (const sourceId of scope) await this.currentSource(state, root, sourceId);
+      const mediaPaths = await this.mediaSourcePaths(state, root, args.sourceVersionIds);
+      for (const sourceId of scope) await this.currentSource(state, root, sourceId, mediaPaths);
       const authorized = args.authorizedSourceVersionIds ?? args.sourceVersionIds;
       if ([...scope].some(sourceId => !authorized.includes(sourceId))) throw new Error('Analysis is outside the authorized source scope');
       for (const record of [...args.issues, ...args.steps, ...(args.sceneSuggestions ?? []), ...(args.proposal ? [args.proposal] : [])]) {

@@ -58,7 +58,7 @@ const pillDetails: Record<TaskDecisionStatus, string> = {
 const pillActiveClasses: Record<TaskDecisionStatus, string> = {
   kept: "bg-accent font-bold text-accent-fg",
   rework: "bg-amber-400 font-bold text-black",
-  discarded: "bg-rose-500 font-bold text-white",
+  discarded: "bg-zinc-500 font-bold text-white",
 };
 
 export function StageUnitCard({

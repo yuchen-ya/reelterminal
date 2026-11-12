@@ -38,6 +38,25 @@ async function fixture(backend: TaskSegmentationBackend) {
 }
 
 describe.skipIf(!tools)('media task domain with injected segmentation (not a model-quality claim)', () => {
+  it('previews original images without decoding, scanning the folder, changing revision or creating media assets', async () => {
+    const backend = { modelVersion: 'unused-preview-backend', segment: vi.fn(async (request: SegmentationRequest) => mask(request)) };
+    const f = await fixture(backend);
+    const metadata = path.join(f.root, '.reelterminal', 'task-review.json');
+    const bytes = await fs.readFile(metadata, 'utf8');
+    const scan = vi.spyOn(f.folders, 'scan');
+    const preview = await f.service.thumbnail(f.target);
+    expect(preview).toEqual({ url: `app://reelterminal/task-media/${f.state.taskId}/source-${f.source.id}`, width: 2, height: 2 });
+    expect(await f.service.resolveAsset(f.state.taskId, `source-${f.source.id}`)).toEqual({ path: path.join(f.root, 'source.png'), mime: 'image/png' });
+    expect(scan).not.toHaveBeenCalled();
+    expect(backend.segment).not.toHaveBeenCalled();
+    expect(await fs.readFile(metadata, 'utf8')).toBe(bytes);
+    expect((await f.tasks.open(f.root)).revision).toBe(f.state.revision);
+    expect((await f.tasks.open(f.root)).mediaAssets ?? []).toEqual([]);
+    await expect(fs.stat(path.join(f.root, '.reelterminal', 'media'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(f.service.thumbnail({ ...f.target, taskId: '00000000-0000-4000-8000-000000000000' })).rejects.toThrow('identity');
+    await fs.appendFile(path.join(f.root, 'source.png'), Buffer.from([0]));
+    await expect(f.service.thumbnail(f.target)).rejects.toThrow('changed');
+  }, 30000);
   it('accepts a labeled region without approving it, preserves source alpha in a transparent cutout, and exports original/cutout/mask distinctly', async () => {
     const backend = { modelVersion: 'injected-contract-test', promptTokenLimit: 32, segment: vi.fn(async (request: SegmentationRequest) => mask(request)) };
     const f = await fixture(backend);
@@ -60,6 +79,7 @@ describe.skipIf(!tools)('media task domain with injected segmentation (not a mod
     const regionOpen = await f.service.open({ ...f.target, unitId: region.id });
     expect(regionOpen.asset?.kind).toBe('cutout');
     expect(regionOpen.maskAsset?.kind).toBe('mask');
+    expect(await f.service.thumbnail({ ...f.target, unitId: region.id })).toEqual({ url: regionOpen.url, width: 2, height: 2 });
     const decoded = await decodeTaskReviewImage({ source: { root: f.root, relativePath: regionOpen.asset!.relativePath }, artifactRoot: path.join(f.root, '.reelterminal', 'media', 'work'), frameId: 'verify-transparent-output' });
     expect([3, 7, 11, 15].map(index => decoded.frame.rgba[index])).toEqual([255, 64, 0, 0]);
     const decided = await f.tasks.decide({ ...commit(regionOpen.snapshot), sourceVersionId: region.sourceVersionId, unitId: region.id, purpose: 'review', status: 'kept', note: 'Human explicitly accepts this cutout' });

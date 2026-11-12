@@ -57,6 +57,10 @@ export interface TaskDecision {
   createdAt: number;
   criteriaBasis?: TaskUnitCriteriaBasis;
 }
+export interface TaskDecisionBatch {
+  id: string;
+  decisionIds: string[];
+}
 export interface TaskDecisionAction {
   id: string;
   kind: 'decide' | 'undo' | 'redo';
@@ -132,6 +136,7 @@ export interface TaskReviewSnapshot {
   units: TaskReviewUnit[];
   decisions: TaskDecision[];
   decisionActions: TaskDecisionAction[];
+  decisionBatches?: TaskDecisionBatch[];
   drafts: TaskDraft[];
   issues: TaskIssue[];
   planRevisions: TaskPlanRevision[];
