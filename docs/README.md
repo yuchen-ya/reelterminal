@@ -17,6 +17,7 @@
 
 ## System behavior
 
+- [`CLI-CONTRACT-CONSISTENCY-SPEC-2026-11-09.md`](CLI-CONTRACT-CONSISTENCY-SPEC-2026-11-09.md) — controlled-media source consistency, video delivery roots, validation exit codes, offline help and packaged acceptance; completed checks and evidence are in [`CLI-CONTRACT-CONSISTENCY-ACCEPTANCE-2026-11-09.md`](CLI-CONTRACT-CONSISTENCY-ACCEPTANCE-2026-11-09.md).
 - [`product-scope.md`](product-scope.md) — product boundary and feature scope.
 - [`design-principles.md`](design-principles.md) — current engineering principles.
 - [`NAMING-AND-COMPATIBILITY.md`](NAMING-AND-COMPATIBILITY.md) — names and
