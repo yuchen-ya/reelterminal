@@ -59,7 +59,8 @@ test("v1.5 real bridge: streamed import, atomic retiming history, reopen and ren
     const source = path.join(launched.runDir, "streamed-colours.mp4");
     encode(["-f", "lavfi", "-i", "color=c=0xff0000:s=320x180:r=30:d=2[r];color=c=0x00ff00:s=320x180:r=30:d=2[g];color=c=0x0000ff:s=320x180:r=30:d=2[b];[r][g][b]concat=n=3:v=1:a=0",
       "-vf", "scale=in_color_matrix=bt601:out_color_matrix=bt709:out_range=tv", "-c:v", "libx264", "-pix_fmt", "yuv420p",
-      "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv", source]);
+      "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
+      "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709", source]);
     expect(probe(source).streams[0]).toMatchObject({ color_space: "bt709", color_primaries: "bt709", color_transfer: "bt709", color_range: "tv" });
     const cover = path.join(launched.runDir, "cover.png");
     encode(["-i", source, "-frames:v", "1", cover]);
@@ -200,10 +201,11 @@ test("v1.5 real providers: HTML motion pixels and explicit remix registration su
     await vi.waitFor(async () => { completed = await call("job.status", { jobId: started.jobId }); expect(["done", "error", "cancelled"]).toContain(completed.state); }, { timeout: 60_000, interval: 200 });
     expect(completed.state, JSON.stringify(completed.error)).toBe("done");
     expect(completed).toMatchObject(target);
-    const audio = JSON.parse(execFileSync(ffprobe, ["-v", "error", "-show_streams", "-of", "json", completed.artifact.path], { encoding: "utf8", windowsHide: true })).streams[0];
+    expect(completed.result.path).toBeTypeOf("string");
+    const audio = JSON.parse(execFileSync(ffprobe, ["-v", "error", "-show_streams", "-of", "json", completed.result.path], { encoding: "utf8", windowsHide: true })).streams[0];
     expect(audio).toMatchObject({ codec_name: "pcm_s24le", sample_rate: "48000", channels: 2 });
     expect(Number(audio.duration)).toBeCloseTo(16, 2);
-    const pcm = tool(["-i", completed.artifact.path, "-f", "f32le", "pipe:1"]);
+    const pcm = tool(["-i", completed.result.path, "-f", "f32le", "pipe:1"]);
     expect(pcm.length).toBe(16 * 48_000 * 2 * 4);
     let energy = 0;
     for (let i = 0; i < pcm.length; i += 4) energy += pcm.readFloatLE(i) ** 2;
