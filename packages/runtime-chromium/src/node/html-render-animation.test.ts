@@ -188,12 +188,14 @@ describe("media.render_html animated rendering (real Chromium + ffmpeg)", () => 
     expect(video?.tags?.alpha_mode).toBe("1");
     expect(Number(video?.nb_read_frames ?? video?.nb_frames)).toBe(5);
 
-    // Explicit libvpx-vp9 decoder exposes the real yuva420p alpha plane
-    const { stdout: vpxProbeOut } = await runProcess(binaries.ffprobe, [
-      "-v", "error", "-c:v", "libvpx-vp9", "-show_streams", "-of", "json", rendered.value.path,
+    // ffprobe 6.1 cannot select a decoder. Inspect the actual libvpx-decoded
+    // frame format with ffmpeg, without forcing an output pixel format; the
+    // default native VP9 probe can report yuv420p even when alpha is present.
+    const { stderr: decodedInfo } = await runProcess(binaries.ffmpeg, [
+      "-hide_banner", "-v", "info", "-c:v", "libvpx-vp9", "-i", rendered.value.path,
+      "-vf", "showinfo", "-frames:v", "1", "-f", "null", "-",
     ]);
-    const vpxProbe = JSON.parse(vpxProbeOut.toString("utf8")) as { streams?: Array<{ pix_fmt?: string }> };
-    expect(vpxProbe.streams?.[0]?.pix_fmt).toBe("yuva420p");
+    expect(decodedInfo).toMatch(/\bfmt:yuva420p\b/);
 
     const { stdout: earlyRgba } = await runProcess(binaries.ffmpeg, [
       "-v", "error", "-c:v", "libvpx-vp9", "-i", rendered.value.path,
