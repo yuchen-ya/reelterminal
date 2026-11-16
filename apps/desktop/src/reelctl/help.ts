@@ -13,7 +13,7 @@ import {
 } from "./commands";
 
 const TOOLS_USAGE = "Usage: reelctl tools [video|review|library|system|<package.id>]";
-const CALL_USAGE = "Usage: reelctl call <command> [--file request.json | --stdin] [--name value]";
+const CALL_USAGE = "Usage: reelctl call <command> [--stdin | --file <path>] [--name value]";
 const ENVIRONMENT_USAGE = "Usage: reelctl environment get|set --file config.json|check|test --file speech.wav --duration 5";
 
 function isHelpFlag(token: string): boolean {
@@ -90,7 +90,7 @@ function scopedHelp(tokens: readonly string[], exact: boolean): string | undefin
   }
   if (action !== "call") return undefined;
   const verb = tokens[2];
-  if (verb === undefined) return `Usage: reelctl ${kind} call <command> [--file request.json | --stdin]`;
+  if (verb === undefined) return `Usage: reelctl ${kind} call <command> [--stdin | --file <path>]`;
   if (exact && tokens.length > 3) return unknownCommand(tokens);
   if (verb === "capabilities.get" || verb === "session.describe") return facadeCommandHelp(verb, tokens.slice(0, 3));
   if (kind === "review" ? !verb.startsWith("review.") : verb.startsWith("review.")) {

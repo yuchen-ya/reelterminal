@@ -237,7 +237,7 @@ export function inspectionRequestKey(parts: InspectionRequestParts): string {
 export function pendingArtifactPath(
   dir: string,
   finalStem: string,
-  ext: "png" | "jpg",
+  ext: "png" | "jpg" | "mp4" | "webm",
 ): string {
   return resolvePath(dir, `.${finalStem}.${randomUUID()}.${ext}`);
 }

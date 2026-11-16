@@ -314,9 +314,13 @@ export interface FramesEncoderOptions {
   readonly width: number;
   readonly height: number;
   readonly frameRate: number;
-  /** x264 CRF; 18 is visually transparent at these sizes. */
+  /** x264 CRF (default 18) or VP9 CRF (default 24). */
   readonly crf?: number;
   readonly preset?: string;
+  /** Output container/codec (default "mp4"). */
+  readonly format?: "mp4" | "webm";
+  /** Enables alpha channel (yuva420p) when format is "webm". */
+  readonly transparent?: boolean;
   readonly destPath: string;
 }
 
@@ -346,25 +350,42 @@ export function startFramesEncoder(
   ffmpegPath: string,
   options: FramesEncoderOptions,
 ): FramesEncoderHandle {
-  const args = [
-    "-y",
-    "-f", "image2pipe",
-    "-framerate", String(options.frameRate),
-    "-i", "pipe:0",
-    "-an",
-    "-c:v", "libx264",
-    "-preset", options.preset ?? "veryfast",
-    "-crf", String(options.crf ?? 18),
-    "-vf", "scale=out_color_matrix=bt709:out_range=tv",
-    "-pix_fmt", "yuv420p",
-    "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709",
-    "-color_range", "tv",
-    "-movflags", "+faststart",
-    // Explicit format: destPath may be a `.part` temp name, whose extension
-    // would break ffmpeg's format inference.
-    "-f", "mp4",
-    options.destPath,
-  ];
+  const format = options.format ?? "mp4";
+  const args =
+    format === "webm"
+      ? [
+          "-y",
+          "-f", "image2pipe",
+          "-framerate", String(options.frameRate),
+          "-i", "pipe:0",
+          "-an",
+          "-c:v", "libvpx-vp9",
+          "-pix_fmt", options.transparent ? "yuva420p" : "yuv420p",
+          "-b:v", "0",
+          "-crf", String(options.crf ?? 24),
+          ...(options.transparent ? ["-auto-alt-ref", "0"] : []),
+          "-f", "webm",
+          options.destPath,
+        ]
+      : [
+          "-y",
+          "-f", "image2pipe",
+          "-framerate", String(options.frameRate),
+          "-i", "pipe:0",
+          "-an",
+          "-c:v", "libx264",
+          "-preset", options.preset ?? "veryfast",
+          "-crf", String(options.crf ?? 18),
+          "-vf", "scale=out_color_matrix=bt709:out_range=tv",
+          "-pix_fmt", "yuv420p",
+          "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709",
+          "-color_range", "tv",
+          "-movflags", "+faststart",
+          // Explicit format: destPath may be a `.part` temp name, whose extension
+          // would break ffmpeg's format inference.
+          "-f", "mp4",
+          options.destPath,
+        ];
   const child = spawn(ffmpegPath, args, {
     shell: false,
     windowsHide: true,

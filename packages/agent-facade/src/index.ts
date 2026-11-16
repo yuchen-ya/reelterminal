@@ -41,6 +41,8 @@ import type {
   AudioProcessDenoiseResult,
   AudioProcessSeparateParams,
   AudioProcessSeparateResult,
+  AudioProcessRemixParams,
+  AudioProcessRemixResult,
   AudioProcessNormalizeParams,
   AudioProcessNormalizeResult,
   AudioProcessRegisterParams,
@@ -133,6 +135,9 @@ export interface AgentFacade extends BundledToolBindings, ReviewFacadeBindings {
   readonly "audio.process.separate": (
     params: AudioProcessSeparateParams,
   ) => Promise<FacadeResult<AudioProcessSeparateResult>>;
+  readonly "audio.process.remix": (
+    params: AudioProcessRemixParams,
+  ) => Promise<FacadeResult<AudioProcessRemixResult>>;
   readonly "audio.process.register": (
     params: AudioProcessRegisterParams,
   ) => Promise<FacadeResult<AudioProcessRegisterResult>>;
@@ -305,6 +310,7 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "audio.process.normalize": (params) => session.audioProcessNormalize(params),
     "audio.process.denoise": (params) => session.audioProcessDenoise(params),
     "audio.process.separate": (params) => session.audioProcessSeparate(params),
+    "audio.process.remix": (params) => session.audioProcessRemix(params),
     "audio.process.register": (params) => session.audioProcessRegister(params),
     "timeline.get": () => session.timelineGet(),
     "timeline.query": (params) => session.timelineQuery(params),
@@ -441,10 +447,12 @@ export type {
   PixelCompareRequest,
   ProviderPreflight,
   RenderedFrameInfo,
+  RenderedHtmlAnimationInfo,
   RenderedHtmlPngInfo,
   RenderContactSheetRequest,
   RenderedContactSheetInfo,
   RenderFrameRequest,
+  RenderHtmlAnimationRequest,
   RenderHtmlPngRequest,
   RenderProvider,
   VerifyArtifactRequest,
@@ -506,6 +514,8 @@ export type {
   ManualSearchResult,
 } from "./gui-manual";
 export * from "./types";
+export type { RemixAudioArtifact, AudioRemixSeam } from "./audio-remix";
+export { AUDIO_REMIX_MAX_DURATION_SEC } from "./audio-remix";
 
 export { defineTool, definePlugin, bindTools } from "./plugin-api";
 export type { ToolDefinition, ToolContext, PluginBindings } from "./plugin-api";

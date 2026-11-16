@@ -43,9 +43,15 @@ import type {
   ArtifactRef,
   VerifyReport,
 } from "./providers";
+export type {
+  ArtifactRef,
+  ExportJobArtifact,
+  ExportSidecarArtifacts,
+} from "./providers";
 import type { NormalizeAudioArtifact } from "./audio-normalize";
 import type { DenoiseAudioArtifact } from "./audio-denoise";
 import type { SeparatedAudioArtifact } from "./audio-separate";
+import type { RemixAudioArtifact } from "./audio-remix";
 import { WORKSPACE_VERBS } from "./workspace-library";
 export { WORKSPACE_VERBS } from "./workspace-library";
 export type { WorkspaceVerb } from "./workspace-library";
@@ -79,6 +85,7 @@ export const FACADE_VERBS = [
   "audio.process.normalize",
   "audio.process.denoise",
   "audio.process.separate",
+  "audio.process.remix",
   "audio.process.register",
   "analysis.list",
   "analysis.get",
@@ -389,6 +396,8 @@ export interface Capabilities {
   readonly audioDenoise: CapabilityStatus;
   /** Optional local Demucs htdemucs vocal/instrumental separation. */
   readonly audioSeparation: CapabilityStatus;
+  /** Local beat-grid bar segmentation, loop-body remixing, seam crossfade, and outro alignment. */
+  readonly audioRemix: CapabilityStatus;
   /** User-level material library (material.* verbs); headless reports unavailable. */
   readonly materialLibrary: import("./material-library").MaterialLibraryCapability;
   /** User-level custom fonts (font.* verbs); headless reports unavailable. */
@@ -762,6 +771,33 @@ export interface AudioProcessSeparateParams {
 
 export type AudioProcessSeparateResult = AudioProcessNormalizeResult;
 
+export interface AudioProcessRemixLoopBodyBars {
+  readonly startBar: number;
+  readonly endBar: number;
+}
+
+export interface AudioProcessRemixOutroAlign {
+  readonly outroStartBar?: number;
+  readonly landAtSec?: number;
+  readonly tailFadeOutSec?: number;
+}
+
+export interface AudioProcessRemixParams {
+  readonly mediaId: string;
+  readonly audioStream?: number;
+  readonly targetDurationSec: number;
+  readonly bpm?: number;
+  readonly beatsPerBar?: number;
+  readonly loopBodyBars?: AudioProcessRemixLoopBodyBars;
+  readonly outroAlign?: AudioProcessRemixOutroAlign;
+  readonly crossfadeMs?: number;
+  readonly targetIlu?: number;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey: string;
+}
+
+export type AudioProcessRemixResult = AudioProcessNormalizeResult;
+
 export interface AudioProcessRegisterParams {
   readonly jobId: string;
   readonly expectedRevision: number;
@@ -783,6 +819,18 @@ export type AudioProcessRegisterResult = MediaImportResult;
  * subresources resolve only inside assetsRoot; the output PNG is
  * temp-then-published, sha256-hashed and re-inspected (PNG magic + IHDR).
  */
+export interface MediaRenderHtmlAnimationOptions {
+  /** Total rendered video duration in seconds: (0, 30]. */
+  readonly durationSec: number;
+  /** Frame rate in frames per second: integer in [10, 60] (default 30). */
+  readonly fps?: number;
+  /**
+   * Output video format: "webm" (VP9, supports alpha via yuva420p; default
+   * when transparent !== false) or "mp4" (H.264; default when transparent === false).
+   */
+  readonly format?: "mp4" | "webm";
+}
+
 export interface MediaRenderHtmlParams {
   /**
    * {"kind":"path","path":...} — an .html file inside a configured media
@@ -803,6 +851,11 @@ export interface MediaRenderHtmlParams {
   readonly transparent?: boolean;
   /** Hard deadline for the whole render. Default 30000, max 120000. */
   readonly timeoutMs?: number;
+  /**
+   * Optional deterministic frame-by-frame animation render into MP4/WebM.
+   * When omitted, renders a single static PNG.
+   */
+  readonly animation?: MediaRenderHtmlAnimationOptions;
   /**
    * Absolute output directory inside a media root. Default:
    * `<mediaRoots[0]>/jobs/html-render/<requestKey>/`.
@@ -826,6 +879,14 @@ export interface MediaRenderHtmlResult {
   /** Subresources that were blocked or missing (render still succeeded). */
   readonly missingAssets: readonly string[];
   readonly replayed: boolean;
+  /** Output artifact format ("mp4" | "webm" for animated renders). */
+  readonly format?: "png" | "mp4" | "webm";
+  /** Exact rendered frame count (animated renders only). */
+  readonly frameCount?: number;
+  /** Rendered frame rate in fps (animated renders only). */
+  readonly fps?: number;
+  /** Rendered video duration in seconds (animated renders only). */
+  readonly durationSec?: number;
 }
 
 export const MEDIA_ANALYSIS_TYPES = [  "technicalQuality",
@@ -1380,6 +1441,7 @@ export const EDIT_OP_TYPES = [
   "workAsset.rename",
   "workAsset.delete",
   "workAsset.instantiate",
+  "timeline.retimeByAnchors",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -1458,6 +1520,8 @@ export interface ClipAddOp {
   readonly duration?: number;
   readonly inPoint?: number;
   readonly outPoint?: number;
+  /** Optional constant playback speed multiplier in [0.1, 20]. */
+  readonly speed?: number;
   /**
    * Optional deterministic id, so later ops in the SAME batch (e.g.
    * clip.trim) can reference the clip. A fresh id is minted when omitted;
@@ -1573,6 +1637,12 @@ export interface TextDeleteOp {
  * When the project has no graphics track yet, edit.apply creates one in the
  * same atomic batch and undo unit before creating the overlay.
  */
+export interface SvgAnimationInput {
+  readonly type: import("@reelterminal/core/graphics/types").GraphicAnimationType;
+  readonly duration?: number;
+  readonly easing?: string;
+}
+
 export interface SvgCreateOp {
   readonly op: "svg.create";
   /** Raw inline SVG markup (`<svg>…</svg>`), checked by the core ingest gate. */
@@ -1588,6 +1658,12 @@ export interface SvgCreateOp {
   readonly position?: NormalizedPoint;
   /** Normalized anchor within the artwork box (0.5/0.5 = box center). */
   readonly anchor?: NormalizedPoint;
+  readonly trimPathStart?: number;
+  readonly trimPathEnd?: number;
+  readonly trimPathOffset?: number;
+  readonly entryAnimation?: SvgAnimationInput;
+  readonly exitAnimation?: SvgAnimationInput;
+  readonly keyframes?: readonly FacadeKeyframeInput[];
 }
 
 /**
@@ -1605,6 +1681,12 @@ export interface SvgUpdateOp {
   readonly duration?: number;
   readonly position?: NormalizedPoint;
   readonly anchor?: NormalizedPoint;
+  readonly trimPathStart?: number;
+  readonly trimPathEnd?: number;
+  readonly trimPathOffset?: number;
+  readonly entryAnimation?: SvgAnimationInput;
+  readonly exitAnimation?: SvgAnimationInput;
+  readonly keyframes?: readonly FacadeKeyframeInput[];
 }
 
 export interface SvgRemoveOp {
@@ -1719,6 +1801,23 @@ export interface TransitionAddOp {
   readonly type: TransitionType;
   /** Total center-on-cut transition duration, in seconds. */
   readonly duration: number;
+  /** How insufficient source handles are handled ("clamp" default, "strict", or "autoBorrow"). */
+  readonly handlePolicy?: "clamp" | "strict" | "autoBorrow";
+}
+
+export interface TimelineRetimeAnchor {
+  readonly sourceSec: number;
+  readonly timelineSec: number;
+}
+
+export interface TimelineRetimeByAnchorsOp {
+  readonly op: "timeline.retimeByAnchors";
+  readonly clipId?: string;
+  readonly mediaId?: string;
+  readonly trackId?: string;
+  readonly anchors: readonly TimelineRetimeAnchor[];
+  readonly mode?: "splitSegments" | "speedCurve";
+  readonly easing?: "linear" | "smooth" | "step";
 }
 
 export interface TransitionUpdateOp {
@@ -1817,7 +1916,11 @@ export type FacadeKeyframeProperty =
   | "position.y"
   | "scale.x"
   | "scale.y"
-  | "rotation";
+  | "rotation"
+  | "trimPath"
+  | "trimPathStart"
+  | "trimPathEnd"
+  | "trimPathOffset";
 
 export interface FacadeKeyframeInput {
   readonly property: FacadeKeyframeProperty;
@@ -1952,6 +2055,15 @@ export interface ClipSetNoiseReductionOp {
  * the keyframes with the same core kernel the GUI panel uses. An empty
  * synthesis result is rejected, never persisted silently.
  */
+export interface DuckingTailEnvelopeParams {
+  readonly startAfterLastPresenceSec?: number;
+  readonly swellGainRatio: number;
+  readonly swellRampSec?: number;
+  readonly fadeOutDurationSec?: number;
+  readonly fadeOutCurve?: "linear" | "exponential" | "logarithmic" | "s-curve" | "bezier";
+  readonly clipDurationSec?: number;
+}
+
 export interface ClipSetDuckingOp {
   readonly op: "clip.setDucking";
   readonly clipId: string;
@@ -1981,6 +2093,8 @@ export interface ClipSetDuckingOp {
     readonly start: number;
     readonly end: number;
   }[];
+  /** Optional post-speech swell and tail fade-out envelope (for presenceRanges). */
+  readonly tailEnvelope?: DuckingTailEnvelopeParams;
 }
 
 /**
@@ -2023,6 +2137,8 @@ export interface ClipSetDuckingFromAnalysisOp {
   readonly holdTime: number;
   /** Policy when the target already has volume-automation points: "error" (default) rejects the batch; "replace" overwrites them explicitly. */
   readonly existingEnvelope?: "error" | "replace";
+  /** Optional post-speech swell and tail fade-out envelope. */
+  readonly tailEnvelope?: DuckingTailEnvelopeParams;
 }
 
 /**
@@ -2327,7 +2443,8 @@ export type EditOp =
   | WorkAssetCaptureOp
   | WorkAssetRenameOp
   | WorkAssetDeleteOp
-  | WorkAssetInstantiateOp;
+  | WorkAssetInstantiateOp
+  | TimelineRetimeByAnchorsOp;
 
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];
@@ -2600,6 +2717,12 @@ export interface ExportStartParams {
    * configured or the path escapes the jobs output layout.
    */
   readonly destinationPath?: string;
+  /** Optional PNG/JPEG cover image under mediaRoots to mux as attached_pic stream. */
+  readonly coverImagePath?: string;
+  /** Export timeline subtitles (or textClips fallback) as `<stem>.srt` or explicit `.srt` path. */
+  readonly exportSubtitlesSrt?: boolean | string;
+  /** Export project markers as YouTube/Bilibili `<stem>.chapters.txt` or explicit `.txt` path. */
+  readonly exportChaptersTxt?: boolean | string;
   readonly expectedRevision?: number;
   readonly idempotencyKey?: string;
 }
@@ -2747,7 +2870,7 @@ export interface JobStatusView {
    */
   readonly artifact: ArtifactRef | null;
   /** Present for completed analysis or audio-processing jobs; null otherwise. */
-  readonly result: AnalysisJobResult | NormalizeAudioArtifact | DenoiseAudioArtifact | SeparatedAudioArtifact | null;
+  readonly result: AnalysisJobResult | NormalizeAudioArtifact | DenoiseAudioArtifact | SeparatedAudioArtifact | RemixAudioArtifact | null;
   readonly error: { readonly code: string; readonly message: string } | null;
   /**
    * export.start destinationPath outcome (both null when no destination was

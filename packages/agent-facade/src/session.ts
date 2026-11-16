@@ -3,9 +3,9 @@ import { AUDIO_NORMALIZE_MAX_RANGE_SEC } from "./audio-normalize";
 import { REVIEW_VERBS } from "./review";
 import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
 import { AUDIO_SEPARATE_MAX_RANGE_SEC, assertDemucsModelReady } from "./audio-separate";
-import { runAudioNormalizationTask, runAudioDenoiseTask, runAudioSeparationTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
-import type { AudioProcessDenoiseParams, AudioProcessDenoiseResult, AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult, AudioProcessSeparateParams, AudioProcessSeparateResult } from "./types";
-import { AUDIO_PROCESS_DENOISE_SCHEMA, AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA, AUDIO_PROCESS_SEPARATE_SCHEMA } from "./verb-schemas";
+import { runAudioNormalizationTask, runAudioDenoiseTask, runAudioSeparationTask, runAudioRemixTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
+import type { AudioProcessDenoiseParams, AudioProcessDenoiseResult, AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult, AudioProcessRemixParams, AudioProcessRemixResult, AudioProcessSeparateParams, AudioProcessSeparateResult } from "./types";
+import { AUDIO_PROCESS_DENOISE_SCHEMA, AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA, AUDIO_PROCESS_REMIX_SCHEMA, AUDIO_PROCESS_SEPARATE_SCHEMA } from "./verb-schemas";
 import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { analyzeLocalAudio, analyzeSilence, analyzeBeatGrid, audioAnalysisPreflight, resolveSilenceAnalysisParams, AUDIO_LIMITS } from "./audio-analysis";
 import { analyzeSpeechActivity, resolveSpeechVadParams, speechVadRuntimePreflight } from "./speech-vad";
@@ -68,6 +68,12 @@ import {
   resolveDeliveryDestination,
   type DeliveryDestination,
 } from "./delivery";
+import {
+  muxExportCoverImage,
+  prepareExportPublishing,
+  writeExportSidecars,
+  type PreparedExportPublishing,
+} from "./export-publishing";
 import { IdempotencyLedger, stableStringify } from "./idempotency";
 import {
   assertMediaFingerprintsUnchanged,
@@ -86,6 +92,7 @@ import {
   applyClipIdOverride,
   collectEntityIds,
   diffCreatedIds,
+  assertNoTrackClipOverlaps,
   opToCoreActions,
 } from "./ops";
 import { prepareEditOp, type PrepareEditOpOptions } from "./edit-op-preparation";
@@ -355,8 +362,8 @@ export interface AgentFacadeConfig {
 // validation below and the emitted draft-2020-12
 // JSON Schemas (jsonschema.ts) both derive from them.
 
-/** Max media file size accepted for Chromium reads (2 GiB safety valve). */
-const MAX_MEDIA_FILE_BYTES = 2 * 1024 * 1024 * 1024;
+/** Max media file size accepted for Chromium reads (8 GiB safety valve). */
+const MAX_MEDIA_FILE_BYTES = 8 * 1024 * 1024 * 1024;
 
 interface MutationOutcome<T> {
   readonly revision: number;
@@ -1202,7 +1209,18 @@ export class AgentFacadeSession {
         "media.render_html params",
       );
       const provider = this.config.renderProvider;
-      if (!provider || typeof provider.renderHtmlPng !== "function") {
+      if (valid.animation !== undefined) {
+        if (!provider || typeof provider.renderHtmlAnimation !== "function") {
+          throw new FacadeError(
+            "UNSUPPORTED",
+            "media.render_html: no render provider with HTML animation rendering is configured for this session",
+            {
+              requires:
+                "a RenderProvider exposing renderHtmlAnimation (e.g. @reelterminal/runtime-chromium with Chromium + ffmpeg)",
+            },
+          );
+        }
+      } else if (!provider || typeof provider.renderHtmlPng !== "function") {
         throw new FacadeError(
           "UNSUPPORTED",
           "media.render_html: no render provider with HTML rendering is configured for this session",
@@ -1210,6 +1228,22 @@ export class AgentFacadeSession {
             requires:
               "a RenderProvider exposing renderHtmlPng (e.g. @reelterminal/runtime-chromium with the local playwright Chromium)",
           },
+        );
+      }
+      const transparent = valid.transparent ?? true;
+      const animation = valid.animation
+        ? {
+            durationSec: valid.animation.durationSec,
+            fps: valid.animation.fps ?? 30,
+            format:
+              valid.animation.format ?? ((transparent ? "webm" : "mp4") as "mp4" | "webm"),
+          }
+        : undefined;
+      if (animation && transparent && animation.format === "mp4") {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          'media.render_html: animation format "mp4" (H.264 yuv420p) does not support alpha transparency; pass transparent: false or use format: "webm"',
+          { transparent, format: animation.format },
         );
       }
       const roots = this.config.mediaRoots ?? [];
@@ -1228,8 +1262,9 @@ export class AgentFacadeSession {
         assetsRoot: valid.assetsRoot,
         width: valid.width,
         height: valid.height,
-        transparent: valid.transparent ?? true,
+        transparent,
         timeoutMs: valid.timeoutMs,
+        ...(animation !== undefined ? { animation } : {}),
         outputDir: valid.outputDir,
       };
       const prior = this.beginMutation<MediaRenderHtmlResult>(
@@ -1261,6 +1296,7 @@ export class AgentFacadeSession {
           height: valid.height,
           ...(valid.transparent !== undefined ? { transparent: valid.transparent } : {}),
           ...(valid.timeoutMs !== undefined ? { timeoutMs: valid.timeoutMs } : {}),
+          ...(animation !== undefined ? { animation } : {}),
           ...(valid.outputDir !== undefined ? { outputDir: valid.outputDir } : {}),
         },
       });
@@ -1393,6 +1429,49 @@ export class AgentFacadeSession {
       const value = { jobId, sourceRevision };
       this.ledger.set("audio.process.separate", idempotencyKey, { revision: sourceRevision, value, payloadHash: stableStringify(parameters) });
       void runAudioSeparationTask(this.jobs, this.analysisControllers, jobId, controller, {
+        sourcePath, mediaRoots: roots, params: parameters,
+        sourceProjectId: this.project.id, sourceRevision,
+      });
+      return ok({ ...value, kind: "audio-process", state: "queued", replayed: false });
+    });
+  }
+
+  async audioProcessRemix(params: AudioProcessRemixParams): Promise<FacadeResult<AudioProcessRemixResult>> {
+    return this.enqueue<AudioProcessRemixResult>(async () => {
+      const valid = validateObject<AudioProcessRemixParams>(params, AUDIO_PROCESS_REMIX_SCHEMA, "audio.process.remix params");
+      if (valid.outroAlign?.landAtSec !== undefined && valid.outroAlign.landAtSec > valid.targetDurationSec) {
+        throw new FacadeError("INVALID_PARAMS", "audio.process.remix: outroAlign.landAtSec must be <= targetDurationSec");
+      }
+      if (!this.project) return this.noProject();
+      const { expectedRevision, idempotencyKey, ...parameters } = valid;
+      const prior = this.beginMutation<{ jobId: string; sourceRevision: number }>("audio.process.remix", expectedRevision, idempotencyKey, parameters);
+      if (prior) {
+        const job = this.jobs.get(prior.value.jobId);
+        if (!job) throw new FacadeError("NOT_FOUND", "audio.process.remix: prior job is no longer available");
+        return ok({ ...prior.value, kind: "audio-process", state: job.state, replayed: true });
+      }
+      const media = this.project.mediaLibrary.items.find((item) => item.id === valid.mediaId);
+      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.remix: media "${valid.mediaId}" not found`, { reason: "media_not_found", mediaId: valid.mediaId });
+      if (!(media.metadata.duration > 0)) {
+        throw new FacadeError("INVALID_PARAMS", "audio.process.remix: source media must have positive duration");
+      }
+      const roots = this.config.mediaRoots ?? [];
+      if (roots.length === 0) throw new FacadeError("UNSUPPORTED", "audio.process.remix requires media roots for persistent generated assets");
+      const resolvedSource = await resolveLocalSourceFile(selectMediaSource(media), { verb: "audio.process.remix", roots });
+      const sourcePath = resolvedSource.path;
+      const ready = await audioAnalysisPreflight();
+      if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
+      if (this.analysisControllers.size >= AUDIO_LIMITS.maxConcurrentPerSession) {
+        throw new FacadeError("UNSUPPORTED", "At most two audio/analysis jobs per session; wait or cancel an existing job.");
+      }
+      const sourceRevision = this.revision;
+      const jobId = `job-${crypto.randomUUID()}`;
+      this.jobs.create(jobId, sourceRevision, "audio-process");
+      const controller = new AbortController();
+      this.analysisControllers.set(jobId, controller);
+      const value = { jobId, sourceRevision };
+      this.ledger.set("audio.process.remix", idempotencyKey, { revision: sourceRevision, value, payloadHash: stableStringify(parameters) });
+      void runAudioRemixTask(this.jobs, this.analysisControllers, jobId, controller, {
         sourcePath, mediaRoots: roots, params: parameters,
         sourceProjectId: this.project.id, sourceRevision,
       });
@@ -1723,7 +1802,7 @@ export class AgentFacadeSession {
           for (const [index, submitted] of ops.entries()) {
             const op = await prepareEditOp(submitted, draft, index, preparation);
             const beforeIds = collectEntityIds(draft);
-            const actions = opToCoreActions(op, draft);
+            const actions = opToCoreActions(op, draft, { deferOverlapCheck: true });
             for (const action of actions) {
               const result = await executor.execute(action, draft);
               if (!result.success) {
@@ -1751,6 +1830,7 @@ export class AgentFacadeSession {
                   : created,
             });
           }
+          assertNoTrackClipOverlaps(draft);
           return { applied };
         },
       });
@@ -2532,6 +2612,9 @@ export class AgentFacadeSession {
         settings: settingsInput ?? null,
         destinationPath: valid.destinationPath ?? null,
         comparison: valid.comparison ?? null,
+        ...(valid.coverImagePath !== undefined ? { coverImagePath: valid.coverImagePath } : {}),
+        ...(valid.exportSubtitlesSrt !== undefined ? { exportSubtitlesSrt: valid.exportSubtitlesSrt } : {}),
+        ...(valid.exportChaptersTxt !== undefined ? { exportChaptersTxt: valid.exportChaptersTxt } : {}),
       };
       const prior = this.beginMutation<{ jobId: string; sourceRevision: number }>(
         "export.start",
@@ -2560,6 +2643,16 @@ export class AgentFacadeSession {
               "export.start",
             )
           : null;
+
+      const preparedPublishing = await prepareExportPublishing({
+        coverImagePath: valid.coverImagePath,
+        exportSubtitlesSrt: valid.exportSubtitlesSrt,
+        exportChaptersTxt: valid.exportChaptersTxt,
+        mediaRoots: this.config.mediaRoots ?? [],
+        deliveryRoots: this.config.deliveryRoots ?? [],
+        delivery,
+        verb: "export.start",
+      });
 
 
       const project = this.project;
@@ -2631,7 +2724,14 @@ export class AgentFacadeSession {
         onProgress: (event) => this.jobs.markProgress(jobId, event),
         onDone: (completion) => {
           if (!comparisonConfig || !comparisonRange) {
-            void this.finalizeExport(jobId, sourceRevision, completion, delivery);
+            void this.finalizeExport(
+              jobId,
+              sourceRevision,
+              completion,
+              delivery,
+              snapshot,
+              preparedPublishing,
+            );
             return;
           }
           // Comparison export: compose the reference against the JUST
@@ -2674,6 +2774,8 @@ export class AgentFacadeSession {
                     : {}),
                 },
                 delivery,
+                snapshot,
+                preparedPublishing,
               );
             } catch (error) {
               this.jobs.markError(jobId, {
@@ -3603,6 +3705,8 @@ export class AgentFacadeSession {
       upscalingRequestedButInactive?: boolean;
     },
     delivery: DeliveryDestination | null = null,
+    snapshot?: Project,
+    preparedPublishing?: PreparedExportPublishing,
   ): Promise<void> {
     try {
       const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "export.finalize");
@@ -3625,35 +3729,72 @@ export class AgentFacadeSession {
           { path: completion.path },
         );
       }
-      const artifact = await artifactRefFor(
+      let finalSizeBytes = completion.sizeBytes;
+      if (preparedPublishing?.cover) {
+        finalSizeBytes = await muxExportCoverImage(
+          resolution.path,
+          preparedPublishing.cover,
+        );
+      }
+      const baseArtifact = await artifactRefFor(
         resolution.path,
         "video",
         "mp4",
         sourceRevision,
-        completion.sizeBytes,
+        finalSizeBytes,
       );
+      let deliveryOutcome:
+        | { readonly deliveredTo?: string; readonly deliveryError?: string }
+        | undefined;
+      if (delivery !== null) {
+        try {
+          await deliverExportArtifact(resolution.path, delivery);
+          deliveryOutcome = { deliveredTo: delivery.path };
+        } catch (deliveryError) {
+          deliveryOutcome = {
+            deliveryError:
+              deliveryError instanceof Error
+                ? deliveryError.message
+                : String(deliveryError),
+          };
+        }
+      }
+      let sidecarArtifacts = undefined;
+      if (snapshot && preparedPublishing) {
+        try {
+          sidecarArtifacts = await writeExportSidecars({
+            snapshot,
+            prepared: preparedPublishing,
+            artifactMp4Path: resolution.path,
+            ...(deliveryOutcome?.deliveredTo
+              ? { deliveredMp4Path: deliveryOutcome.deliveredTo }
+              : {}),
+          });
+        } catch (sidecarError) {
+          if (delivery !== null) {
+            deliveryOutcome = {
+              ...deliveryOutcome,
+              deliveryError:
+                sidecarError instanceof Error
+                  ? sidecarError.message
+                  : String(sidecarError),
+            };
+          } else {
+            throw sidecarError;
+          }
+        }
+      }
+      const artifact =
+        sidecarArtifacts !== undefined
+          ? { ...baseArtifact, sidecarArtifacts }
+          : baseArtifact;
       this.jobs.markDone(
         jobId,
         artifact,
         completion.route,
         completion.upscalingRequestedButInactive === true,
+        deliveryOutcome,
       );
-      if (delivery !== null) {
-        // Post-publish copy into the Agent workspace deliverables directory.
-        // A delivery failure never downgrades the done job or hides the
-        // artifact — it surfaces as deliveryError on job.status.
-        try {
-          await deliverExportArtifact(resolution.path, delivery);
-          this.jobs.markDelivered(jobId, delivery.path);
-        } catch (deliveryError) {
-          this.jobs.markDeliveryFailed(
-            jobId,
-            deliveryError instanceof Error
-              ? deliveryError.message
-              : String(deliveryError),
-          );
-        }
-      }
     } catch (error) {
       this.jobs.markError(jobId, {
         code: error instanceof FacadeError ? error.code : "JOB_FAILED",

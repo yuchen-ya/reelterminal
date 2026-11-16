@@ -1,5 +1,9 @@
 # Desktop distribution
 
+## Version 1.5.0
+
+CLI editing adds anchor retiming, final-layout batch validation, transition handle policies, local HTML/SVG animation, music remixing, export attachments and streaming local imports up to 8 GiB. Read the [version notes](../../docs/RELEASE-1.5.0.md) for dependencies and limits. Download only assets listed on [Releases](https://github.com/yuchen-ya/reelterminal/releases); Windows x64 builds remain unsigned.
+
 ## Version 1.4.3
 
 Image-first review adds a grid and explicit batch decisions inside real folder tasks. See the [version notes](../../docs/RELEASE-1.4.3.md) for selection, note reuse, undo/redo and limitations. Use the actual assets on [Releases](https://github.com/yuchen-ya/reelterminal/releases) for available downloads. Windows x64 builds remain unsigned.
@@ -20,7 +24,7 @@ not rename an older package to a new version. For example:
 pnpm install --frozen-lockfile
 pnpm build:wasm
 node apps/desktop/scripts/prepare-segmentation-resources.mjs --check
-pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.4.3-<date-and-unique-suffix>
+pnpm --filter @reelterminal/desktop dist --win nsis zip --x64 --publish never --config.directories.output=release/windows-1.5.0-<date-and-unique-suffix>
 ```
 
 The build generates `dist/performance-build.json` with the source HEAD, dirty

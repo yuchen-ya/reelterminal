@@ -4,6 +4,7 @@ import { sha256File } from "./artifact-io";
 import { produceNormalizedAudio, discardNormalizedAudioArtifact, type NormalizeAudioArtifact } from "./audio-normalize";
 import { produceDenoisedAudio, discardDenoisedAudioArtifact, type DenoiseAudioArtifact } from "./audio-denoise";
 import { produceSeparatedAudio, discardSeparatedAudioArtifact, type SeparatedAudioArtifact } from "./audio-separate";
+import { produceRemixedAudio, discardRemixedAudioArtifact, type RemixAudioArtifact } from "./audio-remix";
 import { JobRegistry, type ProcessedAudioArtifact } from "./jobs";
 import { resolveContainedPathDetailed } from "./media/path-roots";
 
@@ -130,6 +131,49 @@ export async function runAudioSeparationTask(
   } finally {
     try {
       if (artifact) await discardSeparatedAudioArtifact(artifact, input.mediaRoots);
+    } catch (error) {
+      failed = true;
+      jobs.markAudioProcessCleanupFailed(jobId, String(error));
+    }
+    if (controller.signal.aborted && !failed) jobs.markCancelled(jobId);
+    controllers.delete(jobId);
+  }
+}
+
+export async function runAudioRemixTask(
+  jobs: JobRegistry,
+  controllers: Map<string, AbortController>,
+  jobId: string,
+  controller: AbortController,
+  input: Omit<Parameters<typeof produceRemixedAudio>[0], "signal" | "artifactId">,
+): Promise<void> {
+  let artifact: RemixAudioArtifact | undefined;
+  let failed = false;
+  try {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    if (controller.signal.aborted) return;
+    jobs.markRunning(jobId);
+    if (jobs.get(jobId)?.state !== "running") return;
+    artifact = await produceRemixedAudio({
+      ...input,
+      signal: controller.signal,
+      artifactId: jobId,
+      artifactFileTracker: artifactFileTrackerFor(jobs, jobId),
+      progress: (percent) => jobs.markProgress(jobId, { phase: "rendering", percent }),
+    });
+    if (!controller.signal.aborted) jobs.markAudioProcessDone(jobId, artifact, "local-beat-loop-remix");
+    if (jobs.get(jobId)?.state === "done") artifact = undefined;
+  } catch (error) {
+    if (!controller.signal.aborted || (error instanceof FacadeError && error.details?.cleanupFailed === true)) {
+      failed = true;
+      jobs.markError(jobId, {
+        code: error instanceof FacadeError ? error.code : "JOB_FAILED",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  } finally {
+    try {
+      if (artifact) await discardRemixedAudioArtifact(artifact, input.mediaRoots);
     } catch (error) {
       failed = true;
       jobs.markAudioProcessCleanupFailed(jobId, String(error));

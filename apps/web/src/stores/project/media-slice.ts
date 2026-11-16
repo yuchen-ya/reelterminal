@@ -158,8 +158,9 @@ export function mediaMimeType(value: string): string {
   }
 }
 
-/** Keep one IPC read bounded even when the host-side probe allowed a larger file. */
-const MAX_LIVE_MEDIA_IMPORT_BYTES = 256 * 1024 * 1024;
+/** Live media imports accept files up to 8 GiB; files > 256 MiB stream from path instead of one IPC ArrayBuffer. */
+const MAX_LIVE_MEDIA_IMPORT_BYTES = 8 * 1024 * 1024 * 1024;
+const MAX_IPC_ARRAYBUFFER_IMPORT_BYTES = 256 * 1024 * 1024;
 
 export interface MediaOperationContext {
   readonly projectId: string;
@@ -714,6 +715,141 @@ export function createMediaSlice(
       }
 
       const fsBridge = typeof window === "undefined" ? undefined : window.reelterminal?.fs;
+      const mediaStore = typeof window === "undefined" ? undefined : window.reelterminal?.mediaStore;
+      const hintedSize = options.sourceFile?.size ?? options.metadata?.fileSize;
+      if (hintedSize !== undefined && hintedSize > MAX_LIVE_MEDIA_IMPORT_BYTES) {
+        return liveMediaSizeError(sourcePath, hintedSize);
+      }
+
+      // Large local files (> 256 MiB, up to 8 GiB) bypass single-ArrayBuffer IPC
+      // reads: verify size/type via pathStatus + native streaming ingest when
+      // controlled storage is present, and record a path-backed MediaItem.
+      if (hintedSize !== undefined && hintedSize > MAX_IPC_ARRAYBUFFER_IMPORT_BYTES) {
+        if (!options.metadata) {
+          return importError(
+            "DECODE_ERROR",
+            "Large live media imports (> 256 MiB) require pre-probed metadata from the host",
+            { path: sourcePath },
+          );
+        }
+        if (fsBridge?.pathStatus) {
+          const status = await fsBridge.pathStatus(sourcePath);
+          if (!status.exists || !status.isFile || status.sizeBytes !== hintedSize) {
+            return importError(
+              "DECODE_ERROR",
+              "Media source changed or is unavailable after probing; retry with fresh file facts",
+              { path: sourcePath },
+            );
+          }
+        } else if (!mediaStore?.ingestFromPath) {
+          return importError(
+            "DECODE_ERROR",
+            "Desktop file access is unavailable in this editor",
+          );
+        }
+
+        const persistenceProjectId = options.projectId ?? get().project.id;
+        if (persistenceProjectId !== get().project.id) {
+          return importError("INVALID_PARAMS", "The requested project is not this store instance");
+        }
+        if (options.workspaceId !== undefined && options.workspaceId !== get().workspaceId) {
+          return importError("INVALID_PARAMS", "The requested workspace is not this store instance");
+        }
+        if (
+          options.expectedRevision !== undefined &&
+          options.expectedRevision !== currentMediaRevision(get, options.workspaceId)
+        ) {
+          return importError(
+            "INVALID_PARAMS",
+            `Revision mismatch: expected ${options.expectedRevision}, current ${currentMediaRevision(get, options.workspaceId)}`,
+            { reason: "CONFLICT", currentRevision: currentMediaRevision(get, options.workspaceId) },
+          );
+        }
+
+        const fileName = name?.trim() || pathBasename(sourcePath);
+        const mediaId = options.mediaId ?? uuidv4();
+        const dotIdx = fileName.lastIndexOf(".");
+        const ext =
+          dotIdx > 0 && /^[a-z0-9]{1,10}$/i.test(fileName.slice(dotIdx + 1))
+            ? fileName.slice(dotIdx + 1).toLowerCase()
+            : "bin";
+        let controlled: { path: string; contentHash: string } | undefined;
+        if (mediaStore?.ingestFromPath) {
+          controlled = await mediaStore.ingestFromPath({
+            projectId: persistenceProjectId,
+            mediaId,
+            sourcePath,
+            expectedSize: hintedSize,
+            ...(options.expectedContentHash ? { expectedHash: options.expectedContentHash } : {}),
+            extension: ext,
+          });
+        }
+        const mediaType: "video" | "audio" | "image" =
+          options.type ??
+          (mediaMimeType(sourcePath).startsWith("image/")
+            ? "image"
+            : mediaMimeType(sourcePath).startsWith("audio/")
+              ? "audio"
+              : "video");
+        const newMediaItem: MediaItem = {
+          id: mediaId,
+          name: fileName,
+          type: mediaType,
+          fileHandle: null,
+          blob: null,
+          metadata: {
+            duration: options.metadata.durationSec ?? 0,
+            width: options.metadata.width ?? 0,
+            height: options.metadata.height ?? 0,
+            frameRate: options.metadata.frameRate ?? 0,
+            codec: options.metadata.codec ?? "",
+            sampleRate: 0,
+            channels: 0,
+            fileSize: hintedSize,
+          },
+          thumbnailUrl: null,
+          waveformData: null,
+          sourceFile: options.sourceFile ?? {
+            name: fileName,
+            size: hintedSize,
+            lastModified: Date.now(),
+          },
+          originalUrl: sourcePath,
+          ...(controlled ? { contentHash: controlled.contentHash, contentUrl: controlled.path } : {}),
+        };
+        const persistenceActionExecutor = get().actionExecutor;
+        const placeholderFile = new File([], fileName, { type: mediaMimeType(sourcePath) });
+        const action: Action = {
+          type: "media/import",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { file: placeholderFile, mediaItem: newMediaItem },
+        };
+        const history = persistenceActionExecutor.getHistory();
+        const actionResult = await withMediaReferenceWrite(async () => {
+          const groupId = history.beginGroup(
+            options.historyGroupLabel ?? "agent: media.import",
+            options.historyOwner ?? "agent",
+          );
+          try {
+            return await persistenceActionExecutor.execute(
+              action,
+              get().project,
+              options.historyOwner ?? "agent",
+            );
+          } finally {
+            history.endGroup(groupId);
+          }
+        });
+        if (!actionResult.success) {
+          return actionResult;
+        }
+        await withMediaReferenceWrite(() =>
+          set({ project: { ...get().project, modifiedAt: Date.now() } }),
+        );
+        return { success: true, actionId: newMediaItem.id };
+      }
+
       if (!fsBridge?.readFileBytes) {
         return importError(
           "DECODE_ERROR",
@@ -722,15 +858,11 @@ export function createMediaSlice(
       }
 
       try {
-        const hintedSize = options.sourceFile?.size ?? options.metadata?.fileSize;
-        if (hintedSize !== undefined && hintedSize > MAX_LIVE_MEDIA_IMPORT_BYTES) {
-          return liveMediaSizeError(sourcePath, hintedSize);
-        }
         const bytes = await fsBridge.readFileBytes(
           sourcePath,
-          MAX_LIVE_MEDIA_IMPORT_BYTES,
+          MAX_IPC_ARRAYBUFFER_IMPORT_BYTES,
         );
-        if (bytes.byteLength > MAX_LIVE_MEDIA_IMPORT_BYTES) {
+        if (bytes.byteLength > MAX_IPC_ARRAYBUFFER_IMPORT_BYTES) {
           return liveMediaSizeError(sourcePath, bytes.byteLength);
         }
         const fileName = name?.trim() || pathBasename(sourcePath);

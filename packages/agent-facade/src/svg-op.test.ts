@@ -548,3 +548,205 @@ describe("svg overlays capability declaration", () => {
     );
   });
 });
+
+describe("svg trimPath & clip.setKeyframes on SVG overlays", () => {
+  const LINE_SVG =
+    '<svg viewBox="0 0 200 100"><path d="M 10 50 L 190 50" stroke="#ffffff" stroke-width="10" fill="none"/></svg>';
+
+  it("persists trimPath*, draw entry/exit animation, and keyframes on svg.create & svg.update", async () => {
+    const facade = createAgentFacade({});
+    await facade["project.create"]({ name: "trim" });
+    const created = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "svg.create",
+          svgContent: LINE_SVG,
+          startTime: 0,
+          duration: 2,
+          trimPathStart: 0.1,
+          trimPathEnd: 0.8,
+          trimPathOffset: 0.25,
+          entryAnimation: { type: "draw", duration: 0.75, easing: "linear" },
+          keyframes: [
+            { property: "trimPathEnd", time: 0, value: 0, easing: "linear" },
+            { property: "trimPathEnd", time: 1.5, value: 1, easing: "linear" },
+          ],
+        },
+      ],
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const svgId = created.value.applied[0]!.createdIds.at(-1)!;
+
+    let state = await facade["project.get_state"]();
+    expect(state.ok).toBe(true);
+    if (!state.ok) return;
+    const svg = state.value.project.svgClips![0]!;
+    expect(svg.id).toBe(svgId);
+    expect(svg.trimPathStart).toBe(0.1);
+    expect(svg.trimPathEnd).toBe(0.8);
+    expect(svg.trimPathOffset).toBe(0.25);
+    expect(svg.entryAnimation).toEqual({
+      type: "draw",
+      duration: 0.75,
+      easing: "linear",
+    });
+    expect(svg.keyframes.map((k) => [k.property, k.time, k.value])).toEqual([
+      ["trimPathEnd", 0, 0],
+      ["trimPathEnd", 1.5, 1],
+    ]);
+
+    const updated = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "svg.update",
+          overlayId: svgId,
+          trimPathStart: 0,
+          trimPathEnd: 1,
+          exitAnimation: { type: "draw", duration: 0.4, easing: "ease-in" },
+        },
+      ],
+    });
+    expect(updated.ok).toBe(true);
+    state = await facade["project.get_state"]();
+    if (!state.ok) return;
+    expect(state.value.project.svgClips![0]!.trimPathStart).toBe(0);
+    expect(state.value.project.svgClips![0]!.exitAnimation).toEqual({
+      type: "draw",
+      duration: 0.4,
+      easing: "ease-in",
+    });
+  });
+
+  it("allows clip.setKeyframes to animate trimPath on an SVG overlay and undo via ActionHistory", async () => {
+    const facade = createAgentFacade({});
+    await facade["project.create"]({ name: "kf-svg" });
+    const created = await facade["edit.apply"]({
+      ops: [{ op: "svg.create", svgContent: LINE_SVG, startTime: 0, duration: 2 }],
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const svgId = created.value.applied[0]!.createdIds.at(-1)!;
+
+    const kfRes = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "clip.setKeyframes",
+          clipId: svgId,
+          keyframes: [
+            { property: "trimPath", time: 0, value: 0, easing: "linear" },
+            { property: "trimPath", time: 1, value: 1, easing: "linear" },
+          ],
+        },
+      ],
+    });
+    expect(kfRes.ok).toBe(true);
+    let state = await facade["project.get_state"]();
+    if (!state.ok) return;
+    expect(state.value.project.svgClips![0]!.keyframes).toHaveLength(2);
+    expect(state.value.project.svgClips![0]!.keyframes[0]!.property).toBe("trimPath");
+
+    // Empty keyframes array clears SVG overlay keyframes cleanly
+    const cleared = await facade["edit.apply"]({
+      ops: [{ op: "clip.setKeyframes", clipId: svgId, keyframes: [] }],
+    });
+    expect(cleared.ok).toBe(true);
+    state = await facade["project.get_state"]();
+    if (!state.ok) return;
+    expect(state.value.project.svgClips![0]!.keyframes).toHaveLength(0);
+
+    // Core ActionExecutor + ActionHistory undo restores prior SVG overlay keyframes
+    const baseSvg = state.value.project.svgClips![0]!;
+    const project = createEmptyProject("undo-svg-kf");
+    (project as { svgClips?: unknown[] }).svgClips = [{ ...baseSvg, id: "svg-1", keyframes: [] }];
+    const history = new ActionHistory();
+    const executor = new ActionExecutor(history);
+    const actions = opToCoreActions(
+      {
+        op: "clip.setKeyframes",
+        clipId: "svg-1",
+        keyframes: [
+          { property: "trimPathEnd", time: 0, value: 0, easing: "linear" },
+          { property: "trimPathEnd", time: 1, value: 1, easing: "linear" },
+        ],
+      },
+      project,
+    );
+    expect(actions.map((a) => a.type)).toEqual(["svg/update"]);
+    await executor.execute(actions[0]!, project);
+    expect(project.svgClips![0]!.keyframes).toHaveLength(2);
+
+    const inverse = history.undo();
+    expect(inverse?.type).toBe("svg/update");
+    await executor.execute(inverse!, project);
+    expect(project.svgClips![0]!.keyframes).toHaveLength(0);
+  });
+
+  it("rejects trimPath values outside [0, 1] or timestamps beyond SVG duration", async () => {
+    const facade = createAgentFacade({});
+    await facade["project.create"]({ name: "bounds" });
+    const badRange = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "svg.create",
+          svgContent: LINE_SVG,
+          startTime: 0,
+          duration: 1,
+          keyframes: [{ property: "trimPathEnd", time: 0, value: 1.5 }],
+        },
+      ],
+    });
+    expect(badRange.ok).toBe(false);
+    if (!badRange.ok) expect(badRange.error.code).toBe("INVALID_PARAMS");
+
+    const badTime = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "svg.create",
+          svgContent: LINE_SVG,
+          startTime: 0,
+          duration: 1,
+          keyframes: [{ property: "trimPathEnd", time: 1.5, value: 1 }],
+        },
+      ],
+    });
+    expect(badTime.ok).toBe(false);
+    if (!badTime.ok) expect(badTime.error.code).toBe("INVALID_PARAMS");
+  });
+
+  it("rejects invalid SVG edits atomically and accepts endpoint keyframes at the duration boundary", async () => {
+    const facade = createAgentFacade({});
+    await facade["project.create"]({ name: "trim-atomic" });
+    const created = await facade["edit.apply"]({ ops: [{ op: "svg.create", svgContent: LINE_SVG, startTime: 4, duration: 2 }] });
+    expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error(created.error.message);
+    const overlayId = created.value.applied[0]!.createdIds.at(-1)!;
+    const before = await facade["project.get_state"]();
+    if (!before.ok) throw new Error(before.error.message);
+    const invalidOps = [
+      ...["trimPathStart", "trimPathEnd"].flatMap(property => [-0.01, 1.01, Number.NaN].map(value => ({ op: "svg.update", overlayId, [property]: value }))),
+      ...["trimPath", "trimPathStart", "trimPathEnd"].flatMap(property => [-0.01, 1.01].map(value => ({ op: "clip.setKeyframes", clipId: overlayId, keyframes: [{ property, time: 0, value }] }))),
+      { op: "svg.update", overlayId, keyframes: [{ property: "trimPathEnd", time: 2.01, value: 1 }] },
+      { op: "clip.setKeyframes", clipId: overlayId, keyframes: [{ property: "trimPathEnd", time: 2.01, value: 1 }] },
+    ];
+    for (const invalidOp of invalidOps) {
+      const result = await facade["edit.apply"]({ ops: [
+        { op: "svg.update", overlayId, trimPathEnd: 0.25 }, invalidOp,
+      ] } as Parameters<typeof facade["edit.apply"]>[0]);
+      expect(result, JSON.stringify(invalidOp)).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
+      const after = await facade["project.get_state"]();
+      if (!after.ok) throw new Error(after.error.message);
+      expect(after.value.revision).toBe(before.value.revision);
+      expect(projectJson(after.value.project)).toBe(projectJson(before.value.project));
+    }
+    const keyframes = ["trimPath", "trimPathStart", "trimPathEnd", "trimPathOffset"].flatMap(property => [
+      { property, time: 0, value: 0, easing: "linear" },
+      { property, time: 2, value: 1, easing: "linear" },
+    ]);
+    const result = await facade["edit.apply"]({ ops: [{ op: "clip.setKeyframes", clipId: overlayId, keyframes }] } as Parameters<typeof facade["edit.apply"]>[0]);
+    expect(result.ok).toBe(true);
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error(state.error.message);
+    expect(state.value.project.svgClips![0]!.keyframes.map(({ property, time, value, easing }) => ({ property, time, value, easing }))).toEqual(keyframes);
+  });
+});

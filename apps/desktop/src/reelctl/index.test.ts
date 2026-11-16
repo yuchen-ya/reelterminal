@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildSync } from "esbuild";
 import { cliErrorEnvelope, runReelctl } from "./index";
 import { LiveCliError, type CommandCatalog, type CommandCatalogEntry, type LiveCommandClient } from "./client";
 import { compactContextResult, formatResult } from "./output";
@@ -636,5 +638,126 @@ describe("reelctl review discovery", () => {
     expect(stdout[1]).toContain("4–8 Chinese characters");
     expect(api.catalogEntry).toHaveBeenCalledTimes(1);
     expect(api.command).not.toHaveBeenCalled();
+  });
+});
+
+describe("reelctl Windows JSON quoting DX", () => {
+  it("prioritizes --stdin and --file <path> in help and call usage", async () => {
+    const stdout: string[] = [];
+    await expect(runReelctl(["--help"], { stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    expect(stdout[0]).toContain("[--stdin | --file <path>]");
+    expect(stdout[0]).toContain("Prefer --stdin or --file <path>");
+    await expect(runReelctl(["call", "--help"], { stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    expect(stdout[1]).toContain("[--stdin | --file <path>]");
+  });
+
+  it("diagnoses malformed --input-json with Windows quote-stripping hint", async () => {
+    const api = makeClient([entry("edit.apply", "edit_apply", "idempotent")]);
+    let failure: unknown;
+    try {
+      await runReelctl(["call", "edit.apply", "--input-json", "{ops:[{op:clip.add}]}"], { client: api });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(LiveCliError);
+    const cliErr = failure as LiveCliError;
+    expect(cliErr.kind).toBe("args");
+    expect(cliErr.exitCode).toBe(2);
+    expect(cliErr.message).toContain("Windows cmd/PowerShell");
+    expect(cliErr.message).toContain("--stdin");
+    expect(cliErr.message).toContain("--file");
+    const envelope = cliErrorEnvelope(cliErr);
+    expect(envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_PARAMS",
+        details: {
+          source: "--input-json",
+          hint: expect.stringContaining("Windows cmd/PowerShell"),
+        },
+      },
+    });
+    expect(api.command).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["call", "edit.apply"],
+    ["edit", "apply"],
+    ["video", "call", "edit.apply"],
+  ])("preserves nested inline JSON and stdout through %j", async (...argv) => {
+    const result = { ok: true, value: { revision: 9, applied: [{ op: "text.create", createdIds: ["新片段"] }], replayed: false } };
+    const api = makeClient([entry("edit.apply", "edit_apply", "idempotent")], result);
+    const args = {
+      projectId: "p", workspaceId: "w", expectedRevision: 3,
+      ops: [{ op: "text.create", text: '中文 "quoted" C:\\媒体\\片段.mp4', startTime: 0, duration: 3, style: { fontSize: 28 } }],
+    };
+    const stdout: string[] = [];
+    await expect(
+      runReelctl(
+        [
+          ...argv,
+          `--input-json=${JSON.stringify({ command: "edit.apply", expectedProjectEpoch: "epoch-3", arguments: args })}`,
+        ],
+        { client: api, stdout: (line) => stdout.push(line) },
+      ),
+    ).resolves.toBe(0);
+    expect(api.command).toHaveBeenCalledWith(
+      "edit.apply",
+      args,
+      expect.objectContaining({ expectedProjectEpoch: "epoch-3", retry: "idempotent" }),
+    );
+    expect(api.command).toHaveBeenCalledTimes(1);
+    expect(stdout).toHaveLength(1);
+    expect(JSON.parse(stdout[0]!)).toEqual(result);
+  });
+
+  it("retains explicit write guards for inline JSON and emits no success result on rejection", async () => {
+    const api = makeClient([entry("edit.apply", "edit_apply", "idempotent")]);
+    const stdout: string[] = [];
+    await expect(runReelctl([
+      "call", "edit.apply", "--input-json", JSON.stringify({ projectId: "p", workspaceId: "w", ops: [] }),
+    ], { client: api, stdout: line => stdout.push(line) })).rejects.toMatchObject({ kind: "args", exitCode: 2 });
+    expect(api.command).not.toHaveBeenCalled();
+    expect(stdout).toEqual([]);
+  });
+
+  it.each([
+    ["--input-json", "{}", "--stdin"],
+    ["--input-json", "{}", "--file", "never-read.json"],
+    ["--stdin", "--file", "never-read.json"],
+  ])("rejects competing JSON sources before dispatch: %j", async (...flags) => {
+    const api = makeClient([entry("edit.apply", "edit_apply", "idempotent")]);
+    const stdout: string[] = [];
+    await expect(runReelctl(["call", "edit.apply", ...flags], { client: api, stdout: line => stdout.push(line) }))
+      .rejects.toMatchObject({ kind: "args", exitCode: 2, message: expect.stringContaining("choose only one") });
+    expect(api.catalogEntry).not.toHaveBeenCalled();
+    expect(api.command).not.toHaveBeenCalled();
+    expect(stdout).toEqual([]);
+  });
+
+  it("prints one structured JSON error and exit code 2 from the real CLI entry point", () => {
+    const dir = tempDir();
+    const outfile = path.join(dir, "reelctl.cjs");
+    buildSync({
+      entryPoints: [path.resolve("src/reelctl/index.ts")], outfile,
+      bundle: true, platform: "node", format: "cjs", conditions: ["import"],
+      external: ["esbuild", "playwright-core", "mediabunny", "onnxruntime-node"],
+      logLevel: "silent",
+    });
+    const descriptor = path.join(dir, "test-endpoint.json");
+    writeFileSync(descriptor, JSON.stringify({ token: "isolated-test-token", commandApi: { version: 1, url: "http://127.0.0.1:1/v1" } }));
+    // The compatibility alias parses input before catalog I/O, so no live app is contacted.
+    const child = spawnSync(process.execPath, [outfile, "edit", "apply", "--input-json", "{ops:[{op:clip.add}]}"], {
+      env: { ...process.env, REELTERMINAL_LIVE_ENDPOINT_FILE: descriptor }, encoding: "utf8", timeout: 10_000,
+    });
+    expect(child.error).toBeUndefined();
+    expect(child.status).toBe(2);
+    const lines = child.stdout.trim().split(/\r?\n/);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_PARAMS", message: expect.stringContaining("Windows cmd/PowerShell"), details: { source: "--input-json", hint: expect.stringContaining("--stdin") } },
+    });
+    expect(child.stderr).toContain("--file <path>");
   });
 });

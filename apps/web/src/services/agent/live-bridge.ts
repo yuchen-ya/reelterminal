@@ -718,7 +718,7 @@ async function handleImportMedia(
       stagedMediaId = staged.actionId;
       const mediaItem = stagingStore.getState().getMediaItem(stagedMediaId);
       const historyEntry = stagingStore.getState().actionHistory.getHistoryEntries().at(-1);
-      if (!mediaItem?.blob || !historyEntry || historyEntry.action.type !== "media/import") {
+      if (!mediaItem || (!mediaItem.blob && !mediaItem.originalUrl && !mediaItem.contentUrl) || !historyEntry || historyEntry.action.type !== "media/import") {
         return { ok: false, error: { code: "DECODE_ERROR", message: "Media importer did not produce a complete import action" } };
       }
       stagedAction = historyEntry.action;

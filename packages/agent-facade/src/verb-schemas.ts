@@ -1,5 +1,6 @@
 import { PLUGIN_TOOLS } from "./plugins";
 import { REVIEW_SCHEMAS } from "./review";
+import { AUDIO_REMIX_MAX_DURATION_SEC } from "./audio-remix";
 import { REQUIREMENTS_GET_SCHEMA, REQUIREMENTS_LIST_SCHEMA } from "./requirements";
 /**
  * The SINGLE hand-maintained schema declaration per facade verb
@@ -106,6 +107,7 @@ import {
   WORK_ASSET_RENAME_SCHEMA,
   WORK_ASSET_DELETE_SCHEMA,
   WORK_ASSET_INSTANTIATE_SCHEMA,
+  TIMELINE_RETIME_BY_ANCHORS_SCHEMA,
 } from "./ops";
 import {
   WORKBENCH_CHANGES_SCHEMA,
@@ -500,6 +502,118 @@ export const AUDIO_PROCESS_SEPARATE_SCHEMA: ObjectSchema = {
   idempotencyKey: {
     check: isNonEmptyString,
     describe: "a non-empty key that replays the same separation job",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+const AUDIO_PROCESS_REMIX_LOOP_BODY_SCHEMA: ObjectSchema = {
+  startBar: {
+    check: isNonNegativeInteger,
+    describe: "0-based inclusive bar index where the loop body starts",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  endBar: {
+    check: isPositiveInteger,
+    describe: "0-based exclusive bar index where the loop body ends (must be > startBar)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } },
+  },
+};
+
+const AUDIO_PROCESS_REMIX_OUTRO_ALIGN_SCHEMA: ObjectSchema = {
+  outroStartBar: {
+    check: isNonNegativeInteger,
+    describe: "0-based bar index where the genuine outro section starts",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  landAtSec: {
+    check: isPositiveNumber,
+    describe: "optional timeline target in seconds where the outro section ends (<= targetDurationSec)",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  tailFadeOutSec: {
+    check: (value) => typeof value === "number" && isNonNegativeNumber(value) && value <= 30,
+    describe: "optional linear/smooth fade-out duration at the tail of the remix in [0, 30] seconds",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 30 } },
+  },
+};
+
+export const AUDIO_PROCESS_REMIX_SCHEMA: ObjectSchema = {
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "a non-empty media-library id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  audioStream: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative audio stream index (default 0)",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  targetDurationSec: {
+    check: (value) => typeof value === "number" && isPositiveNumber(value) && value <= AUDIO_REMIX_MAX_DURATION_SEC,
+    describe: `desired remixed duration in seconds (0, ${AUDIO_REMIX_MAX_DURATION_SEC}]`,
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0, maximum: AUDIO_REMIX_MAX_DURATION_SEC } },
+  },
+  bpm: {
+    check: (value) => typeof value === "number" && isFiniteNumber(value) && value >= 40 && value <= 240,
+    describe: "optional explicit tempo in BPM [40, 240]; omitted to auto-detect via beat analysis",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 40, maximum: 240 } },
+  },
+  beatsPerBar: {
+    check: (value) => typeof value === "number" && isPositiveInteger(value) && value <= 12,
+    describe: "beats per bar in [1, 12] (default 4)",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: 12 } },
+  },
+  loopBodyBars: {
+    check: (value) => {
+      try {
+        const parsed = validateObject<{ startBar: number; endBar: number }>(
+          value,
+          AUDIO_PROCESS_REMIX_LOOP_BODY_SCHEMA,
+          "loopBodyBars",
+        );
+        return parsed.endBar > parsed.startBar;
+      } catch {
+        return false;
+      }
+    },
+    describe: "optional explicit { startBar, endBar } bar range for the repeatable loop body",
+    emits: { kind: "object", schema: AUDIO_PROCESS_REMIX_LOOP_BODY_SCHEMA },
+  },
+  outroAlign: {
+    check: (value) => {
+      try {
+        validateObject(value, AUDIO_PROCESS_REMIX_OUTRO_ALIGN_SCHEMA, "outroAlign");
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    describe: "optional outro alignment settings { outroStartBar?, landAtSec?, tailFadeOutSec? }",
+    emits: { kind: "object", schema: AUDIO_PROCESS_REMIX_OUTRO_ALIGN_SCHEMA },
+  },
+  crossfadeMs: {
+    check: (value) => typeof value === "number" && isFiniteNumber(value) && value >= 5 && value <= 250,
+    describe: "equal-power seam crossfade length in milliseconds [5, 250]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 5, maximum: 250 } },
+  },
+  targetIlu: {
+    check: (value) => typeof value === "number" && isFiniteNumber(value) && value >= -30 && value <= -10,
+    describe: "optional output integrated loudness target in LUFS [-30, -10]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: -30, maximum: -10 } },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative project revision",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty key that replays the same remix job",
     required: true,
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
@@ -951,13 +1065,14 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "workAsset.rename": WORK_ASSET_RENAME_SCHEMA,
   "workAsset.delete": WORK_ASSET_DELETE_SCHEMA,
   "workAsset.instantiate": WORK_ASSET_INSTANTIATE_SCHEMA,
+  "timeline.retimeByAnchors": TIMELINE_RETIME_BY_ANCHORS_SCHEMA,
 };
 
 /**
- * Keeps one edit transaction comfortably below ActionHistory's 1000-entry
- * retention window, even when one facade op expands to multiple core actions.
+ * Maximum edit ops permitted in a single `edit.apply` / `edit.validate` batch.
+ * 500 ops is large enough for long retiming/alignment batches while bounding worst-case payload size.
  */
-export const MAX_EDIT_OPS_PER_BATCH = 100;
+export const MAX_EDIT_OPS_PER_BATCH = 500;
 
 export const EDIT_APPLY_SCHEMA: ObjectSchema = {
   ops: {
@@ -1354,6 +1469,27 @@ export const EXPORT_START_SCHEMA: ObjectSchema = {
     describe:
       'an absolute .mp4 path inside a job deliverables directory ("<deliveryRoot>/jobs/<slug>/output/<name>.mp4")',
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  coverImagePath: {
+    check: isNonEmptyString,
+    describe: "an absolute PNG or JPEG image path inside configured mediaRoots to embed as MP4 attached_pic cover",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  exportSubtitlesSrt: {
+    check: (v) => isBoolean(v) || isNonEmptyString(v),
+    describe: 'true to write `<stem>.srt` alongside the exported MP4, or an explicit `.srt` path inside `<deliveryRoot>/jobs/<slug>/output/`',
+    emits: {
+      kind: "leaf",
+      schema: { oneOf: [{ type: "boolean" }, { type: "string", minLength: 1 }] },
+    },
+  },
+  exportChaptersTxt: {
+    check: (v) => isBoolean(v) || isNonEmptyString(v),
+    describe: 'true to write `<stem>.chapters.txt` alongside the exported MP4, or an explicit `.txt` path inside `<deliveryRoot>/jobs/<slug>/output/`',
+    emits: {
+      kind: "leaf",
+      schema: { oneOf: [{ type: "boolean" }, { type: "string", minLength: 1 }] },
+    },
   },
   expectedRevision: {
     check: isNonNegativeInteger,
@@ -2208,10 +2344,30 @@ const isMediaRenderHtmlSource = (v: unknown): boolean => {
   return false;
 };
 
+const MEDIA_RENDER_HTML_ANIMATION_SCHEMA: ObjectSchema = {
+  durationSec: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 30,
+    describe: "a finite number in (0, 30] seconds",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0, maximum: 30 } },
+  },
+  fps: {
+    check: (v) => typeof v === "number" && Number.isInteger(v) && v >= 10 && v <= 60,
+    describe: "an integer in [10, 60] (default 30)",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 10, maximum: 60 } },
+  },
+  format: {
+    check: (v) => v === "mp4" || v === "webm",
+    describe: '"mp4" or "webm" (defaults to "webm" when transparent, "mp4" when opaque)',
+    emits: { kind: "leaf", schema: { enum: ["mp4", "webm"] } },
+  },
+};
+
 /**
- * Constrained HTML→PNG render params. Cross-field rules that stay
+ * Constrained HTML→PNG/video render params. Cross-field rules that stay
  * validation-only: inline sources without assetsRoot may only use
- * data:image URIs (no local base to resolve against).
+ * data:image URIs (no local base to resolve against), and transparent
+ * animations cannot encode to H.264 mp4.
  */
 export const MEDIA_RENDER_HTML_SCHEMA: ObjectSchema = {
   source: {
@@ -2251,6 +2407,17 @@ export const MEDIA_RENDER_HTML_SCHEMA: ObjectSchema = {
       typeof v === "number" && Number.isInteger(v) && v >= 1000 && v <= 120_000,
     describe: "an integer in [1000, 120000] milliseconds (default 30000)",
     emits: { kind: "leaf", schema: { type: "integer", minimum: 1000, maximum: 120000 } },
+  },
+  animation: {
+    check: (v) => {
+      if (!isPlainObject(v)) return false;
+      if (!MEDIA_RENDER_HTML_ANIMATION_SCHEMA.durationSec.check(v.durationSec)) return false;
+      if (v.fps !== undefined && !MEDIA_RENDER_HTML_ANIMATION_SCHEMA.fps.check(v.fps)) return false;
+      if (v.format !== undefined && !MEDIA_RENDER_HTML_ANIMATION_SCHEMA.format.check(v.format)) return false;
+      return true;
+    },
+    describe: "an object { durationSec: (0, 30], fps?: 10..60, format?: \"mp4\" | \"webm\" }",
+    emits: { kind: "object", schema: MEDIA_RENDER_HTML_ANIMATION_SCHEMA },
   },
   outputDir: {
     check: isNonEmptyString,
@@ -2294,6 +2461,7 @@ export const VERB_PARAM_SCHEMAS: {
   "audio.process.normalize": AUDIO_PROCESS_NORMALIZE_SCHEMA,
   "audio.process.denoise": AUDIO_PROCESS_DENOISE_SCHEMA,
   "audio.process.separate": AUDIO_PROCESS_SEPARATE_SCHEMA,
+  "audio.process.remix": AUDIO_PROCESS_REMIX_SCHEMA,
   "audio.process.register": AUDIO_PROCESS_REGISTER_SCHEMA,
   "media.render_html": MEDIA_RENDER_HTML_SCHEMA,
   "media.analyze_start": MEDIA_ANALYZE_START_SCHEMA,

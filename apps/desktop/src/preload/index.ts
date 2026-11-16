@@ -294,6 +294,20 @@ const api = {
       }>,
     abortWrite: (sessionId: string) =>
       ipcRenderer.invoke(CHANNELS.mediaStoreAbortWrite, { sessionId }) as Promise<void>,
+    ingestFromPath: (args: {
+      projectId: string;
+      mediaId: string;
+      sourcePath: string;
+      expectedSize?: number;
+      expectedHash?: string;
+      extension: string;
+    }) =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreIngestFromPath, args) as Promise<{
+        path: string;
+        contentHash: string;
+        created: boolean;
+        sizeBytes: number;
+      }>,
     read: (args: { projectId: string; mediaId: string }) =>
       ipcRenderer.invoke(CHANNELS.mediaStoreRead, args) as Promise<ArrayBuffer | null>,
     readAny: (mediaId: string) =>

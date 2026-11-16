@@ -37,14 +37,16 @@ export function mapTimelineSourceTimes(
   engine.loadClips([clip]);
   const clipEnd = clip.startTime + clip.duration;
   const mappings = params.timelineTimes.map((timelineTime, index) => {
-    if (timelineTime < clip.startTime || timelineTime > clipEnd) {
+    // Curve integration can place an intended endpoint a few ulps beyond
+    // the stored duration. Use the same microsecond tolerance as edit bounds.
+    if (timelineTime < clip.startTime - 1e-6 || timelineTime > clipEnd + 1e-6) {
       throw new FacadeError(
         "INVALID_PARAMS",
         `timeline.mapSourceTimes: timelineTimes[${index}] must fall within clip ${clip.id}`,
         { clipId: clip.id, startTime: clip.startTime, endTime: clipEnd, timelineTime },
       );
     }
-    const clipLocalTime = timelineTime - clip.startTime;
+    const clipLocalTime = Math.max(0, Math.min(clip.duration, timelineTime - clip.startTime));
     const freezeFrame = engine.getFreezeFrameAtTime(clip.id, clipLocalTime);
     const sourceTimeFromInPoint = engine.getSourceTimeAtPlaybackTime(clip.id, clipLocalTime);
     return {

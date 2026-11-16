@@ -8,11 +8,12 @@ import {
   writeFile,
   utimes,
   symlink,
+  truncate,
   unlink,
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ControlledMediaStore } from "./controlled-media-store";
 
 describe("ControlledMediaStore", () => {
@@ -89,6 +90,118 @@ describe("ControlledMediaStore", () => {
     await expect(write(Buffer.from("different"), "project-2")).rejects.toThrow(/immutable/);
     expect(await readFile(first.path)).toEqual(original);
     expect(await store.listAll()).toHaveLength(1);
+  });
+
+  it("streams a file directly from disk via ingestFromPath without a caller ArrayBuffer", { timeout: 20_000 }, async () => {
+    const sourceDir = await mkdtemp(path.join(os.tmpdir(), "reelterminal-src-ingest-"));
+    try {
+      const sourcePath = path.join(sourceDir, "large-sample.bin");
+      const payload = Buffer.alloc(4 * 1024 * 1024 + 123, 0x5a);
+      await writeFile(sourcePath, payload);
+
+      const expectedHash = hash(payload);
+      const ingested = await store.ingestFromPath({
+        projectId: "project-stream",
+        mediaId: "media-stream-1",
+        sourcePath,
+        expectedSize: payload.byteLength,
+        expectedHash,
+        extension: "bin",
+      });
+
+      expect(ingested.created).toBe(true);
+      expect(ingested.contentHash).toBe(expectedHash);
+      expect(ingested.sizeBytes).toBe(payload.byteLength);
+      expect(await readFile(ingested.path)).toEqual(payload);
+      expect(await readdir(path.dirname(ingested.path))).toEqual([
+        path.basename(ingested.path),
+      ]);
+    } finally {
+      await rm(sourceDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["size", "hash"] as const)(
+    "ingestFromPath rejects a declared %s mismatch without publishing or leaving pending files",
+    async (mismatch) => {
+      const sourcePath = path.join(root, "source.bin");
+      const payload = Buffer.from("source bytes");
+      await writeFile(sourcePath, payload);
+      // Keep the directory present so the assertion also covers rejection
+      // before a write session is opened (the size-mismatch path).
+      const projectDirectory = path.join(root, "project-stream");
+      await mkdir(projectDirectory);
+
+      await expect(store.ingestFromPath({
+        projectId: "project-stream",
+        mediaId: "rejected-media",
+        sourcePath,
+        expectedSize: payload.length + (mismatch === "size" ? 1 : 0),
+        expectedHash: mismatch === "hash" ? "0".repeat(64) : hash(payload),
+        extension: "bin",
+      })).rejects.toThrow(mismatch === "size" ? /size changed/ : /SHA-256/);
+
+      expect(await store.listAll()).toEqual([]);
+      expect(await store.read("project-stream", "rejected-media")).toBeNull();
+      expect(await readdir(projectDirectory)).toEqual([]);
+      expect(await readFile(sourcePath)).toEqual(payload);
+    },
+  );
+
+  it("ingestFromPath deduplicates replayed bytes and preserves an immutable version on conflict", async () => {
+    const sourcePath = path.join(root, "source.bin");
+    const original = Buffer.from("original bytes");
+    await writeFile(sourcePath, original);
+    const args = { projectId: "project-1", mediaId: "path-media", sourcePath, extension: "bin" };
+    const first = await store.ingestFromPath(args);
+
+    expect(await store.ingestFromPath({ ...args, projectId: "project-2" })).toEqual({
+      ...first,
+      created: false,
+    });
+    const changed = Buffer.from("changed source bytes");
+    await writeFile(sourcePath, changed);
+    await expect(store.ingestFromPath({
+      ...args,
+      projectId: "project-2",
+      expectedSize: changed.length,
+      expectedHash: hash(changed),
+    })).rejects.toThrow(/immutable/);
+
+    expect(await readFile(first.path)).toEqual(original);
+    expect(await store.listAll()).toHaveLength(1);
+    expect(await readdir(path.join(root, "project-1"))).toEqual([path.basename(first.path)]);
+    expect(await readdir(path.join(root, "project-2"))).toEqual([]);
+  });
+
+  it.each(["truncated", "grown", "rewritten"] as const)("ingestFromPath refuses to publish a source %s during a size-verified copy", async (change) => {
+    const sourcePath = path.join(root, "changing-source.bin");
+    const payload = Buffer.alloc(4 * 1024 * 1024 + 123, 0x5a);
+    await writeFile(sourcePath, payload);
+    const writeChunk = store.writeChunk.bind(store);
+    // Model an external writer changing the file after the first bytes have
+    // been copied. A matching initial stat must not approve the short result.
+    vi.spyOn(store, "writeChunk").mockImplementationOnce(async (sessionId, data) => {
+      await writeChunk(sessionId, data);
+      if (change === "rewritten") {
+        await writeFile(sourcePath, Buffer.alloc(payload.length, 0x33));
+        const changed = new Date(Date.now() + 2000);
+        await utimes(sourcePath, changed, changed);
+      } else {
+        await truncate(sourcePath, change === "truncated" ? 0 : payload.length + 123);
+      }
+    });
+
+    await expect(store.ingestFromPath({
+      projectId: "project-stream",
+      mediaId: "truncated-media",
+      sourcePath,
+      expectedSize: payload.length,
+      extension: "bin",
+    })).rejects.toThrow(change === "rewritten" ? /source changed/ : /size changed/);
+
+    expect(await store.listAll()).toEqual([]);
+    expect(await readdir(path.join(root, "project-stream"))).toEqual([]);
   });
 
   it("serializes competing unknown-hash commits for the same media id", async () => {

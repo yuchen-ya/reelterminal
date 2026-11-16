@@ -300,6 +300,64 @@ export class ControlledMediaStore {
     await unlink(pending.temporaryPath).catch(() => undefined);
   }
 
+  /**
+   * Stream-copy an arbitrarily large local media file directly into controlled
+   * storage on the main process without buffering it in renderer/IPC RAM.
+   */
+  async ingestFromPath(args: {
+    projectId: string;
+    mediaId: string;
+    sourcePath: string;
+    expectedSize?: number;
+    expectedHash?: string;
+    extension: string;
+  }): Promise<{ path: string; contentHash: string; created: boolean; sizeBytes: number }> {
+    const sourceHandle = await open(args.sourcePath, "r");
+    let sourceStat;
+    try {
+      sourceStat = await sourceHandle.stat();
+      if (!sourceStat.isFile()) {
+        throw new Error(`Cannot ingest non-file path: ${args.sourcePath}`);
+      }
+      if (args.expectedSize !== undefined && sourceStat.size !== args.expectedSize) {
+        throw new Error("Media source size changed after probing; retry with fresh file facts");
+      }
+      const sessionId = await this.beginWrite({
+        projectId: args.projectId,
+        mediaId: args.mediaId,
+        expectedHash: args.expectedHash,
+        extension: args.extension,
+      });
+      try {
+        const buffer = new Uint8Array(MAX_CHUNK_BYTES);
+        let position = 0;
+        while (true) {
+          const { bytesRead } = await sourceHandle.read(buffer, 0, buffer.byteLength, position);
+          if (bytesRead === 0) break;
+          position += bytesRead;
+          if (position > sourceStat.size) {
+            throw new Error("Media source size changed while copying; retry with fresh file facts");
+          }
+          await this.writeChunk(sessionId, buffer.subarray(0, bytesRead));
+        }
+        const finalStat = await sourceHandle.stat();
+        if (position !== sourceStat.size || finalStat.size !== sourceStat.size) {
+          throw new Error("Media source size changed while copying; retry with fresh file facts");
+        }
+        if (finalStat.mtimeMs !== sourceStat.mtimeMs || finalStat.ctimeMs !== sourceStat.ctimeMs) {
+          throw new Error("Media source changed while copying; retry with fresh file facts");
+        }
+        const committed = await this.commitWrite(sessionId);
+        return { ...committed, sizeBytes: position };
+      } catch (error) {
+        await this.abortWrite(sessionId).catch(() => undefined);
+        throw error;
+      }
+    } finally {
+      await sourceHandle.close().catch(() => undefined);
+    }
+  }
+
   async read(projectId: string, mediaId: string): Promise<ArrayBuffer | null> {
     const filePath = await this.findMediaPath(projectId, mediaId);
     if (!filePath) return null;

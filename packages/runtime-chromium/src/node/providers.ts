@@ -29,7 +29,9 @@ import type {
   RenderedFrameInfo,
   RenderContactSheetRequest,
   RenderedContactSheetInfo,
+  RenderedHtmlAnimationInfo,
   RenderedHtmlPngInfo,
+  RenderHtmlAnimationRequest,
   RenderHtmlPngRequest,
   RenderProvider,
 } from "@reelterminal/agent-facade";
@@ -43,7 +45,10 @@ import {
   probeWithRuntime,
   type RuntimeProbeResult,
 } from "./probe";
-import { renderHtmlPng as renderHtmlPngOnRuntime } from "./html-render";
+import {
+  renderHtmlAnimation as renderHtmlAnimationOnRuntime,
+  renderHtmlPng as renderHtmlPngOnRuntime,
+} from "./html-render";
 import { ChromiumRuntime, HydratedSessionCancelled, PartFileWriter } from "./runtime";
 import {
   beginExportPerformanceSpan,
@@ -317,6 +322,19 @@ export class ChromiumRenderProvider implements RenderProvider {
       throw new Error("render provider preflight failed — refusing to render HTML");
     }
     return renderHtmlPngOnRuntime(this.providers.runtime, request);
+  }
+
+  async renderHtmlAnimation(
+    request: RenderHtmlAnimationRequest,
+  ): Promise<RenderedHtmlAnimationInfo> {
+    const probe = await this.providers.probe();
+    if (!probe.summary.renderAvailable) {
+      throw new Error("render provider preflight failed — refusing to render HTML animation");
+    }
+    return renderHtmlAnimationOnRuntime(this.providers.runtime, {
+      ...request,
+      ...this.providers.ffmpegConfig,
+    });
   }
 }
 

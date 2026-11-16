@@ -33,6 +33,15 @@ export interface DuckingConfig {
   readonly holdTime: number; // Minimum time to hold ducking
 }
 
+export interface DuckingTailEnvelope {
+  readonly startAfterLastPresenceSec?: number;
+  readonly swellGainRatio: number;
+  readonly swellRampSec?: number;
+  readonly fadeOutDurationSec?: number;
+  readonly fadeOutCurve?: AutomationCurve;
+  readonly clipDurationSec?: number;
+}
+
 export interface VolumeAutomationResult {
   readonly buffer: AudioBuffer;
   readonly appliedKeyframes: number;
@@ -150,6 +159,10 @@ export class VolumeAutomation {
       const prevValue = prevKf ? clampVolume(prevKf.value) : baseVolume;
       const prevTime = prevKf ? prevKf.time : 0;
 
+      if (kf.time === prevTime) {
+        gainNode.gain.setValueAtTime(clampedValue, kf.time);
+        continue;
+      }
       this.applyInterpolation(
         gainNode,
         prevValue,
@@ -474,7 +487,7 @@ export class VolumeAutomation {
     const sorted = [...keyframes].sort((a, b) => a.time - b.time);
 
     // Before first keyframe
-    if (time <= sorted[0].time) {
+    if (time < sorted[0].time) {
       return clampVolume(sorted[0].value);
     }
 
@@ -560,6 +573,7 @@ export function generateDuckingKeyframesFromRanges(
   presenceRanges: ReadonlyArray<{ start: number; end: number }>,
   config: DuckingConfig,
   backgroundVolume: number = 1,
+  tailEnvelope?: DuckingTailEnvelope,
 ): VolumeKeyframe[] {
   if (presenceRanges.length === 0) {
     return [];
@@ -599,6 +613,54 @@ export function generateDuckingKeyframesFromRanges(
       curve: "s-curve",
     });
   }
+
+  if (tailEnvelope && mergedRanges.length > 0) {
+    const lastRange = mergedRanges[mergedRanges.length - 1]!;
+    const delayAfterPresence = Math.max(
+      config.release,
+      tailEnvelope.startAfterLastPresenceSec ?? config.release,
+    );
+    const tSwellStart = lastRange.end + delayAfterPresence;
+    const swellRampSec = Math.max(0, tailEnvelope.swellRampSec ?? 1.2);
+    const tSwellPeak = tSwellStart + swellRampSec;
+    const swellVolume = clampVolume(normalVolume * tailEnvelope.swellGainRatio);
+
+    keyframes.push({
+      time: tSwellStart,
+      value: normalVolume,
+      curve: "s-curve",
+    });
+    keyframes.push({
+      time: tSwellPeak,
+      value: swellVolume,
+      curve: "s-curve",
+    });
+
+    const fadeOutDurationSec = tailEnvelope.fadeOutDurationSec;
+    const clipDurationSec = tailEnvelope.clipDurationSec;
+    if (
+      fadeOutDurationSec !== undefined &&
+      fadeOutDurationSec > 0 &&
+      clipDurationSec !== undefined &&
+      clipDurationSec > tSwellPeak
+    ) {
+      const fadeStart = Math.max(tSwellPeak, clipDurationSec - fadeOutDurationSec);
+      const fadeOutCurve = tailEnvelope.fadeOutCurve ?? "s-curve";
+      if (fadeStart > tSwellPeak + 0.001) {
+        keyframes.push({
+          time: fadeStart,
+          value: swellVolume,
+          curve: fadeOutCurve,
+        });
+      }
+      keyframes.push({
+        time: clipDurationSec,
+        value: 0,
+        curve: fadeOutCurve,
+      });
+    }
+  }
+
   return deduplicateDuckingKeyframes(keyframes);
 }
 
@@ -630,8 +692,13 @@ function deduplicateDuckingKeyframes(keyframes: VolumeKeyframe[]): VolumeKeyfram
 
   for (const kf of sorted) {
     const last = result[result.length - 1];
-    // Skip if same time (keep the first one)
-    if (!last || Math.abs(kf.time - last.time) > 0.001) {
+    // Keep both sides of an instantaneous gain change; equal-valued points
+    // at the same time still coalesce (for example release and swell start).
+    if (
+      !last ||
+      Math.abs(kf.time - last.time) > 0.001 ||
+      (kf.time === last.time && kf.value !== last.value)
+    ) {
       result.push(kf);
     }
   }

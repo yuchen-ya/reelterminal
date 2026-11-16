@@ -80,6 +80,7 @@ export const CHANNELS = {
   mediaStoreWriteChunk: "reelterminal:mediaStore:writeChunk",
   mediaStoreCommitWrite: "reelterminal:mediaStore:commitWrite",
   mediaStoreAbortWrite: "reelterminal:mediaStore:abortWrite",
+  mediaStoreIngestFromPath: "reelterminal:mediaStore:ingestFromPath",
   mediaStoreRead: "reelterminal:mediaStore:read",
   mediaStoreReadAny: "reelterminal:mediaStore:readAny",
   mediaStoreGetVersion: "reelterminal:mediaStore:getVersion",

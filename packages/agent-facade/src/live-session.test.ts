@@ -3673,7 +3673,7 @@ describe("live audio normalization task lifecycle", () => {
       const completed = await waitForJob(facade, started.value.jobId, 30_000);
       expect(completed).toMatchObject({ kind: "audio-process", state: "done", artifact: null, route: "local-ffmpeg-loudnorm-two-pass" });
       const result = completed.result;
-      if (!result || !("source" in result)) throw new Error("audio-process completed without normalized provenance");
+      if (!result || !("source" in result) || !("before" in result)) throw new Error("audio-process completed without normalized provenance");
       expect(result.source).toMatchObject({ mediaId: imported.value.mediaId, startSec: 0.1, endSec: 2.1, projectId: importedStore.project.id, workspaceId: "workspace-live-1", revision: sourceRevision });
       expect(Number.isFinite(result.before.integratedLufs)).toBe(true);
       if (!result.after) throw new Error("normalize result has no after measurement");

@@ -76,6 +76,7 @@ export class LiveCliError extends Error {
     readonly kind: "args" | "connection" | "business",
     readonly exitCode: 2 | 3 | 4,
     readonly retryable = false,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "LiveCliError";

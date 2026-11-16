@@ -27,6 +27,9 @@ export interface ShapeClip extends GraphicClip {
   readonly shapeType: ShapeType;
   readonly style: ShapeStyle;
   readonly points?: Point2D[]; // For polygon/path shapes
+  readonly trimPathStart?: number;
+  readonly trimPathEnd?: number;
+  readonly trimPathOffset?: number;
 }
 
 export interface SVGClip extends GraphicClip {
@@ -38,6 +41,9 @@ export interface SVGClip extends GraphicClip {
   readonly entryAnimation?: GraphicAnimation;
   readonly exitAnimation?: GraphicAnimation;
   readonly emphasisAnimation?: EmphasisAnimation;
+  readonly trimPathStart?: number;
+  readonly trimPathEnd?: number;
+  readonly trimPathOffset?: number;
 }
 
 export interface SVGColorStyle {

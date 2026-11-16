@@ -40,6 +40,102 @@ interface AnimatedGraphicState {
   blur: number;
   scaleX?: number;
   scaleY?: number;
+  trimPathStart: number;
+  trimPathEnd: number;
+  trimPathOffset: number;
+}
+
+const TRIM_PATH_ELEMENT_PATTERN =
+  /<(path|line|polyline|polygon|circle|rect|ellipse)(\b[^>]*?)(\/?)>/gi;
+
+function stripSvgAttr(attrs: string, name: string): string {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return attrs.replace(
+    new RegExp(`\\s+${escaped}\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+)`, "gi"),
+    "",
+  );
+}
+
+function stripStyleDeclarations(attrs: string, props: readonly string[]): string {
+  const propPattern = new RegExp(
+    `(?:^|;)\\s*(?:${props.join("|")})\\s*:[^;"]*(?=;|$)`,
+    "gi",
+  );
+  return attrs.replace(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/gi, (_m, dq, sq) => {
+    const raw = (dq ?? sq ?? "") as string;
+    const cleaned = raw.replace(propPattern, "").replace(/^\s*;\s*/, "").trim();
+    return cleaned ? `style="${cleaned}"` : "";
+  });
+}
+
+/**
+ * Applies normalized SVG stroke Trim Path (0..1) attributes onto strokeable
+ * vector elements (`path`, `line`, `polyline`, `polygon`, `circle`, `rect`,
+ * `ellipse`) using `pathLength="1"`, `stroke-dasharray`, and `stroke-dashoffset`.
+ * Returns `svgContent` unchanged when `[start, end, offset]` matches full stroke.
+ */
+export function applySvgTrimPathMarkup(
+  svgContent: string,
+  start = 0,
+  end = 1,
+  offset = 0,
+): string {
+  const trimStart = Math.max(0, Math.min(1, Number.isFinite(start) ? start : 0));
+  const trimEnd = Math.max(0, Math.min(1, Number.isFinite(end) ? end : 1));
+  const trimOffset = Number.isFinite(offset) ? offset : 0;
+
+  if (
+    Math.abs(trimStart) < 1e-6 &&
+    Math.abs(trimEnd - 1) < 1e-6 &&
+    Math.abs(trimOffset) < 1e-6
+  ) {
+    return svgContent;
+  }
+
+  const visibleLen = Math.max(0, trimEnd - trimStart);
+  if (visibleLen >= 1 - 1e-5) {
+    return svgContent;
+  }
+
+  let injectedAttrs: string;
+  if (visibleLen <= 1e-5) {
+    // Zero-length stroke: hide stroke-opacity too so round/square linecaps do not emit a dot.
+    injectedAttrs = 'pathLength="1" stroke-dasharray="0 2" stroke-dashoffset="0" stroke-opacity="0"';
+  } else {
+    const u = (((trimStart + trimOffset) % 1) + 1) % 1;
+    if (u < 1e-6) {
+      injectedAttrs = `pathLength="1" stroke-dasharray="${visibleLen.toFixed(6)} 2" stroke-dashoffset="0"`;
+    } else if (u + visibleLen <= 1 + 1e-6) {
+      injectedAttrs = `pathLength="1" stroke-dasharray="${visibleLen.toFixed(6)} 2" stroke-dashoffset="${(-u).toFixed(6)}"`;
+    } else {
+      const wrapLen = Math.max(0, u + visibleLen - 1);
+      const firstLen = Math.max(0, 1 - u);
+      const middleGap = Math.max(0, 1 - visibleLen);
+      injectedAttrs = `pathLength="1" stroke-dasharray="${wrapLen.toFixed(6)} ${middleGap.toFixed(6)} ${firstLen.toFixed(6)} 2" stroke-dashoffset="0"`;
+    }
+  }
+
+  return svgContent.replace(
+    TRIM_PATH_ELEMENT_PATTERN,
+    (_full, tag: string, rawAttrs: string, selfClose: string) => {
+      let attrs = rawAttrs;
+      attrs = stripSvgAttr(attrs, "pathLength");
+      attrs = stripSvgAttr(attrs, "stroke-dasharray");
+      attrs = stripSvgAttr(attrs, "stroke-dashoffset");
+      attrs = stripStyleDeclarations(attrs, [
+        "stroke-dasharray",
+        "stroke-dashoffset",
+      ]);
+      if (visibleLen <= 1e-5) {
+        attrs = stripSvgAttr(attrs, "stroke-opacity");
+        attrs = stripStyleDeclarations(attrs, ["stroke-opacity"]);
+      }
+      const trimmedAttrs = attrs.trimEnd();
+      const space = trimmedAttrs.length > 0 && !/^\s/.test(trimmedAttrs) ? " " : "";
+      const close = selfClose ? " />" : ">";
+      return `<${tag}${space}${trimmedAttrs} ${injectedAttrs}${close}`;
+    },
+  );
 }
 
 /**
@@ -712,8 +808,14 @@ export class GraphicsEngine {
       renderWidth = Math.ceil(renderHeight * svgAspect);
     }
 
-    const img = await this.loadSVGImage(
+    const effectiveSvgContent = applySvgTrimPathMarkup(
       svg.svgContent,
+      animatedState.trimPathStart,
+      animatedState.trimPathEnd,
+      animatedState.trimPathOffset,
+    );
+    const img = await this.loadSVGImage(
+      effectiveSvgContent,
       renderWidth,
       renderHeight,
     );
@@ -1046,10 +1148,56 @@ export class GraphicsEngine {
     let offsetY = 0;
     let rotation = 0;
     let blur = 0;
+    const clipWithTrim = graphic as Partial<
+      Pick<SVGClip, "trimPathStart" | "trimPathEnd" | "trimPathOffset">
+    >;
+    let trimPathStart = clipWithTrim.trimPathStart ?? 0;
+    let trimPathEnd = clipWithTrim.trimPathEnd ?? 1;
+    let trimPathOffset = clipWithTrim.trimPathOffset ?? 0;
 
     if (graphic.keyframes.length > 0) {
       transform = this.getAnimatedTransform(graphic, time);
       opacity = transform.opacity;
+
+      const startKf = this.animationEngine.getKeyframesForProperty(
+        graphic.keyframes,
+        "trimPathStart",
+      );
+      if (startKf.length > 0) {
+        const res = this.animationEngine.getValueAtTime(startKf, time);
+        if (typeof res.value === "number" && Number.isFinite(res.value)) {
+          trimPathStart = Math.max(0, Math.min(1, res.value));
+        }
+      }
+
+      const endKf = this.animationEngine.getKeyframesForProperty(
+        graphic.keyframes,
+        "trimPathEnd",
+      );
+      const aliasKf =
+        endKf.length > 0
+          ? endKf
+          : this.animationEngine.getKeyframesForProperty(
+              graphic.keyframes,
+              "trimPath",
+            );
+      if (aliasKf.length > 0) {
+        const res = this.animationEngine.getValueAtTime(aliasKf, time);
+        if (typeof res.value === "number" && Number.isFinite(res.value)) {
+          trimPathEnd = Math.max(0, Math.min(1, res.value));
+        }
+      }
+
+      const offsetKf = this.animationEngine.getKeyframesForProperty(
+        graphic.keyframes,
+        "trimPathOffset",
+      );
+      if (offsetKf.length > 0) {
+        const res = this.animationEngine.getValueAtTime(offsetKf, time);
+        if (typeof res.value === "number" && Number.isFinite(res.value)) {
+          trimPathOffset = res.value;
+        }
+      }
     }
 
     let isInEntryPhase = false;
@@ -1081,6 +1229,9 @@ export class GraphicsEngine {
           rotation += animState.rotation;
           opacity *= animState.opacity;
           blur = animState.blur;
+          if (animState.trimPathEnd !== undefined) {
+            trimPathEnd *= animState.trimPathEnd;
+          }
         }
 
         if (exitAnim && time >= exitStartTime) {
@@ -1099,6 +1250,9 @@ export class GraphicsEngine {
           rotation += animState.rotation;
           opacity *= animState.opacity;
           blur = Math.max(blur, animState.blur);
+          if (animState.trimPathEnd !== undefined) {
+            trimPathEnd *= animState.trimPathEnd;
+          }
         }
       }
     }
@@ -1145,6 +1299,9 @@ export class GraphicsEngine {
       offsetY,
       rotation,
       blur,
+      trimPathStart,
+      trimPathEnd,
+      trimPathOffset,
     };
   }
 
@@ -1569,6 +1726,7 @@ export class GraphicsEngine {
     offsetY: number;
     rotation: number;
     blur: number;
+    trimPathEnd?: number;
   } {
     const easedProgress = this.animationEngine.applyEasing(
       progress,
@@ -1683,6 +1841,17 @@ export class GraphicsEngine {
           offsetY: 0,
           rotation: 0,
           blur: 0,
+        };
+
+      case "draw":
+        return {
+          opacity: 1,
+          scale: 1,
+          offsetX: 0,
+          offsetY: 0,
+          rotation: 0,
+          blur: 0,
+          trimPathEnd: Math.max(0, Math.min(1, animProgress)),
         };
 
       case "none":
@@ -1978,6 +2147,9 @@ export class GraphicsEngine {
       blendMode?: import("../video/types").BlendMode;
       blendOpacity?: number;
       emphasisAnimation?: EmphasisAnimation;
+      trimPathStart?: number;
+      trimPathEnd?: number;
+      trimPathOffset?: number;
     },
   ): SVGClip | undefined {
     const existing = this.svgClips.get(id);
@@ -2002,6 +2174,9 @@ export class GraphicsEngine {
       blendOpacity: updates.blendOpacity ?? existing.blendOpacity,
       emphasisAnimation:
         updates.emphasisAnimation ?? existing.emphasisAnimation,
+      trimPathStart: updates.trimPathStart ?? existing.trimPathStart,
+      trimPathEnd: updates.trimPathEnd ?? existing.trimPathEnd,
+      trimPathOffset: updates.trimPathOffset ?? existing.trimPathOffset,
     };
 
     this.svgClips.set(id, updatedClip);

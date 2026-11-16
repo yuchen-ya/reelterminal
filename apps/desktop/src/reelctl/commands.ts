@@ -8,6 +8,7 @@ export interface ParsedInvocation {
   readonly expectedProjectEpoch?: string;
   readonly outputFields?: readonly string[];
   readonly file?: string;
+  readonly inputJson?: string;
   readonly stdin: boolean;
   readonly human: boolean;
   readonly compact: boolean;
@@ -88,6 +89,7 @@ export interface RawArgs {
   readonly positional: readonly string[];
   readonly flags: Record<string, unknown>;
   readonly file?: string;
+  readonly inputJson?: string;
   readonly stdin: boolean;
   readonly human: boolean;
   readonly compact: boolean;
@@ -101,6 +103,7 @@ export function parseFlags(tokens: readonly string[]): RawArgs {
   const positional: string[] = [];
   const flags: Record<string, unknown> = {};
   let file: string | undefined;
+  let inputJson: string | undefined;
   let outputFile: string | undefined;
   let stdin = false;
   let human = false;
@@ -119,6 +122,16 @@ export function parseFlags(tokens: readonly string[]): RawArgs {
     const rawName = token.slice(2, equalsAt < 0 ? undefined : equalsAt);
     const inlineValue = equalsAt < 0 ? undefined : token.slice(equalsAt + 1);
     const normalized = kebabToCamel(rawName);
+    if (rawName === "input-json") {
+      let rawJson: string | undefined = inlineValue;
+      if (rawJson === undefined && tokens[index + 1] !== undefined && !tokens[index + 1]!.startsWith("--")) {
+        rawJson = tokens[index + 1]!;
+        index += 1;
+      }
+      if (rawJson === undefined) fail("--input-json needs a JSON string");
+      inputJson = rawJson;
+      continue;
+    }
     let value: unknown = true;
     if (inlineValue !== undefined) value = flagValue(inlineValue);
     else if (tokens[index + 1] !== undefined && !tokens[index + 1]!.startsWith("--")) {
@@ -190,11 +203,14 @@ export function parseFlags(tokens: readonly string[]): RawArgs {
     }
   }
 
-  if (file !== undefined && stdin) fail("choose either --file or --stdin");
+  if ([file !== undefined, stdin, inputJson !== undefined].filter(Boolean).length > 1) {
+    fail("choose only one of --stdin, --file, or --input-json");
+  }
   return {
     positional,
     flags,
     ...(file === undefined ? {} : { file }),
+    ...(inputJson === undefined ? {} : { inputJson }),
     stdin,
     human,
     compact,
@@ -287,6 +303,7 @@ export function parseInvocation(tokens: readonly string[]): ParsedInvocation {
     ...(typeof parsed.flags.expectedProjectEpoch === "string" ? { expectedProjectEpoch: parsed.flags.expectedProjectEpoch } : {}),
     ...(parsed.outputFields === undefined ? {} : { outputFields: parsed.outputFields }),
     ...(parsed.file === undefined ? {} : { file: parsed.file }),
+    ...(parsed.inputJson === undefined ? {} : { inputJson: parsed.inputJson }),
     stdin: parsed.stdin,
     human: parsed.human,
     compact: parsed.compact,
@@ -356,6 +373,7 @@ export function commandHelp(
     "",
     entry.description,
     `Canonical invocation: reelctl call ${entry.name} --file request.json`,
+    `Alternative (pipe JSON): type request.json | reelctl call ${entry.name} --stdin`,
     `Compatibility aliases: ${aliasesForCommand(entry.name).join(", ") || "none"}`,
     "",
     "Input schema:",
@@ -370,7 +388,7 @@ export const REELCTL_HELP = `reelctl — operate explicit ReelTerminal targets
   tools video|review|library|system    List capability cards
   tools <package.id>                  Load one capability's tools and workflow
   describe <canonical.verb> [--op <name> ...] [--detail full]
-  call <canonical.verb> [--file request.json | --stdin] [--name value ...]
+  call <canonical.verb> [--stdin | --file <path>] [--name value ...]
 
   reelctl status
   job status|wait|cancel <job-id>       Keep job ownership bound to your target
@@ -380,8 +398,9 @@ export const REELCTL_HELP = `reelctl — operate explicit ReelTerminal targets
 Use start, select a capability, describe its required command/ops, then call.
 Discovery is read-only and does not grant content access or write permission.
 Unknown dependency availability stays unprobed until execution needs it.
-Complex nested requests use JSON files or stdin. Reads and edits carry the same
-explicit target and supported revision/runtime guards; do not follow GUI selection.
+Prefer --stdin or --file <path> for JSON requests (on Windows cmd/PowerShell,
+inline --input-json quotes are often stripped by the shell). Reads and edits carry
+the same explicit target and supported revision/runtime guards; do not follow GUI selection.
 --timeout-ms controls an HTTP request ceiling, or the deadline for job wait.
 --human pretty-prints JSON. --result-fields projects output; --output-file saves it.
 

@@ -171,6 +171,69 @@ export async function resolveDeliveredArtifactPath(
 }
 
 /**
+ * Validate an explicit deliverable sidecar path (e.g. .srt / .txt) against
+ * the session's delivery roots using the exact same `<deliveryRoot>/jobs/<slug>/output/`
+ * containment and no-overwrite rules as destinationPath.
+ */
+export async function resolveDeliverySidecarDestination(
+  candidate: string,
+  deliveryRoots: readonly string[],
+  requiredExtension: string,
+  fieldName: string,
+  verb: string,
+): Promise<DeliveryDestination> {
+  if (deliveryRoots.length === 0) {
+    throw new FacadeError(
+      "INVALID_PARAMS",
+      `${verb}: ${fieldName} was given as an explicit path but this session has no delivery roots configured`,
+      {
+        requires:
+          "a delivery root (headless: REELTERMINAL_AVE_DELIVERY_ROOTS; live: the desktop Agent workspace root)",
+      },
+    );
+  }
+  if (hasUrlScheme(candidate) || !path.isAbsolute(candidate)) {
+    throw new FacadeError(
+      "INVALID_PARAMS",
+      `${verb}: ${fieldName} must be an absolute local path (got "${candidate}")`,
+    );
+  }
+  const base = path.basename(candidate);
+  if (!base.toLowerCase().endsWith(requiredExtension.toLowerCase())) {
+    throw new FacadeError(
+      "INVALID_PARAMS",
+      `${verb}: ${fieldName} must name a ${requiredExtension} file; got "${base}"`,
+    );
+  }
+  const parent = path.dirname(candidate);
+  let realParent: string;
+  try {
+    realParent = path.normalize(await realpath(parent));
+  } catch {
+    throw new FacadeError(
+      "INVALID_PARAMS",
+      `${verb}: ${fieldName}'s directory does not exist: "${parent}" — create the job layout first (<deliveryRoot>/jobs/<slug>/output/)`,
+    );
+  }
+  if (!(await isJobDeliverablesDir(realParent, deliveryRoots))) {
+    throw new FacadeError(
+      "INVALID_PARAMS",
+      `${verb}: ${fieldName} must resolve inside a job deliverables directory (<deliveryRoot>/jobs/<slug>/output/); got "${candidate}"`,
+      { deliveryRoots: [...deliveryRoots] },
+    );
+  }
+  const finalPath = path.join(realParent, base);
+  if (await pathExists(finalPath)) {
+    throw new FacadeError(
+      "CONFLICT",
+      `${verb}: ${fieldName} already exists — delivery never overwrites; choose a fresh file name`,
+      { path: finalPath },
+    );
+  }
+  return { path: finalPath };
+}
+
+/**
  * Copy the verified artifact to the resolved destination. COPYFILE_EXCL
  * keeps the no-overwrite guarantee against a same-name file appearing
  * between validation and delivery.

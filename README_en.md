@@ -26,12 +26,14 @@ ReelTerminal connects a timeline, preview canvas and external AI assistant to th
 
 Projects, media caches, editing and rendering run locally. See [external dependencies](docs/EXTERNAL-DEPENDENCIES.md) for model downloads, external pages and optional network services. You choose and configure the AI assistant separately.
 
-## What is new in 1.4.2
+## What is new in 1.5.0
 
-- Fix source-frame selection and decoder cache identity to reduce frame timing errors and stale frames after media replacement.
-- Unify timeline rendering across playback, paused previews, CLI stills and exports for more consistent subtitles, overlays and effects.
-- Replace selected timeline subtitles atomically through the CLI, without an intermediate delete-and-add state.
-- Refresh the startup loading animation.
+- Align clips to source/timeline anchors, update adjacent clips together and choose how transitions handle insufficient source handles.
+- Render local HTML/CSS/SVG animation frame by frame, or animate SVG stroke growth with path keyframes.
+- Remix music to a target duration and raise the ending after background ducking; explicitly register generated audio before using it in a project.
+- Export an attached cover, SRT subtitles and chapter text; stream local media up to 8 GiB through the desktop CLI.
+
+These new structured operations are available through the CLI. See the [1.5.0 notes](docs/RELEASE-1.5.0.md) for parameters, dependencies and limits. Video remains SDR and 8-bit; normalize incompletely tagged sources and inspect the output. See [color guidance](docs/COLOR.md).
 
 ## Get started
 

@@ -411,4 +411,131 @@ describe("media.render_html", () => {
     const bytes = await readFile(result.value.path);
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(result.value.sha256);
   });
+
+  it("validates animation options, defaults format from transparent, and rejects transparent mp4", async () => {
+    const seen: unknown[] = [];
+    const { provider } = fakeProvider();
+    const animProvider: RenderProvider = {
+      ...provider,
+      renderHtmlAnimation: async (request) => {
+        seen.push(request);
+        const bytes =
+          request.format === "webm"
+            ? Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x00, 0x00, 0x00])
+            : Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32]);
+        await writeFile(request.destPath, bytes);
+        return {
+          bytesWritten: bytes.length,
+          missingAssets: [],
+          format: request.format,
+          frameCount: Math.round(request.durationSec * request.fps),
+          fps: request.fps,
+          durationSec: request.durationSec,
+        };
+      },
+    };
+    const facade = facadeWith(animProvider);
+
+    // transparent defaults to true -> format defaults to "webm"
+    const webmRes = await facade["media.render_html"]({
+      ...inline("<p>anim</p>"),
+      width: 128,
+      height: 72,
+      animation: { durationSec: 1.0, fps: 15 },
+      idempotencyKey: "anim-webm",
+    });
+    expect(webmRes.ok).toBe(true);
+    if (webmRes.ok) {
+      expect(webmRes.value.format).toBe("webm");
+      expect(webmRes.value.frameCount).toBe(15);
+      expect(webmRes.value.fps).toBe(15);
+      expect(webmRes.value.durationSec).toBe(1);
+      expect(webmRes.value.path.endsWith(".webm")).toBe(true);
+    }
+
+    // transparent: false -> format defaults to "mp4"
+    const mp4Res = await facade["media.render_html"]({
+      ...inline("<p>anim-mp4</p>"),
+      width: 128,
+      height: 72,
+      transparent: false,
+      animation: { durationSec: 0.5 },
+    });
+    expect(mp4Res.ok).toBe(true);
+    if (mp4Res.ok) {
+      expect(mp4Res.value.format).toBe("mp4");
+      expect(mp4Res.value.fps).toBe(30);
+      expect(mp4Res.value.frameCount).toBe(15);
+      expect(mp4Res.value.path.endsWith(".mp4")).toBe(true);
+    }
+
+    // transparent: true + format: "mp4" -> INVALID_PARAMS
+    const badCombo = await facade["media.render_html"]({
+      ...inline("<p>bad</p>"),
+      width: 128,
+      height: 72,
+      transparent: true,
+      animation: { durationSec: 1, format: "mp4" },
+    });
+    expect(badCombo.ok).toBe(false);
+    if (!badCombo.ok) {
+      expect(badCombo.error.code).toBe("INVALID_PARAMS");
+    }
+
+    // out-of-range durationSec or fps -> INVALID_PARAMS
+    const badFps = await facade["media.render_html"]({
+      ...inline("<p>bad-fps</p>"),
+      width: 128,
+      height: 72,
+      transparent: false,
+      animation: { durationSec: 1, fps: 9 },
+    });
+    expect(badFps.ok).toBe(false);
+    if (!badFps.ok) expect(badFps.error.code).toBe("INVALID_PARAMS");
+
+    // provider without renderHtmlAnimation -> UNSUPPORTED
+    const noAnimFacade = facadeWith(provider);
+    const noAnimRes = await noAnimFacade["media.render_html"]({
+      ...inline("<p>no-anim</p>"),
+      width: 128,
+      height: 72,
+      animation: { durationSec: 1 },
+    });
+    expect(noAnimRes.ok).toBe(false);
+    if (!noAnimRes.ok) expect(noAnimRes.error.code).toBe("UNSUPPORTED");
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toMatchObject({
+      source: { kind: "inline", html: "<p>anim</p>" }, width: 128, height: 72,
+      transparent: true, durationSec: 1, fps: 15, format: "webm", timeoutMs: 30_000,
+    });
+    expect(seen[1]).toMatchObject({ transparent: false, durationSec: 0.5, fps: 30, format: "mp4" });
+    const replay = await facade["media.render_html"]({
+      ...inline("<p>anim</p>"), width: 128, height: 72,
+      animation: { durationSec: 1, fps: 15 }, idempotencyKey: "anim-webm",
+    });
+    expect(replay.ok).toBe(true);
+    if (!replay.ok || !webmRes.ok) throw new Error("animation replay failed");
+    expect(replay.value.replayed).toBe(true);
+    expect(replay.value.path).toBe(webmRes.value.path);
+    expect(seen).toHaveLength(2);
+    const conflict = await facade["media.render_html"]({
+      ...inline("<p>anim</p>"), width: 128, height: 72,
+      animation: { durationSec: 2, fps: 15 }, idempotencyKey: "anim-webm",
+    });
+    expect(conflict).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+    expect(seen).toHaveLength(2);
+  });
+
+  it.each([
+    { durationSec: 0 }, { durationSec: -1 }, { durationSec: 30.01 },
+    { durationSec: Number.NaN }, { durationSec: Number.POSITIVE_INFINITY },
+    { durationSec: 1, fps: 9 }, { durationSec: 1, fps: 61 }, { durationSec: 1, fps: 10.5 },
+  ])("rejects invalid animation bounds before calling the provider: %j", async (animation) => {
+    let calls = 0;
+    const { provider } = fakeProvider();
+    const facade = facadeWith({ ...provider, renderHtmlAnimation: async () => { calls++; throw new Error("must not render invalid input"); } });
+    const result = await facade["media.render_html"]({ ...inline("<p>x</p>"), width: 128, height: 72, animation });
+    expect(result).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
+    expect(calls).toBe(0);
+  });
 });

@@ -50,6 +50,14 @@ export type MediaFilesMap = Readonly<Record<string, string>>;
  * artifactRoot, content-hashed, and pinned to the project revision whose
  * state produced it.
  */
+export interface ExportSidecarArtifacts {
+  readonly subtitlesSrtPath?: string;
+  readonly chaptersTxtPath?: string;
+  readonly hasAttachedCover?: boolean;
+}
+
+export type ExportJobArtifact = ArtifactRef;
+
 export interface ArtifactRef {
   readonly kind: "image" | "video";
   /**
@@ -69,6 +77,8 @@ export interface ArtifactRef {
   readonly sha256: string;
   /** Project revision whose snapshot produced this artifact. */
   readonly sourceRevision: number;
+  /** Optional sidecars / cover attachment metadata produced by export.start. */
+  readonly sidecarArtifacts?: ExportSidecarArtifacts;
 }
 
 /* ------------------------------------------------------------------ */
@@ -80,6 +90,8 @@ export interface RenderFrameRequest {
   /** Canonical serialized project snapshot (deep clone; provider may mutate). */
   readonly project: Project;
   readonly sourceRevision: number;
+  /** Optional sidecars / cover attachment metadata produced by export.start. */
+  readonly sidecarArtifacts?: ExportSidecarArtifacts;
   /** Timeline position in seconds; validated by the facade. */
   readonly timeSec: number;
   /** Output raster size (facade defaults to project settings). */
@@ -108,6 +120,8 @@ export interface RenderContactSheetRequest {
   /** Canonical serialized project snapshot (deep clone). */
   readonly project: Project;
   readonly sourceRevision: number;
+  /** Optional sidecars / cover attachment metadata produced by export.start. */
+  readonly sidecarArtifacts?: ExportSidecarArtifacts;
   /** Timeline positions, already validated and clamped by the facade. */
   readonly samples: readonly {
     readonly timeSec: number;
@@ -174,6 +188,28 @@ export interface RenderedHtmlPngInfo {
   readonly missingAssets: readonly string[];
 }
 
+export interface RenderHtmlAnimationRequest {
+  readonly source: HtmlRenderSource;
+  readonly assetsRoot?: string;
+  readonly width: number;
+  readonly height: number;
+  readonly transparent: boolean;
+  readonly timeoutMs: number;
+  readonly destPath: string;
+  readonly durationSec: number;
+  readonly fps: number;
+  readonly format: "mp4" | "webm";
+}
+
+export interface RenderedHtmlAnimationInfo {
+  readonly bytesWritten: number;
+  readonly missingAssets: readonly string[];
+  readonly format: "mp4" | "webm";
+  readonly frameCount: number;
+  readonly fps: number;
+  readonly durationSec: number;
+}
+
 export interface RenderProvider {
   readonly supportsRegion?: boolean;
   readonly id: string;
@@ -201,6 +237,13 @@ export interface RenderProvider {
    * runtime), so a passing preflight() covers it.
    */
   renderHtmlPng?(request: RenderHtmlPngRequest): Promise<RenderedHtmlPngInfo>;
+  /**
+   * Optional deterministic frame-by-frame HTML→video encoder (MP4/H.264 or
+   * WebM/VP9 with alpha). Backed by Chromium + ffmpeg.
+   */
+  renderHtmlAnimation?(
+    request: RenderHtmlAnimationRequest,
+  ): Promise<RenderedHtmlAnimationInfo>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -212,6 +255,8 @@ export interface ExportVideoRequest {
   /** Canonical serialized project snapshot taken at export.start time. */
   readonly project: Project;
   readonly sourceRevision: number;
+  /** Optional sidecars / cover attachment metadata produced by export.start. */
+  readonly sidecarArtifacts?: ExportSidecarArtifacts;
   readonly settings: {
     readonly format: "mp4";
     readonly codec: "h264";

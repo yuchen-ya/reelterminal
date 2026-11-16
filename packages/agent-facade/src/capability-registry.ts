@@ -64,7 +64,7 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
   capability({
     id: "video.timeline", purpose: "Read and edit tracks, clips, timing, transforms and markers.", targets: ["video-workspace"],
     commands: ["timeline.get", "timeline.query", "timeline.mapSourceTimes", "editor.get_context", ...editCommands],
-    operations: ["track.add", "track.update", "track.remove", "clip.add", "clip.move", "clip.trim", "clip.split", "clip.duplicate", "clip.rippleDelete", "clip.remove", "clip.setSpeed", "clip.setSpeedConfig", "clip.setReverse", "clip.setTransform", "clip.setKeyframes", "clip.applyReframe", "marker.add", "marker.remove"],
+    operations: ["track.add", "track.update", "track.remove", "clip.add", "clip.move", "clip.trim", "clip.split", "clip.duplicate", "clip.rippleDelete", "clip.remove", "clip.setSpeed", "clip.setSpeedConfig", "clip.setReverse", "clip.setTransform", "clip.setKeyframes", "clip.applyReframe", "timeline.retimeByAnchors", "marker.add", "marker.remove"],
     workflow: ["Read a bounded timeline slice and fresh editor context when using selection or playhead.", "Describe the required ops, validate, and apply one atomic batch with target and revision guards."],
   }),
   capability({
@@ -83,7 +83,7 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
   }),
   capability({
     id: "video.audio", purpose: "Process source audio and edit clip volume, fades, ducking and analysis-based cuts.", targets: ["video-workspace"],
-    commands: ["audio.process.normalize", "audio.process.denoise", "audio.process.separate", "audio.process.register", "job.status", "job.cancel", ...editCommands],
+    commands: ["audio.process.normalize", "audio.process.denoise", "audio.process.separate", "audio.process.remix", "audio.process.register", "job.status", "job.cancel", ...editCommands],
     operations: ["clip.setVolume", "clip.setFade", "clip.setNoiseReduction", "clip.setDucking", "clip.setDuckingFromAnalysis", "clip.cutSilenceFromAnalysis", "clip.splitAtBeat"],
     workflow: ["Probe only the required audio dependency; obtain real analysis records for analysis-based ops.", "For processing, poll completion then register its output; validate/apply timeline changes separately."],
   }),

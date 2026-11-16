@@ -194,6 +194,9 @@ export async function enrichDuckingFromAnalysisOps(
       release: duck.release,
       holdTime: duck.holdTime,
       presenceRanges,
+      ...(duck.tailEnvelope !== undefined
+        ? { tailEnvelope: duck.tailEnvelope }
+        : {}),
     });
   }
   return enriched;

@@ -85,6 +85,7 @@ export type JsonSchemaNode = (
    * op union inside `edit.apply`'s `items` (never at a document root).
    */
   | { readonly anyOf: readonly JsonSchemaObjectNode[] }
+  | { readonly oneOf: readonly JsonSchemaNode[] }
 ) & { readonly description?: string };
 
 export interface JsonSchemaObjectNode {

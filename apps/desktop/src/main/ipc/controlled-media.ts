@@ -43,6 +43,18 @@ export function registerControlledMediaIpc(): void {
     (args) => mediaStore.abortWrite(args.sessionId),
   );
   handle(
+    CHANNELS.mediaStoreIngestFromPath,
+    z.object({
+      projectId: z.string().min(1).max(128),
+      mediaId: z.string().min(1).max(128),
+      sourcePath: z.string().min(1),
+      expectedSize: z.number().int().nonnegative().optional(),
+      expectedHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+      extension: z.string().regex(/^[a-z0-9]{1,10}$/),
+    }),
+    (args) => mediaStore.ingestFromPath(args),
+  );
+  handle(
     CHANNELS.mediaStoreRead,
     z.object({
       projectId: z.string().min(1).max(128),

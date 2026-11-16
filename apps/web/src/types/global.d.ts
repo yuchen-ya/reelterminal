@@ -490,6 +490,14 @@ interface ReelTerminalDesktopBridge {
         writeChunk(sessionId: string, data: ArrayBuffer | Uint8Array): Promise<void>;
         commitWrite(sessionId: string): Promise<{ path: string; contentHash: string; created: boolean }>;
         abortWrite(sessionId: string): Promise<void>;
+        ingestFromPath?(args: {
+          projectId: string;
+          mediaId: string;
+          sourcePath: string;
+          expectedSize?: number;
+          expectedHash?: string;
+          extension: string;
+        }): Promise<{ path: string; contentHash: string; created: boolean; sizeBytes: number }>;
         read(args: { projectId: string; mediaId: string }): Promise<ArrayBuffer | null>;
         readAny(mediaId: string): Promise<ArrayBuffer | null>;
         getVersion(mediaId: string): Promise<{

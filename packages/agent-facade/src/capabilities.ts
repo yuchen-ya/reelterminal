@@ -13,6 +13,7 @@ import {
   AUDIO_NORMALIZE_MAX_RANGE_SEC,
 } from "./audio-normalize";
 import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
+import { AUDIO_REMIX_MAX_DURATION_SEC } from "./audio-remix";
 import { COLOR_POLICY as COLOR_POLICY_DISCLOSURE } from "./color-policy";
 import { PLUGIN_TOOLS } from "./plugins";
 import { listCapabilities } from "./capability-registry";
@@ -411,7 +412,7 @@ export async function buildCapabilities(
               : "No media roots are configured for this session; every media.import would fail until roots are provided.",
           }),
       limits: request.kind === "review" ? { maxFileBytes: null, buffering: "Native 1 MiB streaming copy, managed original inspection, then atomic review.ingest/review.apply registration; no media bytes in CLI JSON", formatPolicy: "Registered FileResource UUIDs: image/text/data/video/model3d. model3d uses resourceId and model/gltf-binary GLB 2.0 originals; read-only preview, no video attach. GLB preflight: self-contained PNG/JPEG, basic PBR/unlit, skin/morph animation; no external URI, Draco/Meshopt/KTX2/CDN. Simple triangle-mesh preview only (no points or lines). Budget per model: 8 MiB file and expanded data, 262144 total texture pixels, 512 texture side, 600 instanced triangles, 32 mesh instances and draw units, 256 nodes; unsupported extensions are rejected, and comparisons can show two models. Unsupported previews retain/export original bytes. Node package schema 2 required for model3d; schema 1 remains readable. No URL import." }
-        : { maxFileBytes: ctx.live ? 256 * 1024 * 1024 : null, formatPolicy: "Container/track probing by mediabunny; GUI codec decode support must also succeed. No URL import.", buffering: ctx.live ? "GUI bridge currently reads the complete file into an ArrayBuffer/File" : "streamed metadata probing", overLimitAdvice: "Use explicit source segments under the byte limit while retaining originals and recording each segment source offset. No automatic proxy binding; do not silently change frame rate or treat a proxy as final-quality source." },
+        : { maxFileBytes: ctx.live ? 8 * 1024 * 1024 * 1024 : null, formatPolicy: "Container/track probing by mediabunny; GUI codec decode support must also succeed. No URL import.", buffering: ctx.live ? "Small files (<= 256 MiB) buffer via GUI bridge; larger files up to 8 GiB stream from local path without full-file IPC ArrayBuffer reads" : "streamed metadata probing", overLimitAdvice: "Use explicit source segments under the byte limit while retaining originals and recording each segment source offset. No automatic proxy binding; do not silently change frame rate or treat a proxy as final-quality source." },
       sources: ["file"],
       mediaRoots: ctx.mediaRoots,
       recommendedRoot: ctx.mediaRoots[0] ?? null,
@@ -1250,6 +1251,24 @@ export async function buildCapabilities(
         measured: "device, load/inference seconds, realtime factor and peak GPU memory are recorded in provenance",
         limits: "bleed/artifacts are possible; overlapping speakers are not separated; no drift correction; the vocal stem is not a speech-enhancement guarantee",
         storage: "mediaRoots[0]/generated-assets/audio-separate/<jobId>/ (persistent, outside analysis cache)",
+        registration: "Explicit revision-guarded media import into the source project/workspace; does not replace clips",
+      },
+    },
+    audioRemix: {
+      available: audioReady.available && mediaImportAvailable,
+      ...(!audioReady.available
+        ? {
+            reason: audioReady.reason ?? "Local FFmpeg/ffprobe unavailable",
+            ...(audioReady.probed === false ? { probed: false as const } : {}),
+          }
+        : !mediaImportAvailable ? { reason: "A media root and an operational media import bridge are required" } : {}),
+      details: {
+        command: "audio.process.remix",
+        registrationCommand: "audio.process.register",
+        route: "local FFmpeg decode + beat-bar segmentation + normalized cross-correlation seam alignment + equal-power crossfade",
+        output: "48 kHz PCM 24-bit stereo WAV + provenance JSON",
+        maximumTargetDurationSec: AUDIO_REMIX_MAX_DURATION_SEC,
+        storage: "mediaRoots[0]/generated-assets/audio-remix/<jobId>/ (persistent, outside analysis cache)",
         registration: "Explicit revision-guarded media import into the source project/workspace; does not replace clips",
       },
     },

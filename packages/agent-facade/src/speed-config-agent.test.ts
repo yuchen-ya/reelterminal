@@ -185,6 +185,21 @@ describe("Agent speed configuration and timeline-to-source mapping", () => {
     expect(outside.ok).toBe(false);
     if (!outside.ok) expect(outside.error.code).toBe("INVALID_PARAMS");
 
+    const roundedEndpoints = await facade["timeline.mapSourceTimes"]({
+      clipId: "c1", timelineTimes: [10 - 1e-7, 13.5 + 1e-7],
+    });
+    expect(roundedEndpoints.ok).toBe(true);
+    if (!roundedEndpoints.ok) throw new Error(roundedEndpoints.error.message);
+    expect(roundedEndpoints.value.mappings.map(({ clipLocalTime, sourceTime }) => ({ clipLocalTime, sourceTime }))).toEqual([
+      { clipLocalTime: 0, sourceTime: 0.25 },
+      { clipLocalTime: 3.5, sourceTime: 3.75 },
+    ]);
+    for (const timelineTime of [10 - 1e-5, 13.5 + 1e-5]) {
+      expect(await facade["timeline.mapSourceTimes"]({ clipId: "c1", timelineTimes: [timelineTime] })).toMatchObject({
+        ok: false, error: { code: "INVALID_PARAMS" },
+      });
+    }
+
     const stale = await facade["timeline.mapSourceTimes"]({
       clipId: "c1",
       timelineTimes: [10],

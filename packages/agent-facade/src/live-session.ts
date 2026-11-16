@@ -3,9 +3,9 @@ import { AUDIO_NORMALIZE_MAX_RANGE_SEC } from "./audio-normalize";
 import { REVIEW_VERBS, REVIEW_SCHEMAS, type ReviewBridge, type ReviewVerb, type ReviewFacadeBindings } from "./review";
 import { AUDIO_DENOISE_MAX_RANGE_SEC } from "./audio-denoise";
 import { AUDIO_SEPARATE_MAX_RANGE_SEC, assertDemucsModelReady } from "./audio-separate";
-import { runAudioNormalizationTask, runAudioDenoiseTask, runAudioSeparationTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
-import type { AudioProcessDenoiseParams, AudioProcessDenoiseResult, AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult, AudioProcessSeparateParams, AudioProcessSeparateResult } from "./types";
-import { AUDIO_PROCESS_DENOISE_SCHEMA, AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA, AUDIO_PROCESS_SEPARATE_SCHEMA } from "./verb-schemas";
+import { runAudioNormalizationTask, runAudioDenoiseTask, runAudioSeparationTask, runAudioRemixTask, completedAudioArtifact, verifyAudioArtifact } from "./audio-process-task";
+import type { AudioProcessDenoiseParams, AudioProcessDenoiseResult, AudioProcessNormalizeParams, AudioProcessNormalizeResult, AudioProcessRegisterParams, AudioProcessRegisterResult, AudioProcessRemixParams, AudioProcessRemixResult, AudioProcessSeparateParams, AudioProcessSeparateResult } from "./types";
+import { AUDIO_PROCESS_DENOISE_SCHEMA, AUDIO_PROCESS_NORMALIZE_SCHEMA, AUDIO_PROCESS_REGISTER_SCHEMA, AUDIO_PROCESS_REMIX_SCHEMA, AUDIO_PROCESS_SEPARATE_SCHEMA } from "./verb-schemas";
 import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { AUDIO_LIMITS, analyzeBeatGrid, analyzeLocalAudio, analyzeSilence, audioAnalysisPreflight, resolveSilenceAnalysisParams } from "./audio-analysis";
 import { analyzeSpeechActivity, resolveSpeechVadParams, speechVadRuntimePreflight } from "./speech-vad";
@@ -76,6 +76,12 @@ import {
   type DeliveryDestination,
 } from "./delivery";
 import {
+  muxExportCoverImage,
+  prepareExportPublishing,
+  writeExportSidecars,
+  type PreparedExportPublishing,
+} from "./export-publishing";
+import {
   IdempotencyLedger,
   stableStringify,
   type LedgerReceipt,
@@ -141,7 +147,7 @@ import {
   validateComparisonRange,
   withComparisonReference,
 } from "./reference-comparison";
-import { opToCoreActions } from "./ops";
+import { assertNoTrackClipOverlaps, opToCoreActions } from "./ops";
 import { prepareEditOp, type PrepareEditOpOptions } from "./edit-op-preparation";
 import { buildAnalysisProgressPlan } from "./analysis-progress";
 import {
@@ -374,19 +380,18 @@ import type {
 } from "./workspace-library";
 import { WORKSPACE_VERBS } from "./workspace-library";
 
-/** Max media file size accepted for Chromium reads (2 GiB safety valve). */
-const MAX_MEDIA_FILE_BYTES = 2 * 1024 * 1024 * 1024;
+/** Max media file size accepted for Chromium reads and live imports (8 GiB). */
+const MAX_MEDIA_FILE_BYTES = 8 * 1024 * 1024 * 1024;
 /**
- * Live import currently crosses Electron IPC as one ArrayBuffer. Keep that
- * transfer far below the Chromium-read ceiling so a valid request cannot
- * exhaust the renderer before its own identical guard runs.
+ * Live import ceiling aligned with MAX_MEDIA_FILE_BYTES (8 GiB); large local
+ * files stream natively from request.path without buffering in one IPC chunk.
  */
-const MAX_LIVE_IMPORT_FILE_BYTES = 256 * 1024 * 1024;
+const MAX_LIVE_IMPORT_FILE_BYTES = MAX_MEDIA_FILE_BYTES;
 /** Shared live export/analysis lane stays bounded while edits commit immediately. */
 const MAX_ACTIVE_LIVE_TASKS = 2;
 
 /** Audio-process verbs whose durable task receipts are replayed after a restart (AUD-13). */
-const AUDIO_PROCESS_VERBS = ["audio.process.normalize", "audio.process.denoise", "audio.process.separate"] as const;
+const AUDIO_PROCESS_VERBS = ["audio.process.normalize", "audio.process.denoise", "audio.process.separate", "audio.process.remix"] as const;
 
 /**
  * Verbs that exist in the contract but are honestly unavailable in live
@@ -1524,13 +1529,31 @@ export class LiveFacadeSession {
         "media.render_html params",
       );
 
+      const transparent = valid.transparent ?? true;
+      const animation = valid.animation
+        ? {
+            durationSec: valid.animation.durationSec,
+            fps: valid.animation.fps ?? 30,
+            format:
+              valid.animation.format ?? ((transparent ? "webm" : "mp4") as "mp4" | "webm"),
+          }
+        : undefined;
+      if (animation && transparent && animation.format === "mp4") {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          'media.render_html: animation format "mp4" (H.264 yuv420p) does not support alpha transparency; pass transparent: false or use format: "webm"',
+          { transparent, format: animation.format },
+        );
+      }
+
       const payload = {
         source: valid.source,
         assetsRoot: valid.assetsRoot,
         width: valid.width,
         height: valid.height,
-        transparent: valid.transparent ?? true,
+        transparent,
         timeoutMs: valid.timeoutMs,
+        ...(animation !== undefined ? { animation } : {}),
         outputDir: valid.outputDir,
       };
       const receipt = await this.replayLookup<MediaRenderHtmlResult>(
@@ -1552,7 +1575,18 @@ export class LiveFacadeSession {
       }
 
       const provider = this.config.renderProvider;
-      if (!provider || typeof provider.renderHtmlPng !== "function") {
+      if (animation !== undefined) {
+        if (!provider || typeof provider.renderHtmlAnimation !== "function") {
+          throw new FacadeError(
+            "UNSUPPORTED",
+            "media.render_html: no render provider with HTML animation rendering is configured for this live session",
+            {
+              requires:
+                "a RenderProvider exposing renderHtmlAnimation (the desktop MAIN process supplies it from createChromiumProviders)",
+            },
+          );
+        }
+      } else if (!provider || typeof provider.renderHtmlPng !== "function") {
         throw new FacadeError(
           "UNSUPPORTED",
           "media.render_html: no render provider with HTML rendering is configured for this live session",
@@ -1582,6 +1616,7 @@ export class LiveFacadeSession {
           height: valid.height,
           ...(valid.transparent !== undefined ? { transparent: valid.transparent } : {}),
           ...(valid.timeoutMs !== undefined ? { timeoutMs: valid.timeoutMs } : {}),
+          ...(animation !== undefined ? { animation } : {}),
           ...(valid.outputDir !== undefined ? { outputDir: valid.outputDir } : {}),
         },
       });
@@ -1849,6 +1884,69 @@ export class LiveFacadeSession {
       const value = { jobId, sourceRevision: state.revision };
       receipt?.commit(value, state.revision);
       const task = runAudioSeparationTask(this.jobs, this.analysisControllers, jobId, controller, {
+        sourcePath, mediaRoots: roots, params: parameters,
+        sourceProjectId: state.project.id, sourceWorkspaceId: workspaceId, sourceRevision: state.revision,
+      });
+      this.audioProcessTasks.set(jobId, task);
+      void task.then(() => this.audioProcessTasks.delete(jobId), () => this.audioProcessTasks.delete(jobId));
+      return ok({ ...value, kind: "audio-process", state: "queued", replayed: false });
+    });
+  }
+
+  async audioProcessRemix(params: AudioProcessRemixParams): Promise<FacadeResult<AudioProcessRemixResult>> {
+    return this.enqueue<AudioProcessRemixResult>(async () => {
+      this.gate("audio.process.remix");
+      const valid = validateObject<AudioProcessRemixParams>(params, AUDIO_PROCESS_REMIX_SCHEMA, "audio.process.remix params");
+      if (valid.outroAlign?.landAtSec !== undefined && valid.outroAlign.landAtSec > valid.targetDurationSec) {
+        throw new FacadeError("INVALID_PARAMS", "audio.process.remix: outroAlign.landAtSec must be <= targetDurationSec");
+      }
+      const { expectedRevision, idempotencyKey, ...parameters } = valid;
+      const identity = await this.config.store.getIdentity();
+      const receipt = this.ledger.lookup<{ jobId: string; sourceRevision: number }>(
+        this.ledgerScope(identity.projectId, identity.workspaceId),
+        "audio.process.remix", idempotencyKey, parameters,
+      );
+      if (receipt?.prior) {
+        const job = this.jobs.get(receipt.prior.value.jobId);
+        if (!job) throw new FacadeError("NOT_FOUND", "audio.process.remix: prior job is no longer available");
+        return ok({ ...receipt.prior.value, kind: "audio-process", state: job.state, replayed: true });
+      }
+      const state = await this.config.store.getState();
+      if (expectedRevision !== undefined && expectedRevision !== state.revision) {
+        throw new FacadeError("CONFLICT", `revision conflict: expected ${expectedRevision}, current is ${state.revision}`, { currentRevision: state.revision });
+      }
+      if (identity.projectId !== state.project.id) throw new FacadeError("CONFLICT", "audio.process.remix: target project changed while preparing input");
+      const media = state.project.mediaLibrary.items.find((item) => item.id === valid.mediaId);
+      if (!media) throw new FacadeError("NOT_FOUND", `audio.process.remix: media "${valid.mediaId}" not found`, { reason: "media_not_found", mediaId: valid.mediaId });
+      if (!(media.metadata.duration > 0)) {
+        throw new FacadeError("INVALID_PARAMS", "audio.process.remix: source media must have positive duration");
+      }
+      const roots = this.config.mediaRoots ?? [];
+      if (roots.length === 0 || typeof this.config.store.importMedia !== "function") {
+        throw new FacadeError("UNSUPPORTED", "audio.process.remix requires media roots and a live media import bridge for generated assets");
+      }
+      const sourcePath = await this.resolveLiveMediaItemFile(media, "audio.process.remix", roots);
+      if (!sourcePath) throw new FacadeError("UNSUPPORTED", "audio.process.remix requires a readable source inside configured media roots");
+      const ready = await audioAnalysisPreflight();
+      if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
+      this.gate("audio.process.remix");
+      this.assertTaskCapacity("audio.process.remix");
+      const currentIdentity = await this.config.store.getIdentity();
+      if (currentIdentity.projectId !== identity.projectId || currentIdentity.workspaceId !== identity.workspaceId) {
+        throw new FacadeError("CONFLICT", "audio.process.remix: target project/workspace changed while preparing input");
+      }
+      const jobId = `job-${crypto.randomUUID()}`;
+      const workspaceId = identity.workspaceId ?? "default";
+      await this.createTrackedTask({
+        jobId, kind: "audio-process", projectId: state.project.id, workspaceId,
+        sourceRevision: state.revision, inputProject: structuredClone(state.project),
+        parameters: { verb: "audio.process.remix", ...parameters, idempotencyKey, payloadHash: stableStringify(parameters) },
+      });
+      const controller = new AbortController();
+      this.analysisControllers.set(jobId, controller);
+      const value = { jobId, sourceRevision: state.revision };
+      receipt?.commit(value, state.revision);
+      const task = runAudioRemixTask(this.jobs, this.analysisControllers, jobId, controller, {
         sourcePath, mediaRoots: roots, params: parameters,
         sourceProjectId: state.project.id, sourceWorkspaceId: workspaceId, sourceRevision: state.revision,
       });
@@ -2292,7 +2390,7 @@ export class LiveFacadeSession {
             : draft.timeline.tracks.some(
                 (track) => track.type === impliedTrackType,
               );
-        const opActions = opToCoreActions(op, draft);
+        const opActions = opToCoreActions(op, draft, { deferOverlapCheck: true });
         for (const action of opActions) {
           const result = await executor.execute(action, draft);
           if (!result.success) {
@@ -2322,11 +2420,12 @@ export class LiveFacadeSession {
                   )
               : undefined;
         opClipCounts[index] =
-          op.op === "workAsset.instantiate"
+          op.op === "workAsset.instantiate" || op.op === "timeline.retimeByAnchors"
             ? opActions.filter((action) => action.type === "clip/add").length
             : undefined;
         actions.push(...opActions);
       }
+      assertNoTrackClipOverlaps(draft);
 
       let committed: LiveApplyActionsResult;
       try {
@@ -3195,6 +3294,9 @@ export class LiveFacadeSession {
         settings: settingsInput ?? null,
         destinationPath: valid.destinationPath ?? null,
         comparison: valid.comparison ?? null,
+        ...(valid.coverImagePath !== undefined ? { coverImagePath: valid.coverImagePath } : {}),
+        ...(valid.exportSubtitlesSrt !== undefined ? { exportSubtitlesSrt: valid.exportSubtitlesSrt } : {}),
+        ...(valid.exportChaptersTxt !== undefined ? { exportChaptersTxt: valid.exportChaptersTxt } : {}),
       };
       const receipt = await this.replayLookup<{ jobId: string; sourceRevision: number }>(
         "export.start",
@@ -3221,6 +3323,16 @@ export class LiveFacadeSession {
               "export.start",
             )
           : null;
+
+      const preparedPublishing = await prepareExportPublishing({
+        coverImagePath: valid.coverImagePath,
+        exportSubtitlesSrt: valid.exportSubtitlesSrt,
+        exportChaptersTxt: valid.exportChaptersTxt,
+        mediaRoots: this.config.mediaRoots ?? [],
+        deliveryRoots: this.config.deliveryRoots ?? [],
+        delivery,
+        verb: "export.start",
+      });
 
       const { project, revision } = await this.config.store.getState();
       if (
@@ -3303,6 +3415,9 @@ export class LiveFacadeSession {
           settings: settingsInput ?? null,
           destinationPath: valid.destinationPath ?? null,
           comparison: valid.comparison ?? null,
+          coverImagePath: valid.coverImagePath ?? null,
+          exportSubtitlesSrt: valid.exportSubtitlesSrt ?? null,
+          exportChaptersTxt: valid.exportChaptersTxt ?? null,
           ...(valid.idempotencyKey ? { idempotencyKey: valid.idempotencyKey } : {}),
           payloadHash,
         },
@@ -3317,7 +3432,14 @@ export class LiveFacadeSession {
         onArtifactFileRemoved: (fileId) => this.jobs.forgetArtifactFile(jobId, fileId),
         onDone: (completion) => {
           if (!comparisonConfig || !comparisonRange) {
-            void this.finalizeExport(jobId, sourceRevision, completion, delivery);
+            void this.finalizeExport(
+              jobId,
+              sourceRevision,
+              completion,
+              delivery,
+              snapshot,
+              preparedPublishing,
+            );
             return;
           }
           // Comparison export: compose the reference against the JUST
@@ -3365,6 +3487,8 @@ export class LiveFacadeSession {
                     : {}),
                 },
                 delivery,
+                snapshot,
+                preparedPublishing,
               );
             } catch (error) {
               this.jobs.markError(jobId, {
@@ -4843,6 +4967,8 @@ export class LiveFacadeSession {
       upscalingRequestedButInactive?: boolean;
     },
     delivery: DeliveryDestination | null = null,
+    snapshot?: Project,
+    preparedPublishing?: PreparedExportPublishing,
   ): Promise<void> {
     try {
       const artifactRoot = requireArtifactRoot(
@@ -4864,12 +4990,19 @@ export class LiveFacadeSession {
           { path: completion.path },
         );
       }
-      const artifact = await artifactRefFor(
+      let finalSizeBytes = completion.sizeBytes;
+      if (preparedPublishing?.cover) {
+        finalSizeBytes = await muxExportCoverImage(
+          resolution.path,
+          preparedPublishing.cover,
+        );
+      }
+      const baseArtifact = await artifactRefFor(
         resolution.path,
         "video",
         "mp4",
         sourceRevision,
-        completion.sizeBytes,
+        finalSizeBytes,
       );
       let deliveryOutcome: JobDeliveryOutcome | undefined;
       if (delivery !== null) {
@@ -4884,6 +5017,57 @@ export class LiveFacadeSession {
           };
         }
       }
+      let sidecarArtifacts = undefined;
+      if (snapshot && preparedPublishing) {
+        try {
+          sidecarArtifacts = await writeExportSidecars({
+            snapshot,
+            prepared: preparedPublishing,
+            artifactMp4Path: resolution.path,
+            ...(deliveryOutcome?.deliveredTo
+              ? { deliveredMp4Path: deliveryOutcome.deliveredTo }
+              : {}),
+          });
+          if (!deliveryOutcome?.deliveredTo) {
+            if (sidecarArtifacts?.subtitlesSrtPath) {
+              this.jobs.recordArtifactFile(jobId, {
+                fileId: "export-subtitles-srt",
+                path: sidecarArtifacts.subtitlesSrtPath,
+                kind: "output",
+                purpose: "Exported SRT subtitle sidecar",
+                rebuildable: true,
+                deliveryStatus: "pending",
+              });
+            }
+            if (sidecarArtifacts?.chaptersTxtPath) {
+              this.jobs.recordArtifactFile(jobId, {
+                fileId: "export-chapters-txt",
+                path: sidecarArtifacts.chaptersTxtPath,
+                kind: "output",
+                purpose: "Exported chapters TXT sidecar",
+                rebuildable: true,
+                deliveryStatus: "pending",
+              });
+            }
+          }
+        } catch (sidecarError) {
+          if (delivery !== null) {
+            deliveryOutcome = {
+              ...deliveryOutcome,
+              deliveryError:
+                sidecarError instanceof Error
+                  ? sidecarError.message
+                  : String(sidecarError),
+            };
+          } else {
+            throw sidecarError;
+          }
+        }
+      }
+      const artifact =
+        sidecarArtifacts !== undefined
+          ? { ...baseArtifact, sidecarArtifacts }
+          : baseArtifact;
       this.jobs.markDone(
         jobId,
         artifact,
@@ -4950,6 +5134,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "audio.process.normalize": (params) => session.audioProcessNormalize(params),
     "audio.process.denoise": (params) => session.audioProcessDenoise(params),
     "audio.process.separate": (params) => session.audioProcessSeparate(params),
+    "audio.process.remix": (params) => session.audioProcessRemix(params),
     "audio.process.register": (params) => session.audioProcessRegister(params),
     "timeline.get": () => session.timelineGet(),
     "timeline.query": (params) => session.timelineQuery(params),

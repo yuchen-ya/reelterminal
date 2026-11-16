@@ -42,8 +42,16 @@ import {
 import { isForbiddenLocalPath, hasRemoteFileAuthority } from "@reelterminal/core/security/local-path-policy";
 
 import type { ChromiumRuntime } from "./runtime";
+import {
+  ffprobeJson,
+  resolveFfmpegBinaries,
+  startFramesEncoder,
+  type FramesEncoderHandle,
+} from "./ffmpeg";
 import type {
+  RenderedHtmlAnimationInfo,
   RenderedHtmlPngInfo,
+  RenderHtmlAnimationRequest,
   RenderHtmlPngRequest,
 } from "@reelterminal/agent-facade";
 
@@ -209,14 +217,37 @@ export interface RenderHtmlPngOptions
   readonly timeoutMs?: number;
 }
 
-/**
- * Render one constrained HTML document and write the PNG to `destPath`.
- * See the module doc block for the defense model.
- */
-export async function renderHtmlPng(
-  runtime: ChromiumRuntime,
-  request: RenderHtmlPngOptions,
-): Promise<RenderedHtmlPngInfo> {
+export interface RenderHtmlAnimationOptions
+  extends Omit<RenderHtmlAnimationRequest, "transparent" | "timeoutMs" | "fps" | "format"> {
+  readonly transparent?: boolean;
+  readonly timeoutMs?: number;
+  readonly fps?: number;
+  readonly format?: "mp4" | "webm";
+  readonly ffmpegPath?: string;
+  readonly ffprobePath?: string;
+}
+
+interface PreparedHtmlPlan {
+  readonly entryFile: string;
+  readonly assetsRootReal: string | null;
+  readonly width: number;
+  readonly height: number;
+  readonly transparent: boolean;
+  readonly timeoutMs: number;
+}
+
+async function withPreparedHtmlPlan<T>(
+  request: {
+    readonly source: RenderHtmlPngRequest["source"];
+    readonly assetsRoot?: string;
+    readonly width: number;
+    readonly height: number;
+    readonly transparent?: boolean;
+    readonly timeoutMs?: number;
+    readonly destPath: string;
+  },
+  run: (plan: PreparedHtmlPlan) => Promise<T>,
+): Promise<T> {
   const width = request.width;
   const height = request.height;
   assertEvenDimension(width, "width");
@@ -233,14 +264,16 @@ export async function renderHtmlPng(
     );
   }
 
-  for (const candidate of [request.source.kind === "path" ? request.source.path : undefined,
-    request.assetsRoot, request.destPath]) {
+  for (const candidate of [
+    request.source.kind === "path" ? request.source.path : undefined,
+    request.assetsRoot,
+    request.destPath,
+  ]) {
     if (candidate !== undefined && isForbiddenLocalPath(candidate)) {
       throw new HtmlRenderError("Network and device paths are not allowed");
     }
   }
 
-  // ---- content + entry file resolution ------------------------------
   let entryFile: string;
   let cleanupEntry: (() => Promise<void>) | null = null;
   try {
@@ -249,9 +282,6 @@ export async function renderHtmlPng(
       const html = request.source.html;
       assertPolicyAllows(html);
       inlineHtml = html;
-      // The inline document needs a file:// address for relative resources
-      // to resolve; a throwaway temp dir OUTSIDE the media roots keeps the
-      // agent workspace free of non-artifact files.
       const tempDir = await mkdtemp(path.join(tmpdir(), "reelterminal-html-render-"));
       entryFile = path.join(tempDir, `${randomUUID()}.html`);
       cleanupEntry = () => rm(tempDir, { recursive: true, force: true });
@@ -275,13 +305,10 @@ export async function renderHtmlPng(
       entryFile = realEntry;
     }
 
-    // ---- assets root -------------------------------------------------
     const assetsRootReal =
       request.assetsRoot !== undefined
         ? await realpathOrNull(request.assetsRoot)
-        : // Path mode defaults to the HTML file's own directory (where the
-          // browser already resolves relative references).
-          request.source.kind === "path"
+        : request.source.kind === "path"
           ? path.dirname(entryFile)
           : null;
     if (request.assetsRoot !== undefined && assetsRootReal === null) {
@@ -291,11 +318,6 @@ export async function renderHtmlPng(
       throw new HtmlRenderError(`assets root is not a directory: ${assetsRootReal}`);
     }
 
-    // Inline documents resolve relative references against the TEMP entry
-    // file, so the renderer injects a <base href> pointing at the assets
-    // root (with a trailing slash — required for child-relative URLs).
-    // Caller-supplied <base> stays rejected by the policy; this injected one
-    // is renderer-owned and can only ever point at assetsRoot.
     if (inlineHtml !== null && assetsRootReal !== null) {
       const baseHref = String(pathToFileURL(`${assetsRootReal}${path.sep}`));
       const baseTag = `<base href="${baseHref}">`;
@@ -307,54 +329,47 @@ export async function renderHtmlPng(
       await writeFile(entryFile, inlineHtml, "utf8");
     }
 
-    return await renderViaContext(runtime, {
+    return await run({
       entryFile,
       assetsRootReal,
       width,
       height,
       transparent,
       timeoutMs,
-      destPath: request.destPath,
     });
   } finally {
     if (cleanupEntry) await cleanupEntry().catch(() => undefined);
   }
 }
 
-async function renderViaContext(
+async function withAllowedHtmlPage<T>(
   runtime: ChromiumRuntime,
-  plan: {
-    readonly entryFile: string;
-    readonly assetsRootReal: string | null;
-    readonly width: number;
-    readonly height: number;
-    readonly transparent: boolean;
-    readonly timeoutMs: number;
-    readonly destPath: string;
-  },
-): Promise<RenderedHtmlPngInfo> {
+  plan: PreparedHtmlPlan,
+  run: (
+    page: Parameters<Parameters<ChromiumRuntime["withIsolatedContext"]>[1]>[0] extends infer C
+      ? C extends { newPage(): Promise<infer P> }
+        ? P
+        : never
+      : never,
+  ) => Promise<T>,
+): Promise<{ readonly value: T; readonly missingAssets: string[] }> {
   const entryReal = await realpath(plan.entryFile);
   const entryUrl = String(pathToFileURL(entryReal));
   const missingAssets: string[] = [];
   const seenBlocked = new Set<string>();
 
-  const work = runtime.withIsolatedContext(
+  const value = await runtime.withIsolatedContext(
     { javaScriptEnabled: false, viewport: { width: plan.width, height: plan.height } },
     async (context) => {
-      // Outer deadline: closing the context rejects every pending
-      // goto/screenshot — this close IS the cancellation primitive. The
-      // losing branch of the race is cleaned up by withIsolatedContext's
-      // own close (idempotent).
       const deadline = new Promise<never>((_resolve, reject) => {
         const timer = setTimeout(() => {
           void context.close().catch(() => undefined);
           reject(new HtmlRenderTimeoutError(plan.timeoutMs));
         }, plan.timeoutMs);
-        // Do not hold the process open on an already-settled render.
         timer.unref?.();
       });
 
-      const render = (async () => {
+      const work = (async () => {
         const page = await context.newPage();
         await page.route("**/*", async (route) => {
           const url = route.request().url();
@@ -363,9 +378,6 @@ async function renderViaContext(
             await route.continue();
             return;
           }
-          // Chromium fetches /favicon.ico on its own for file:// documents;
-          // that head-housekeeping request is aborted silently instead of
-          // polluting the caller's missing-assets disclosure.
           if (!isFaviconRequestUrl(url) && verdict.blockedReason && !seenBlocked.has(url)) {
             seenBlocked.add(url);
             missingAssets.push(url);
@@ -377,49 +389,192 @@ async function renderViaContext(
             waitUntil: "load",
             timeout: plan.timeoutMs,
           });
-          // The load event fires when resources are fetched, not when the
-          // compositor has produced its first contentful frame (a cold
-          // browser can lag the load event by hundreds of ms). Wait one
-          // paint beat FIRST (two consecutive blank frames would otherwise
-          // look "stable"), then screenshot into stability: two identical
-          // frames mean the raster settled. The cap keeps animated content
-          // moving instead of waiting forever (animations are not this
-          // verb's target).
-          await page.waitForTimeout(HTML_RENDER_PAINT_SETTLE_MS);
-          let png = await page.screenshot({
-            omitBackground: plan.transparent,
-            type: "png",
-            clip: { x: 0, y: 0, width: plan.width, height: plan.height },
-          });
-          for (let settle = 0; settle < HTML_RENDER_MAX_SETTLE_ROUNDS; settle++) {
-            await page.waitForTimeout(HTML_RENDER_PAINT_SETTLE_MS);
-            const next = await page.screenshot({
-              omitBackground: plan.transparent,
-              type: "png",
-              clip: { x: 0, y: 0, width: plan.width, height: plan.height },
-            });
-            const stable = next.equals(png);
-            png = next;
-            if (stable) break;
-          }
-          return png;
+          return await run(page as never);
         } finally {
           await page.close().catch(() => undefined);
         }
       })();
 
-      return Promise.race([render, deadline]);
+      return Promise.race([work, deadline]);
     },
   );
 
-  const png = await work;
-  if (!png || png.length === 0) {
-    throw new HtmlRenderError("Chromium returned an empty PNG");
+  return { value, missingAssets };
+}
+
+/**
+ * Render one constrained HTML document and write the PNG to `destPath`.
+ * See the module doc block for the defense model.
+ */
+export async function renderHtmlPng(
+  runtime: ChromiumRuntime,
+  request: RenderHtmlPngOptions,
+): Promise<RenderedHtmlPngInfo> {
+  return withPreparedHtmlPlan(request, async (plan) => {
+    const { value: png, missingAssets } = await withAllowedHtmlPage(
+      runtime,
+      plan,
+      async (page) => {
+        await page.waitForTimeout(HTML_RENDER_PAINT_SETTLE_MS);
+        let current = await page.screenshot({
+          omitBackground: plan.transparent,
+          type: "png",
+          clip: { x: 0, y: 0, width: plan.width, height: plan.height },
+        });
+        for (let settle = 0; settle < HTML_RENDER_MAX_SETTLE_ROUNDS; settle++) {
+          await page.waitForTimeout(HTML_RENDER_PAINT_SETTLE_MS);
+          const next = await page.screenshot({
+            omitBackground: plan.transparent,
+            type: "png",
+            clip: { x: 0, y: 0, width: plan.width, height: plan.height },
+          });
+          const stable = next.equals(current);
+          current = next;
+          if (stable) break;
+        }
+        return current;
+      },
+    );
+
+    if (!png || png.length === 0) {
+      throw new HtmlRenderError("Chromium returned an empty PNG");
+    }
+    if (!png.subarray(0, 8).equals(PNG_SIGNATURE)) {
+      throw new HtmlRenderError("Chromium returned bytes that are not a PNG image");
+    }
+    await writeFile(request.destPath, png);
+    return { bytesWritten: png.length, missingAssets };
+  });
+}
+
+/**
+ * Deterministically render a constrained HTML animation frame-by-frame into
+ * MP4 (H.264) or WebM (VP9, with alpha when transparent). Keeps the exact
+ * javaScriptEnabled:false sandbox and route allowlist for document resources.
+ */
+export async function renderHtmlAnimation(
+  runtime: ChromiumRuntime,
+  request: RenderHtmlAnimationOptions,
+): Promise<RenderedHtmlAnimationInfo> {
+  const durationSec = request.durationSec;
+  if (typeof durationSec !== "number" || !Number.isFinite(durationSec) || durationSec <= 0 || durationSec > 30) {
+    throw new HtmlRenderError(`durationSec must be a finite number in (0, 30], got ${String(durationSec)}`);
   }
-  // Never write a success-looking file that is not a PNG.
-  if (!png.subarray(0, 8).equals(PNG_SIGNATURE)) {
-    throw new HtmlRenderError("Chromium returned bytes that are not a PNG image");
+  const fps = request.fps ?? 30;
+  if (!Number.isInteger(fps) || fps < 10 || fps > 60) {
+    throw new HtmlRenderError(`fps must be an integer in [10, 60], got ${String(fps)}`);
   }
-  await writeFile(plan.destPath, png);
-  return { bytesWritten: png.length, missingAssets };
+  const transparent = request.transparent ?? true;
+  const format = request.format ?? (transparent ? "webm" : "mp4");
+  if (format !== "mp4" && format !== "webm") {
+    throw new HtmlRenderError(`animation format must be "mp4" or "webm", got ${String(format)}`);
+  }
+  if (transparent && format === "mp4") {
+    throw new HtmlRenderError(
+      'animation format "mp4" does not support alpha transparency; use format: "webm" or transparent: false',
+    );
+  }
+
+  const binaries = await resolveFfmpegBinaries({
+    ffmpegPath: request.ffmpegPath,
+    ffprobePath: request.ffprobePath,
+  });
+  if (!binaries) {
+    throw new HtmlRenderError(
+      "ffmpeg/ffprobe binaries were not found — HTML animation rendering requires ffmpeg",
+    );
+  }
+
+  const totalFrames = Math.max(1, Math.round(durationSec * fps));
+
+  return withPreparedHtmlPlan(request, async (plan) => {
+    let encoder: FramesEncoderHandle | null = null;
+    try {
+      const { value: bytesWritten, missingAssets } = await withAllowedHtmlPage(
+        runtime,
+        plan,
+        async (page) => {
+          encoder = startFramesEncoder(binaries.ffmpeg, {
+            width: plan.width,
+            height: plan.height,
+            frameRate: fps,
+            format,
+            transparent: plan.transparent,
+            destPath: request.destPath,
+          });
+          for (let frame = 0; frame < totalFrames; frame++) {
+            const tSec = frame / fps;
+            const tMs = tSec * 1000;
+            const progress = totalFrames > 1 ? frame / (totalFrames - 1) : 1;
+            await page.evaluate(
+              ({ tSec: sec, tMs: ms, frame: idx, progress: p }) => {
+                const root = document.documentElement;
+                root.style.setProperty("--reel-t", `${sec}s`);
+                root.style.setProperty("--reel-t-num", String(sec));
+                root.style.setProperty("--reel-t-ms", String(ms));
+                root.style.setProperty("--reel-frame", String(idx));
+                root.style.setProperty("--reel-progress", String(p));
+                root.style.setProperty("--t", `${sec}s`);
+                root.style.setProperty("--t-ms", String(ms));
+                root.style.setProperty("--frame", String(idx));
+                root.style.setProperty("--progress", String(p));
+                for (const anim of document.getAnimations()) {
+                  try {
+                    anim.pause();
+                    anim.currentTime = ms;
+                  } catch {
+                    // Non-seekable timelines can safely be skipped.
+                  }
+                }
+                for (const svg of Array.from(document.querySelectorAll("svg"))) {
+                  try {
+                    svg.pauseAnimations();
+                    svg.setCurrentTime(sec);
+                  } catch {
+                    // Skip SVGs without SMIL timing support.
+                  }
+                }
+              },
+              { tSec, tMs, frame, progress },
+            );
+            const png = await page.screenshot({
+              omitBackground: plan.transparent,
+              type: "png",
+              clip: { x: 0, y: 0, width: plan.width, height: plan.height },
+            });
+            if (!png || png.length === 0) {
+              throw new HtmlRenderError(`Chromium returned an empty PNG for frame ${frame}`);
+            }
+            await encoder.writeFrame(png);
+          }
+          return await encoder.finish();
+        },
+      );
+
+      const probe = await ffprobeJson(binaries.ffprobe, request.destPath, {
+        countFrames: true,
+      });
+      const videoStream = probe.streams?.find((s) => s.codec_type === "video");
+      if (!videoStream) {
+        throw new HtmlRenderError("ffprobe found no video stream in rendered HTML animation");
+      }
+      if (videoStream.width !== plan.width || videoStream.height !== plan.height) {
+        throw new HtmlRenderError(
+          `rendered HTML animation dimensions mismatch: expected ${plan.width}x${plan.height}, got ${String(videoStream.width)}x${String(videoStream.height)}`,
+        );
+      }
+
+      return {
+        bytesWritten,
+        missingAssets,
+        format,
+        frameCount: totalFrames,
+        fps,
+        durationSec: totalFrames / fps,
+      };
+    } catch (error) {
+      (encoder as FramesEncoderHandle | null)?.abort();
+      throw error;
+    }
+  });
 }

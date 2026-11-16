@@ -28,8 +28,11 @@ const getAutomationValueAtTime = (
 
   let previous: AutomationPoint | null = null;
 
-  for (const point of points) {
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index];
     if (Math.abs(point.time - time) <= 0.0001) {
+      // At an instantaneous change, seeking must start on its right side.
+      if (points[index + 1]?.time === point.time) continue;
       return point.value;
     }
 
@@ -82,7 +85,7 @@ export const getVolumeAutomationPointsForRange = (
   ];
 
   for (const point of sanitizedPoints) {
-    if (point.time <= rangeStart || point.time >= rangeEnd) {
+    if (point.time <= rangeStart || point.time > rangeEnd) {
       continue;
     }
 
@@ -105,7 +108,11 @@ export const getVolumeAutomationPointsForRange = (
 
   for (const point of result) {
     const lastPoint = deduped[deduped.length - 1];
-    if (lastPoint && Math.abs(lastPoint.time - point.time) <= 0.0001) {
+    if (
+      lastPoint &&
+      Math.abs(lastPoint.time - point.time) <= 0.0001 &&
+      !(lastPoint.time === point.time && lastPoint.value !== point.value)
+    ) {
       deduped[deduped.length - 1] = point;
       continue;
     }
@@ -143,7 +150,11 @@ export const scheduleVolumeAutomationOnGain = (
 
   for (let index = 1; index < rangePoints.length; index += 1) {
     const point = rangePoints[index];
-    gainNode.gain.linearRampToValueAtTime(point.value, startTime + point.time);
+    if (point.time === rangePoints[index - 1].time) {
+      gainNode.gain.setValueAtTime(point.value, startTime + point.time);
+    } else {
+      gainNode.gain.linearRampToValueAtTime(point.value, startTime + point.time);
+    }
   }
 
   const lastPoint = rangePoints[rangePoints.length - 1];

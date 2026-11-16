@@ -26,10 +26,15 @@ import { compactAnalysisFacts } from "./analysis-records";
 import type { NormalizeAudioArtifact } from "./audio-normalize";
 import type { DenoiseAudioArtifact } from "./audio-denoise";
 import type { SeparatedAudioArtifact } from "./audio-separate";
+import type { RemixAudioArtifact } from "./audio-remix";
 import type { AnalysisJobResult, JobStatusView } from "./types";
 
 /** Completed derived-audio results share these registration/verification fields. */
-export type ProcessedAudioArtifact = NormalizeAudioArtifact | DenoiseAudioArtifact | SeparatedAudioArtifact;
+export type ProcessedAudioArtifact =
+  | NormalizeAudioArtifact
+  | DenoiseAudioArtifact
+  | SeparatedAudioArtifact
+  | RemixAudioArtifact;
 
 function compactAnalysisJobResult(result: AnalysisJobResult): AnalysisJobResult {
   const summary: Record<string, unknown> = {};
@@ -381,7 +386,7 @@ export class JobRegistry {
     });
   }
 
-  markAudioProcessDone(jobId: string, result: ProcessedAudioArtifact): void {
+  markAudioProcessDone(jobId: string, result: ProcessedAudioArtifact, route = "local-ffmpeg-loudnorm-two-pass"): void {
     this.transition(jobId, (job) => {
       if (TERMINAL.has(job.state)) return job;
       return {
@@ -390,7 +395,7 @@ export class JobRegistry {
         result: structuredClone(result),
         artifact: null,
         ...(job.artifactFiles ? { artifactFiles: releaseBorrowedSources(job) } : {}),
-        route: "local-ffmpeg-loudnorm-two-pass",
+        route,
         error: null,
       };
     });

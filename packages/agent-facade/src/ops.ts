@@ -14,8 +14,10 @@ import { CLEANUP_HANDOFF_PHASES, type CleanupHandoffPhase, type ProjectRequireme
 import type { Action } from "@reelterminal/core/types/actions";
 import type { Project, ProjectMarker } from "@reelterminal/core/types/project";
 import { DEFAULT_PROJECT_MARKER_COLOR } from "@reelterminal/core/types/project";
-import type { Clip, Transform, Transition } from "@reelterminal/core/types/timeline";
+import type { Clip, Track, Transform, Transition } from "@reelterminal/core/types/timeline";
 import { EASING_TYPES } from "@reelterminal/core/types/timeline";
+import { SpeedEngine } from "@reelterminal/core/video/speed-engine";
+import { retimeSegmentSpeed, retimeSpeedKeyframes } from "./retime-by-anchors";
 import { TransitionEngine } from "@reelterminal/core/video/transition-engine";
 import { splitPieceClipId } from "@reelterminal/core/actions/action-executor";
 import type { TextClip } from "@reelterminal/core/text/types";
@@ -86,12 +88,14 @@ import {
   type TransitionAddOp,
   type TransitionRemoveOp,
   type TransitionUpdateOp,
+  type TimelineRetimeByAnchorsOp,
   type SubtitleImportSrtOp,
   type SubtitleRemoveOp,
   type ClipSetColorGradeOp,
   type ClipSetKeyframesOp,
   type ClipApplyReframeOp,
   type FacadeKeyframeInput,
+  type SvgAnimationInput,
   type ReferenceSetComparisonOp,
   type ReferenceClearComparisonOp,
   type MediaReplaceOp,
@@ -100,6 +104,7 @@ import {
   type ClipSetChromaKeyOp,
   type ClipSetNoiseReductionOp,
   type ClipSetDuckingOp,
+  type DuckingTailEnvelopeParams,
   type ClipCutSilenceFromAnalysisOp,
   type ClipSplitAtBeatOp,
   type SubtitleImportTranscriptOp,
@@ -299,6 +304,11 @@ export const CLIP_ADD_SCHEMA: ObjectSchema = {
     check: isPositiveNumber,
     describe: "a finite number > 0",
     emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  speed: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.1 && v <= 20,
+    describe: "a finite number in [0.1, 20]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0.1, maximum: 20 } },
   },
   clipId: {
     check: isNonEmptyString,
@@ -598,6 +608,138 @@ export const TEXT_DELETE_SCHEMA: ObjectSchema = {
   },
 };
 
+const KEYFRAME_PROPERTIES = [
+  "opacity",
+  "position.x",
+  "position.y",
+  "scale.x",
+  "scale.y",
+  "rotation",
+  "trimPath",
+  "trimPathStart",
+  "trimPathEnd",
+  "trimPathOffset",
+] as const;
+
+const KEYFRAME_EASINGS = [
+  "linear",
+  "ease",
+  "ease-in",
+  "ease-out",
+  "ease-in-out",
+  "hold",
+  "smoothstep",
+  "smootherstep",
+] as const;
+
+export const FACADE_KEYFRAME_SCHEMA: ObjectSchema = {
+  property: {
+    check: oneOf(KEYFRAME_PROPERTIES),
+    describe: "a renderer-supported transform, opacity, or SVG trimPath keyframe property",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: KEYFRAME_PROPERTIES } },
+  },
+  time: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative clip-local time",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  value: {
+    check: isFiniteNumber,
+    describe: "a finite numeric value",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number" } },
+  },
+  easing: {
+    check: oneOf(KEYFRAME_EASINGS),
+    describe: "a supported easing",
+    emits: { kind: "leaf", schema: { enum: KEYFRAME_EASINGS } },
+  },
+};
+
+const SVG_GRAPHIC_ANIMATION_TYPES = [
+  "none",
+  "fade",
+  "slide-left",
+  "slide-right",
+  "slide-up",
+  "slide-down",
+  "scale",
+  "rotate",
+  "bounce",
+  "pop",
+  "draw",
+  "wipe-left",
+  "wipe-right",
+  "wipe-up",
+  "wipe-down",
+  "reveal-center",
+  "reveal-edges",
+  "elastic",
+  "flip-horizontal",
+  "flip-vertical",
+] as const;
+
+const isUnitRangeNumber = (v: unknown): boolean =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+
+export const SVG_ANIMATION_SCHEMA: ObjectSchema = {
+  type: {
+    check: oneOf(SVG_GRAPHIC_ANIMATION_TYPES),
+    describe: "a supported graphic animation type (including \"draw\" for stroke growth)",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: SVG_GRAPHIC_ANIMATION_TYPES } },
+  },
+  duration: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0 (default 0.5)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  easing: {
+    check: oneOf(KEYFRAME_EASINGS),
+    describe: "a supported easing (default \"ease-out\" / \"ease-in\")",
+    emits: { kind: "leaf", schema: { enum: KEYFRAME_EASINGS } },
+  },
+};
+
+const SVG_EXTRA_SCHEMA_FIELDS = {
+  trimPathStart: {
+    check: isUnitRangeNumber,
+    describe: "a finite number in [0, 1] (default 0)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  trimPathEnd: {
+    check: isUnitRangeNumber,
+    describe: "a finite number in [0, 1] (default 1)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  trimPathOffset: {
+    check: (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= -100 && v <= 100,
+    describe: "a finite number in [-100, 100] (default 0)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: -100, maximum: 100 } },
+  },
+  entryAnimation: {
+    check: isPlainObjectValue,
+    describe: "an entry animation object { type, duration?, easing? }",
+    emits: { kind: "object", schema: SVG_ANIMATION_SCHEMA },
+  },
+  exitAnimation: {
+    check: isPlainObjectValue,
+    describe: "an exit animation object { type, duration?, easing? }",
+    emits: { kind: "object", schema: SVG_ANIMATION_SCHEMA },
+  },
+  keyframes: {
+    check: (value: unknown) => Array.isArray(value) && value.length <= 100,
+    describe: "an array of at most 100 keyframes",
+    emits: {
+      kind: "array",
+      maxItems: 100,
+      items: { kind: "anyOfObjects", variants: [FACADE_KEYFRAME_SCHEMA] },
+    },
+  },
+} satisfies Record<string, ObjectSchema[string]>;
+
 export const SVG_CREATE_SCHEMA: ObjectSchema = {
   op: {
     check: (v) => v === "svg.create",
@@ -642,6 +784,7 @@ export const SVG_CREATE_SCHEMA: ObjectSchema = {
     describe: "an object",
     emits: { kind: "object", schema: NORMALIZED_POINT_SCHEMA },
   },
+  ...SVG_EXTRA_SCHEMA_FIELDS,
 };
 
 export const SVG_UPDATE_SCHEMA: ObjectSchema = {
@@ -683,6 +826,7 @@ export const SVG_UPDATE_SCHEMA: ObjectSchema = {
     describe: "an object",
     emits: { kind: "object", schema: NORMALIZED_POINT_SCHEMA },
   },
+  ...SVG_EXTRA_SCHEMA_FIELDS,
 };
 
 export const SVG_REMOVE_SCHEMA: ObjectSchema = {
@@ -1043,6 +1187,11 @@ export const TRANSITION_ADD_SCHEMA: ObjectSchema = {
     required: true,
     emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
   },
+  handlePolicy: {
+    check: oneOf(["clamp", "strict", "autoBorrow"]),
+    describe: '"clamp" (default), "strict", or "autoBorrow"',
+    emits: { kind: "leaf", schema: { enum: ["clamp", "strict", "autoBorrow"] } },
+  },
 };
 
 export const TRANSITION_UPDATE_SCHEMA: ObjectSchema = {
@@ -1386,6 +1535,65 @@ export const WORK_ASSET_INSTANTIATE_SCHEMA: ObjectSchema = {
   },
 };
 
+export const TIMELINE_RETIME_ANCHOR_SCHEMA: ObjectSchema = {
+  sourceSec: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0 (source media seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  timelineSec: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0 (target timeline seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+};
+
+export const TIMELINE_RETIME_BY_ANCHORS_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "timeline.retimeByAnchors",
+    describe: '"timeline.retimeByAnchors"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "timeline.retimeByAnchors" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  trackId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  anchors: {
+    check: (value) => Array.isArray(value) && value.length >= 2,
+    describe: "at least 2 { sourceSec, timelineSec } anchor points",
+    required: true,
+    emits: {
+      kind: "array",
+      minItems: 2,
+      items: { kind: "object", schema: TIMELINE_RETIME_ANCHOR_SCHEMA },
+    },
+  },
+  mode: {
+    check: oneOf(["splitSegments", "speedCurve"]),
+    describe: '"splitSegments" (default) or "speedCurve"',
+    emits: { kind: "leaf", schema: { enum: ["splitSegments", "speedCurve"] } },
+  },
+  easing: {
+    check: oneOf(["linear", "smooth", "step"]),
+    describe: '"linear", "smooth", or "step" (speedCurve mode only)',
+    emits: { kind: "leaf", schema: { enum: ["linear", "smooth", "step"] } },
+  },
+};
+
 export const SUBTITLE_REMOVE_SCHEMA: ObjectSchema = {
   op: {
     check: (value) => value === "subtitle.remove",
@@ -1487,52 +1695,6 @@ export const CLIP_SET_COLOR_GRADE_SCHEMA: ObjectSchema = {
     check: (value) => value === true,
     describe: "true",
     emits: { kind: "leaf", schema: { type: "boolean" } },
-  },
-};
-
-const KEYFRAME_PROPERTIES = [
-  "opacity",
-  "position.x",
-  "position.y",
-  "scale.x",
-  "scale.y",
-  "rotation",
-] as const;
-
-const KEYFRAME_EASINGS = [
-  "linear",
-  "ease",
-  "ease-in",
-  "ease-out",
-  "ease-in-out",
-  "hold",
-  "smoothstep",
-  "smootherstep",
-] as const;
-
-export const FACADE_KEYFRAME_SCHEMA: ObjectSchema = {
-  property: {
-    check: oneOf(KEYFRAME_PROPERTIES),
-    describe: "a renderer-supported transform/opacity keyframe property",
-    required: true,
-    emits: { kind: "leaf", schema: { enum: KEYFRAME_PROPERTIES } },
-  },
-  time: {
-    check: isNonNegativeNumber,
-    describe: "a non-negative clip-local time",
-    required: true,
-    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
-  },
-  value: {
-    check: isFiniteNumber,
-    describe: "a finite numeric value",
-    required: true,
-    emits: { kind: "leaf", schema: { type: "number" } },
-  },
-  easing: {
-    check: oneOf(KEYFRAME_EASINGS),
-    describe: "a supported easing",
-    emits: { kind: "leaf", schema: { enum: KEYFRAME_EASINGS } },
   },
 };
 
@@ -2088,6 +2250,43 @@ const DUCKING_PRESENCE_RANGE_SCHEMA: ObjectSchema = {
   },
 };
 
+const DUCKING_TAIL_ENVELOPE_SCHEMA: ObjectSchema = {
+  startAfterLastPresenceSec: {
+    check: isFiniteNonNegative,
+    describe: "a finite number >= 0 (seconds after last speech presence end)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  swellGainRatio: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.5 && v <= 4.0,
+    describe: "a finite number in [0.5, 4.0]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0.5, maximum: 4.0 } },
+  },
+  swellRampSec: {
+    check: isFiniteNonNegative,
+    describe: "a finite number >= 0 (seconds)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  fadeOutDurationSec: {
+    check: isFiniteNonNegative,
+    describe: "a finite number >= 0 (seconds)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  fadeOutCurve: {
+    check: oneOf(["linear", "exponential", "logarithmic", "s-curve", "bezier"]),
+    describe: '"linear" | "exponential" | "logarithmic" | "s-curve" | "bezier"',
+    emits: {
+      kind: "leaf",
+      schema: { enum: ["linear", "exponential", "logarithmic", "s-curve", "bezier"] },
+    },
+  },
+  clipDurationSec: {
+    check: isPositiveNumber,
+    describe: "a finite positive number (seconds)",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+};
+
 export const CLIP_SET_DUCKING_SCHEMA: ObjectSchema = {
   op: {
     check: (value) => value === "clip.setDucking",
@@ -2157,6 +2356,11 @@ export const CLIP_SET_DUCKING_SCHEMA: ObjectSchema = {
       items: { kind: "object", schema: DUCKING_PRESENCE_RANGE_SCHEMA },
     },
   },
+  tailEnvelope: {
+    check: isPlainObject,
+    describe: "an optional post-speech swell and tail fade-out envelope",
+    emits: { kind: "object", schema: DUCKING_TAIL_ENVELOPE_SCHEMA },
+  },
 };
 
 /** AUD-02: record-driven ducking. Tuning mirrors clip.setDucking; the record/mapping gates run at enrich time. */
@@ -2219,6 +2423,11 @@ export const CLIP_SET_DUCKING_FROM_ANALYSIS_SCHEMA: ObjectSchema = {
     check: (v) => v === "error" || v === "replace",
     describe: 'policy when the target clip already has volume-automation points: "error" (default) rejects the batch, "replace" overwrites them explicitly',
     emits: { kind: "leaf", schema: { enum: ["error", "replace"] } },
+  },
+  tailEnvelope: {
+    check: isPlainObject,
+    describe: "an optional post-speech swell and tail fade-out envelope",
+    emits: { kind: "object", schema: DUCKING_TAIL_ENVELOPE_SCHEMA },
   },
 };
 
@@ -2783,6 +2992,70 @@ function sanitizeClipTransform(
  * Validate one raw op against its closed schema. Throws INVALID_PARAMS on
  * unknown fields, wrong field names, missing required fields, wrong types.
  */
+function validateSvgAnimationInput(
+  raw: SvgAnimationInput | undefined,
+  defaultEasing: string,
+  label: string,
+): { type: SvgAnimationInput["type"]; duration: number; easing: string } | undefined {
+  if (raw === undefined) return undefined;
+  const valid = validateObject<SvgAnimationInput>(raw, SVG_ANIMATION_SCHEMA, label);
+  return {
+    type: valid.type,
+    duration: valid.duration ?? 0.5,
+    easing: valid.easing ?? defaultEasing,
+  };
+}
+
+function validateFacadeKeyframes(
+  rawKeyframes: readonly unknown[],
+  label: string,
+): FacadeKeyframeInput[] {
+  const keyframes = rawKeyframes.map((value, keyframeIndex) =>
+    validateObject<FacadeKeyframeInput>(
+      value,
+      FACADE_KEYFRAME_SCHEMA,
+      `${label}.keyframes[${keyframeIndex}]`,
+    ),
+  );
+  const seen = new Set<string>();
+  for (const keyframe of keyframes) {
+    const key = `${keyframe.property}:${keyframe.time}`;
+    if (seen.has(key)) {
+      throw invalidParams(`${label}: duplicate keyframe at ${key}`);
+    }
+    seen.add(key);
+    const [min, max] =
+      keyframe.property === "opacity" ||
+      keyframe.property === "trimPath" ||
+      keyframe.property === "trimPathStart" ||
+      keyframe.property === "trimPathEnd"
+        ? [0, 1]
+        : keyframe.property === "trimPathOffset"
+          ? [-100, 100]
+          : keyframe.property === "scale.x" || keyframe.property === "scale.y"
+            ? [0.01, 20]
+            : keyframe.property === "rotation"
+              ? [-360, 360]
+              : [-8192, 8192];
+    if (keyframe.value < min || keyframe.value > max) {
+      throw invalidParams(
+        `${label}: ${keyframe.property} value must be in [${min}, ${max}]`,
+      );
+    }
+  }
+  return keyframes;
+}
+
+function toCoreKeyframes(keyframes: readonly FacadeKeyframeInput[]) {
+  return keyframes.map((keyframe) => ({
+    id: `keyframe-${crypto.randomUUID()}`,
+    property: keyframe.property,
+    time: keyframe.time,
+    value: keyframe.value,
+    easing: keyframe.easing ?? "linear",
+  }));
+}
+
 export function validateEditOp(raw: unknown, index: number): EditOp {
   const label = `ops[${index}]`;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -2872,8 +3145,28 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
     }
     case "text.delete":
       return validateObject<TextDeleteOp>(raw, TEXT_DELETE_SCHEMA, label);
-    case "svg.create":
-      return validateObject<SvgCreateOp>(raw, SVG_CREATE_SCHEMA, label);
+    case "svg.create": {
+      const op = validateObject<SvgCreateOp>(raw, SVG_CREATE_SCHEMA, label);
+      const entryAnimation = validateSvgAnimationInput(
+        op.entryAnimation,
+        "ease-out",
+        `${label}.entryAnimation`,
+      );
+      const exitAnimation = validateSvgAnimationInput(
+        op.exitAnimation,
+        "ease-in",
+        `${label}.exitAnimation`,
+      );
+      const keyframes = op.keyframes
+        ? validateFacadeKeyframes(op.keyframes, label)
+        : undefined;
+      return {
+        ...op,
+        ...(entryAnimation !== undefined ? { entryAnimation } : {}),
+        ...(exitAnimation !== undefined ? { exitAnimation } : {}),
+        ...(keyframes !== undefined ? { keyframes } : {}),
+      };
+    }
     case "svg.update": {
       const op = validateObject<SvgUpdateOp>(raw, SVG_UPDATE_SCHEMA, label);
       // "at least one updatable field" is a cross-field predicate enforced
@@ -2883,13 +3176,37 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         op.startTime === undefined &&
         op.duration === undefined &&
         op.position === undefined &&
-        op.anchor === undefined
+        op.anchor === undefined &&
+        op.trimPathStart === undefined &&
+        op.trimPathEnd === undefined &&
+        op.trimPathOffset === undefined &&
+        op.entryAnimation === undefined &&
+        op.exitAnimation === undefined &&
+        op.keyframes === undefined
       ) {
         throw invalidParams(
-          `${label}: at least one of svgContent/startTime/duration/position/anchor is required`,
+          `${label}: at least one updatable field (svgContent/startTime/duration/position/anchor/trimPath*/entryAnimation/exitAnimation/keyframes) is required`,
         );
       }
-      return op;
+      const entryAnimation = validateSvgAnimationInput(
+        op.entryAnimation,
+        "ease-out",
+        `${label}.entryAnimation`,
+      );
+      const exitAnimation = validateSvgAnimationInput(
+        op.exitAnimation,
+        "ease-in",
+        `${label}.exitAnimation`,
+      );
+      const keyframes = op.keyframes
+        ? validateFacadeKeyframes(op.keyframes, label)
+        : undefined;
+      return {
+        ...op,
+        ...(entryAnimation !== undefined ? { entryAnimation } : {}),
+        ...(exitAnimation !== undefined ? { exitAnimation } : {}),
+        ...(keyframes !== undefined ? { keyframes } : {}),
+      };
     }
     case "svg.remove":
       return validateObject<SvgRemoveOp>(raw, SVG_REMOVE_SCHEMA, label);
@@ -2994,6 +3311,70 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         WORK_ASSET_INSTANTIATE_SCHEMA,
         label,
       );
+    case "timeline.retimeByAnchors": {
+      const op = validateObject<TimelineRetimeByAnchorsOp>(
+        raw,
+        TIMELINE_RETIME_BY_ANCHORS_SCHEMA,
+        label,
+      );
+      const anchors = op.anchors.map((anchor, anchorIndex) =>
+        validateObject<{ sourceSec: number; timelineSec: number }>(
+          anchor,
+          TIMELINE_RETIME_ANCHOR_SCHEMA,
+          `${label}.anchors[${anchorIndex}]`,
+        ),
+      );
+      if (op.clipId === undefined && op.mediaId === undefined) {
+        throw invalidParams(
+          `${label}: requires either clipId or (mediaId and trackId)`,
+        );
+      }
+      if (op.clipId !== undefined && op.mediaId !== undefined) {
+        throw invalidParams(
+          `${label}: pass either clipId or mediaId, not both`,
+        );
+      }
+      if (op.mediaId !== undefined && op.trackId === undefined) {
+        throw invalidParams(
+          `${label}: trackId is required when mediaId is specified`,
+        );
+      }
+      for (let i = 1; i < anchors.length; i++) {
+        const prev = anchors[i - 1]!;
+        const curr = anchors[i]!;
+        if (curr.sourceSec <= prev.sourceSec) {
+          throw invalidParams(
+            `${label}: anchors[${i}].sourceSec (${curr.sourceSec}) must be strictly greater than anchors[${i - 1}].sourceSec (${prev.sourceSec})`,
+            { index: i, prevSourceSec: prev.sourceSec, sourceSec: curr.sourceSec },
+          );
+        }
+        if (curr.timelineSec <= prev.timelineSec) {
+          throw invalidParams(
+            `${label}: anchors[${i}].timelineSec (${curr.timelineSec}) must be strictly greater than anchors[${i - 1}].timelineSec (${prev.timelineSec})`,
+            {
+              index: i,
+              prevTimelineSec: prev.timelineSec,
+              timelineSec: curr.timelineSec,
+            },
+          );
+        }
+        const deltaSource = curr.sourceSec - prev.sourceSec;
+        const deltaTimeline = curr.timelineSec - prev.timelineSec;
+        const segSpeed = deltaSource / deltaTimeline;
+        if (segSpeed < 0.1 - 1e-9 || segSpeed > 20 + 1e-9) {
+          throw invalidParams(
+            `${label}: segment ${i - 1} speed ${segSpeed} is outside [0.1, 20]`,
+            {
+              segmentIndex: i - 1,
+              speed: segSpeed,
+              deltaSource,
+              deltaTimeline,
+            },
+          );
+        }
+      }
+      return { ...op, anchors };
+    }
     case "subtitle.remove":
       return validateObject<SubtitleRemoveOp>(raw, SUBTITLE_REMOVE_SCHEMA, label);
     case "subtitle.importSrt": {
@@ -3033,34 +3414,7 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         CLIP_SET_KEYFRAMES_SCHEMA,
         label,
       );
-      const keyframes = op.keyframes.map((value, keyframeIndex) =>
-        validateObject<FacadeKeyframeInput>(
-          value,
-          FACADE_KEYFRAME_SCHEMA,
-          `${label}.keyframes[${keyframeIndex}]`,
-        ),
-      );
-      const seen = new Set<string>();
-      for (const keyframe of keyframes) {
-        const key = `${keyframe.property}:${keyframe.time}`;
-        if (seen.has(key)) {
-          throw invalidParams(`${label}: duplicate keyframe at ${key}`);
-        }
-        seen.add(key);
-        const [min, max] =
-          keyframe.property === "opacity"
-            ? [0, 1]
-            : keyframe.property === "scale.x" || keyframe.property === "scale.y"
-              ? [0.01, 20]
-              : keyframe.property === "rotation"
-                ? [-360, 360]
-                : [-8192, 8192];
-        if (keyframe.value < min || keyframe.value > max) {
-          throw invalidParams(
-            `${label}: ${keyframe.property} value must be in [${min}, ${max}]`,
-          );
-        }
-      }
+      const keyframes = validateFacadeKeyframes(op.keyframes, label);
       return { ...op, keyframes };
     }
     case "clip.applyReframe": {
@@ -3133,6 +3487,14 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         CLIP_SET_DUCKING_SCHEMA,
         label,
       );
+      const tailEnvelope =
+        op.tailEnvelope !== undefined
+          ? validateObject<DuckingTailEnvelopeParams>(
+              op.tailEnvelope,
+              DUCKING_TAIL_ENVELOPE_SCHEMA,
+              `${label}.tailEnvelope`,
+            )
+          : undefined;
       // Exactly one keyframe source: pre-computed points (an AudioDucker
       // product) or presence ranges the shared core kernel synthesizes from.
       if (op.points !== undefined && op.presenceRanges !== undefined) {
@@ -3141,6 +3503,11 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         );
       }
       if (op.points !== undefined) {
+        if (tailEnvelope !== undefined) {
+          throw invalidParams(
+            `${label}: tailEnvelope requires presenceRanges (pre-computed points cannot be swelled)`,
+          );
+        }
         op.points.forEach((point, pointIndex) =>
           validateObject(
             point,
@@ -3163,7 +3530,11 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
             );
           }
         });
-        return { ...op, presenceRanges: op.presenceRanges };
+        return {
+          ...op,
+          presenceRanges: op.presenceRanges,
+          ...(tailEnvelope !== undefined ? { tailEnvelope } : {}),
+        };
       }
       throw invalidParams(
         `${label}: ducking keyframes need a source — pass points (an AudioDucker.generateDuckingKeyframes product) or presenceRanges (speech-active windows on the trigger track, e.g. from a silence analysis complement)`,
@@ -3174,11 +3545,20 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       // envelope-conflict gates are I/O-bound and run in
       // enrichDuckingFromAnalysisOps at edit.apply/edit.validate time, before
       // any mutation starts.
-      return validateObject<ClipSetDuckingFromAnalysisOp>(
+      const parsed = validateObject<ClipSetDuckingFromAnalysisOp>(
         raw,
         CLIP_SET_DUCKING_FROM_ANALYSIS_SCHEMA,
         label,
       );
+      if (parsed.tailEnvelope !== undefined) {
+        const tailEnvelope = validateObject<DuckingTailEnvelopeParams>(
+          parsed.tailEnvelope,
+          DUCKING_TAIL_ENVELOPE_SCHEMA,
+          `${label}.tailEnvelope`,
+        );
+        return { ...parsed, tailEnvelope };
+      }
+      return parsed;
     }
     case "clip.cutSilenceFromAnalysis": {
       // Shape validation only: record gates and the cut plan run in
@@ -3598,7 +3978,113 @@ function extractSvgViewBox(content: string): ViewBox {
  * DRAFT (so sequential intra-batch references resolve), throws FacadeError
  * before any core action is produced when the op cannot succeed.
  */
-export function opToCoreActions(op: EditOp, draft: Project): Action[] {
+const CLIP_OVERLAP_EPS = 1e-6;
+
+export interface TrackClipOverlap {
+  readonly trackId: string;
+  readonly clipId: string;
+  readonly conflictingClipId: string;
+  readonly aStart: number;
+  readonly aEnd: number;
+  readonly bStart: number;
+  readonly bEnd: number;
+}
+
+function findClipOverlapOnTrack(
+  track: Track,
+  candidateStart: number,
+  candidateEnd: number,
+  excludeClipIds?: ReadonlySet<string>,
+): Clip | undefined {
+  return track.clips.find((existing) => {
+    if (excludeClipIds?.has(existing.id)) return false;
+    const existingEnd = existing.startTime + existing.duration;
+    return (
+      candidateStart < existingEnd - CLIP_OVERLAP_EPS &&
+      candidateEnd > existing.startTime + CLIP_OVERLAP_EPS
+    );
+  });
+}
+
+function assertCandidateNoTrackOverlap(
+  track: Track,
+  candidateId: string,
+  candidateStart: number,
+  candidateEnd: number,
+  excludeClipIds?: ReadonlySet<string>,
+): void {
+  const conflict = findClipOverlapOnTrack(
+    track,
+    candidateStart,
+    candidateEnd,
+    excludeClipIds,
+  );
+  if (!conflict) return;
+  throw new FacadeError(
+    "CONFLICT",
+    `Track "${track.id}" has overlapping clips "${candidateId}" ([${candidateStart}, ${candidateEnd}]) and "${conflict.id}" ([${conflict.startTime}, ${conflict.startTime + conflict.duration}])`,
+    {
+      reason: "CLIP_OVERLAP",
+      trackId: track.id,
+      clipId: candidateId,
+      conflictingClipId: conflict.id,
+    },
+  );
+}
+
+export function assertNoTrackClipOverlaps(project: Project): void {
+  const overlappingPairs: TrackClipOverlap[] = [];
+  for (const track of project.timeline.tracks) {
+    const sorted = [...track.clips].sort((a, b) =>
+      a.startTime !== b.startTime
+        ? a.startTime - b.startTime
+        : a.id.localeCompare(b.id),
+    );
+    for (let i = 0; i < sorted.length; i++) {
+      const a = sorted[i]!;
+      const aEnd = a.startTime + a.duration;
+      for (let j = i + 1; j < sorted.length; j++) {
+        const b = sorted[j]!;
+        if (b.startTime >= aEnd - CLIP_OVERLAP_EPS) break;
+        const bEnd = b.startTime + b.duration;
+        if (
+          a.startTime < bEnd - CLIP_OVERLAP_EPS &&
+          aEnd > b.startTime + CLIP_OVERLAP_EPS
+        ) {
+          overlappingPairs.push({
+            trackId: track.id,
+            clipId: a.id,
+            conflictingClipId: b.id,
+            aStart: a.startTime,
+            aEnd,
+            bStart: b.startTime,
+            bEnd,
+          });
+        }
+      }
+    }
+  }
+  if (overlappingPairs.length > 0) {
+    const first = overlappingPairs[0]!;
+    throw new FacadeError(
+      "CONFLICT",
+      `Track "${first.trackId}" has overlapping clips "${first.clipId}" ([${first.aStart}, ${first.aEnd}]) and "${first.conflictingClipId}" ([${first.bStart}, ${first.bEnd}])`,
+      {
+        reason: "CLIP_OVERLAP",
+        trackId: first.trackId,
+        clipId: first.clipId,
+        conflictingClipId: first.conflictingClipId,
+        overlappingPairs,
+      },
+    );
+  }
+}
+
+export function opToCoreActions(
+  op: EditOp,
+  draft: Project,
+  options?: { deferOverlapCheck?: boolean },
+): Action[] {
   if (op.op.startsWith("workbench.") && draft.reviewMigration) throw new FacadeError("CONFLICT", "MIGRATED: use the independent review node; this project workbench is a read-only backup.");
   switch (op.op) {
     case "track.add": {
@@ -3761,7 +4247,11 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       const effectiveIn = op.inPoint ?? 0;
       const effectiveDuration =
         op.duration ?? (mediaDuration > 0 ? mediaDuration : 5);
-      const effectiveOut = op.outPoint ?? effectiveDuration;
+      const effectiveOut =
+        op.outPoint ??
+        (op.duration !== undefined && op.speed !== undefined
+          ? effectiveIn + op.duration * op.speed
+          : effectiveDuration);
       if (effectiveOut <= effectiveIn) {
         throw invalidParams(
           `clip.add: resulting range must satisfy outPoint > inPoint`,
@@ -3796,6 +4286,16 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           { clipId: op.clipId },
         );
       }
+      const resolvedDuration =
+        op.duration ?? (effectiveOut - effectiveIn) / (op.speed ?? 1);
+      if (!options?.deferOverlapCheck) {
+        assertCandidateNoTrackOverlap(
+          track,
+          op.clipId ?? "clip.add",
+          op.startTime,
+          op.startTime + resolvedDuration,
+        );
+      }
       return [
         makeAction("clip/add", {
           trackId: op.trackId,
@@ -3805,13 +4305,14 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           // range defines the timeline span; sending it explicitly also
           // keeps older/direct Core consumers from re-defaulting to the full
           // media duration.
-          duration: op.duration ?? effectiveOut - effectiveIn,
+          duration: resolvedDuration,
           ...(op.inPoint !== undefined ? { inPoint: op.inPoint } : {}),
           // Always forward the range value validated above. When only
           // inPoint is supplied, Core would otherwise default outPoint from
           // the derived timeline duration (for example 8 instead of 10 for
           // a 10-second source starting at 2 seconds).
           outPoint: effectiveOut,
+          ...(op.speed !== undefined ? { speed: op.speed } : {}),
         }),
       ];
     }
@@ -3850,6 +4351,19 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           { clipId: op.clipId, mediaId: clip.mediaId, mediaDuration },
         );
       }
+      const clipTrack = draft.timeline.tracks.find((t) =>
+        t.clips.some((c) => c.id === op.clipId),
+      );
+      if (!options?.deferOverlapCheck && clipTrack) {
+        const nextDuration = (newOut - newIn) / Math.max(clip.speed ?? 1, 0.1);
+        assertCandidateNoTrackOverlap(
+          clipTrack,
+          clip.id,
+          clip.startTime,
+          clip.startTime + nextDuration,
+          new Set([clip.id]),
+        );
+      }
       return [
         makeAction("clip/trim", {
           clipId: op.clipId,
@@ -3860,21 +4374,32 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
     }
 
     case "clip.move": {
-      const clip = draft.timeline.tracks
-        .flatMap((t) => t.clips)
-        .find((c) => c.id === op.clipId);
+      const sourceTrack = draft.timeline.tracks.find((t) =>
+        t.clips.some((c) => c.id === op.clipId),
+      );
+      const clip = sourceTrack?.clips.find((c) => c.id === op.clipId);
       if (!clip) {
         throw new FacadeError("NOT_FOUND", `clip.move: clip "${op.clipId}" not found`, {
           clipId: op.clipId,
         });
       }
-      if (
-        op.trackId !== undefined &&
-        !draft.timeline.tracks.some((track) => track.id === op.trackId)
-      ) {
+      const targetTrack =
+        op.trackId !== undefined
+          ? draft.timeline.tracks.find((track) => track.id === op.trackId)
+          : sourceTrack;
+      if (op.trackId !== undefined && !targetTrack) {
         throw new FacadeError("NOT_FOUND", `clip.move: track "${op.trackId}" not found`, {
           trackId: op.trackId,
         });
+      }
+      if (!options?.deferOverlapCheck && targetTrack) {
+        assertCandidateNoTrackOverlap(
+          targetTrack,
+          clip.id,
+          op.startTime,
+          op.startTime + clip.duration,
+          new Set([clip.id]),
+        );
       }
       return [
         makeAction("clip/move", {
@@ -4134,6 +4659,14 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       // Mirrors the clip graphicsEngine.importSVG builds for the GUI import
       // (same defaults for preserveAspectRatio/colorStyle/animations), so an
       // Agent-created SVG is indistinguishable from a GUI-imported one.
+      for (const keyframe of op.keyframes ?? []) {
+        if (keyframe.time > op.duration) {
+          throw invalidParams(
+            `svg.create: keyframe time ${keyframe.time} exceeds svg duration ${op.duration}`,
+            { time: keyframe.time, duration: op.duration },
+          );
+        }
+      }
       const clip: SVGClip = {
         id: `svg-${crypto.randomUUID()}`,
         trackId,
@@ -4148,10 +4681,25 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           ...(op.position !== undefined ? { position: { ...op.position } } : {}),
           ...(op.anchor !== undefined ? { anchor: { ...op.anchor } } : {}),
         },
-        keyframes: [],
+        keyframes: op.keyframes ? toCoreKeyframes(op.keyframes) : [],
         colorStyle: { ...DEFAULT_SVG_COLOR_STYLE },
-        entryAnimation: { type: "none", duration: 0.5, easing: "ease-out" },
-        exitAnimation: { type: "none", duration: 0.5, easing: "ease-in" },
+        entryAnimation: op.entryAnimation
+          ? {
+              type: op.entryAnimation.type,
+              duration: op.entryAnimation.duration ?? 0.5,
+              easing: op.entryAnimation.easing ?? "ease-out",
+            }
+          : { type: "none", duration: 0.5, easing: "ease-out" },
+        exitAnimation: op.exitAnimation
+          ? {
+              type: op.exitAnimation.type,
+              duration: op.exitAnimation.duration ?? 0.5,
+              easing: op.exitAnimation.easing ?? "ease-in",
+            }
+          : { type: "none", duration: 0.5, easing: "ease-in" },
+        ...(op.trimPathStart !== undefined ? { trimPathStart: op.trimPathStart } : {}),
+        ...(op.trimPathEnd !== undefined ? { trimPathEnd: op.trimPathEnd } : {}),
+        ...(op.trimPathOffset !== undefined ? { trimPathOffset: op.trimPathOffset } : {}),
       };
       return [
         ...(autoCreatedTrackId !== undefined
@@ -4181,6 +4729,15 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       // position/anchor change must send the merged transform whole — a
       // partial object would drop the other transform keys. Only keys the
       // caller actually set go out.
+      const targetDuration = op.duration ?? existing.duration;
+      for (const keyframe of op.keyframes ?? []) {
+        if (keyframe.time > targetDuration) {
+          throw invalidParams(
+            `svg.update: keyframe time ${keyframe.time} exceeds svg duration ${targetDuration}`,
+            { overlayId: op.overlayId, time: keyframe.time, duration: targetDuration },
+          );
+        }
+      }
       const updates: Partial<SVGClip> = {
         ...(op.svgContent !== undefined ? { svgContent: op.svgContent } : {}),
         ...(op.startTime !== undefined ? { startTime: op.startTime } : {}),
@@ -4193,6 +4750,30 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
                 ...(op.anchor !== undefined ? { anchor: { ...op.anchor } } : {}),
               },
             }
+          : {}),
+        ...(op.trimPathStart !== undefined ? { trimPathStart: op.trimPathStart } : {}),
+        ...(op.trimPathEnd !== undefined ? { trimPathEnd: op.trimPathEnd } : {}),
+        ...(op.trimPathOffset !== undefined ? { trimPathOffset: op.trimPathOffset } : {}),
+        ...(op.entryAnimation !== undefined
+          ? {
+              entryAnimation: {
+                type: op.entryAnimation.type,
+                duration: op.entryAnimation.duration ?? 0.5,
+                easing: op.entryAnimation.easing ?? "ease-out",
+              },
+            }
+          : {}),
+        ...(op.exitAnimation !== undefined
+          ? {
+              exitAnimation: {
+                type: op.exitAnimation.type,
+                duration: op.exitAnimation.duration ?? 0.5,
+                easing: op.exitAnimation.easing ?? "ease-in",
+              },
+            }
+          : {}),
+        ...(op.keyframes !== undefined
+          ? { keyframes: toCoreKeyframes(op.keyframes) }
           : {}),
       };
       return [makeAction("svg/update", { clipId: op.overlayId, updates })];
@@ -4229,9 +4810,10 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
     }
 
     case "clip.setSpeed": {
-      const clip = draft.timeline.tracks
-        .flatMap((t) => t.clips)
-        .find((c) => c.id === op.clipId);
+      const clipTrack = draft.timeline.tracks.find((t) =>
+        t.clips.some((c) => c.id === op.clipId),
+      );
+      const clip = clipTrack?.clips.find((c) => c.id === op.clipId);
       if (!clip) {
         throw new FacadeError(
           "NOT_FOUND",
@@ -4239,13 +4821,25 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           { clipId: op.clipId },
         );
       }
+      if (!options?.deferOverlapCheck && clipTrack) {
+        const nextDuration =
+          (clip.outPoint - clip.inPoint) / Math.max(op.speed, 0.1);
+        assertCandidateNoTrackOverlap(
+          clipTrack,
+          clip.id,
+          clip.startTime,
+          clip.startTime + nextDuration,
+          new Set([clip.id]),
+        );
+      }
       return [makeAction("clip/setSpeed", { clipId: op.clipId, speed: op.speed })];
     }
 
     case "clip.setSpeedConfig": {
-      const clip = draft.timeline.tracks
-        .flatMap((track) => track.clips)
-        .find((candidate) => candidate.id === op.clipId);
+      const clipTrack = draft.timeline.tracks.find((track) =>
+        track.clips.some((candidate) => candidate.id === op.clipId),
+      );
+      const clip = clipTrack?.clips.find((candidate) => candidate.id === op.clipId);
       if (!clip) {
         throw new FacadeError(
           "NOT_FOUND",
@@ -4265,6 +4859,28 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         clipId: clip.id,
         ...freezeFrame,
       }));
+
+      if (!options?.deferOverlapCheck && clipTrack) {
+        const speedEngine = new SpeedEngine();
+        speedEngine.loadClips([
+          {
+            ...clip,
+            speed: op.speed,
+            reversed: op.reversed,
+            pitchCorrection: op.pitchCorrection,
+            speedKeyframes: keyframes,
+            freezeFrames,
+          },
+        ]);
+        const nextDuration = speedEngine.getEffectiveDuration(clip.id);
+        assertCandidateNoTrackOverlap(
+          clipTrack,
+          clip.id,
+          clip.startTime,
+          clip.startTime + nextDuration,
+          new Set([clip.id]),
+        );
+      }
 
       return [
         makeAction("speed/setRampData", {
@@ -4457,6 +5073,53 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           { duration: op.duration, maxDuration },
         );
       }
+      const handlePolicy = op.handlePolicy ?? "clamp";
+      const requiredHandleEachSec = op.duration / 2;
+      const mediaA = draft.mediaLibrary.items.find((m) => m.id === clipA.mediaId);
+      const mediaDurationA = mediaA?.metadata.duration ?? 0;
+      const speedA = Math.max(clipA.speed ?? 1, 0.1);
+      const speedB = Math.max(clipB.speed ?? 1, 0.1);
+      const leftTailHandleSec =
+        mediaDurationA > 0
+          ? Math.max(0, mediaDurationA - clipA.outPoint) / speedA
+          : mediaA?.type === "image"
+            ? Number.POSITIVE_INFINITY
+            : 0;
+      const rightHeadHandleSec = Math.max(0, clipB.inPoint) / speedB;
+      const handleEps = 1e-6;
+      const missingLeftSec = Math.max(0, requiredHandleEachSec - leftTailHandleSec);
+      const missingRightSec = Math.max(0, requiredHandleEachSec - rightHeadHandleSec);
+      const frameRate =
+        draft.settings.frameRate > 0 ? draft.settings.frameRate : 30;
+      const missingLeftFrames =
+        missingLeftSec > handleEps ? Math.ceil(missingLeftSec * frameRate) : 0;
+      const missingRightFrames =
+        missingRightSec > handleEps ? Math.ceil(missingRightSec * frameRate) : 0;
+
+      const handleDetails = {
+        reason: "INSUFFICIENT_TRANSITION_HANDLES",
+        clipAId: clipA.id,
+        clipBId: clipB.id,
+        duration: op.duration,
+        requiredHandleEachSec,
+        leftTailHandleSec,
+        rightHeadHandleSec,
+        missingLeftSec,
+        missingRightSec,
+        missingLeftFrames,
+        missingRightFrames,
+      };
+
+      if (
+        handlePolicy === "strict" &&
+        (missingLeftSec > handleEps || missingRightSec > handleEps)
+      ) {
+        throw invalidParams(
+          `transition.add: insufficient source handles for ${op.duration}s transition (need ${requiredHandleEachSec}s each; left tail=${leftTailHandleSec}s, right head=${rightHeadHandleSec}s)`,
+          handleDetails,
+        );
+      }
+
       const engine = new TransitionEngine({
         width: draft.settings.width,
         height: draft.settings.height,
@@ -4470,6 +5133,93 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         duration: op.duration,
         params: engine.getDefaultParams(op.type),
       };
+
+      if (
+        handlePolicy === "autoBorrow" &&
+        (missingLeftSec > handleEps || missingRightSec > handleEps)
+      ) {
+        if (
+          (missingLeftSec > handleEps &&
+            ((clipA.speedKeyframes?.length ?? 0) > 0 ||
+              (clipA.freezeFrames?.length ?? 0) > 0)) ||
+          (missingRightSec > handleEps &&
+            ((clipB.speedKeyframes?.length ?? 0) > 0 ||
+              (clipB.freezeFrames?.length ?? 0) > 0))
+        ) {
+          throw invalidParams(
+            "transition.add: autoBorrow does not support speed-ramped or freeze-frame clips",
+            handleDetails,
+          );
+        }
+        const borrowLeftSource = missingLeftSec * speedA;
+        const borrowRightSource = missingRightSec * speedB;
+        const nextOutPointA = clipA.outPoint - borrowLeftSource;
+        const nextInPointB = clipB.inPoint + borrowRightSource;
+        const postDurationA = clipA.duration - missingLeftSec;
+        const postDurationB = clipB.duration - missingRightSec;
+        if (
+          nextOutPointA <= clipA.inPoint + handleEps ||
+          nextInPointB >= clipB.outPoint - handleEps ||
+          postDurationA < requiredHandleEachSec - handleEps ||
+          postDurationB < requiredHandleEachSec - handleEps
+        ) {
+          throw invalidParams(
+            `transition.add: clips are too short to autoBorrow handles for ${op.duration}s transition`,
+            handleDetails,
+          );
+        }
+        const actions: Action[] = [];
+        if (missingLeftSec > handleEps) {
+          actions.push(
+            makeAction("clip/trim", {
+              clipId: clipA.id,
+              inPoint: clipA.inPoint,
+              outPoint: nextOutPointA,
+            }),
+          );
+        }
+        if (missingRightSec > handleEps) {
+          actions.push(
+            makeAction("clip/trim", {
+              clipId: clipB.id,
+              inPoint: nextInPointB,
+              outPoint: clipB.outPoint,
+            }),
+          );
+        }
+        if (missingLeftSec > handleEps) {
+          actions.push(
+            makeAction("clip/move", {
+              clipId: clipB.id,
+              trackId: trackA.id,
+              startTime: Math.max(0, clipB.startTime - missingLeftSec),
+            }),
+          );
+        }
+        const totalBorrowSec = missingLeftSec + missingRightSec;
+        if (totalBorrowSec > handleEps) {
+          const trailingClips = trackA.clips
+            .filter(
+              (c) =>
+                c.id !== clipA.id &&
+                c.id !== clipB.id &&
+                c.startTime >= clipB.startTime - handleEps,
+            )
+            .sort((a, b) => a.startTime - b.startTime);
+          for (const trailing of trailingClips) {
+            actions.push(
+              makeAction("clip/move", {
+                clipId: trailing.id,
+                trackId: trackA.id,
+                startTime: Math.max(0, trailing.startTime - totalBorrowSec),
+              }),
+            );
+          }
+        }
+        actions.push(makeAction("transition/set", { transition }));
+        return actions;
+      }
+
       return [makeAction("transition/set", { transition })];
     }
 
@@ -4982,6 +5732,264 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       return [...batch.actions];
     }
 
+    case "timeline.retimeByAnchors": {
+      let existingClip: Clip | undefined;
+      let targetTrack: Track | undefined;
+      if (op.clipId !== undefined) {
+        for (const t of draft.timeline.tracks) {
+          const found = t.clips.find((c) => c.id === op.clipId);
+          if (found) {
+            existingClip = found;
+            targetTrack = t;
+            break;
+          }
+        }
+        if (!existingClip || !targetTrack) {
+          throw new FacadeError(
+            "NOT_FOUND",
+            `timeline.retimeByAnchors: clip "${op.clipId}" not found`,
+            { clipId: op.clipId },
+          );
+        }
+        if (op.trackId !== undefined && op.trackId !== targetTrack.id) {
+          const overrideTrack = draft.timeline.tracks.find(
+            (t) => t.id === op.trackId,
+          );
+          if (!overrideTrack) {
+            throw new FacadeError(
+              "NOT_FOUND",
+              `timeline.retimeByAnchors: track "${op.trackId}" not found`,
+              { trackId: op.trackId },
+            );
+          }
+          targetTrack = overrideTrack;
+        }
+      } else {
+        targetTrack = draft.timeline.tracks.find((t) => t.id === op.trackId);
+        if (!targetTrack) {
+          throw new FacadeError(
+            "NOT_FOUND",
+            `timeline.retimeByAnchors: track "${op.trackId}" not found`,
+            { trackId: op.trackId },
+          );
+        }
+      }
+
+      const resolvedMediaId = existingClip?.mediaId ?? op.mediaId!;
+      const media = draft.mediaLibrary.items.find(
+        (m) => m.id === resolvedMediaId,
+      );
+      if (!media) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `timeline.retimeByAnchors: media "${resolvedMediaId}" not found`,
+          { mediaId: resolvedMediaId },
+        );
+      }
+
+      const mediaDuration = media.metadata.duration ?? 0;
+      const lastSource = op.anchors[op.anchors.length - 1]!.sourceSec;
+      if (mediaDuration > 0 && lastSource > mediaDuration + 1e-6) {
+        throw invalidParams(
+          `timeline.retimeByAnchors: anchor sourceSec ${lastSource} exceeds media duration ${mediaDuration}`,
+          { mediaId: resolvedMediaId, mediaDuration, sourceSec: lastSource },
+        );
+      }
+
+      const mode = op.mode ?? "splitSegments";
+      const excludeIds =
+        existingClip &&
+        targetTrack.clips.some((c) => c.id === existingClip!.id)
+          ? new Set([existingClip.id])
+          : undefined;
+
+      if (mode === "splitSegments") {
+        const actions: Action[] = [];
+        if (existingClip) {
+          actions.push(makeAction("clip/remove", { clipId: existingClip.id }));
+        }
+        for (let i = 0; i < op.anchors.length - 1; i++) {
+          const a0 = op.anchors[i]!;
+          const a1 = op.anchors[i + 1]!;
+          const deltaSource = a1.sourceSec - a0.sourceSec;
+          const deltaTimeline = a1.timelineSec - a0.timelineSec;
+          const segSpeed = retimeSegmentSpeed(deltaSource, deltaTimeline);
+          if (!options?.deferOverlapCheck) {
+            assertCandidateNoTrackOverlap(
+              targetTrack,
+              `retime-seg-${i}`,
+              a0.timelineSec,
+              a1.timelineSec,
+              excludeIds,
+            );
+          }
+          actions.push(
+            makeAction("clip/add", {
+              trackId: targetTrack.id,
+              mediaId: resolvedMediaId,
+              startTime: a0.timelineSec,
+              duration: deltaTimeline,
+              inPoint: a0.sourceSec,
+              outPoint: a1.sourceSec,
+              speed: segSpeed,
+              ...(existingClip
+                ? {
+                    volume: existingClip.volume,
+                    transform: existingClip.transform,
+                    effects: existingClip.effects,
+                    audioEffects: existingClip.audioEffects,
+                    reversed: existingClip.reversed,
+                    ...(existingClip.audioTrackIndex !== undefined
+                      ? { audioTrackIndex: existingClip.audioTrackIndex }
+                      : {}),
+                  }
+                : {}),
+            }),
+          );
+        }
+        return actions;
+      }
+
+      const firstAnchor = op.anchors[0]!;
+      const lastAnchor = op.anchors[op.anchors.length - 1]!;
+      const firstSource = firstAnchor.sourceSec;
+      const firstTimeline = firstAnchor.timelineSec;
+      const totalTimelineDuration = lastAnchor.timelineSec - firstTimeline;
+      const keyframes = retimeSpeedKeyframes(op.anchors, op.easing);
+
+      if (existingClip) {
+        if (!options?.deferOverlapCheck) {
+          const speedEngine = new SpeedEngine();
+          speedEngine.loadClips([
+            {
+              ...existingClip,
+              inPoint: firstSource,
+              outPoint: lastSource,
+              speed: 1,
+              speedKeyframes: keyframes,
+              freezeFrames: [],
+            },
+          ]);
+          const nextDuration = speedEngine.getEffectiveDuration(existingClip.id);
+          assertCandidateNoTrackOverlap(
+            targetTrack,
+            existingClip.id,
+            firstTimeline,
+            firstTimeline + nextDuration,
+            excludeIds,
+          );
+        }
+        const actions: Action[] = [];
+        if (
+          (existingClip.speedKeyframes?.length ?? 0) > 0 ||
+          (existingClip.freezeFrames?.length ?? 0) > 0
+        ) {
+          actions.push(
+            makeAction("speed/setRampData", {
+              clipId: existingClip.id,
+              speed: 1,
+              reversed: existingClip.reversed ?? false,
+              pitchCorrection: existingClip.pitchCorrection ?? true,
+              keyframes: [],
+              freezeFrames: [],
+            }),
+          );
+        }
+        if (
+          Math.abs(existingClip.inPoint - firstSource) > 1e-9 ||
+          Math.abs(existingClip.outPoint - lastSource) > 1e-9
+        ) {
+          actions.push(
+            makeAction("clip/trim", {
+              clipId: existingClip.id,
+              inPoint: firstSource,
+              outPoint: lastSource,
+            }),
+          );
+        }
+        actions.push(
+          makeAction("speed/setRampData", {
+            clipId: existingClip.id,
+            speed: 1,
+            reversed: existingClip.reversed ?? false,
+            pitchCorrection: existingClip.pitchCorrection ?? true,
+            keyframes,
+            freezeFrames: [],
+          }),
+        );
+        if (
+          Math.abs(existingClip.startTime - firstTimeline) > 1e-9 ||
+          targetTrack.id !== existingClip.trackId
+        ) {
+          actions.push(
+            makeAction("clip/move", {
+              clipId: existingClip.id,
+              trackId: targetTrack.id,
+              startTime: firstTimeline,
+            }),
+          );
+        }
+        return actions;
+      }
+
+      const addAction = makeAction("clip/add", {
+        trackId: targetTrack.id,
+        mediaId: resolvedMediaId,
+        startTime: firstTimeline,
+        duration: totalTimelineDuration,
+        inPoint: firstSource,
+        outPoint: lastSource,
+      });
+      const createdClipId = `clip-${addAction.id}`;
+      if (!options?.deferOverlapCheck) {
+        const speedEngine = new SpeedEngine();
+        speedEngine.loadClips([
+          {
+            id: createdClipId,
+            mediaId: resolvedMediaId,
+            trackId: targetTrack.id,
+            startTime: firstTimeline,
+            duration: totalTimelineDuration,
+            inPoint: firstSource,
+            outPoint: lastSource,
+            speed: 1,
+            speedKeyframes: keyframes,
+            freezeFrames: [],
+            effects: [],
+            audioEffects: [],
+            transform: {
+              position: { x: 0, y: 0 },
+              scale: { x: 1, y: 1 },
+              rotation: 0,
+              anchor: { x: 0.5, y: 0.5 },
+              opacity: 1,
+              fitMode: "contain",
+            },
+            volume: 1,
+            keyframes: [],
+          },
+        ]);
+        const nextDuration = speedEngine.getEffectiveDuration(createdClipId);
+        assertCandidateNoTrackOverlap(
+          targetTrack,
+          createdClipId,
+          firstTimeline,
+          firstTimeline + nextDuration,
+        );
+      }
+      return [
+        addAction,
+        makeAction("speed/setRampData", {
+          clipId: createdClipId,
+          speed: 1,
+          reversed: false,
+          pitchCorrection: true,
+          keyframes,
+          freezeFrames: [],
+        }),
+      ];
+    }
+
     case "subtitle.remove": {
       const ids = new Set(op.ids);
       if (op.entityType === "subtitle") {
@@ -5078,7 +6086,11 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       const clip = draft.timeline.tracks
         .flatMap((track) => track.clips)
         .find((candidate) => candidate.id === op.clipId);
-      if (!clip) {
+      const svgOverlay = clip
+        ? undefined
+        : (draft.svgClips ?? []).find((candidate) => candidate.id === op.clipId);
+      const targetDuration = clip?.duration ?? svgOverlay?.duration;
+      if (targetDuration === undefined) {
         throw new FacadeError(
           "NOT_FOUND",
           `clip.setKeyframes: clip "${op.clipId}" not found`,
@@ -5086,23 +6098,26 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         );
       }
       for (const keyframe of op.keyframes) {
-        if (keyframe.time > clip.duration) {
+        if (keyframe.time > targetDuration) {
           throw invalidParams(
-            `clip.setKeyframes: keyframe time ${keyframe.time} exceeds clip duration ${clip.duration}`,
-            { clipId: op.clipId, time: keyframe.time, duration: clip.duration },
+            `clip.setKeyframes: keyframe time ${keyframe.time} exceeds clip duration ${targetDuration}`,
+            { clipId: op.clipId, time: keyframe.time, duration: targetDuration },
           );
         }
+      }
+      const coreKeyframes = toCoreKeyframes(op.keyframes);
+      if (svgOverlay) {
+        return [
+          makeAction("svg/update", {
+            clipId: op.clipId,
+            updates: { keyframes: coreKeyframes },
+          }),
+        ];
       }
       return [
         makeAction("keyframe/setAll", {
           clipId: op.clipId,
-          keyframes: op.keyframes.map((keyframe) => ({
-            id: `keyframe-${crypto.randomUUID()}`,
-            property: keyframe.property,
-            time: keyframe.time,
-            value: keyframe.value,
-            easing: keyframe.easing ?? "linear",
-          })),
+          keyframes: coreKeyframes,
         }),
       ];
     }
@@ -5558,10 +6573,18 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         // Same core kernel AudioDucker.generateDuckingKeyframes delegates to
         // (facade -> core is the established dependency direction); an empty
         // synthesis is rejected, mirroring the GUI panel's explicit error.
+        const tailEnvelope =
+          op.tailEnvelope !== undefined
+            ? {
+                ...op.tailEnvelope,
+                clipDurationSec: op.tailEnvelope.clipDurationSec ?? target.duration,
+              }
+            : undefined;
         points = generateDuckingKeyframesFromRanges(
           op.presenceRanges,
           config,
           backgroundVolume,
+          tailEnvelope,
         );
         if (points.length === 0) {
           throw new FacadeError(

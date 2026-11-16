@@ -38,12 +38,28 @@ function parseJsonInput(raw: string, source: string): unknown {
   }
   try {
     return JSON.parse(content) as unknown;
-  } catch {
+  } catch (error) {
+    if (source === "--input-json") {
+      const detail = error instanceof Error ? error.message : "invalid JSON";
+      throw new LiveCliError(
+        `--input-json must contain valid JSON (${detail}). On Windows cmd/PowerShell, inline quotes in --input-json are often stripped by the shell; prefer --stdin or --file <path>.`,
+        "args",
+        2,
+        false,
+        {
+          source: "--input-json",
+          hint: "Windows cmd/PowerShell frequently strip or mangle double quotes in inline JSON flags (--input-json). Pipe JSON via --stdin (e.g. Get-Content request.json -Raw | reelctl call ... --stdin) or pass --file <path> instead.",
+        },
+      );
+    }
     throw new LiveCliError(`${source} must contain valid JSON`, "args", 2);
   }
 }
 
 function withInput(invocation: ParsedInvocation): ParsedInvocation {
+  if (invocation.inputJson !== undefined) {
+    return applyRequestEnvelope(invocation, parseJsonInput(invocation.inputJson, "--input-json"));
+  }
   if (invocation.file === undefined && !invocation.stdin) return invocation;
   let raw: string;
   try {
@@ -223,14 +239,14 @@ async function runGenericCall(client: LiveCommandClient, argv: readonly string[]
   readonly format: { readonly human: boolean; readonly compact: boolean; readonly outputFields?: readonly string[]; readonly outputFile?: string };
 }> {
   const command = argv[1];
-  if (!command) throw new LiveCliError("Usage: reelctl call <command> [--file request.json | --stdin] [--name value]", "args", 2);
+  if (!command) throw new LiveCliError("Usage: reelctl call <command> [--stdin | --file <path>] [--name value]", "args", 2);
   const parsed = parseFlags(argv.slice(2));
   const entry = await readCommandEntry(client, resolveCommandName(command));
   const { expectedProjectId: rawProjectId, expectedProjectEpoch: rawProjectEpoch, ...inputFlags } = parsed.flags;
   let args = { ...inputFlags };
   let expectedProjectId = typeof rawProjectId === "string" ? rawProjectId : undefined;
   let expectedProjectEpoch = typeof rawProjectEpoch === "string" ? rawProjectEpoch : undefined;
-  if (parsed.file !== undefined || parsed.stdin) {
+  if (parsed.file !== undefined || parsed.stdin || parsed.inputJson !== undefined) {
     const invocation: ParsedInvocation = {
       commandName: entry.name,
       arguments: args,
@@ -240,6 +256,7 @@ async function runGenericCall(client: LiveCommandClient, argv: readonly string[]
       human: parsed.human,
       compact: parsed.compact,
       ...(parsed.file === undefined ? {} : { file: parsed.file }),
+      ...(parsed.inputJson === undefined ? {} : { inputJson: parsed.inputJson }),
       ...(parsed.outputFile === undefined ? {} : { outputFile: parsed.outputFile }),
       ...(parsed.outputFields === undefined ? {} : { outputFields: parsed.outputFields }),
     };
@@ -281,7 +298,15 @@ export function cliErrorEnvelope(error: unknown): FacadeResult<never> {
   const code = error instanceof LiveCliError
     ? error.kind === "args" ? "INVALID_PARAMS" : error.kind === "business" ? "CONFLICT" : "CONNECTION_FAILED"
     : "CONNECTION_FAILED";
-  return { ok: false, error: { code, message } };
+  const details = error instanceof LiveCliError ? error.details : undefined;
+  return {
+    ok: false,
+    error: {
+      code,
+      message,
+      ...(details === undefined ? {} : { details }),
+    },
+  };
 }
 
 export async function runReelctl(argv: readonly string[], options: RunOptions = {}): Promise<number> {

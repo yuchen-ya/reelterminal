@@ -23,7 +23,7 @@
  * publishArtifact (atomic link, never replaces) → sha256.
  */
 import { createHash } from "node:crypto";
-import { rm, stat } from "node:fs/promises";
+import { readFile, rm, stat } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 
 import { FacadeError } from "./errors";
@@ -44,9 +44,12 @@ import type {
   HtmlRenderSource,
   RenderProvider,
 } from "./providers";
+import type { MediaRenderHtmlAnimationOptions } from "./types";
 
 /** Hard ceiling for one render's PNG output (dims are capped at 4096²). */
 export const MAX_HTML_RENDER_PNG_BYTES = 16 * 1024 * 1024;
+/** Hard ceiling for one animated HTML→video render output. */
+export const MAX_HTML_RENDER_VIDEO_BYTES = 256 * 1024 * 1024;
 
 export interface MediaRenderHtmlCoreParams {
   readonly source: HtmlRenderSource;
@@ -55,6 +58,7 @@ export interface MediaRenderHtmlCoreParams {
   readonly height: number;
   readonly transparent?: boolean;
   readonly timeoutMs?: number;
+  readonly animation?: MediaRenderHtmlAnimationOptions;
   readonly outputDir?: string;
 }
 
@@ -67,6 +71,10 @@ export interface MediaRenderHtmlArtifact {
   readonly bytes: number;
   /** Blocked/missing subresources, disclosed — never a silent blank. */
   readonly missingAssets: readonly string[];
+  readonly format?: "png" | "mp4" | "webm";
+  readonly frameCount?: number;
+  readonly fps?: number;
+  readonly durationSec?: number;
 }
 
 export interface HtmlRenderVerbDeps {
@@ -163,6 +171,22 @@ export async function produceHtmlRenderArtifact(
   const transparent = params.transparent ?? true;
   const width = params.width;
   const height = params.height;
+  const animation = params.animation
+    ? {
+        durationSec: params.animation.durationSec,
+        fps: params.animation.fps ?? 30,
+        format:
+          params.animation.format ?? (transparent ? "webm" : "mp4") as "mp4" | "webm",
+      }
+    : undefined;
+
+  if (animation && transparent && animation.format === "mp4") {
+    throw new FacadeError(
+      "INVALID_PARAMS",
+      `${VERB}: animation format "mp4" (H.264 yuv420p) does not support alpha transparency; pass transparent: false or use format: "webm"`,
+      { transparent, format: animation.format },
+    );
+  }
 
   // ---- content-addressed request key ---------------------------------
   // Keys exactly what shapes the rendered bytes: source content (path mode
@@ -194,6 +218,7 @@ export async function produceHtmlRenderArtifact(
         width,
         height,
         transparent,
+        ...(animation !== undefined ? { animation } : {}),
       }),
     )
     .digest("hex");
@@ -226,8 +251,9 @@ export async function produceHtmlRenderArtifact(
 
   await prepareArtifactDir(outputDir, containingRoot, VERB);
   const stem = `html-${requestKey}-${width}x${height}`;
-  const tempPath = pendingArtifactPath(outputDir, stem, "png");
-  const finalPath = resolvePath(outputDir, `${stem}.png`);
+  const ext = animation ? animation.format : "png";
+  const tempPath = pendingArtifactPath(outputDir, stem, ext);
+  const finalPath = resolvePath(outputDir, `${stem}.${ext}`);
 
   try {
     // Narrow once: kind "path" guarantees sourceReal was resolved (we threw
@@ -236,6 +262,77 @@ export async function produceHtmlRenderArtifact(
       params.source.kind === "path"
         ? { kind: "path", path: sourceReal ?? params.source.path }
         : { kind: "inline", html: params.source.html };
+
+    if (animation) {
+      if (typeof provider.renderHtmlAnimation !== "function") {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          `${VERB}: configured render provider does not support HTML animation rendering (renderHtmlAnimation)`,
+        );
+      }
+      const rendered = await provider.renderHtmlAnimation({
+        source: renderSource,
+        ...(assetsRootReal !== undefined ? { assetsRoot: assetsRootReal } : {}),
+        width,
+        height,
+        transparent,
+        timeoutMs: params.timeoutMs ?? 30_000,
+        destPath: tempPath,
+        durationSec: animation.durationSec,
+        fps: animation.fps,
+        format: animation.format,
+      });
+      const verifiedTemp = await assertContainedWrittenFile(tempPath, containingRoot, VERB);
+      const header = await readFile(verifiedTemp).then((buf) => buf.subarray(0, 12));
+      if (animation.format === "webm") {
+        const isEbml =
+          header.length >= 4 &&
+          header[0] === 0x1a &&
+          header[1] === 0x45 &&
+          header[2] === 0xdf &&
+          header[3] === 0xa3;
+        if (!isEbml) {
+          throw new FacadeError(
+            "JOB_FAILED",
+            `${VERB}: rendered artifact failed WebM/EBML header re-inspection`,
+          );
+        }
+      } else {
+        const isFtyp = header.length >= 8 && header.subarray(4, 8).toString("ascii") === "ftyp";
+        if (!isFtyp) {
+          throw new FacadeError(
+            "JOB_FAILED",
+            `${VERB}: rendered artifact failed MP4/ftyp header re-inspection`,
+          );
+        }
+      }
+      const published = await publishArtifact({
+        tempPath: verifiedTemp,
+        finalPath,
+        artifactRoot: containingRoot,
+        verb: VERB,
+      });
+      const publishedStat = await stat(published);
+      if (publishedStat.size > MAX_HTML_RENDER_VIDEO_BYTES) {
+        throw new FacadeError(
+          "JOB_FAILED",
+          `${VERB}: published video exceeds the ${MAX_HTML_RENDER_VIDEO_BYTES}-byte artifact budget`,
+        );
+      }
+      return {
+        path: published,
+        width,
+        height,
+        sha256: await sha256File(published),
+        bytes: publishedStat.size,
+        missingAssets: rendered.missingAssets,
+        format: rendered.format,
+        frameCount: rendered.frameCount,
+        fps: rendered.fps,
+        durationSec: rendered.durationSec,
+      };
+    }
+
     const rendered = await provider.renderHtmlPng!({
       source: renderSource,
       ...(assetsRootReal !== undefined ? { assetsRoot: assetsRootReal } : {}),

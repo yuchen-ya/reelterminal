@@ -17,6 +17,7 @@ const CREATING_OPS: ReadonlySet<EditOp["op"]> = new Set([
   // translator prepends a track/add — or, for kind "multi" assets, the whole
   // member expansion (several lanes + several clips, all pinned to the op).
   "workAsset.instantiate",
+  "timeline.retimeByAnchors",
   // workAsset.capture deliberately absent: it creates an ASSET, not timeline
   // entities, so createdIds is always [] and the agent recovers the asset id
   // via timeline.query (same convention as single capture).
@@ -126,6 +127,19 @@ export function partitionCreatedIds(
         }
       }
       const clipCount = opClipCounts[index] ?? 1;
+      for (let consumed = 0; consumed < clipCount; consumed++) {
+        const id = createdIds.clips[cursors.clips];
+        cursors.clips += 1;
+        if (id !== undefined) ids.push(id);
+      }
+    } else if (op.op === "timeline.retimeByAnchors") {
+      const fallbackCount =
+        (op.mode ?? "splitSegments") === "splitSegments"
+          ? Math.max(0, op.anchors.length - 1)
+          : op.clipId === undefined
+            ? 1
+            : 0;
+      const clipCount = opClipCounts[index] ?? fallbackCount;
       for (let consumed = 0; consumed < clipCount; consumed++) {
         const id = createdIds.clips[cursors.clips];
         cursors.clips += 1;

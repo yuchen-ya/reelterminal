@@ -6,6 +6,7 @@ import {
   applyClipIdOverride,
   collectEntityIds,
   diffCreatedIds,
+  assertNoTrackClipOverlaps,
   opToCoreActions,
 } from "./ops";
 import { diffProjectChanges } from "./project-changes";
@@ -113,7 +114,7 @@ export async function validateEditPlan(
               startTime: clip.startTime, duration: clip.duration, outPoint: clip.outPoint,
             })))
           : [];
-        const actions = opToCoreActions(effectiveOp, draft);
+        const actions = opToCoreActions(effectiveOp, draft, { deferOverlapCheck: true });
         for (const action of actions) {
           const result = await executor.execute(action, draft);
           if (!result.success) {
@@ -148,6 +149,13 @@ export async function validateEditPlan(
       } catch (error) {
         conflicts.push(issue(error, opIndex));
         break;
+      }
+    }
+    if (conflicts.length === 0) {
+      try {
+        assertNoTrackClipOverlaps(draft);
+      } catch (error) {
+        conflicts.push(issue(error, Math.max(0, ops.length - 1)));
       }
     }
   }

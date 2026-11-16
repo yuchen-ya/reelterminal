@@ -65,6 +65,8 @@ export {
   HTML_RENDER_MIN_TIMEOUT_MS,
   HtmlRenderError,
   HtmlRenderTimeoutError,
+  renderHtmlAnimation,
   renderHtmlPng,
+  type RenderHtmlAnimationOptions,
   type RenderHtmlPngOptions,
 } from "./node/html-render";

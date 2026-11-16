@@ -4,7 +4,7 @@ import type { Project } from "../../types/project";
 import type { Action } from "../../types/actions";
 import type { AutomationPoint } from "../../types/timeline";
 import type { VolumeKeyframe } from "../../audio/volume-automation";
-import { generateDuckingKeyframesFromRanges } from "../../audio/volume-automation";
+import { generateDuckingKeyframesFromRanges, VolumeAutomation } from "../../audio/volume-automation";
 
 function makeProjectWithClip(overrides: Record<string, unknown> = {}): Project {
   const clip = {
@@ -281,5 +281,110 @@ describe("audio ducking handlers", () => {
         1,
       ),
     ).toEqual([]);
+  });
+
+  it("generateDuckingKeyframesFromRanges synthesizes tailEnvelope swell and tail fade-out", () => {
+    const automation = new VolumeAutomation();
+    const keyframes = generateDuckingKeyframesFromRanges(
+      [{ start: 1, end: 3 }],
+      { threshold: -30, reduction: 0.6, attack: 0.1, release: 0.25, holdTime: 0.2 },
+      0.8,
+      {
+        startAfterLastPresenceSec: 0.4,
+        swellRampSec: 1.0,
+        swellGainRatio: 1.25,
+        fadeOutDurationSec: 1.5,
+        clipDurationSec: 8,
+      },
+    );
+
+    // Sample the public evaluator: duck, recover, wait, swell, hold and fade.
+    // Quarter-ramp samples distinguish an S curve from a linear ramp.
+    for (const [time, volume] of [
+      [2, 0.32], [3.125, 0.56], [3.3, 0.8], [3.4, 0.8],
+      [3.65, 0.83125], [3.9, 0.9], [4.4, 1], [6.5, 1],
+      [6.875, 0.84375], [7.25, 0.5], [8, 0],
+    ]) {
+      expect(automation.getVolumeAtTime(time!, keyframes)).toBeCloseTo(volume!, 5);
+    }
+
+    // When clipDurationSec <= swellPeak, fade-out is omitted and swell stands
+    // (release point and swell-start point at 3.2 coalesce via deduplication).
+    const noFade = generateDuckingKeyframesFromRanges(
+      [{ start: 1, end: 3 }],
+      { threshold: -30, reduction: 0.5, attack: 0.1, release: 0.2, holdTime: 0.2 },
+      0.5,
+      {
+        swellRampSec: 1.0,
+        swellGainRatio: 1.5,
+        fadeOutDurationSec: 1.0,
+        clipDurationSec: 4.0,
+      },
+    );
+    expect(noFade).toHaveLength(5);
+    expect(noFade[4]!.value).toBeCloseTo(0.75, 5);
+  });
+
+  it.each([undefined, 0, 0.1])("starts the tail swell after release when the requested delay is %s", (delay) => {
+    const keyframes = generateDuckingKeyframesFromRanges(
+      [{ start: 1, end: 3 }],
+      { ...SETTINGS, reduction: 0.5, release: 0.5 },
+      0.8,
+      { startAfterLastPresenceSec: delay, swellRampSec: 1, swellGainRatio: 1.5 },
+    );
+    const automation = new VolumeAutomation();
+    expect(automation.getVolumeAtTime(3.25, keyframes)).toBeCloseTo(0.6);
+    expect(automation.getVolumeAtTime(3.5, keyframes)).toBeCloseTo(0.8);
+    expect(automation.getVolumeAtTime(4, keyframes)).toBeCloseTo(1);
+    expect(automation.getVolumeAtTime(4.5, keyframes)).toBeCloseTo(1.2);
+  });
+
+  it("anchors a single tail to the last merged presence window", () => {
+    const keyframes = generateDuckingKeyframesFromRanges(
+      [{ start: 5, end: 6 }, { start: 1, end: 2 }, { start: 1.9, end: 3 }, { start: 6.1, end: 7 }],
+      { ...SETTINGS, reduction: 0.5, release: 0.5 },
+      0.8,
+      { swellRampSec: 1, swellGainRatio: 1.5 },
+    );
+    const automation = new VolumeAutomation();
+    for (const [time, volume] of [[2.5, 0.4], [4, 0.8], [6.5, 0.4], [7.5, 0.8], [8, 1], [8.5, 1.2]]) {
+      expect(automation.getVolumeAtTime(time!, keyframes)).toBeCloseTo(volume!, 5);
+    }
+  });
+
+  it.each([
+    { backgroundVolume: 3, swellGainRatio: 2, expectedPeak: 4 },
+    { backgroundVolume: 0, swellGainRatio: 4, expectedPeak: 0 },
+  ])("keeps the tail volume in range for background $backgroundVolume and swell $swellGainRatio", ({ backgroundVolume, swellGainRatio, expectedPeak }) => {
+    const keyframes = generateDuckingKeyframesFromRanges(
+      [{ start: 1, end: 3 }],
+      { ...SETTINGS, release: 0.5 },
+      backgroundVolume,
+      { swellRampSec: 1, swellGainRatio },
+    );
+    expect(new VolumeAutomation().getVolumeAtTime(4.5, keyframes)).toBe(expectedPeak);
+    expect(keyframes.every(({ value }) => value >= 0 && value <= 4)).toBe(true);
+  });
+
+  it("does not create a tail swell or fade when there is no presence", () => {
+    const keyframes = generateDuckingKeyframesFromRanges([], SETTINGS, 0.8, {
+      swellGainRatio: 2, swellRampSec: 1, fadeOutDurationSec: 2, clipDurationSec: 8,
+    });
+    expect(keyframes).toEqual([]);
+    expect(new VolumeAutomation().getVolumeAtTime(8, keyframes, 0.8)).toBe(0.8);
+  });
+
+  it("reaches the requested tail gain immediately when swellRampSec is zero", () => {
+    const keyframes = generateDuckingKeyframesFromRanges(
+      [{ start: 1, end: 3 }],
+      { ...SETTINGS, release: 0.5 },
+      0.8,
+      { startAfterLastPresenceSec: 0.75, swellRampSec: 0, swellGainRatio: 1.5 },
+    );
+    // Release finishes at 3.5; the instantaneous swell at 3.75 must then hold.
+    const automation = new VolumeAutomation();
+    expect(automation.getVolumeAtTime(3.74, keyframes)).toBeCloseTo(0.8);
+    expect(automation.getVolumeAtTime(3.75, keyframes)).toBeCloseTo(1.2);
+    expect(automation.getVolumeAtTime(3.8, keyframes)).toBeCloseTo(1.2);
   });
 });
