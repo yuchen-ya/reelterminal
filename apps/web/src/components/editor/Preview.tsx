@@ -2282,6 +2282,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
         const sink = colorSafeCanvasSink(mediabunny, videoTrack, {
           poolSize: 3,
+          alpha: await videoTrack.canBeTransparent(),
         });
 
         return {

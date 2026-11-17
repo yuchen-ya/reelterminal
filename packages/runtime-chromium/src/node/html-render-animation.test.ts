@@ -187,6 +187,12 @@ describe("media.render_html animated rendering (real Chromium + ffmpeg)", () => 
     expect(video?.codec_name).toBe("vp9");
     expect(video?.tags?.alpha_mode).toBe("1");
     expect(Number(video?.nb_read_frames ?? video?.nb_frames)).toBe(5);
+    expect(video).toMatchObject({
+      color_range: "tv",
+      color_space: "bt709",
+      color_transfer: "bt709",
+      color_primaries: "bt709",
+    });
 
     // ffprobe 6.1 cannot select a decoder. Inspect the actual libvpx-decoded
     // frame format with ffmpeg, without forcing an output pixel format; the
@@ -211,6 +217,10 @@ describe("media.render_html animated rendering (real Chromium + ffmpeg)", () => 
     // Top-left corner (0,0) stays transparent while #mover at (10, 60) is opaque
     expect(earlyRgba[3]).toBeLessThan(10);
     expect(earlyRgba[(60 * 160 + 10) * 4 + 3]).toBeGreaterThan(200);
+    const opaqueRgb = earlyRgba.subarray((60 * 160 + 10) * 4, (60 * 160 + 10) * 4 + 3);
+    [0, 255, 204].forEach((channel, index) => {
+      expect(Math.abs(opaqueRgb[index]! - channel)).toBeLessThanOrEqual(12);
+    });
     expect(lateRgba[(60 * 160 + 10) * 4 + 3]).toBeLessThan(10);
     expect(lateRgba[(60 * 160 + 110) * 4 + 3]).toBeGreaterThan(200);
 

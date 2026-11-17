@@ -1463,7 +1463,7 @@ export interface TrackAddOp {
   readonly trackId?: string;
   /**
    * Zero-based insertion index in project.timeline.tracks — the z-order
-   * (later tracks composite ON TOP of earlier ones). Omitted appends on top.
+   * (earlier tracks composite ON TOP of later ones). Omitted appends below.
    * Needed to layer a foreground track above background tracks that cut
    * underneath it (cross-shot continuity).
    */

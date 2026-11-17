@@ -10,6 +10,7 @@
 ## 动画、导入与交付
 
 - `media.render_html` 可逐帧生成本地 HTML/CSS/SVG 动画：支持 CSS 动画、SMIL 及时间/进度变量。透明视频使用 WebM；MP4 不保留透明通道。页面脚本和外部网络资源仍不开放。
+- 透明 WebM 在预览、静帧和导出中保留底层画面；生成的 WebM 同时固定 SDR BT.709 像素转换和色彩标记，减少解码路径间的颜色偏差。
 - SVG 描边支持路径起点、终点与周期偏移关键帧，用于路径生长或擦除。
 - `export.start` 可为 MP4 附加 PNG/JPEG 封面，并输出 SRT 字幕与章节文本。字幕与章节使用本次导出开始时的工程内容，不会混入之后的编辑；已有附件路径不会被静默覆盖。
 - 桌面 CLI 的本地媒体导入上限提高至 8 GiB，大文件从本地路径流式复制。源文件在复制中改变时拒绝发布不完整副本。大小上限不保证任意编码可解码或流畅编辑。
@@ -27,6 +28,7 @@ Windows x64 发行包未签名，系统可能显示发布者或 SmartScreen 提�
 
 - Add atomic final-layout batch editing, anchor-based retiming and explicit transition handle policies through the CLI.
 - Render deterministic local HTML/CSS/SVG animation and animate SVG stroke trim paths.
+- Preserve transparent WebM overlays in preview, stills and export, and encode generated WebM with matching SDR BT.709 pixels and color tags.
 - Remix music to a target duration, explicitly register generated audio, and shape a ducking tail swell.
 - Export attached covers, SRT subtitles and chapter text from the export-start snapshot.
 - Stream local media up to 8 GiB through the desktop CLI and reject source changes during copying.

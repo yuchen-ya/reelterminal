@@ -85,6 +85,7 @@ describe("ExportFrameDecoder", () => {
           displayWidth: 640,
           displayHeight: 360,
           canDecode: vi.fn().mockResolvedValue(true),
+          canBeTransparent: vi.fn().mockResolvedValue(false),
         };
       }
     }
@@ -148,6 +149,7 @@ describe("ExportFrameDecoder", () => {
           displayWidth: 320,
           displayHeight: 180,
           canDecode: vi.fn().mockResolvedValue(true),
+          canBeTransparent: vi.fn().mockResolvedValue(false),
         };
       }
     }
@@ -186,7 +188,7 @@ describe("ExportFrameDecoder", () => {
     })());
     class Input {
       async getPrimaryVideoTrack() {
-        return { displayWidth: 320, displayHeight: 180, canDecode: async () => true };
+        return { displayWidth: 320, displayHeight: 180, canDecode: async () => true, canBeTransparent: async () => false };
       }
       [Symbol.dispose]() { disposed(); }
     }
@@ -245,6 +247,7 @@ describe("MediaBunnyEngine.createExportDecoder", () => {
         displayWidth: 640,
         displayHeight: 360,
         canDecode: async () => true,
+        canBeTransparent: async () => false,
       });
     const inputDispose = vi.fn();
     engineMediabunny.inputDispose = inputDispose;

@@ -121,7 +121,7 @@ export class ExportFrameDecoder {
       return false;
     }
 
-    const sinkOptions: Record<string, unknown> = { poolSize: 2 };
+    const sinkOptions: Record<string, unknown> = { poolSize: 2, alpha: await videoTrack.canBeTransparent() };
     if (this.width) {
       const aspectRatio = videoTrack.displayHeight / videoTrack.displayWidth;
       sinkOptions.width = this.width;
@@ -577,6 +577,7 @@ export class MediaBunnyEngine {
       const sink = colorSafeCanvasSink(this.mediabunny!, videoTrack, {
         width,
         height,
+        alpha: await videoTrack.canBeTransparent(),
         fit: "contain" as const,
         poolSize: Math.min(count, 10), // Limit pool size for memory efficiency
       });
@@ -654,6 +655,7 @@ export class MediaBunnyEngine {
       const sink = colorSafeCanvasSink(this.mediabunny!, videoTrack, {
         width: thumbnailWidth,
         height,
+        alpha: await videoTrack.canBeTransparent(),
         fit: "cover" as const,
         poolSize: Math.min(count, 20),
       });
@@ -737,7 +739,7 @@ export class MediaBunnyEngine {
         throw new Error("Cannot decode video track");
       }
 
-      const sinkOptions: Record<string, unknown> = { poolSize: 1 };
+      const sinkOptions: Record<string, unknown> = { poolSize: 1, alpha: await videoTrack.canBeTransparent() };
       if (width) {
         const aspectRatio = videoTrack.displayHeight / videoTrack.displayWidth;
         sinkOptions.width = width;
@@ -1260,6 +1262,7 @@ export class MediaBunnyEngine {
       const sink = colorSafeCanvasSink(this.mediabunny!, videoTrack, {
         fit: "contain",
         poolSize: 5,
+        alpha: await videoTrack.canBeTransparent(),
       });
 
       const blobs: Blob[] = [];

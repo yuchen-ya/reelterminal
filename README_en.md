@@ -29,7 +29,7 @@ Projects, media caches, editing and rendering run locally. See [external depende
 ## What is new in 1.5.0
 
 - Align clips to source/timeline anchors, update adjacent clips together and choose how transitions handle insufficient source handles.
-- Render local HTML/CSS/SVG animation frame by frame, or animate SVG stroke growth with path keyframes.
+- Render local HTML/CSS/SVG animation frame by frame, or animate SVG stroke growth with path keyframes; composite transparent WebM over existing footage.
 - Remix music to a target duration and raise the ending after background ducking; explicitly register generated audio before using it in a project.
 - Export an attached cover, SRT subtitles and chapter text; stream local media up to 8 GiB through the desktop CLI.
 

@@ -360,7 +360,14 @@ export function startFramesEncoder(
           "-i", "pipe:0",
           "-an",
           "-c:v", "libvpx-vp9",
+          // Pin pixels and frame metadata: encoder options alone do not retain
+          // primaries/transfer when libvpx receives untagged PNG frames.
+          "-vf", "scale=out_color_matrix=bt709:out_range=tv,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=limited",
           "-pix_fmt", options.transparent ? "yuva420p" : "yuv420p",
+          "-color_primaries", "bt709",
+          "-color_trc", "bt709",
+          "-colorspace", "bt709",
+          "-color_range", "tv",
           "-b:v", "0",
           "-crf", String(options.crf ?? 24),
           ...(options.transparent ? ["-auto-alt-ref", "0"] : []),

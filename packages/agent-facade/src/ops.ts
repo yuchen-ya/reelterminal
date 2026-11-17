@@ -189,7 +189,7 @@ export const TRACK_ADD_SCHEMA: ObjectSchema = {
   },
   position: {
     check: isNonNegativeInteger,
-    describe: "a non-negative integer — zero-based z-order insertion index in project.timeline.tracks (later tracks composite on top); omit to append on top",
+    describe: "a non-negative integer — zero-based z-order insertion index in project.timeline.tracks (earlier tracks composite on top); omit to append below",
     emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
   },
 };
@@ -4104,7 +4104,7 @@ export function opToCoreActions(
       ) {
         throw new FacadeError(
           "INVALID_PARAMS",
-          `track.add: position ${op.position} is beyond the current track count ${draft.timeline.tracks.length} — pass at most ${draft.timeline.tracks.length} (or omit position to append on top)`,
+          `track.add: position ${op.position} is beyond the current track count ${draft.timeline.tracks.length} — pass at most ${draft.timeline.tracks.length} (or omit position to append below)`,
           { position: op.position, trackCount: draft.timeline.tracks.length },
         );
       }

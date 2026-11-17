@@ -1,4 +1,4 @@
-import { copyFile, mkdir, open, readFile, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, open, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
@@ -256,9 +256,9 @@ describe("ReelTerminal v1.5 Phase 3", () => {
   let deliveryRoot: string;
 
   beforeEach(async () => {
-    root = await makeTempDir("v15-p3-media-");
-    cacheDir = await makeTempDir("v15-p3-cache-");
-    deliveryRoot = await makeTempDir("v15-p3-delivery-");
+    root = await realpath(await makeTempDir("v15-p3-media-"));
+    cacheDir = await realpath(await makeTempDir("v15-p3-cache-"));
+    deliveryRoot = await realpath(await makeTempDir("v15-p3-delivery-"));
   });
 
   afterEach(async () => {

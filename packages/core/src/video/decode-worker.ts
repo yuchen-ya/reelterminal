@@ -52,7 +52,7 @@ async function getOrCreateResources(request: DecodeRequest) {
     }
     const resource = {
       input,
-      sink: colorSafeCanvasSink(mediabunny, videoTrack, { width, height, fit: "contain" }),
+      sink: colorSafeCanvasSink(mediabunny, videoTrack, { width, height, fit: "contain", alpha: await videoTrack.canBeTransparent() }),
     };
     resourceCache.set(cacheKey, resource);
     return resource;
